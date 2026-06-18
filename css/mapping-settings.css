@@ -1,0 +1,234 @@
+/* SPDX-FileCopyrightText: 2026 Kelly Ferrone
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ *
+ * Layout-only — feedback uses Nextcloud's native `.msg success` / `.msg error`
+ * classes; buttons use `.button`. One card per mapping (a repeating form): a
+ * compact 3-column grid (tag/folder | mode/team-folder | groups) instead of a
+ * wide table, so it stops blowing past the admin-settings margin.
+ */
+
+.n8n-sync-mappings {
+	margin-top: 12px;
+}
+
+.n8n-sync-mappings__heading {
+	margin-bottom: 4px;
+}
+
+/* ── one card per mapping ───────────────────────────────────────────── */
+.n8n-sync-mappings__card {
+	border: 1px solid var(--color-border);
+	border-radius: var(--border-radius-large, 12px);
+	padding: 14px 16px;
+	margin-bottom: 14px;
+	background: var(--color-main-background);
+	/* Match NC's settings text width (`.section p { max-width: 900px }`) so the
+	   card's right edge lines up with the explanations above it. */
+	max-width: 900px;
+}
+
+/* tag | mode      (row 1)
+ * folder | tf     (row 2)
+ * actions         (row 3, spans the two left columns)
+ * groups spans all three rows in the third (wider) column, so its box bottom
+ * lines up with the action buttons. */
+.n8n-sync-mappings__grid {
+	display: grid;
+	grid-template-columns: minmax(140px, 0.9fr) minmax(140px, 0.9fr) minmax(340px, 2.2fr);
+	grid-template-rows: auto auto auto;
+	gap: 10px 18px;
+	align-items: start;
+}
+
+.nf-tag    { grid-area: 1 / 1; }
+.nf-mode   { grid-area: 1 / 2; }
+.nf-folder { grid-area: 2 / 1; }
+.nf-tf     { grid-area: 2 / 2; align-self: center; }
+.nf-groups { grid-area: 1 / 3 / 4 / 4; align-self: stretch; } /* span all rows in col 3 */
+
+/* ⓘ info button next to each field label — a pure-CSS hover/focus tooltip
+ * (no JS, no @nextcloud/vue). Reliable where the native `title=` was useless. */
+.n8n-sync-info {
+	position: relative;
+	display: inline-flex;
+	align-items: center;
+	margin-inline-start: 4px;
+	color: var(--color-text-maxcontrast);
+	opacity: 0.4; /* subtle by default — it's a hint, not a control */
+	cursor: help;
+	vertical-align: middle;
+}
+
+.n8n-sync-info:hover,
+.n8n-sync-info:focus-visible {
+	color: var(--color-primary-element, var(--color-primary));
+	opacity: 1;
+	outline: none;
+}
+
+.n8n-sync-info::after {
+	content: attr(data-tip);
+	position: absolute;
+	inset-inline-start: 0;
+	top: calc(100% + 6px);
+	z-index: 100;
+	width: max-content;
+	max-width: 260px;
+	padding: 8px 10px;
+	background: var(--color-main-background);
+	color: var(--color-main-text);
+	border: 1px solid var(--color-border);
+	border-radius: var(--border-radius, 6px);
+	box-shadow: 0 2px 10px rgba(0, 0, 0, 0.25);
+	font-size: 0.95em;
+	font-weight: normal;
+	line-height: 1.35;
+	white-space: normal;
+	opacity: 0;
+	pointer-events: none;
+	transition: opacity 0.12s ease;
+}
+
+.n8n-sync-info:hover::after,
+.n8n-sync-info:focus-visible::after {
+	opacity: 1;
+}
+
+/* a field = label stacked over its control */
+.n8n-sync-field {
+	display: flex;
+	flex-direction: column;
+	gap: 3px;
+	min-width: 0;
+}
+
+.n8n-sync-field > label {
+	font-size: 1.1em;
+	font-weight: 600;
+	color: var(--color-main-text);
+}
+
+.n8n-sync-field input[type="text"],
+.n8n-sync-field select {
+	width: 100%;
+	box-sizing: border-box;
+}
+
+/* the Team Folder checkbox is an inline row, vertically centered with the
+ * folder input it sits beside */
+.n8n-sync-checkbox {
+	display: inline-flex;
+	align-items: center;
+	gap: 6px;
+	cursor: pointer;
+}
+
+.n8n-sync-checkbox input {
+	margin: 0;
+}
+
+/* Groups: a wrapping, scrollable checkbox list. Fills the full card height
+ * (flex:1 inside the stretched nf-groups column) so its bottom lines up with
+ * the action buttons; scrolls internally when there are many groups. */
+.n8n-sync-groups {
+	display: flex;
+	flex-wrap: wrap;
+	align-content: flex-start;
+	gap: 2px 14px;
+	flex: 1 1 auto;
+	min-height: 9em;
+	overflow-y: auto;
+	padding: 4px 6px;
+	border: 1px solid var(--color-border);
+	border-radius: var(--border-radius, 6px);
+}
+
+.n8n-sync-groups__item {
+	display: inline-flex;
+	align-items: center;
+	gap: 4px;
+	white-space: nowrap;
+	cursor: pointer;
+}
+
+.n8n-sync-groups__item input {
+	margin: 0;
+}
+
+/* Save / Sync / Delete — a horizontal group of colored, icon-only buttons.
+ * Row 3 of the grid, spanning the two left columns, pinned to the bottom. */
+.n8n-sync-mappings__actions {
+	grid-area: 3 / 1 / 4 / 3;
+	align-self: end;
+	display: flex;
+	gap: 8px;
+}
+
+.n8n-sync-mappings__actions .button {
+	display: inline-flex;
+	align-items: center;
+	justify-content: center;
+	width: 38px;
+	height: 38px;
+	min-height: 38px;
+	padding: 0;
+	color: #fff;
+	border: none;
+}
+
+.n8n-sync-mappings__actions .button svg {
+	width: 20px;
+	height: 20px;
+}
+
+.n8n-sync-mappings__actions .js-save {
+	background-color: var(--color-success);
+}
+.n8n-sync-mappings__actions .js-save:hover:not(:disabled) {
+	background-color: var(--color-success-hover, var(--color-success));
+}
+
+.n8n-sync-mappings__actions .js-sync {
+	background-color: var(--color-primary-element, var(--color-primary));
+}
+.n8n-sync-mappings__actions .js-sync:hover:not(:disabled) {
+	background-color: var(--color-primary-element-hover, var(--color-primary-element, var(--color-primary)));
+}
+
+.n8n-sync-mappings__actions .js-delete {
+	background-color: var(--color-error);
+}
+.n8n-sync-mappings__actions .js-delete:hover:not(:disabled) {
+	background-color: var(--color-error-hover, var(--color-error));
+}
+
+.n8n-sync-mappings__actions .button:disabled {
+	opacity: 0.5;
+}
+
+/* Per-mapping status, right of the buttons. Sticky (no auto-dismiss); uses the
+   canonical .msg success/error pill once a message is set. */
+.n8n-sync-mappings__actions .js-card-status {
+	align-self: center;
+	margin-left: 6px;
+	font-size: 0.9em;
+}
+
+.n8n-sync-mappings__footer {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+}
+
+/* Narrow admin widths: collapse the grid to a single column so nothing
+ * overflows. */
+@media (max-width: 680px) {
+	.n8n-sync-mappings__grid {
+		grid-template-columns: 1fr;
+		grid-template-rows: auto;
+	}
+	.nf-tag, .nf-mode, .nf-folder, .nf-tf, .nf-groups,
+	.n8n-sync-mappings__actions {
+		grid-area: auto;
+	}
+}

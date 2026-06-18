@@ -1,0 +1,47 @@
+/* SPDX-FileCopyrightText: 2026 Kelly Ferrone
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ *
+ * Layout for the "Sync Actions" panel (manual bulk-sync buttons + connection
+ * test buttons). Buttons + msg states use NC native `.button` /
+ * `.msg success` / `.msg error` styling.
+ */
+
+.n8n-sync-manual {
+	margin-top: 12px;
+}
+
+/* Divider before the connection-test buttons (a quieter sub-group). */
+.n8n-sync-actions__sep {
+	margin-top: 18px;
+	padding-top: 14px;
+	border-top: 1px solid var(--color-border);
+}
+
+.n8n-sync-manual__row {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin: 8px 0;
+	flex-wrap: wrap;
+}
+
+.n8n-sync-manual__row .button {
+	min-width: 200px;
+	text-align: start;
+}
+
+.n8n-sync-manual__last {
+	color: var(--color-text-maxcontrast);
+	font-size: 0.95em;
+}
+
+.n8n-sync-manual__hint {
+	color: var(--color-text-maxcontrast);
+	font-style: italic;
+	font-size: 0.9em;
+}
+
+.n8n-sync-manual__footer {
+	margin-top: 8px;
+	min-height: 1.6em;
+}

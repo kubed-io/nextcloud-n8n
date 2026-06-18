@@ -1,0 +1,32 @@
+/* SPDX-FileCopyrightText: 2026 Kelly Ferrone
+ * SPDX-License-Identifier: AGPL-3.0-or-later */
+
+/*
+ * Layout wrapper only — the status text reuses Nextcloud's canonical
+ * `.msg.success` / `.msg.error` classes (defined in apps/settings/css)
+ * which already supply white text on a green/red background with padding.
+ */
+.n8n-sync-test__heading {
+	/* Core gives section headings a large top margin; drop it so the title
+	   sits snug under the section divider instead of floating. */
+	margin-top: 0;
+	margin-bottom: 4px;
+}
+
+.n8n-sync-test-wrap {
+	display: flex;
+	align-items: center;
+	gap: 12px;
+	margin-top: 8px;
+}
+
+/* Keep the two channel buttons aligned regardless of label width. */
+.n8n-sync-test-wrap .button {
+	min-width: 120px;
+}
+
+/* Greyed + unclickable when its channel is disabled (e.g. webhook off). */
+.n8n-sync-test-wrap .button[disabled] {
+	opacity: 0.5;
+	cursor: not-allowed;
+}

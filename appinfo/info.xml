@@ -1,0 +1,50 @@
+<?xml version="1.0"?>
+<!--
+  - SPDX-FileCopyrightText: 2026 Kelly Ferrone
+  - SPDX-License-Identifier: AGPL-3.0-or-later
+-->
+<info xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+      xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
+  <id>n8n_sync</id>
+  <name>n8n Sync</name>
+  <summary>Sync n8n workflows to and from Nextcloud as files</summary>
+  <description><![CDATA[
+Maps n8n workflows into Nextcloud as JSON files with a native feel — icons, deep links,
+and folder mappings. See the project plan for the full design.
+
+Phase 0: skeleton only — installs and enables cleanly, registers nothing yet.
+  ]]></description>
+  <version>0.0.2</version>
+  <licence>agpl</licence>
+  <author>Kelly Ferrone</author>
+  <namespace>N8nSync</namespace>
+  <category>integration</category>
+  <bugs>https://github.com/kubed-io/nextcloud</bugs>
+  <dependencies>
+    <nextcloud min-version="30" max-version="33"/>
+  </dependencies>
+  <settings>
+    <!-- Test Connection buttons are folded into the Sync Actions panel
+         (SyncSettings); AdminTest stays as the auth target for the test
+         endpoints but is no longer rendered as its own panel. -->
+    <admin>OCA\N8nSync\Settings\MappingSettings</admin>
+    <admin>OCA\N8nSync\Settings\SyncSettings</admin>
+    <admin-section>OCA\N8nSync\Settings\AdminSection</admin-section>
+  </settings>
+  <commands>
+    <command>OCA\N8nSync\Command\ListWorkflows</command>
+    <command>OCA\N8nSync\Command\GetWorkflow</command>
+  </commands>
+  <repair-steps>
+    <!--
+      Installs the application/n8n+json mimetype + icon mapping on every
+      install/upgrade. Idempotent; see lib/Migration/RegisterMimetype.php.
+    -->
+    <install>
+      <step>OCA\N8nSync\Migration\RegisterMimetype</step>
+    </install>
+    <post-migration>
+      <step>OCA\N8nSync\Migration\RegisterMimetype</step>
+    </post-migration>
+  </repair-steps>
+</info>

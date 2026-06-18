@@ -1,0 +1,5 @@
+{
+  "_comment": "Mimetype -> icon-base-name map for n8n Sync. Merged into <NC>/config/mimetypealiases.json by the RegisterMimetype repair step.",
+  "_comment2": "The icon name resolves against core/img/filetypes/<name>.svg (see GenerateMimetypeFileBuilder), so the SVG must be copied to core/img/filetypes/n8n.svg by the same repair step.",
+  "application/n8n+json": "n8n"
+}

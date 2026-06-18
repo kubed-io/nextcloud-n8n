@@ -1,0 +1,5 @@
+{
+  "_comment": "Extension -> mimetype map for n8n Sync. Merged into <NC>/config/mimetypemapping.json by RegisterMimetype repair step.",
+  "_comment2": "Detection::detectPath() only consults the LAST extension segment, so '.n8n.json' is detected as 'json' (-> application/json). We register 'json' here to point it at our custom mimetype WHEN the file is one of ours; the custom-config form accepts a list and the FIRST entry wins, but base config already maps 'json' -> application/json. We instead rely on the per-file mimetype write performed by SyncService and the database row already carrying our custom type, plus a strong-match alias on basename '.n8n.json' through the secondary detection. In practice: the icon is driven by the database mimetype row stamped in SyncService::writeWorkflow(), and update-db rewrites filecache rows whose name ends in '.n8n.json' to the n8n mimetype. The mapping below ensures the mimetype itself exists in the registry so update-db can resolve its id.",
+  "n8n.json": ["application/n8n+json"]
+}

@@ -1,0 +1,25 @@
+{
+  "name": "n8n_sync",
+  "version": "0.1.0",
+  "description": "n8n Sync — Nextcloud frontend (Files row icon + Open in n8n action)",
+  "private": true,
+  "license": "AGPL-3.0-or-later",
+  "type": "module",
+  "scripts": {
+    "build": "vite --mode production build",
+    "dev": "vite --mode development build",
+    "watch": "vite --mode development build --watch"
+  },
+  "dependencies": {
+    "@nextcloud/files": "^4.0.0",
+    "@nextcloud/initial-state": "^2.2.0",
+    "@nextcloud/l10n": "^3.2.0",
+    "@nextcloud/router": "^3.0.1"
+  },
+  "devDependencies": {
+    "vite": "^7.1.10"
+  },
+  "engines": {
+    "node": "^20 || ^22 || ^24"
+  }
+}
