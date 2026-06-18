@@ -1,0 +1,40 @@
+{
+  "name": "n8n_sync",
+  "image": "mcr.microsoft.com/devcontainers/php:8.3",
+  "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "lts",
+      "nvmVersion": "latest"
+    },
+    "ghcr.io/devcontainers/features/github-cli:1": {},
+    "ghcr.io/devcontainers/features/docker-outside-of-docker:1": {
+      "moby": false
+    }
+  },
+  "containerEnv": {
+    "APP_ID": "n8n_sync",
+    "APP_NAMESPACE": "OCA\\N8nSync"
+  },
+  "postCreateCommand": "nvm install && nvm use && npm install",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "bmewburn.vscode-intelephense-client",
+        "xdebug.php-debug",
+        "redhat.vscode-yaml",
+        "github.vscode-github-actions",
+        "github.copilot",
+        "github.copilot-chat",
+        "ms-azuretools.vscode-containers",
+        "esbenp.prettier-vscode"
+      ],
+      "settings": {
+        "php.suggest.basic": false,
+        "intelephense.environment.phpVersion": "8.3.0",
+        "files.associations": {
+          "*.xml": "xml"
+        }
+      }
+    }
+  }
+}

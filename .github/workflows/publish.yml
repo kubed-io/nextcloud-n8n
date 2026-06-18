@@ -1,0 +1,160 @@
+name: 🧬 Publish Version
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: Version to bump to
+        default: patch
+        type: choice
+        options:
+        - patch
+        - minor
+        - major
+        - premajor
+        - preminor
+        - prepatch
+      push:
+        description: Push changes and create release
+        default: false
+        type: boolean
+
+jobs:
+
+  publish:
+    name: Publish
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+
+    - name: Validate Branch
+      if: inputs.push
+      run: |
+        if [[ "$GITHUB_REF_NAME" != "main" ]]; then
+          echo "Error: Releases can only be pushed from main. Current branch: $GITHUB_REF_NAME"
+          exit 1
+        fi
+
+    - name: Create GitHub App Token
+      id: app-token
+      uses: actions/create-github-app-token@v2
+      with:
+        app-id: ${{ vars.GH_APP_ID }}
+        private-key: ${{ secrets.GH_APP_KEY }}
+
+    - name: Checkout
+      uses: actions/checkout@v6
+      with:
+        fetch-depth: 0
+        token: ${{ steps.app-token.outputs.token }}
+
+    - name: Setup Node
+      uses: actions/setup-node@v5
+      with:
+        node-version-file: .nvmrc
+        cache: npm
+
+    # Compute the next semver using npm and rewrite package.json. No git tag
+    # here — duplocloud/version-bump owns the commit, tag, and changelog.
+    - name: NPM Version
+      id: version
+      env:
+        ACTION: ${{ inputs.action }}
+      run: |
+        TAG=$(npm version "$ACTION" --no-git-tag-version)
+        VERSION="${TAG#v}"
+        echo "tag=$TAG" >> "$GITHUB_OUTPUT"
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+    # Mirror the new version into appinfo/info.xml so the Nextcloud app
+    # catalog and package.json agree on the released version.
+    - name: Sync info.xml version
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
+      run: |
+        sed -i -E "s|<version>[^<]+</version>|<version>${VERSION}</version>|" appinfo/info.xml
+        grep -F "<version>${VERSION}</version>" appinfo/info.xml
+
+    - name: Install dependencies
+      run: npm ci --no-audit --no-fund
+
+    - name: Build
+      run: npm run build
+
+    # Pack the app folder Nextcloud expects: a single top-level directory
+    # named after the app id, containing only runtime files.
+    - name: Package
+      id: package
+      env:
+        VERSION: ${{ steps.version.outputs.version }}
+      run: |
+        APP_ID=n8n_sync
+        STAGE="dist/pkg/${APP_ID}"
+        rm -rf dist/pkg
+        mkdir -p "$STAGE"
+        for entry in appinfo lib css js img templates config CHANGELOG.md README.md; do
+          [[ -e "$entry" ]] && cp -R "$entry" "$STAGE/"
+        done
+        mkdir -p "$STAGE/dist"
+        cp dist/n8n_sync-files.js "$STAGE/dist/"
+        TARBALL="dist/${APP_ID}-${VERSION}.tar.gz"
+        tar --create --gzip --file "$TARBALL" \
+          --directory dist/pkg \
+          --owner=0 --group=0 --sort=name \
+          --mtime='UTC 2020-01-01' \
+          "$APP_ID"
+        rm -rf dist/pkg
+        echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+
+    - name: Bump Version
+      id: bump
+      uses: duplocloud/version-bump@main
+      with:
+        version: ${{ steps.version.outputs.tag }}
+        push: ${{ inputs.push }}
+        token: ${{ steps.app-token.outputs.token }}
+        files: |
+          package.json
+          package-lock.json
+          appinfo/info.xml
+
+    - name: Create Release
+      if: inputs.push
+      uses: softprops/action-gh-release@v3
+      with:
+        token: ${{ steps.app-token.outputs.token }}
+        name: ${{ steps.bump.outputs.tag }}
+        tag_name: ${{ steps.bump.outputs.tag }}
+        prerelease: ${{ contains(steps.bump.outputs.tag, '-') }}
+        files: ${{ steps.package.outputs.tarball }}
+        body: |
+          [![Publish](${{ github.server_url }}/${{ github.repository }}/actions/workflows/publish.yml/badge.svg)](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+
+          ${{ steps.bump.outputs.release-notes }}
+
+          ## Installation
+
+          Download the tarball and extract into your Nextcloud `apps/` directory:
+
+          ```sh
+          curl -L -o n8n_sync.tar.gz \
+            https://github.com/${{ github.repository }}/releases/download/${{ steps.bump.outputs.tag }}/n8n_sync-${{ steps.bump.outputs.version }}.tar.gz
+          tar -xzf n8n_sync.tar.gz -C /path/to/nextcloud/apps/
+          occ app:enable n8n_sync
+          ```
+
+    - name: Summary
+      run: |
+        {
+          echo "## Publish"
+          echo ""
+          echo "- **Version**: ${{ steps.bump.outputs.version }}"
+          echo "- **Tag**: ${{ steps.bump.outputs.tag }}"
+          echo "- **Tarball**: ${{ steps.package.outputs.tarball }}"
+          echo "- **Pushed**: ${{ inputs.push }}"
+          echo ""
+          echo "### Release Notes"
+          echo ""
+          echo "${{ steps.bump.outputs.release-notes }}"
+        } >> "$GITHUB_STEP_SUMMARY"
