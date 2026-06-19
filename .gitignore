@@ -1,2 +1,8 @@
 node_modules/
 dist/
+
+# PHP tooling artifacts (composer / phpunit / php-cs-fixer / psalm)
+vendor/
+tests/.phpunit.cache/
+.php-cs-fixer.cache
+psalm-baseline.xml

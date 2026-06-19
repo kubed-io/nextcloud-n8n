@@ -1,0 +1,113 @@
+name: 🛡️ Quality
+
+# Slower / advisory quality gates kept out of the fast test loop: dependency
+# audits, static analysis (Psalm + coding standard), and CodeQL security
+# scanning. Same triggers as the test workflow so every PR into main is gated.
+
+on:
+  pull_request:
+    branches:
+    - main
+  push:
+    branches:
+    - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: quality-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  audit:
+    name: Dependency audit
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v6
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.3'
+        coverage: none
+        tools: composer:v2
+
+    - name: Setup Node
+      uses: actions/setup-node@v5
+      with:
+        node-version-file: .nvmrc
+        cache: npm
+
+    - name: Install PHP dependencies
+      run: composer install --prefer-dist --no-progress
+
+    - name: Audit composer dependencies
+      run: composer audit
+
+    - name: Install JS dependencies
+      run: npm ci
+
+    - name: Audit npm dependencies
+      run: npm audit --omit=dev --audit-level=high
+
+  static:
+    name: Static analysis
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v6
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.3'
+        coverage: none
+        tools: composer:v2
+
+    - name: Install PHP dependencies
+      run: composer install --prefer-dist --no-progress
+
+    - name: Coding standard (php-cs-fixer)
+      run: composer run cs:check
+
+    # Seed a baseline of pre-existing findings on first run so the gate tracks
+    # *new* issues; once tests/psalm-baseline.xml is committed this no-ops and
+    # Psalm fails only on regressions.
+    - name: Seed Psalm baseline if missing
+      run: |
+        if [ ! -f tests/psalm-baseline.xml ]; then
+          vendor/bin/psalm --set-baseline=tests/psalm-baseline.xml --no-cache || true
+        fi
+
+    - name: Psalm
+      run: vendor/bin/psalm --no-cache --threads=4
+
+  codeql:
+    name: CodeQL (${{ matrix.language }})
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    strategy:
+      fail-fast: false
+      matrix:
+        language:
+        - php
+        - javascript-typescript
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v6
+
+    - name: Initialize CodeQL
+      uses: github/codeql-action/init@v4
+      with:
+        languages: ${{ matrix.language }}
+        queries: security-and-quality
+
+    - name: Perform CodeQL analysis
+      uses: github/codeql-action/analyze@v4
+      with:
+        category: /language:${{ matrix.language }}

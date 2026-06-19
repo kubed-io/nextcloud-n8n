@@ -1,0 +1,39 @@
+{
+	"name": "kubed-io/n8n_sync",
+	"description": "n8n Sync — map n8n workflows into Nextcloud as files with a native feel",
+	"type": "project",
+	"license": "AGPL-3.0-or-later",
+	"require": {
+		"php": "^8.1"
+	},
+	"require-dev": {
+		"nextcloud/ocp": "^33.0",
+		"nextcloud/coding-standard": "^1.4",
+		"phpunit/phpunit": "^12.0",
+		"vimeo/psalm": "^6.0"
+	},
+	"config": {
+		"sort-packages": true,
+		"optimize-autoloader": true,
+		"allow-plugins": {
+			"composer/package-versions-deprecated": true
+		}
+	},
+	"autoload": {
+		"psr-4": {
+			"OCA\\N8nSync\\": "lib/"
+		}
+	},
+	"autoload-dev": {
+		"psr-4": {
+			"OCA\\N8nSync\\Tests\\": "tests/"
+		}
+	},
+	"scripts": {
+		"test:unit": "phpunit --configuration tests/phpunit.unit.xml",
+		"lint": "find lib -name '*.php' -print0 | xargs -0 -n1 php -l",
+		"cs:check": "php-cs-fixer fix --dry-run --diff",
+		"cs:fix": "php-cs-fixer fix",
+		"psalm": "psalm --no-cache"
+	}
+}

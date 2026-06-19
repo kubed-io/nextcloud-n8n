@@ -1,0 +1,26 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+	SPDX-FileCopyrightText: 2026 Kelly Ferrone
+	SPDX-License-Identifier: AGPL-3.0-or-later
+
+	Unit suite — standalone, no Nextcloud server, no docker stack.
+	See Chapter 2 §4 (unit ↔ integration boundary) and §5.
+-->
+<phpunit xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+	xsi:noNamespaceSchemaLocation="../vendor/phpunit/phpunit/phpunit.xsd"
+	bootstrap="bootstrap.php"
+	colors="true"
+	failOnWarning="true"
+	failOnRisky="true"
+	cacheDirectory=".phpunit.cache">
+	<testsuites>
+		<testsuite name="unit">
+			<directory suffix="Test.php">unit</directory>
+		</testsuite>
+	</testsuites>
+	<source>
+		<include>
+			<directory suffix=".php">../lib</directory>
+		</include>
+	</source>
+</phpunit>
