@@ -13,6 +13,10 @@
 	failOnWarning="true"
 	failOnRisky="true"
 	cacheDirectory=".phpunit.cache">
+	<logging>
+		<!-- JUnit XML for the CI test reporter (EnricoMi publish-unit-test-result). -->
+		<junit outputFile="results/junit.xml" />
+	</logging>
 	<testsuites>
 		<testsuite name="unit">
 			<directory suffix="Test.php">unit</directory>

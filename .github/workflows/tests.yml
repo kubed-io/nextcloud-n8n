@@ -16,6 +16,11 @@ on:
 
 permissions:
   contents: read
+  # The test reporter publishes a sticky PR comment + a check run with inline
+  # annotations on failing tests. Harmless no-ops on push-to-main (no PR), where
+  # the same results still render in the job summary.
+  checks: write
+  pull-requests: write
 
 concurrency:
   group: tests-${{ github.ref }}
@@ -44,8 +49,28 @@ jobs:
     - name: Lint PHP (php -l)
       run: find lib -name '*.php' -print0 | xargs -0 -n1 -P4 php -l
 
+    # Emits tests/results/junit.xml (configured in tests/phpunit.unit.xml).
     - name: Unit tests
       run: composer run test:unit
+
+    # Keep the raw JUnit report downloadable from the run.
+    - name: Upload JUnit results
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: php-unit-junit
+        path: tests/results/junit.xml
+        if-no-files-found: error
+
+    # Sticky PR comment + check run with inline annotations on failures. Runs
+    # even when tests fail so the report is published either way.
+    - name: Publish unit test results
+      if: always()
+      uses: EnricoMi/publish-unit-test-result-action@v2
+      with:
+        check_name: PHP unit test results
+        files: tests/results/junit.xml
+        comment_mode: always
 
   js:
     name: JS build
@@ -67,3 +92,25 @@ jobs:
     # If it doesn't build there's nothing worth shipping — this is the JS gate.
     - name: Build bundle
       run: npm run build
+
+    - name: Summarize build
+      if: always()
+      run: |
+        {
+          echo "## JS bundle build"
+          echo ""
+          if [ -f dist/n8n_sync-files.js ]; then
+            size=$(du -h dist/n8n_sync-files.js | cut -f1)
+            echo "✅ Built \`dist/n8n_sync-files.js\` (${size})"
+          else
+            echo "❌ Bundle not produced"
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Upload built bundle
+      if: success()
+      uses: actions/upload-artifact@v4
+      with:
+        name: js-bundle
+        path: dist/n8n_sync-files.js
+        if-no-files-found: error

@@ -6,11 +6,16 @@ name: 🛡️ Quality
 #
 # PHP job: dependency audit + static analysis (php-cs-fixer + Psalm). CodeQL has
 #   no PHP support (PHP is the only top-10 language CodeQL does not analyse), so
-#   Psalm is the PHP static-analysis gate.
+#   Psalm IS the PHP code-scanning engine: it emits inline annotations
+#   (--output-format=github) AND a SARIF report uploaded to Security → Code
+#   scanning. Together with the JS job's CodeQL, both languages land in the same
+#   Security dashboard.
 # JS job:  dependency audit + CodeQL (javascript-typescript) at the end.
 #
-# These checks are the standing edge of the Chapter 2 §12 "refactor pass" — an
-# ongoing gate, not a one-off cleanup.
+# Every step writes a $GITHUB_STEP_SUMMARY block so results are visible on the
+# run summary (and, for code scanning, on the PR) whether triggered by a PR or a
+# direct push to main. These checks are the standing edge of the Chapter 2 §12
+# "refactor pass" — an ongoing gate, not a one-off cleanup.
 
 on:
   pull_request:
@@ -31,6 +36,8 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
+      # Upload Psalm SARIF to Security → Code scanning (PHP's code-scanning path).
+      security-events: write
     steps:
     - name: Checkout
       uses: actions/checkout@v6
@@ -46,13 +53,43 @@ jobs:
       run: composer install --prefer-dist --no-progress
 
     - name: Audit composer dependencies
-      run: composer audit
+      run: |
+        echo "## composer audit" >> "$GITHUB_STEP_SUMMARY"
+        if composer audit --format=plain | tee audit-composer.txt; then
+          echo "✅ No composer advisories" >> "$GITHUB_STEP_SUMMARY"
+        else
+          status=$?
+          { echo '```'; cat audit-composer.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+        fi
 
     - name: Coding standard (php-cs-fixer)
       run: composer run cs:check
 
+    # Psalm is the PHP code scanner: inline GitHub annotations on new findings
+    # AND a SARIF report for the Security tab. The committed psalm-baseline.xml
+    # keeps the gate failing only on NEW issues. Always upload the SARIF, even
+    # when Psalm exits non-zero, so the Security tab reflects the real state.
     - name: Static analysis (Psalm)
-      run: vendor/bin/psalm --no-cache --threads=4
+      run: |
+        vendor/bin/psalm --no-cache --threads=4 \
+          --output-format=github \
+          --report=psalm.sarif
+
+    - name: Upload Psalm SARIF to code scanning
+      if: always()
+      uses: github/codeql-action/upload-sarif@v4
+      with:
+        sarif_file: psalm.sarif
+        category: psalm
+
+    - name: Upload Psalm SARIF artifact
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: psalm-sarif
+        path: psalm.sarif
+        if-no-files-found: warn
 
   js:
     name: JS audit & CodeQL
@@ -74,7 +111,15 @@ jobs:
       run: npm ci
 
     - name: Audit npm dependencies
-      run: npm audit --omit=dev --audit-level=high
+      run: |
+        echo "## npm audit (production, level=high)" >> "$GITHUB_STEP_SUMMARY"
+        if npm audit --omit=dev --audit-level=high 2>&1 | tee audit-npm.txt; then
+          echo "✅ No npm advisories at or above high" >> "$GITHUB_STEP_SUMMARY"
+        else
+          status=$?
+          { echo '```'; tail -40 audit-npm.txt; echo '```'; } >> "$GITHUB_STEP_SUMMARY"
+          exit $status
+        fi
 
     - name: Initialize CodeQL
       uses: github/codeql-action/init@v4
