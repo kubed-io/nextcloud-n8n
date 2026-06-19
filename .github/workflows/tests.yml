@@ -34,7 +34,7 @@ jobs:
     steps:
 
     - name: Checkout
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
 
     - name: Setup PHP
       uses: shivammathur/setup-php@v2
@@ -56,7 +56,7 @@ jobs:
     # Keep the raw JUnit report downloadable from the run.
     - name: Upload JUnit results
       if: always()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: php-unit-junit
         path: tests/results/junit.xml
@@ -78,10 +78,10 @@ jobs:
     steps:
 
     - name: Checkout
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
 
     - name: Setup Node
-      uses: actions/setup-node@v5
+      uses: actions/setup-node@v6
       with:
         node-version-file: .nvmrc
         cache: npm
@@ -109,7 +109,7 @@ jobs:
 
     - name: Upload built bundle
       if: success()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: js-bundle
         path: dist/n8n_sync-files.js
