@@ -12,10 +12,14 @@ Phase 0–5 are live in production on the homelab cluster. The code lives in a p
 GitHub repo. A working release pipeline exists but is rough around the edges. The
 development story is undocumented. That's what this chapter fixes.
 
-> **Progress (2026-06-19):** the **unit test suite + CI is live and green** (Tests + Quality
-> workflows, results surfaced in the GitHub UI — §5.1, §10). Remaining: integration/e2e tests
-> (§4a stack), the GitHub **Security** track (Dependabot et al. — §13), and the docs
-> (CONTRIBUTING/AGENTS).
+> **Progress (2026-06-19, late):** the **unit test suite + CI is live and green** (Tests +
+> Quality workflows, results surfaced in the GitHub UI — §5.1, §10). The **contribution
+> infrastructure shipped today**: `CONTRIBUTING.md`, `AGENTS.md`, `SECURITY.md` (PR #3), a
+> PR-housekeeping workflow with auto-assign + changelog enforcement (PR #3), **ESLint** wired
+> into the Quality flow with the duplicate CodeQL job dropped (PR #5), and
+> **Dependabot version updates** for `github-actions` + `npm` + `composer` (PR #7).
+> Remaining: integration/e2e tests (§4a stack), the rest of the GitHub **Security** track
+> (Dependabot **security** updates, secret scanning, dependency review, branch protection).
 
 ---
 
@@ -232,49 +236,104 @@ docker-compose file that is the single source of truth**, and the other two cons
 |---|---|---|
 | `nextcloud` | `nextcloud:33-apache` (matches `info.xml` max-version) | the app under test; the n8n_sync app dir is bind-mounted into `custom_apps/` |
 | `db` | `postgres:16-alpine` (or `mariadb`) | NC needs a real DB for integration; SQLite is the fast CI fallback |
-| `n8n` | `docker.n8n.io/n8nio/n8n` | the real writeback/pull target; started with `N8N_API_KEY` so the client can auth |
+| `n8n` | `docker.n8n.io/n8nio/n8n` | the real writeback/pull target; owner pre-provisioned via env, API key seeded (see §4a.1 — it is *not* a simple env var) |
 
 Keep it ultra-light: no Redis, no Collabora, no Talk — only what the integration tests
-actually touch. A `compose.yaml` at the repo root with a small `.env.example` (NC admin
-creds, n8n API key) is enough. A `make stack-up` / `make stack-down` wraps it.
+actually touch. **n8n itself uses default SQLite** (no Postgres/Redis for n8n — those are
+prod-only luxuries). A `compose.yaml` at the repo root with a small `.env.example` (NC admin
+creds, n8n owner creds + the seeded API key) is enough. A `make stack-up` / `make stack-down`
+wraps it.
 
-**The three-way reuse (this is the whole point):**
+**Two consumers, same services — but expressed differently per environment (DECIDED):**
 
 ```
-                       ┌────────────────────────┐
-                       │   compose.yaml (root)  │   ← single source of truth
-                       │  nextcloud + db + n8n  │
-                       └───────────┬────────────┘
-            ┌──────────────────────┼──────────────────────┐
-            ▼                      ▼                      ▼
-   devcontainer.json        contributor laptop       GitHub Actions
-   (docker-outside-      (`make stack-up`, edit/     (`services:` block or
-    of-docker brings        build/verify loop)        `docker compose up` in
-    the same stack up)                                 the integration job)
+        compose.yaml (devcontainer + laptop)        integration.yml (CI)
+        ┌────────────────────────────────┐          ┌──────────────────────────┐
+        │ docker compose: nextcloud + n8n│          │ GHA `services:` n8n      │
+        │ (+ db) — humans `make stack-up`│          │ + nextcloud image / occ  │
+        └────────────────────────────────┘          └──────────────────────────┘
+                    devcontainer                            no docker-compose
+                    & local dev only                        in CI — services only
 ```
 
-- **Devcontainer:** its existing docker-outside-of-docker is what brings this stack up; the
-  devcontainer doesn't redefine services, it just runs `compose.yaml`. This finally gives the
-  devcontainer the "NC + n8n reachable for `occ` and API calls" capability §3 flagged as
-  untested.
-- **GitHub Actions:** the integration job mirrors the same services. There are two idiomatic
-  options and the compose file makes either cheap:
-  - **`services:` block** — declare `postgres` (and optionally `n8n`) as job-level service
-    containers; fastest for the DB, but service containers can't easily bind-mount the app
-    dir, so NC itself is usually installed in-runner (clone server / `setup-php` + SQLite).
-  - **`docker compose up` step** — run the *exact same* `compose.yaml` in the job, wait for
-    health, run PHPUnit integration against it. Heaviest but highest fidelity and zero drift
-    from local. **Recommended** precisely because it's the same file devs run.
-
-**Either-direction note (per the decision in this chapter):** it does not matter whether the
-compose file or the devcontainer/CI is authored first — they must end up identical, so write
-`compose.yaml` once and point the other two at it. Modeling CI `services` *after* the compose
-stack (not in parallel) is what prevents the classic "works in the devcontainer, fails in CI"
-drift.
+- **`compose.yaml` is for the devcontainer and local dev ONLY.** It is *not* run in CI.
+  Humans (and the devcontainer's docker-outside-of-docker) `make stack-up` to get NC + n8n
+  reachable for `occ` and API calls — closing the §3 devcontainer "untested" caveat.
+- **CI does NOT run `docker compose up`** (explicit decision). The integration job
+  (`integration.yml`, shipped) follows what the **official NC apps do** (deck /
+  integration_openai): **check out `nextcloud/server`**, mount this app into `apps/n8n_sync`,
+  `setup-php`, **`occ maintenance:install` on SQLite**, then drive `occ` directly.
+  - **n8n runs as a GHA `services:` container** — it's a pre-built image with no checkout
+    dependency, so the services feature fits it cleanly (this is the bit of the feature we
+    keep). The owner is pre-provisioned via the §4a.1 env so the service boots signup-free.
+  - **Nextcloud is NOT a service container.** Service containers start *before* the job's
+    steps — i.e. before `checkout` — so they cannot bind-mount the app under test into
+    `custom_apps`. That ordering constraint is exactly why the ecosystem uses the
+    checkout-server pattern; we follow it rather than fight the services feature.
+- **Why not one file for both?** A compose file can't cleanly express GHA service health-gates
+  / port mappings, and `docker compose up` on a runner is heavier and drifts from how GHA
+  wants containers declared. The two stay **semantically identical** (same images, same n8n
+  owner-env, same NC autoinstall env) without sharing one literal YAML. Keep the image tags
+  and env in sync by hand (a short shared `.env.example` documents the canonical values).
 
 **Status:** not yet built. It is the prerequisite for the integration suite in §5 and for
 closing the §3 devcontainer "untested" caveat. The unit suite (shipped first) does **not**
 depend on it.
+
+#### 4a.1 Can we even spin up n8n without signing up? (researched — yes, with one wrinkle)
+
+The open question was whether a fresh n8n forces an interactive owner-signup/login that would
+block headless CI. **Answer: the owner screen is skippable, but the API key is not a simple
+env var.** Findings (from the n8n docs source, not memory — see the memory note
+`nextcloud-n8n-ci-n8n-instance`):
+
+- **Skip the owner-setup wizard via env.** Set `N8N_INSTANCE_OWNER_MANAGED_BY_ENV=true` and
+  provide `N8N_INSTANCE_OWNER_EMAIL`, `N8N_INSTANCE_OWNER_FIRST_NAME`,
+  `N8N_INSTANCE_OWNER_LAST_NAME`, and **`N8N_INSTANCE_OWNER_PASSWORD_HASH`** (a **bcrypt**
+  hash, not plaintext). This pre-provisions the instance owner and bypasses the first-run UI.
+- **`N8N_USER_MANAGEMENT_DISABLED` is gone** — recent n8n removed it; there is no "turn login
+  off" switch anymore. Don't plan around it.
+- **The public API key has no headless mint.** It is created only in the UI (Settings → n8n
+  API) or by writing n8n's DB directly. CI therefore needs **one** of:
+  - **(A) REST login + create key** — boot n8n with the env-provisioned owner, have a tiny
+    setup step log in with those creds over REST and create an API key, then hand it to the
+    PHPUnit integration config. Most faithful to a real instance; no DB poking. *(preferred)*
+  - **(B) Seed the key into SQLite** — start n8n once, insert a known API-key row into the
+    SQLite file the compose mounts. Fastest/most deterministic, but couples to n8n's schema.
+- **Self-hosted public API needs no license.** The "API not available in free trial" caveat
+  applies to n8n **Cloud** only; a self-hosted container exposes the public API freely.
+- **Storage:** n8n runs on its **default SQLite** here — fine for ephemeral CI, no extra
+  service.
+
+So the integration job's setup sequence is: `docker compose up` (NC + db + n8n with owner
+env) → wait healthy → mint/seed the n8n API key → `occ` enable the app in NC → run the
+PHPUnit integration suite against both. The API-key step (A vs B) is the one real decision
+left for whoever builds §4a; default to **(A)**.
+
+#### 4a.2 Agent environments (Copilot setup) — model on Drupal, but trimmed
+
+This repo already hands tasks to **GitHub Copilot** (the coding agent) under a human lead.
+Copilot's cloud runs in an ephemeral environment that we can pre-provision, exactly like
+`apps/drupal/.github/workflows/copilot-setup-steps.yml` does:
+
+- **`copilot-setup-steps.yml`** — a job **named `copilot-setup-steps`** (Copilot ignores it
+  otherwise) that installs the toolchain the agent needs before it starts: `setup-php` (8.4,
+  matching the pod — see the CI-PHP memory), Node from `.nvmrc`, Composer, and — once §4a
+  exists — `docker compose up` of the test stack so the agent can run integration tests too.
+  Triggered on `workflow_dispatch` + on changes to the file itself (validation only); it is
+  **not** driven by public input, so it is safe on a public repo.
+
+**Deliberately NOT copied from Drupal: the `plan-agent.yml` planning agent.** That workflow
+triggers on `issues: labeled` and `issue_comment` containing `@claude` — on a **public** repo
+that is an abuse vector: any stranger can open an issue or comment to spin up a runner and
+burn the LLM key. Until there's a trusted-association gate (e.g. restrict to members /
+collaborators, or require an org-member author), **the planning agent stays out of this
+repo.** Human-authored issues + Copilot-on-assignment is the flow; the "thinking half" is
+done by the maintainer (or a local agent), not a public-triggerable cloud workflow.
+
+> Decision: ship `copilot-setup-steps.yml` only. Revisit a planning agent **only** behind an
+> author-association guard (`github.event.comment.author_association` ∈ {OWNER, MEMBER,
+> COLLABORATOR}) so public comments can't trigger it.
 
 ### 5. Tests ⚠️ (unit layer shipped + reported in CI; integration/e2e still ☐)
 
@@ -394,35 +453,43 @@ where it needed a real PHP, validated against the cluster's Nextcloud pod (PHP 8
   strictness + `nextcloud/ocp` snapshot gaps like `IDelegatedSettings`); baseline them so the
   gate fails only on *new* issues, then shrink the baseline over time (§12).
 
-### 6. CONTRIBUTING.md / developer setup doc ☐
+### 6. CONTRIBUTING.md / developer setup doc ✅ (PR #3)
 
-A `CONTRIBUTING.md` that answers the question "I want to work on this — what do I do?"
-Should cover:
+`CONTRIBUTING.md` exists at the repo root and is the canonical contributor entry point.
+It covers:
 
-- Prerequisites (Docker, VS Code + devcontainer extension, or equivalent)
-- How to start the dev environment (devcontainer or manual steps)
-- How to get a Nextcloud instance running and the app installed into it
-- The build loop: edit → build bundle → deploy to test NC → verify
-- How to run tests
-- High-level architectural orientation (point to Chapter 1 for depth)
-- PR expectations (see §11)
+- Prerequisites + devcontainer / manual dev setup
+- The build loop (edit → build bundle → deploy to the cluster's NC pod → verify)
+- Test policy ("every PR should have tests when reasonable") and how to run them
+- The **issue → PR flow** (issues *preferred but not gated*; `Closes #N` keyword links a
+  PR to its issue and auto-closes on merge — the official GraphQL `closingIssuesReferences`
+  Development link)
+- CI gate expectations (Tests + Quality + PR housekeeping must be green)
+- Changelog principles — *"the changelog is the release notes; keep entries short and
+  sweet, one line per entry; breaking changes are the only exception, marked
+  `**BREAKING:**`"*
+- Repo tour table mapping every important path
+- Release flow (`publish.yml` with `push: true`; AI deep validation + human validation
+  on a real NC instance required)
 
-Keep it short. Link to deeper docs rather than duplicating them here.
+The issue-first flow is taught here and enforced in spirit by the PR housekeeping workflow
+(§13.1) which assigns the author and demands a CHANGELOG entry.
 
-### 7. AGENTS.md / AI context ☐
+### 7. AGENTS.md / AI context ✅ (PR #3)
 
-A file (or files) giving AI coding assistants enough context to be useful without
-re-deriving the whole architecture every session. Should cover:
+`AGENTS.md` exists at the repo root and is the cold-start orientation for AI coding
+agents. It contains:
 
-- What this repo is and what it is not
-- Key architectural decisions that must not be relitigated (the locked forks from Chapter 1)
-- The deploy loop and gotchas (never bump `info.xml` version, `kubectl cp` not whole-dir copy, etc.)
-- Where the authoritative state lives (§15 of Chapter 1)
-- Hard-won lessons (compound extension mime drift, lock-in-handler, cron-paced reconciliation)
+- Repo map + locked architectural decisions (no external storage, metadata as link,
+  `SyncGuard`, custom mimetype) — lifted from Chapter 1's decisions, condensed
+- Hard-won gotchas (never bump `info.xml` in a feature PR, CI PHP must match the pod's
+  8.4, CodeQL has no PHP extractor, `kubectl cp` not whole-dir, etc.)
+- Short process summary mirroring CONTRIBUTING.md so an agent doesn't have to read two
+  files to know the issue→PR flow and the changelog-is-release-notes principle
 
-Chapter 1 is the source of truth; AGENTS.md is the condensed orientation for a cold-start agent.
+Chapter 1 stays the source of truth; AGENTS.md is the index.
 
-### 8. Repo standards / git rules ☐
+### 8. Repo standards / git rules ✅ (folded into CONTRIBUTING.md, PR #3)
 
 Document the conventions so contributors (and CI) know what to expect:
 
@@ -432,8 +499,10 @@ Document the conventions so contributors (and CI) know what to expect:
 - Semver policy: what constitutes a patch vs minor vs major for a Nextcloud app
 - Tag format (`v0.1.1`)
 
-These can live in `CONTRIBUTING.md`, a `docs/` folder, or as a short section in the README.
-Keep it minimal — only the rules that will actually be enforced.
+These are now documented as a section inside `CONTRIBUTING.md` rather than a separate
+file (branch naming, PR-vs-issue flow, conventional-ish commit style, when to update
+`CHANGELOG.md`, semver policy for an NC app, `v0.x.y` tag format). Branch protection
+rules in repo settings that *enforce* these are still to be turned on (§11, §13).
 
 ### 9. License ✅ (chosen, not yet formalized)
 
@@ -473,17 +542,20 @@ is by *purpose*: the fast feedback loop vs the slower assurance gates.
 This is the **"Tests" vs "Quality" split** the brief asked for; the Quality flow is also the
 backbone of the GitHub Security work in **§13**.
 
-### 11. PR flow ☐
+### 11. PR flow ⚠️ (documented + workflow-enforced, branch protection still ☐)
 
-Define and document the path from "I have a change" to "it's on main":
+The path from "I have a change" to "it's on main" is now documented in `CONTRIBUTING.md`
+and partially enforced by the PR housekeeping workflow (§13.1, `.github/workflows/pr.yml`):
 
-- Required: PR against `main`, at least one approval
-- CI must pass (CodeQL, unit tests, build) before merge
-- Conventional commits or equivalent for changelog generation
-- The version bump / release is a separate manual step (`publish.yml` with `push: true`),
-  not automatic on every merge — keeps the release cadence intentional
-
-Branch protection rules on GitHub should enforce the above so it isn't just convention.
+- **Documented + spirit-enforced (✅):** issue→PR flow with `Closes #N` linkage, PR
+  against `main`, CI (Tests + Quality + PR housekeeping) must pass, 1 maintainer approval,
+  squash-merge, manual release via `publish.yml` with `push: true`.
+- **Auto-assign + changelog enforcement (✅):** `kentaro-m/auto-assign-action@v2.0.2`
+  assigns the PR to its author; `tarides/changelog-check-action@v3` fails the PR if
+  there is no fresh entry under `[Unreleased]`.
+- **GitHub branch-protection rules (☐):** required reviewers, required status checks,
+  no force-push, no direct push to `main` — still need to be turned on in repo settings
+  so the flow isn't just convention.
 
 ### 12. Refactor pass ☐
 
@@ -515,15 +587,16 @@ settings), not app code.
 
 | Security feature | What it is | Status |
 |---|---|---|
-| **Code scanning — JS** | CodeQL `javascript-typescript`, `security-and-quality` | ✅ done (§10 JS job) |
-| **Code scanning — PHP** | **Psalm SARIF** uploaded via `codeql-action/upload-sarif` (CodeQL can't do PHP) | ✅ done (§10 PHP job) |
+| **Code scanning — JS** | GitHub **CodeQL default setup** (Settings → Code security), runs its own synthesised workflow at `dynamic/github-code-scanning/codeql` | ✅ done (default setup; our YAML CodeQL job was removed in PR #5 — it duplicated the scan) |
+| **Code scanning — PHP** | **Psalm SARIF** uploaded via `codeql-action/upload-sarif@v4` (CodeQL has no PHP extractor) | ✅ done (§10 PHP job) |
+| **JS linting in the gate** | ESLint 10 flat config (`eslint.config.js`) wired into the Quality JS job before `npm audit` | ✅ done (PR #5) |
 | **Dependency review** | block PRs that introduce vulnerable deps (`actions/dependency-review-action`) | ☐ todo |
-| **Dependabot — alerts** | GitHub flags vulnerable deps in the Security tab | ☐ enable in repo settings |
-| **Dependabot — security updates** | auto-PRs that bump vulnerable deps | ☐ enable in repo settings |
-| **Dependabot — version updates** | scheduled `dependabot.yml` for `composer`, `npm`, **and `github-actions`** | ☐ todo (the actions ecosystem directly fixes §5.2's stale-version problem) |
+| **Dependabot — alerts** | GitHub flags vulnerable deps in the Security tab | ⚠️ 2 pending alerts on `main` (1 moderate, 1 low); enable in repo settings to surface |
+| **Dependabot — security updates** | auto-PRs that bump vulnerable deps | ☐ enable in repo settings (clears the 2 pending alerts above) |
+| **Dependabot — version updates** | scheduled `dependabot.yml` for `composer`, `npm`, **and `github-actions`** | ✅ done (PR #7) — weekly, grouped minor+patch, with cooldown; durable fix for §5.2's stale action majors |
 | **Secret scanning + push protection** | block committed secrets (crown jewels per "Secrets hygiene") | ☐ enable in repo settings |
-| **Security policy** | `SECURITY.md` (how to report a vuln) — GitHub shows a ✓ for it | ☐ todo |
-| **Dependency graph** | required substrate for Dependabot/dependency review | ☐ verify on (default for public repos) |
+| **Security policy** | `SECURITY.md` (how to report a vuln) — GitHub shows a ✓ for it | ✅ done (PR #3) |
+| **Dependency graph** | required substrate for Dependabot/dependency review | ✅ on (default for public repos; Dependabot wouldn't function otherwise) |
 | **Audit gates (belt-and-suspenders)** | `composer audit` / `npm audit` in CI | ✅ done (§10), complements Dependabot |
 
 **The Dependabot config (`.github/dependabot.yml`)** is the main new artifact — cover all
@@ -551,8 +624,77 @@ outstanding "set this up" prompts.
 **Reference links**
 - [GitHub: securing your repository](https://docs.github.com/en/code-security/getting-started/securing-your-repository)
 - [Dependabot version updates (`dependabot.yml`)](https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/configuration-options-for-the-dependabot.yml-file)
+- [Optimizing PR creation for version updates](https://docs.github.com/en/code-security/dependabot/dependabot-version-updates/optimizing-pr-creation-version-updates)
 - [`actions/dependency-review-action`](https://github.com/actions/dependency-review-action)
 - [Uploading SARIF (Psalm → code scanning)](https://docs.github.com/en/code-security/code-scanning/integrating-with-code-scanning/uploading-a-sarif-file-to-github)
+
+#### 13.1 What was built (2026-06-19, contribution-infrastructure pass)
+
+Three merged/open PRs, all following the issue→PR flow they document (each opened a
+tracking issue first; each PR body uses `Closes #N` so the GraphQL Development link
+resolves and auto-closes on merge).
+
+**PR #3 — docs + PR housekeeping (`docs/contributing-agents-security`, MERGED)**
+- `CONTRIBUTING.md` (§6), `AGENTS.md` (§7), `SECURITY.md` (private security advisories,
+  supported versions, scope, secrets policy, disclosure timeline).
+- `.github/workflows/pr.yml` — PR-only housekeeping (`kentaro-m/auto-assign-action@v2.0.2`
+  + `tarides/changelog-check-action@v3`).
+- `.github/assign.yml` — `addAssignees: author`.
+
+**PR #5 — ESLint + drop duplicate CodeQL (`ci/eslint-js-quality`, OPEN at time of writing)**
+- `eslint.config.js` (flat config, **required by ESLint 9+**) with `@eslint/js` recommended
+  rules. Declares NC page-scoped globals (`t`, `n`, `OC`, `OCA`, `OCP`) as `readonly` so
+  legacy admin scripts don't trip `no-undef`. `no-unused-vars` with
+  `argsIgnorePattern: '^_'`, `no-console` allows `warn`/`error`/`info`.
+- `npm run lint` / `npm run lint:fix` scripts wired into `package.json`; ESLint runs in
+  the Quality JS job *before* `npm audit`.
+- Two real lint findings **fixed**, not silenced: unused `catch` bindings in
+  `js/mapping-settings.js` and `src/files.js`.
+- Dropped the CodeQL init/analyze steps from `quality.yml` — GitHub's CodeQL **default
+  setup** owns JS scanning and was duplicating our run (both wrote to the same Security
+  category). Header comment in `quality.yml` updated to spell out the split.
+
+**PR #7 — Dependabot config (`ci/dependabot`, OPEN at time of writing)**
+- `.github/dependabot.yml` covering the three active ecosystems:
+  - `github-actions` — keeps every workflow `uses:` pin current (the durable fix for §5.2).
+  - `npm` — Vite, ESLint, `@eslint/js`, `globals`, `@nextcloud/*`.
+  - `composer` — Psalm, PHPUnit, `nextcloud/ocp`, `nextcloud/coding-standard`.
+- **Weekly** schedule (Mondays); **grouped** minor + patch per ecosystem so dev deps
+  don't fan out into one PR per package; **majors stay separate** for deliberate review.
+- **Cooldown** of 3 days patch / 7 days minor / 14 days major (where applicable) so
+  yanked releases don't reach us before they're pulled.
+- **Distinct commit-message prefixes** per ecosystem (`ci(deps)`, `deps(js)`,
+  `deps(php)`) so the merge queue reads cleanly.
+- Ecosystem labels (`dependencies`, `javascript`, `php`, `github-actions`) pre-created
+  via `gh label create` so Dependabot PRs land properly tagged (custom labels are
+  silently dropped by Dependabot if they don't exist yet).
+
+#### 13.2 Lessons learned (don't relearn these)
+
+- **CodeQL default setup vs YAML mode duplicate each other.** GitHub's default setup
+  (Settings → Code security) synthesises its own workflow run that appears in the Actions
+  tab as `dynamic/github-code-scanning/codeql`. If you also have a CodeQL job in your own
+  YAML, **both** scans run and both upload to the same Security category. Pick one. We
+  removed CodeQL from `quality.yml` and kept the default setup checkbox enabled.
+- **ESLint 9+ requires flat config (`eslint.config.js`).** The `eslintConfig` key in
+  `package.json` only worked in EOL ESLint 8. There is no "both can coexist" — a fresh
+  install of ESLint 10 will refuse to run on the old layout. Just create the flat config
+  and move on.
+- **Don't silence real lint findings; fix them.** Two unused `catch` bindings flagged by
+  ESLint were genuine cruft, not noise. The lint config only silences truly page-scoped
+  globals (`t`, `OC`, `OCA`, `OCP`) which *are* the NC contract.
+- **`Closes #N` in a PR body creates the official Development link.** Confirmed via
+  `gh pr view N --json closingIssuesReferences` — the link resolves in GraphQL and the
+  issue auto-closes on merge. Cross-repo works with `Closes owner/repo#N`. Valid keywords:
+  closes/closed/fixes/fixed/fix/resolves/resolved/resolve.
+- **Dependabot drops custom labels silently if they don't exist.** Only `dependencies`
+  is auto-created. Pre-create any ecosystem labels (`javascript`, `php`, `github-actions`)
+  with `gh label create` *before* the first Dependabot run, or PRs come out unlabelled.
+- **Verify external docs from the source, not from memory.** Jina API was 402-gated, so
+  we fell back to the `r.jina.ai` proxy via `curl` to pull the live GitHub Dependabot
+  options reference + optimization guide. The config above (cooldown, grouped
+  minor+patch, `applies-to` defaults, per-prefix commit message keys) is built directly
+  off those pages — not LLM memory, which would have invented a syntax half of the time.
 
 ---
 
@@ -575,14 +717,15 @@ A few items that naturally belong in this chapter:
 Chapter 2 is complete when:
 
 1. A contributor can open the devcontainer and have a working build environment
-2. There is a documented path from clone to a running test Nextcloud with the app installed
+2. There is a documented path from clone to a running test Nextcloud with the app installed — ⚠️ **documented in CONTRIBUTING.md (§6);** end-to-end devcontainer run still untested
 3. A test suite exists and runs in CI on every PR — ✅ **unit layer done** (§5.1); integration/e2e pending
-4. Code scanning runs on every PR and push to main — ✅ **done** (CodeQL for JS + Psalm SARIF for PHP, §10)
-5. CONTRIBUTING.md and AGENTS.md exist and are accurate
-6. Branch protection + PR rules are enforced on GitHub
+4. Code scanning runs on every PR and push to main — ✅ **done** (CodeQL default setup for JS + Psalm SARIF for PHP, §10 / §13.1)
+5. CONTRIBUTING.md and AGENTS.md exist and are accurate — ✅ **done** (§6, §7, PR #3)
+6. Branch protection + PR rules are enforced on GitHub — ⚠️ **PR rules documented + workflow-enforced** (§11, §13.1 PR housekeeping); branch protection toggles still ☐
 7. The publish workflow has been run at least once with `push: true` and produced a
    real GitHub Release with a valid tarball
-8. The **GitHub Security tab is fully green** — Dependabot (alerts + security + version
-   updates), secret scanning + push protection, `SECURITY.md`, dependency review (§13)
+8. The **GitHub Security tab is fully green** — ⚠️ code scanning JS + PHP ✅, `SECURITY.md`
+   ✅, Dependabot version updates ✅; Dependabot alerts/security updates, secret scanning
+   + push protection, dependency review still ☐ (§13 table)
 
 At that point the repo is in a state where Chapter 3 (store submission) is just execution.
