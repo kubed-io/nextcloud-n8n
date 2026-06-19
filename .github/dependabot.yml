@@ -1,0 +1,85 @@
+# Dependabot version updates (security updates are toggled in repo settings,
+# not in this file). One entry per package manager active in the repo.
+#
+# House rules:
+# - Weekly cadence: enough to stay current without spamming the queue.
+# - Grouped minor + patch per ecosystem so dev deps don't fan out into
+#   one PR per package. Majors stay separate for deliberate review.
+# - Short cooldown so yanked releases get pulled before they reach us.
+# - Commit prefix is distinct per ecosystem so the merge queue reads cleanly.
+#
+# Docs: https://docs.github.com/en/code-security/dependabot/working-with-dependabot/dependabot-options-reference
+version: 2
+updates:
+
+# GitHub Actions: keeps every `uses:` pin across workflows current. This is
+# the durable fix for stale action majors that LLMs love to ship (saga §5.2).
+- package-ecosystem: github-actions
+  directory: /
+  schedule:
+    interval: weekly
+    day: monday
+  open-pull-requests-limit: 5
+  labels:
+  - dependencies
+  - github-actions
+  commit-message:
+    prefix: ci(deps)
+  cooldown:
+    default-days: 3
+    semver-minor-days: 7
+    semver-patch-days: 3
+  groups:
+    actions-minor-patch:
+      update-types:
+      - minor
+      - patch
+
+# npm: Vite, ESLint, @eslint/js, globals, @nextcloud/* packages.
+- package-ecosystem: npm
+  directory: /
+  schedule:
+    interval: weekly
+    day: monday
+  open-pull-requests-limit: 5
+  labels:
+  - dependencies
+  - javascript
+  commit-message:
+    prefix: deps(js)
+    prefix-development: deps-dev(js)
+  cooldown:
+    default-days: 3
+    semver-major-days: 14
+    semver-minor-days: 7
+    semver-patch-days: 3
+  groups:
+    npm-minor-patch:
+      update-types:
+      - minor
+      - patch
+
+# Composer: Psalm, PHPUnit, nextcloud/ocp, nextcloud/coding-standard. All PHP
+# deps here are dev-only — runtime PHP is provided by the Nextcloud server.
+- package-ecosystem: composer
+  directory: /
+  schedule:
+    interval: weekly
+    day: monday
+  open-pull-requests-limit: 5
+  labels:
+  - dependencies
+  - php
+  commit-message:
+    prefix: deps(php)
+    prefix-development: deps-dev(php)
+  cooldown:
+    default-days: 3
+    semver-major-days: 14
+    semver-minor-days: 7
+    semver-patch-days: 3
+  groups:
+    composer-minor-patch:
+      update-types:
+      - minor
+      - patch
