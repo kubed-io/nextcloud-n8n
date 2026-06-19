@@ -48,14 +48,14 @@ use Psr\Log\LoggerInterface;
  * Only the plugin itself writes them, from the pull/push reconcilers.
  */
 class WorkflowMetadata {
-	public const KEY_ID          = 'n8n_id';
-	public const KEY_MODE        = 'n8n_mode';       // reference | sync
-	public const KEY_WRITEBACK   = 'n8n_writeback';  // two-way | readonly | '' (reference)
-	public const KEY_VERSION_ID  = 'n8n_versionId';
+	public const KEY_ID = 'n8n_id';
+	public const KEY_MODE = 'n8n_mode';       // reference | sync
+	public const KEY_WRITEBACK = 'n8n_writeback';  // two-way | readonly | '' (reference)
+	public const KEY_VERSION_ID = 'n8n_versionId';
 	/** sha1 of the file body at the last successful pull/push — the writeback loop guard. */
 	public const KEY_SYNCED_HASH = 'n8n_syncedHash';
 	/** Id of the originating mapping — INDEXED so files can be targeted by mapping. */
-	public const KEY_MAPPING     = 'n8n_mapping';
+	public const KEY_MAPPING = 'n8n_mapping';
 
 	/** All managed keys, in a stable order suitable for diagnostics. */
 	public const KEYS = [

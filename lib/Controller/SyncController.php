@@ -71,14 +71,14 @@ class SyncController extends Controller {
 		} catch (\Throwable $e) {
 			$this->logger->error('n8n_sync enqueue failed', ['exception' => $e]);
 			return new JSONResponse([
-				'status'  => 'error',
+				'status' => 'error',
 				'message' => $e->getMessage(),
 			], Http::STATUS_INTERNAL_SERVER_ERROR);
 		}
 		return new JSONResponse([
-			'status'    => 'queued',
+			'status' => 'queued',
 			'direction' => $direction,
-			'state'     => $this->status->get($direction),
+			'state' => $this->status->get($direction),
 		], Http::STATUS_OK);
 	}
 }

@@ -61,8 +61,8 @@ final class FilenameCodec {
 	 * shape.
 	 *
 	 * @return array{name:string, id:?string, suffix:int}|null
-	 *         `suffix` is the collision counter (0 for the canonical name,
-	 *         1+ for "(N)" duplicates).
+	 *                                                         `suffix` is the collision counter (0 for the canonical name,
+	 *                                                         1+ for "(N)" duplicates).
 	 */
 	public static function parse(string $basename): ?array {
 		$slash = strrpos($basename, '/');
@@ -106,10 +106,10 @@ final class FilenameCodec {
 	/**
 	 * Build a filename for a workflow.
 	 *
-	 * @param string $name           Workflow display name from n8n.
-	 * @param string $id             Workflow id from n8n.
-	 * @param bool   $idInFilename   If true, embed the id segment.
-	 * @param int    $collisionIndex 0 = canonical filename, 1+ adds "(N)".
+	 * @param string $name Workflow display name from n8n.
+	 * @param string $id Workflow id from n8n.
+	 * @param bool $idInFilename If true, embed the id segment.
+	 * @param int $collisionIndex 0 = canonical filename, 1+ adds "(N)".
 	 */
 	public static function format(string $name, string $id, bool $idInFilename, int $collisionIndex = 0): string {
 		$safe = self::sanitiseName($name);

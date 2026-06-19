@@ -132,7 +132,7 @@ class DeleteService {
 				continue;
 			}
 			$name = is_string($t['name'] ?? null) ? $t['name'] : '';
-			$tid  = is_string($t['id'] ?? null) ? $t['id'] : '';
+			$tid = is_string($t['id'] ?? null) ? $t['id'] : '';
 			if ($tid !== '' && $name !== $tagName) {
 				$desired[] = $tid;
 			}

@@ -9,13 +9,13 @@ declare(strict_types=1);
 
 namespace OCA\N8nSync\Listener;
 
+use OCA\Files_Trashbin\Events\NodeRestoredEvent;
 use OCA\N8nSync\AppInfo\Application;
 use OCA\N8nSync\Service\DeleteService;
 use OCA\N8nSync\Service\FilenameCodec;
 use OCA\N8nSync\Service\MappingService;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\WorkflowMetadata;
-use OCA\Files_Trashbin\Events\NodeRestoredEvent;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
 use OCP\Files\File;
@@ -67,7 +67,7 @@ class RestoreFromTrashListener implements IEventListener {
 		if (!is_string($id) || $id === '') {
 			return;
 		}
-		$mode      = (string)($meta[WorkflowMetadata::KEY_MODE] ?? '');
+		$mode = (string)($meta[WorkflowMetadata::KEY_MODE] ?? '');
 		$writeback = $meta[WorkflowMetadata::KEY_WRITEBACK] ?? null;
 		$writeback = is_string($writeback) && $writeback !== '' ? $writeback : null;
 		$mappingId = $meta[WorkflowMetadata::KEY_MAPPING] ?? null;

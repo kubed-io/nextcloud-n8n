@@ -18,9 +18,9 @@ use OCA\N8nSync\Service\WorkflowMetadata;
 use OCA\N8nSync\Service\WritebackNotifier;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
-use OCP\Files\File;
 use OCP\Files\Events\Node\NodeRenamedEvent;
 use OCP\Files\Events\Node\NodeWrittenEvent;
+use OCP\Files\File;
 use OCP\IUserSession;
 use Psr\Log\LoggerInterface;
 

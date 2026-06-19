@@ -14,8 +14,8 @@ use OCA\N8nSync\Service\MappingService;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
 use OCP\Exceptions\AbortedEventException;
-use OCP\Files\File;
 use OCP\Files\Events\Node\BeforeNodeRenamedEvent;
+use OCP\Files\File;
 
 /**
  * Enforces the §14.4 invariant — a managed workflow file may not leave its
