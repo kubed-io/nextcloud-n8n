@@ -1,0 +1,44 @@
+name: 🔀 PR
+
+# Lightweight PR-only housekeeping that doesn't belong in the Tests or Quality
+# loops: assign the PR author to their own PR, and verify CHANGELOG.md has a
+# fresh entry under [Unreleased]. Both checks only make sense on a pull_request
+# event — there is no author to assign or diff to inspect on a push-to-main —
+# so this workflow only triggers there.
+
+on:
+  pull_request:
+    branches:
+    - main
+
+permissions:
+  contents: read
+  # Auto-assign needs to write the assignee on the PR.
+  pull-requests: write
+
+concurrency:
+  group: pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  pr-tasks:
+    name: PR Tasks
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    # Assign the PR author to their own PR per .github/assign.yml.
+    - name: Auto Assign
+      uses: kentaro-m/auto-assign-action@v2.0.2
+      with:
+        configuration-path: .github/assign.yml
+
+    # Fail the PR if CHANGELOG.md has no new entry under [Unreleased] — the
+    # release workflow consumes that section as the release notes, so every PR
+    # has to contribute something to it.
+    - name: Make sure Changelog is updated
+      uses: tarides/changelog-check-action@v3
+      with:
+        changelog: CHANGELOG.md
