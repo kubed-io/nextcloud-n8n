@@ -7,7 +7,7 @@
 
 declare(strict_types=1);
 
-namespace OCA\N8nSync\Tests\Service;
+namespace OCA\N8nSync\Tests\Unit\Service;
 
 use OCA\N8nSync\Service\FilenameCodec;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -41,9 +41,11 @@ final class FilenameCodecTest extends TestCase {
 	}
 
 	public function testFormatFallsBackToIdWhenNameSanitisesToEmpty(): void {
-		// A name made entirely of banned characters sanitises to "" — we must
-		// never produce a bare ".n8n.json", so the id is used as the stem.
-		$name = FilenameCodec::format('///', 'w0TtomB3I8dCHSXW', false);
+		// A name made entirely of control characters sanitises to "" (they are
+		// stripped, not substituted) — we must never produce a bare
+		// ".n8n.json", so the id is used as the stem. (Banned path characters
+		// like "/" become "_" and would NOT trigger this fallback.)
+		$name = FilenameCodec::format("\x00\x01\x1f", 'w0TtomB3I8dCHSXW', false);
 		self::assertSame('w0TtomB3I8dCHSXW.n8n.json', $name);
 	}
 
