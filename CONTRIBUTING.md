@@ -34,7 +34,7 @@ itself is the authoritative detail.
 | [package.json](package.json) | JS deps + scripts (`build`, `dev`, `watch`). Node version pinned in `.nvmrc`. |
 | [psalm.xml](psalm.xml), [.php-cs-fixer.dist.php](.php-cs-fixer.dist.php) | Static analysis + coding standard config. |
 | [.devcontainer/](.devcontainer/) | One-shot dev environment (PHP 8.3 + Node + GH CLI + docker-out-of-docker). |
-| [.github/workflows/](.github/workflows/) | `pr.yml` (PR housekeeping), `tests.yml` (build + unit), `quality.yml` (audit + Psalm + CodeQL), `publish.yml` (release tarball). |
+| [.github/workflows/](.github/workflows/) | `pr.yml` (PR housekeeping), `tests.yml` (build + unit), `quality.yml` (audit + lint + Psalm), `publish.yml` (release tarball). |
 | [vite.config.js](vite.config.js) | Frontend build config. |
 
 Things that don't live here yet but are coming: the integration test suite, the
@@ -216,15 +216,25 @@ say so in the PR description and why. The default answer is "yes, add a test."
 These also run in CI; run them locally before pushing to save a round trip:
 
 ```sh
+# PHP
 composer run cs:check    # php-cs-fixer dry-run
 composer run cs:fix      # auto-fix
 composer run psalm       # static analysis (uses tests/psalm-baseline.xml)
 composer run lint        # php -l across lib/
+
+# JS
+npm run lint             # ESLint
+npm run lint:fix         # ESLint auto-fix
 ```
 
 Psalm has a committed baseline (`tests/psalm-baseline.xml`) — **don't regenerate it on
 your branch** unless you're explicitly paying down the debt. New findings should be
 fixed, not baselined.
+
+The ESLint config ([`eslint.config.js`](eslint.config.js)) is intentionally minimal —
+flat config + `@eslint/js` recommended rules, with the legitimate Nextcloud page-scoped
+globals (`t`, `n`, `OC`, `OCA`, `OCP`) declared so the legacy `js/*.js` admin scripts
+lint clean. Add an issue before broadening or narrowing the rules.
 
 ---
 
@@ -236,7 +246,8 @@ Four workflows run on PRs into `main` (and where it makes sense, on push to `mai
 |---|---|---|---|
 | [`pr.yml`](.github/workflows/pr.yml) (🔀 PR) | PR only | Auto-assign author + changelog check | yes |
 | [`tests.yml`](.github/workflows/tests.yml) (🧪 Tests) | PR + push to `main` | PHP unit (PHPUnit + JUnit report) + JS build | yes |
-| [`quality.yml`](.github/workflows/quality.yml) (🛡️ Quality) | PR + push to `main` | composer audit + php-cs-fixer + Psalm (→ SARIF) + npm audit + CodeQL (JS) | yes |
+| [`quality.yml`](.github/workflows/quality.yml) (🛡️ Quality) | PR + push to `main` | composer audit + php-cs-fixer + Psalm (→ SARIF) + ESLint + npm audit | yes |
+| `CodeQL` (default setup) | PR + push to `main` | GitHub-managed JS/TS code scanning | yes |
 | [`publish.yml`](.github/workflows/publish.yml) (🧬 Publish) | manual `workflow_dispatch` | release tarball | n/a |
 
 What the workflows look for from your PR:
@@ -247,12 +258,16 @@ What the workflows look for from your PR:
 - **PHP unit suite green.** Reported as a sticky PR comment + inline annotations on
   failure (`EnricoMi/publish-unit-test-result-action`).
 - **JS bundle builds** without errors and produces `dist/n8n_sync-files.js`.
+- **ESLint clean** — `npm run lint` exits 0. Real issues are caught (unused
+  vars, undefined references, etc.); legitimate NC page-scoped globals (`t`,
+  `OC`, `OCA`, `OCP`, `n`) are declared in [`eslint.config.js`](eslint.config.js).
+  Use `npm run lint:fix` for auto-fixes.
 - **No new php-cs-fixer violations.** Run `composer run cs:fix` locally if in doubt.
 - **No new Psalm findings** above the baseline. If your change touches a baselined
   line, fix it rather than re-baselining.
 - **No new high-severity advisories** from `composer audit` or `npm audit --omit=dev
   --audit-level=high`.
-- **No new CodeQL alerts** (JS) or **Psalm SARIF alerts** (PHP) in the Security tab.
+- **No new CodeQL alerts** (JS) from the GitHub default-setup scanner or **Psalm SARIF alerts** (PHP) in the Security tab.
 
 Action versions in workflows are kept current by Dependabot (when configured). If you're
 editing a workflow, **verify the action's latest major** with `gh api
@@ -272,6 +287,17 @@ repos/<owner>/<repo>/releases/latest` — the stale-major footgun is documented 
   `Deprecated` / `Security`. The `tarides/changelog-check-action` CI step enforces that
   the `[Unreleased]` section has new content on every PR — a PR with no changelog entry
   fails the check. Internal-only refactors should still add a one-liner under `Changed`.
+
+  **The changelog is the release notes.** Keep entries short and sweet:
+
+  - One line per entry. No paragraphs, no nested bullets, no implementation detail.
+  - Write for an end user reading "what's new in this release," not for a future
+    maintainer reading git history. Git history is for git history.
+  - Tooling / CI / docs / refactor entries should be even shorter — often three or
+    four words is plenty (e.g. `- Dependabot enabled.`, `- Bumped Vite to v8.`).
+  - **Breaking changes are the only exception.** Spell those out clearly — what
+    breaks, how to migrate — under `Changed` with a leading `**BREAKING:**` marker.
+  - When in doubt, write the line, then cut it in half.
 - **Versioning**: SemVer. The release workflow (`publish.yml`) bumps `package.json` and
   mirrors the version into `appinfo/info.xml` — you don't bump these in feature PRs.
 - **Tags**: `v<major>.<minor>.<patch>`, applied by the release workflow via

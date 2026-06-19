@@ -19,6 +19,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `.github/workflows/pr.yml` — PR-only housekeeping workflow: auto-assigns the PR
   author (`kentaro-m/auto-assign-action`) and enforces a `CHANGELOG.md` entry under
   `[Unreleased]` (`tarides/changelog-check-action`).
+- ESLint JS linting (`npm run lint`) wired into the Quality workflow.
+- `CONTRIBUTING.md`, `AGENTS.md`, `SECURITY.md`.
+- PR housekeeping workflow: auto-assign author, enforce changelog entry.
+
+### Changed
+
+- Dropped duplicate CodeQL job; JS scanning now via GitHub's default setup.
+
+### Fixed
+
+- Two unused `catch` bindings flagged by the new linter.
 
 ## [0.1.1] - 2026-06-19
 

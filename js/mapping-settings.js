@@ -45,7 +45,7 @@
 
 	function availableGroups() {
 		var root = document.getElementById('n8n-sync-mappings');
-		try { return JSON.parse(root.dataset.groups || '[]'); } catch (e) { return []; }
+		try { return JSON.parse(root.dataset.groups || '[]'); } catch { return []; }
 	}
 
 	function escapeHtml(s) {
