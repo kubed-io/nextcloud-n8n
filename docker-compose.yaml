@@ -7,7 +7,8 @@
 # Nextcloud autoinstall env) — values live in .env.example.
 #
 # File name: docker-compose.yaml (repo convention; Compose v2 also accepts it).
-# Usage:  cp .env.example .env  &&  make stack-up   (then `make occ -- app:list`)
+# Usage:  cp .env.example .env  &&  tests/integration/stack.sh up
+#         (then `tests/integration/stack.sh occ app:list`)
 #
 # Both services use their default SQLite store — no Postgres/Redis here; this is
 # an ephemeral test stack, not the production topology (apps/n8n uses PG+Redis).
