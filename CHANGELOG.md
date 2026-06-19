@@ -10,6 +10,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - Dependabot version updates for `github-actions`, `npm`, and `composer`.
+- Copilot cloud-agent setup workflow that preinstalls PHP, Node, and project dependencies.
 - `CONTRIBUTING.md` — process for human contributors: issue→PR flow, dev setup, build
   loop, test policy, CI expectations, changelog/versioning, release flow.
 - `AGENTS.md` — cold-start orientation for AI coding agents: repo map, locked
