@@ -9,6 +9,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Dependabot version updates for `github-actions`, `npm`, and `composer`.
+- `CONTRIBUTING.md` — process for human contributors: issue→PR flow, dev setup, build
+  loop, test policy, CI expectations, changelog/versioning, release flow.
+- `AGENTS.md` — cold-start orientation for AI coding agents: repo map, locked
+  architectural decisions, hard-won gotchas, and pointers to deeper docs.
+- `SECURITY.md` — vulnerability reporting policy via GitHub private security advisories,
+  supported-versions, scope, secrets policy, disclosure timeline.
+- `.github/workflows/pr.yml` — PR-only housekeeping workflow: auto-assigns the PR
+  author (`kentaro-m/auto-assign-action`) and enforces a `CHANGELOG.md` entry under
+  `[Unreleased]` (`tarides/changelog-check-action`).
 - ESLint JS linting (`npm run lint`) wired into the Quality workflow.
 - `CONTRIBUTING.md`, `AGENTS.md`, `SECURITY.md`.
 - PR housekeeping workflow: auto-assign author, enforce changelog entry.
