@@ -62,11 +62,13 @@ $info = static function (string $tip): string {
 			<div class="n8n-sync-mappings__card" data-id="<?php p($m['id']); ?>">
 				<div class="n8n-sync-mappings__grid">
 					<div class="n8n-sync-field nf-tag">
-						<label><?php p($l->t('n8n tag')); print_unescaped($info($desc['tag'])); ?></label>
+						<label><?php p($l->t('n8n tag'));
+			print_unescaped($info($desc['tag'])); ?></label>
 						<input type="text" class="js-n8n-tag" value="<?php p($m['n8n_tag']); ?>" placeholder="nextcloud:tasking" />
 					</div>
 					<div class="n8n-sync-field nf-mode">
-						<label><?php p($l->t('Mode')); print_unescaped($info($desc['mode'])); ?></label>
+						<label><?php p($l->t('Mode'));
+			print_unescaped($info($desc['mode'])); ?></label>
 						<select class="js-mode">
 							<option value="reference" <?php if ($modeSel === 'reference') {
 								print_unescaped('selected');
@@ -80,16 +82,19 @@ $info = static function (string $tip): string {
 						</select>
 					</div>
 					<div class="n8n-sync-field nf-folder">
-						<label><?php p($l->t('Folder')); print_unescaped($info($desc['folder'])); ?></label>
+						<label><?php p($l->t('Folder'));
+			print_unescaped($info($desc['folder'])); ?></label>
 						<input type="text" class="js-team-folder" value="<?php p($m['team_folder']); ?>" placeholder="n8n" />
 					</div>
 					<div class="n8n-sync-field nf-tf">
 						<label class="n8n-sync-checkbox"><input type="checkbox" class="js-use-team-folder" <?php if ($useTf) {
 							print_unescaped('checked');
-						} ?> disabled /> <?php p($l->t('Team Folder')); print_unescaped($info($desc['tf'])); ?></label>
+						} ?> disabled /> <?php p($l->t('Team Folder'));
+			print_unescaped($info($desc['tf'])); ?></label>
 					</div>
 					<div class="n8n-sync-field nf-groups">
-						<label><?php p($l->t('Groups')); print_unescaped($info($desc['groups'])); ?></label>
+						<label><?php p($l->t('Groups'));
+			print_unescaped($info($desc['groups'])); ?></label>
 						<div class="js-groups n8n-sync-groups">
 							<?php foreach ($groups as $g): ?>
 								<label class="n8n-sync-groups__item">
