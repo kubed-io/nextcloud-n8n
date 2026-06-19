@@ -38,7 +38,7 @@ registerDavProperty('nc:metadata-n8n_id')
 const n8nUrl = (() => {
   try {
     return String(loadState(APP_ID, 'n8n_url') || '').replace(/\/+$/, '')
-  } catch (_e) {
+  } catch {
     return ''
   }
 })()
