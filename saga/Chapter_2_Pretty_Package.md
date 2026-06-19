@@ -244,39 +244,32 @@ prod-only luxuries). A `compose.yaml` at the repo root with a small `.env.exampl
 creds, n8n owner creds + the seeded API key) is enough. A `make stack-up` / `make stack-down`
 wraps it.
 
-**The three-way reuse (this is the whole point):**
+**Two consumers, same services — but expressed differently per environment (DECIDED):**
 
 ```
-                       ┌────────────────────────┐
-                       │   compose.yaml (root)  │   ← single source of truth
-                       │  nextcloud + db + n8n  │
-                       └───────────┬────────────┘
-            ┌──────────────────────┼──────────────────────┐
-            ▼                      ▼                      ▼
-   devcontainer.json        contributor laptop       GitHub Actions
-   (docker-outside-      (`make stack-up`, edit/     (`services:` block or
-    of-docker brings        build/verify loop)        `docker compose up` in
-    the same stack up)                                 the integration job)
+        compose.yaml (devcontainer + laptop)        integration.yml (CI)
+        ┌────────────────────────────────┐          ┌──────────────────────────┐
+        │ docker compose: nextcloud + n8n│          │ GHA `services:` n8n      │
+        │ (+ db) — humans `make stack-up`│          │ + nextcloud image / occ  │
+        └────────────────────────────────┘          └──────────────────────────┘
+                    devcontainer                            no docker-compose
+                    & local dev only                        in CI — services only
 ```
 
-- **Devcontainer:** its existing docker-outside-of-docker is what brings this stack up; the
-  devcontainer doesn't redefine services, it just runs `compose.yaml`. This finally gives the
-  devcontainer the "NC + n8n reachable for `occ` and API calls" capability §3 flagged as
-  untested.
-- **GitHub Actions:** the integration job mirrors the same services. There are two idiomatic
-  options and the compose file makes either cheap:
-  - **`services:` block** — declare `postgres` (and optionally `n8n`) as job-level service
-    containers; fastest for the DB, but service containers can't easily bind-mount the app
-    dir, so NC itself is usually installed in-runner (clone server / `setup-php` + SQLite).
-  - **`docker compose up` step** — run the *exact same* `compose.yaml` in the job, wait for
-    health, run PHPUnit integration against it. Heaviest but highest fidelity and zero drift
-    from local. **Recommended** precisely because it's the same file devs run.
-
-**Either-direction note (per the decision in this chapter):** it does not matter whether the
-compose file or the devcontainer/CI is authored first — they must end up identical, so write
-`compose.yaml` once and point the other two at it. Modeling CI `services` *after* the compose
-stack (not in parallel) is what prevents the classic "works in the devcontainer, fails in CI"
-drift.
+- **`compose.yaml` is for the devcontainer and local dev ONLY.** It is *not* run in CI.
+  Humans (and the devcontainer's docker-outside-of-docker) `make stack-up` to get NC + n8n
+  reachable for `occ` and API calls — closing the §3 devcontainer "untested" caveat.
+- **CI uses GitHub Actions `services:` — NOT `docker compose up`** (explicit decision). The
+  integration job declares the background containers it needs (n8n as a service; Nextcloud
+  via the official image or the checkout-server + `occ maintenance:install` pattern the
+  official NC apps use — see §5). `services:` is the idiomatic GHA way to run background
+  containers for a job, and it's lighter and more cacheable than shelling `docker compose` on
+  the runner.
+- **Why not one file for both?** A compose file can't cleanly express GHA service health-gates
+  / port mappings, and `docker compose up` on a runner is heavier and drifts from how GHA
+  wants containers declared. The two stay **semantically identical** (same images, same n8n
+  owner-env, same NC autoinstall env) without sharing one literal YAML. Keep the image tags
+  and env in sync by hand (a short shared `.env.example` documents the canonical values).
 
 **Status:** not yet built. It is the prerequisite for the integration suite in §5 and for
 closing the §3 devcontainer "untested" caveat. The unit suite (shipped first) does **not**
