@@ -259,12 +259,17 @@ wraps it.
 - **`compose.yaml` is for the devcontainer and local dev ONLY.** It is *not* run in CI.
   Humans (and the devcontainer's docker-outside-of-docker) `make stack-up` to get NC + n8n
   reachable for `occ` and API calls — closing the §3 devcontainer "untested" caveat.
-- **CI uses GitHub Actions `services:` — NOT `docker compose up`** (explicit decision). The
-  integration job declares the background containers it needs (n8n as a service; Nextcloud
-  via the official image or the checkout-server + `occ maintenance:install` pattern the
-  official NC apps use — see §5). `services:` is the idiomatic GHA way to run background
-  containers for a job, and it's lighter and more cacheable than shelling `docker compose` on
-  the runner.
+- **CI does NOT run `docker compose up`** (explicit decision). The integration job
+  (`integration.yml`, shipped) follows what the **official NC apps do** (deck /
+  integration_openai): **check out `nextcloud/server`**, mount this app into `apps/n8n_sync`,
+  `setup-php`, **`occ maintenance:install` on SQLite**, then drive `occ` directly.
+  - **n8n runs as a GHA `services:` container** — it's a pre-built image with no checkout
+    dependency, so the services feature fits it cleanly (this is the bit of the feature we
+    keep). The owner is pre-provisioned via the §4a.1 env so the service boots signup-free.
+  - **Nextcloud is NOT a service container.** Service containers start *before* the job's
+    steps — i.e. before `checkout` — so they cannot bind-mount the app under test into
+    `custom_apps`. That ordering constraint is exactly why the ecosystem uses the
+    checkout-server pattern; we follow it rather than fight the services feature.
 - **Why not one file for both?** A compose file can't cleanly express GHA service health-gates
   / port mappings, and `docker compose up` on a runner is heavier and drifts from how GHA
   wants containers declared. The two stay **semantically identical** (same images, same n8n
