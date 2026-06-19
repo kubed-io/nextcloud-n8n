@@ -1,2 +1,9 @@
 node_modules/
 dist/
+
+# PHP tooling artifacts (composer / phpunit / php-cs-fixer / psalm)
+# NB: tests/psalm-baseline.xml is intentionally committed (the gate needs it).
+vendor/
+tests/.phpunit.cache/
+tests/results/
+.php-cs-fixer.cache

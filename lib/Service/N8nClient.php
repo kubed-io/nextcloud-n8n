@@ -72,15 +72,15 @@ class N8nClient {
 	}
 
 	/**
-	 * @param int<1,250>|null    $limit  n8n caps at 250; null = server default.
-	 * @param string|null        $cursor pagination cursor returned by previous call.
-	 * @param list<string>|null  $tags   AND-filter on these n8n tag names. The n8n
-	 *                                   API joins them with commas and matches
-	 *                                   workflows that carry **all** of them
-	 *                                   (verified live against `?tags=a,b`).
-	 *                                   Tag names are passed verbatim, so they
-	 *                                   must not themselves contain commas \u2014
-	 *                                   Mapping::fromArray enforces that.
+	 * @param int<1,250>|null $limit n8n caps at 250; null = server default.
+	 * @param string|null $cursor pagination cursor returned by previous call.
+	 * @param list<string>|null $tags AND-filter on these n8n tag names. The n8n
+	 *                                API joins them with commas and matches
+	 *                                workflows that carry **all** of them
+	 *                                (verified live against `?tags=a,b`).
+	 *                                Tag names are passed verbatim, so they
+	 *                                must not themselves contain commas \u2014
+	 *                                Mapping::fromArray enforces that.
 	 * @return array<string,mixed> raw decoded body \u2014 typically `{data: [\u2026], nextCursor: \u2026}`
 	 */
 	public function listWorkflows(?int $limit = null, ?string $cursor = null, ?array $tags = null): array {

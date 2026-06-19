@@ -61,11 +61,11 @@ class SyncService {
 	/**
 	 * Single parameterized entry point for manual sync (§14).
 	 *
-	 * @param string      $direction SyncStatusService::DIR_PULL|DIR_PUSH
+	 * @param string $direction SyncStatusService::DIR_PULL|DIR_PUSH
 	 * @param string|null $mappingId a specific mapping, or null = all mappings
 	 *                               (push is all-only for now)
-	 * @param bool        $async     true = enqueue a background job and return
-	 *                               'queued' immediately; false = run inline
+	 * @param bool $async true = enqueue a background job and return
+	 *                    'queued' immediately; false = run inline
 	 * @return array<string,mixed>
 	 */
 	public function dispatch(string $direction, ?string $mappingId, bool $async): array {
@@ -139,7 +139,7 @@ class SyncService {
 				$res = $this->pullOne($mapping);
 				$total['processed'] += $res['processed'];
 				$total['succeeded'] += $res['succeeded'];
-				$total['failed']    += $res['failed'];
+				$total['failed'] += $res['failed'];
 			} catch (\Throwable $e) {
 				$errors[] = $mapping->teamFolder . ': ' . $e->getMessage();
 				$total['failed']++;
@@ -152,9 +152,9 @@ class SyncService {
 		return [
 			'processed' => $total['processed'],
 			'succeeded' => $total['succeeded'],
-			'failed'    => $total['failed'],
-			'status'    => $errors === [] ? 'ok' : 'error',
-			'message'   => $errors === [] ? null : implode('; ', $errors),
+			'failed' => $total['failed'],
+			'status' => $errors === [] ? 'ok' : 'error',
+			'message' => $errors === [] ? null : implode('; ', $errors),
 		];
 	}
 
@@ -271,9 +271,9 @@ class SyncService {
 		return [
 			'processed' => $processed,
 			'succeeded' => $succeeded,
-			'failed'    => $failed,
-			'status'    => $failed === 0 ? 'ok' : 'error',
-			'message'   => $errors === [] ? null : implode('; ', $errors),
+			'failed' => $failed,
+			'status' => $failed === 0 ? 'ok' : 'error',
+			'message' => $errors === [] ? null : implode('; ', $errors),
 		];
 	}
 
@@ -353,9 +353,9 @@ class SyncService {
 	 * Reconcile a single workflow into $folder (update-in-place by id, else fresh
 	 * write with collision suffix). Metadata + ownership tag follow the body.
 	 *
-	 * @param array<string,mixed>           $workflow
+	 * @param array<string,mixed> $workflow
 	 * @param array<string,\OCP\Files\Node> $existingById
-	 * @param array<string,int>             $nameCounts
+	 * @param array<string,int> $nameCounts
 	 */
 	private function writeWorkflow(
 		Folder $folder,
@@ -384,7 +384,7 @@ class SyncService {
 					$this->logger->info('rename skipped (collision?)', [
 						'app' => Application::APP_ID,
 						'from' => $existing->getName(),
-						'to'   => $desired,
+						'to' => $desired,
 						'exception' => $e,
 					]);
 				}
@@ -444,10 +444,10 @@ class SyncService {
 		}
 		$payload = [
 			'$schema' => 'n8n.reference/v1',
-			'id'      => $id,
-			'name'    => (string)($workflow['name'] ?? $id),
-			'url'     => $base === '' ? null : $base . '/workflow/' . $id,
-			'tags'    => $tags,
+			'id' => $id,
+			'name' => (string)($workflow['name'] ?? $id),
+			'url' => $base === '' ? null : $base . '/workflow/' . $id,
+			'tags' => $tags,
 		];
 		return json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 	}

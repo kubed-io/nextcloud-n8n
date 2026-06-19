@@ -12,15 +12,14 @@ namespace OCA\N8nSync\Listener;
 use OCA\N8nSync\AppInfo\Application;
 use OCA\N8nSync\Service\DeleteService;
 use OCA\N8nSync\Service\FilenameCodec;
-use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\MappingService;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
 use OCP\Exceptions\AbortedEventException;
-use OCP\Files\File;
 use OCP\Files\Events\Node\BeforeNodeDeletedEvent;
+use OCP\Files\File;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -75,7 +74,7 @@ class DeleteToN8nListener implements IEventListener {
 			// Detached file — no n8n side. Let NC do its normal delete.
 			return;
 		}
-		$mode      = (string)($meta[WorkflowMetadata::KEY_MODE] ?? '');
+		$mode = (string)($meta[WorkflowMetadata::KEY_MODE] ?? '');
 		$writeback = $meta[WorkflowMetadata::KEY_WRITEBACK] ?? null;
 		$writeback = is_string($writeback) && $writeback !== '' ? $writeback : null;
 		$mappingId = $meta[WorkflowMetadata::KEY_MAPPING] ?? null;

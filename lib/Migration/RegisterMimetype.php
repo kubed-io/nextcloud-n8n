@@ -35,10 +35,10 @@ use Psr\Log\LoggerInterface;
  * `update-js`, but inline with the app's lifecycle: no human step.
  */
 class RegisterMimetype implements IRepairStep {
-	private const APP_MIMETYPE  = 'application/n8n+json';
+	private const APP_MIMETYPE = 'application/n8n+json';
 	private const APP_ALIAS_KEY = self::APP_MIMETYPE;
 	private const APP_ICON_NAME = 'n8n';
-	private const FILE_EXT      = 'n8n.json';
+	private const FILE_EXT = 'n8n.json';
 
 	public function __construct(
 		private IMimeTypeDetector $detector,
@@ -53,10 +53,10 @@ class RegisterMimetype implements IRepairStep {
 
 	public function run(IOutput $output): void {
 		$serverRoot = \OC::$SERVERROOT;
-		$appRoot    = $serverRoot . '/custom_apps/' . Application::APP_ID;
+		$appRoot = $serverRoot . '/custom_apps/' . Application::APP_ID;
 		// Custom config dir — Server::getServerRoot() . '/config' is the standard
 		// location, but kubernetes mounts may place it elsewhere; resolve via OC.
-		$configDir  = \OC::$configDir;
+		$configDir = \OC::$configDir;
 
 		try {
 			$this->mergeJson(

@@ -1,0 +1,116 @@
+name: 🧪 Tests
+
+# Build + lint + unit tests, split by language into two parallel jobs (PHP / JS)
+# so a failure points straight at the language and the two don't block each
+# other. Runs on every PR into main (and pushes to main so the badge tracks
+# trunk). Needs no services — the integration / e2e layers (Chapter 2 §4a
+# docker-compose stack) come later as their own workflow.
+
+on:
+  pull_request:
+    branches:
+    - main
+  push:
+    branches:
+    - main
+
+permissions:
+  contents: read
+  # The test reporter publishes a sticky PR comment + a check run with inline
+  # annotations on failing tests. Harmless no-ops on push-to-main (no PR), where
+  # the same results still render in the job summary.
+  checks: write
+  pull-requests: write
+
+concurrency:
+  group: tests-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+
+  php:
+    name: PHP lint & unit test
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Setup PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        php-version: '8.4'
+        coverage: none
+        tools: composer:v2
+
+    - name: Install PHP dependencies
+      run: composer install --prefer-dist --no-progress
+
+    - name: Lint PHP (php -l)
+      run: find lib -name '*.php' -print0 | xargs -0 -n1 -P4 php -l
+
+    # Emits tests/results/junit.xml (configured in tests/phpunit.unit.xml).
+    - name: Unit tests
+      run: composer run test:unit
+
+    # Keep the raw JUnit report downloadable from the run.
+    - name: Upload JUnit results
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: php-unit-junit
+        path: tests/results/junit.xml
+        if-no-files-found: error
+
+    # Sticky PR comment + check run with inline annotations on failures. Runs
+    # even when tests fail so the report is published either way.
+    - name: Publish unit test results
+      if: always()
+      uses: EnricoMi/publish-unit-test-result-action@v2
+      with:
+        check_name: PHP unit test results
+        files: tests/results/junit.xml
+        comment_mode: always
+
+  js:
+    name: JS build
+    runs-on: ubuntu-latest
+    steps:
+
+    - name: Checkout
+      uses: actions/checkout@v7
+
+    - name: Setup Node
+      uses: actions/setup-node@v6
+      with:
+        node-version-file: .nvmrc
+        cache: npm
+
+    - name: Install JS dependencies
+      run: npm ci
+
+    # If it doesn't build there's nothing worth shipping — this is the JS gate.
+    - name: Build bundle
+      run: npm run build
+
+    - name: Summarize build
+      if: always()
+      run: |
+        {
+          echo "## JS bundle build"
+          echo ""
+          if [ -f dist/n8n_sync-files.js ]; then
+            size=$(du -h dist/n8n_sync-files.js | cut -f1)
+            echo "✅ Built \`dist/n8n_sync-files.js\` (${size})"
+          else
+            echo "❌ Bundle not produced"
+          fi
+        } >> "$GITHUB_STEP_SUMMARY"
+
+    - name: Upload built bundle
+      if: success()
+      uses: actions/upload-artifact@v7
+      with:
+        name: js-bundle
+        path: dist/n8n_sync-files.js
+        if-no-files-found: error

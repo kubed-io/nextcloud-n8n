@@ -44,13 +44,13 @@ jobs:
         private-key: ${{ secrets.GH_APP_KEY }}
 
     - name: Checkout
-      uses: actions/checkout@v6
+      uses: actions/checkout@v7
       with:
         fetch-depth: 0
         token: ${{ steps.app-token.outputs.token }}
 
     - name: Setup Node
-      uses: actions/setup-node@v5
+      uses: actions/setup-node@v6
       with:
         node-version-file: .nvmrc
         cache: npm
