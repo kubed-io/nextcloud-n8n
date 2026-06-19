@@ -1,0 +1,60 @@
+# Local + devcontainer integration stack — Nextcloud + n8n.
+#
+# SCOPE: this file is for the **devcontainer and local development only**. CI
+# does NOT run `docker compose up`; the integration workflow uses GitHub Actions
+# `services:` instead (see saga §4a and .github/workflows/integration.yml). The
+# two are kept *semantically* identical (same images, same n8n owner env, same
+# Nextcloud autoinstall env) — values live in .env.example.
+#
+# File name: docker-compose.yaml (repo convention; Compose v2 also accepts it).
+# Usage:  cp .env.example .env  &&  tests/integration/stack.sh up
+#         (then `tests/integration/stack.sh occ app:list`)
+#
+# Both services use their default SQLite store — no Postgres/Redis here; this is
+# an ephemeral test stack, not the production topology (apps/n8n uses PG+Redis).
+
+services:
+
+  nextcloud:
+    image: nextcloud:33-apache
+    ports:
+    - "8080:80"
+    environment:
+      # Auto-install on first boot (skips the setup wizard) — SQLite + admin.
+      SQLITE_DATABASE: nextcloud
+      NEXTCLOUD_ADMIN_USER: ${NC_ADMIN_USER:-admin}
+      NEXTCLOUD_ADMIN_PASSWORD: ${NC_ADMIN_PASSWORD:-admin}
+      NEXTCLOUD_TRUSTED_DOMAINS: localhost
+    volumes:
+    # Mount the app under test into the custom_apps path so `occ app:enable
+    # n8n_sync` finds it. Read-only: tests enable/disable, they don't mutate src.
+    - ./:/var/www/html/custom_apps/n8n_sync:ro
+    healthcheck:
+      # status.php returns {"installed":true,...} once autoinstall finishes.
+      test: ["CMD", "sh", "-c", "curl -fsS http://localhost/status.php | grep -q '\"installed\":true'"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 30s
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    ports:
+    - "5678:5678"
+    environment:
+      # Pre-provision the instance owner from env so there is NO signup wizard
+      # (saga §4a.1). PASSWORD_HASH must be a bcrypt hash, not plaintext.
+      N8N_INSTANCE_OWNER_MANAGED_BY_ENV: "true"
+      N8N_INSTANCE_OWNER_EMAIL: ${N8N_OWNER_EMAIL:-owner@example.com}
+      N8N_INSTANCE_OWNER_FIRST_NAME: ${N8N_OWNER_FIRST_NAME:-Test}
+      N8N_INSTANCE_OWNER_LAST_NAME: ${N8N_OWNER_LAST_NAME:-Owner}
+      N8N_INSTANCE_OWNER_PASSWORD_HASH: ${N8N_OWNER_PASSWORD_HASH:?set N8N_OWNER_PASSWORD_HASH in .env (bcrypt) — see .env.example}
+      # Default SQLite store; quiet down telemetry/diagnostics for a test box.
+      N8N_DIAGNOSTICS_ENABLED: "false"
+      N8N_HIRING_BANNER_ENABLED: "false"
+    healthcheck:
+      test: ["CMD-SHELL", "wget -q -O - http://localhost:5678/healthz | grep -q ok"]
+      interval: 5s
+      timeout: 5s
+      retries: 40
+      start_period: 20s

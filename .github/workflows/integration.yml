@@ -1,0 +1,120 @@
+name: 🔗 Integration
+
+# Integration scaffolding: prove n8n_sync enables + uninstalls cleanly on a real
+# Nextcloud instance (saga §5). A clean uninstall is also an app-store rule.
+#
+# Pattern: this follows the official Nextcloud apps (nextcloud/deck,
+# integration_openai) — check out `nextcloud/server`, mount this app into
+# `apps/n8n_sync`, set up PHP, `occ maintenance:install` on SQLite (fast), then
+# drive `occ` directly. n8n runs as a GitHub Actions `services:` container (a
+# pre-built image with no checkout dependency, so the services feature fits it
+# cleanly); it's here for the later pull/writeback tests — the scaffolding test
+# only needs Nextcloud. docker-compose.yaml is NOT used in CI (devcontainer
+# only; saga §4a).
+
+on:
+  pull_request:
+    branches:
+    - main
+    paths:
+    - .github/workflows/integration.yml
+    - appinfo/**
+    - lib/**
+    - templates/**
+    - tests/integration/**
+    - composer.json
+  push:
+    branches:
+    - main
+
+permissions:
+  contents: read
+
+concurrency:
+  group: integration-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  APP_ID: n8n_sync
+
+jobs:
+
+  integration:
+    name: Install / uninstall on real Nextcloud
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        # NC 33 is the app's max-version; SQLite is the fast integration path.
+        server-versions: ['stable33']
+
+    services:
+      # n8n with the instance owner pre-provisioned via env (no signup wizard,
+      # saga §4a.1) — a background container via the GHA services feature. Needed
+      # by later pull/writeback tests; the scaffolding test doesn't touch it yet.
+      n8n:
+        image: docker.n8n.io/n8nio/n8n:latest
+        ports:
+        - 5678:5678
+        env:
+          N8N_INSTANCE_OWNER_MANAGED_BY_ENV: "true"
+          N8N_INSTANCE_OWNER_EMAIL: owner@example.com
+          N8N_INSTANCE_OWNER_FIRST_NAME: Test
+          N8N_INSTANCE_OWNER_LAST_NAME: Owner
+          # bcrypt hash of "n8npassword" (see .env.example).
+          N8N_INSTANCE_OWNER_PASSWORD_HASH: $2y$12$M/JhYL51spvMK3uMO8iraOSbWKqIkLldhcaA8Y2TzPAhZVQdV0Tju
+          N8N_DIAGNOSTICS_ENABLED: "false"
+          N8N_HIRING_BANNER_ENABLED: "false"
+        options: >-
+          --health-cmd "wget -q -O - http://localhost:5678/healthz | grep -q ok"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 40
+          --health-start-period 20s
+
+    steps:
+    - name: Checkout server
+      uses: actions/checkout@v7
+      with:
+        repository: nextcloud/server
+        ref: ${{ matrix.server-versions }}
+        submodules: true
+
+    - name: Checkout app into apps/
+      uses: actions/checkout@v7
+      with:
+        path: apps/${{ env.APP_ID }}
+
+    - name: Set up PHP
+      uses: shivammathur/setup-php@v2
+      with:
+        # Match the production pod / the rest of our CI.
+        php-version: '8.4'
+        extensions: mbstring, iconv, fileinfo, intl, sqlite, pdo_sqlite, gd, zip, curl, xml
+        coverage: none
+
+    - name: Install Nextcloud (SQLite)
+      run: |
+        mkdir -p data
+        ./occ maintenance:install \
+          --database=sqlite \
+          --admin-user=admin \
+          --admin-pass=admin
+        ./occ config:system:set trusted_domains 1 --value=localhost
+
+    - name: Wait for n8n
+      run: |
+        for i in $(seq 1 40); do
+          if curl -fsS http://localhost:5678/healthz | grep -q ok; then echo "n8n healthy"; exit 0; fi
+          sleep 3
+        done
+        echo "n8n did not become healthy" >&2; exit 1
+
+    - name: Run install / uninstall scaffolding test
+      run: OCC="php occ" apps/${{ env.APP_ID }}/tests/integration/install-uninstall.sh
+
+    - name: Nextcloud log on failure
+      if: failure()
+      run: |
+        if [ -f data/nextcloud.log ]; then cat data/nextcloud.log; else echo "no log"; fi

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Integration test scaffolding: `docker-compose.yaml` (dev/devcontainer NC + n8n),
+  an install/uninstall `occ` test, and `integration.yml` (checkout-server + SQLite,
+  n8n as a service).
 - Dependabot version updates for `github-actions`, `npm`, and `composer`.
 - Copilot cloud-agent setup workflow that preinstalls PHP, Node, and project dependencies.
 - `CONTRIBUTING.md` — process for human contributors: issue→PR flow, dev setup, build
