@@ -149,7 +149,10 @@ Long version in [CONTRIBUTING.md](CONTRIBUTING.md). Short version:
 2. **PR targets `main`.** Link the issue if there is one. Must pass CI and get one
    maintainer approval (hard gates).
 3. **Tests on every PR** that touches `lib/`, when reasonable. Skip with a note if not.
-4. **Changelog entry** under `## [Unreleased]` for user-visible changes.
+4. **Changelog entry** under `## [Unreleased]` for user-visible changes. **The
+   changelog is the release notes** — one line per entry, short and sweet, no
+   paragraphs. Long descriptions are only for breaking changes. Details belong
+   in the PR description, not the changelog.
 5. **Human validation on a real Nextcloud** is required before review — agents
    cannot skip this. State what was tested in the PR description.
 6. **Release is manual** via `publish.yml`. Don't bump versions in feature PRs.
