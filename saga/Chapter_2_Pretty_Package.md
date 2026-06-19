@@ -361,14 +361,18 @@ AGPL-3.0-or-later — required for Nextcloud app store eligibility and consisten
 `package.json` (`"license": "AGPL-3.0-or-later"`). A `LICENSE` file should be added to
 the repo root if not already present. SPDX headers in source files are a bonus.
 
-### 10. Code quality — CodeQL ☐
+### 10. Code quality — CodeQL ✅ (JS only — CodeQL has no PHP support)
 
-GitHub's CodeQL (via `github/codeql-action`) is the low-friction choice: free for public
-repos, covers PHP and JavaScript, no separate service to configure. Add a
-`.github/workflows/codeql.yml` that runs on push to main and on PRs.
+GitHub's CodeQL (via `github/codeql-action@v4`) runs on push to main and on PRs. **Correction
+to the original assumption:** CodeQL does **not** support PHP — PHP is the only top-10 GitHub
+language without a CodeQL extractor. So CodeQL covers **`javascript-typescript` only**, and
+**Psalm is the PHP static-analysis gate** in its place (§4 / §5). No custom queries; the
+`security-and-quality` suite catches the JS classes that matter (injection, XSS, prototype
+pollution).
 
-No custom queries needed to start — the default query suites for PHP and JS/TS are enough
-to catch the classes of issues that matter (injection, XSS, unsafe deserialization).
+**Implemented:** lives in `quality.yml` (not a separate `codeql.yml`) as the last step of the
+**JS** job — checkout → npm audit → `codeql-action/init` (`languages: javascript-typescript`,
+`queries: security-and-quality`) → `analyze`. The PHP job has no CodeQL step by necessity.
 
 ### 11. PR flow ☐
 
@@ -391,6 +395,14 @@ efficiency improvements that are now safe to make because tests will catch regre
 
 This is explicitly post-testing — the tests are what make it safe to move things around.
 Scope and approach are left to the implementor; the test suite is the arbiter of correctness.
+
+**The refactor is ongoing, not a one-shot.** The CI quality gates are its standing edge:
+php-cs-fixer (coding standard), Psalm (with `tests/psalm-baseline.xml`), and the composer/npm
+audits don't just run once — they continuously surface the next thing to pay down. The Psalm
+baseline is the explicit ledger of deferred cleanup: shrink it over time
+(`--set-baseline=tests/psalm-baseline.xml` to regenerate) and the codebase tightens with it.
+So "refactor pass" reads as "keep the gates green and the baseline shrinking," not a single
+event gated on the test suite being finished.
 
 ---
 
