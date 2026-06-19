@@ -32,7 +32,7 @@ concurrency:
 jobs:
 
   php:
-    name: PHP audit & static analysis
+    name: PHP Quality
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -92,7 +92,7 @@ jobs:
         if-no-files-found: warn
 
   js:
-    name: JS audit & CodeQL
+    name: JS Quality
     runs-on: ubuntu-latest
     permissions:
       contents: read

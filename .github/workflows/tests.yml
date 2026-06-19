@@ -29,7 +29,7 @@ concurrency:
 jobs:
 
   php:
-    name: PHP lint & unit test
+    name: PHP Unit Tests
     runs-on: ubuntu-latest
     steps:
 
@@ -73,7 +73,7 @@ jobs:
         comment_mode: always
 
   js:
-    name: JS build
+    name: JS Build and Test
     runs-on: ubuntu-latest
     steps:
 
