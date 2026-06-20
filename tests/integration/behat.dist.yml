@@ -1,0 +1,28 @@
+# Behat config for the n8n_sync integration suite.
+#
+# Behat is the Nextcloud-native integration framework (see nextcloud/deck). It
+# drives a *running* Nextcloud (over HTTP / occ) and the n8n service, and asserts
+# both sides — the real wiring the unit suite mocks out (saga §5).
+#
+# Output: Behat's BUILT-IN junit formatter (no third-party dep) writes JUnit XML
+# to junit/, which the integration workflow feeds to the same EnricoMi reporter
+# the unit suite uses → sticky PR comment + job summary.
+#
+# Env the FeatureContext reads (set by the workflow / local runner):
+#   NC_BASE_URL, NC_ADMIN_USER, NC_ADMIN_PASS, N8N_URL, OCC
+
+default:
+  suites:
+    default:
+      paths:
+        - '%paths.base%/features'
+      contexts:
+        - OCA\N8nSync\Tests\Integration\FeatureContext
+
+  formatters:
+    # Human-readable progress in the log…
+    pretty:
+      verbose: true
+    # …and machine-readable JUnit for the CI reporter.
+    junit:
+      output_path: '%paths.base%/junit'

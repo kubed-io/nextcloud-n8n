@@ -132,6 +132,10 @@ Things that have bitten contributors (human and AI) and shouldn't bite again:
   feature branch. New findings should be fixed, not baselined.
 - **LLMs ship stale action majors.** Verify with `gh api repos/<o>/<r>/releases/latest`
   before pinning anything in a workflow.
+- **Never weave `${{ }}` into `run:` bash.** It's interpolated before the shell runs
+  (injection risk + mixes templating with logic). Bind it to an `env:` entry and read the
+  clean `$VAR` in bash. Prefer `env:` for static/derivable values too. Invoke scripts with
+  `bash path/x.sh`, not the exec bit. (CONTRIBUTING.md → Workflow authoring conventions.)
 - **`@nextcloud/files` major must match NC major.** v4 for NC 33+. Mismatched
   versions silently break the Files row script. (saga §11/§12)
 - **Don't run heavy tools (Psalm) repeatedly in the shared prod pod.** Stacked

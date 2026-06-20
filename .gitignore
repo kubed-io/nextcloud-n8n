@@ -7,3 +7,5 @@ vendor/
 tests/.phpunit.cache/
 tests/results/
 .php-cs-fixer.cache
+tests/integration/vendor/
+tests/integration/junit/

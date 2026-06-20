@@ -274,6 +274,23 @@ editing a workflow, **verify the action's latest major** with `gh api
 repos/<owner>/<repo>/releases/latest` — the stale-major footgun is documented in
 [Chapter 2 §5.2](saga/Chapter_2_Pretty_Package.md).
 
+### Workflow authoring conventions
+
+- **Never put `${{ }}` expressions inside `run:` bash.** GitHub interpolates them into the
+  script *before* the shell runs — a script-injection hole and a mix of templating with
+  logic. Instead, bind the expression to an **`env:`** entry (step- or job-level) and let
+  bash read the clean `$VAR`:
+  ```yaml
+  - name: Do the thing
+    env:
+      VERSION: ${{ steps.bump.outputs.version }}
+    run: echo "shipping $VERSION"     # not: echo "${{ steps.bump.outputs.version }}"
+  ```
+  `${{ }}` is fine in `with:`, `if:`, `name:`, `env:` values — just **not** woven into `run:`.
+- **Prefer `env:` for static or derivable values too** (job-level `env:` for repo-wide
+  constants like `APP_ID`), so each `run:` step reads as its actual purpose, not plumbing.
+- **Invoke scripts with `bash path/to/x.sh`** rather than relying on the executable bit.
+
 ---
 
 ## Commits, changelog, versions
