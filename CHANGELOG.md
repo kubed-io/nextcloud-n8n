@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- Integration test: admin-setup stage (configures the app via occ).
+- Integration tests now run on Behat (JUnit reported like the unit suite).
 - `CONTRIBUTING.md`, `AGENTS.md`, and `SECURITY.md`.
 - `LICENSE` (AGPL-3.0).
 - PHP unit tests (PHPUnit) and frontend unit tests (Vitest).

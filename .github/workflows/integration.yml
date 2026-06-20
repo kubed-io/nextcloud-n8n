@@ -1,16 +1,16 @@
 name: 🔗 Integration
 
-# Integration scaffolding: prove n8n_sync enables + uninstalls cleanly on a real
-# Nextcloud instance (saga §5). A clean uninstall is also an app-store rule.
+# Integration tests (saga §5) — prove the real wiring the unit suite mocks out,
+# on a live Nextcloud + n8n. Framework: **Behat** (the Nextcloud-native
+# integration framework, per nextcloud/deck), run from tests/integration/. Behat
+# drives `occ` and (later stages) NC's API + the n8n REST API, and asserts both
+# sides. Its BUILT-IN junit formatter emits JUnit XML, which the same
+# EnricoMi reporter the unit suite uses turns into a sticky PR comment + summary.
 #
-# Pattern: this follows the official Nextcloud apps (nextcloud/deck,
-# integration_openai) — check out `nextcloud/server`, mount this app into
-# `apps/n8n_sync`, set up PHP, `occ maintenance:install` on SQLite (fast), then
-# drive `occ` directly. n8n runs as a GitHub Actions `services:` container (a
-# pre-built image with no checkout dependency, so the services feature fits it
-# cleanly); it's here for the later pull/writeback tests — the scaffolding test
-# only needs Nextcloud. docker-compose.yaml is NOT used in CI (devcontainer
-# only; saga §4a).
+# Setup follows the official apps: check out nextcloud/server, mount this app
+# into apps/n8n_sync, install on SQLite. n8n runs as a GHA services: container
+# (pre-built image — the services feature fits it). docker-compose.yaml is NOT
+# used in CI (devcontainer only; saga §4a).
 
 on:
   pull_request:
@@ -29,22 +29,26 @@ on:
 
 permissions:
   contents: read
+  # Behat results → sticky PR comment + check run (EnricoMi), like the unit suite.
+  checks: write
+  pull-requests: write
 
 concurrency:
   group: integration-${{ github.ref }}
   cancel-in-progress: true
 
-# Static values live here so `run:` steps are pure bash reading $VARS — never
-# inline `${{ }}` templating (see CONTRIBUTING.md "Workflow conventions").
+# Static values here so `run:` steps are pure bash reading $VARS — never inline
+# `${{ }}` templating (see CONTRIBUTING.md "Workflow authoring conventions").
 env:
   APP_ID: n8n_sync
-  OCC: php occ
   N8N_URL: http://localhost:5678
+  NC_ADMIN_USER: admin
+  NC_ADMIN_PASS: admin
 
 jobs:
 
   integration:
-    name: Install / uninstall on real Nextcloud
+    name: Behat on real Nextcloud
     runs-on: ubuntu-latest
 
     strategy:
@@ -55,8 +59,7 @@ jobs:
 
     services:
       # n8n with the instance owner pre-provisioned via env (no signup wizard,
-      # saga §4a.1) — a background container via the GHA services feature. Needed
-      # by later pull/writeback tests; the scaffolding test doesn't touch it yet.
+      # saga §4a.1) — a background container via the GHA services feature.
       n8n:
         image: docker.n8n.io/n8nio/n8n:latest
         ports:
@@ -97,31 +100,55 @@ jobs:
         php-version: '8.4'
         extensions: mbstring, iconv, fileinfo, intl, sqlite, pdo_sqlite, gd, zip, curl, xml
         coverage: none
+        tools: composer:v2
 
     - name: Install Nextcloud (SQLite)
       run: |
         mkdir -p data
         ./occ maintenance:install \
           --database=sqlite \
-          --admin-user=admin \
-          --admin-pass=admin
+          --admin-user="$NC_ADMIN_USER" \
+          --admin-pass="$NC_ADMIN_PASS"
         ./occ config:system:set trusted_domains 1 --value=localhost
 
     - name: Wait for n8n
       run: |
         for i in $(seq 1 40); do
-          if curl -fsS http://localhost:5678/healthz | grep -q ok; then echo "n8n healthy"; exit 0; fi
+          if curl -fsS "$N8N_URL/healthz" | grep -q ok; then echo "n8n healthy"; exit 0; fi
           sleep 3
         done
         echo "n8n did not become healthy" >&2; exit 1
 
-    - name: Stage 0 — install / uninstall scaffolding
-      run: bash "apps/$APP_ID/tests/integration/install-uninstall.sh"
+    - name: Install Behat deps
+      working-directory: apps/${{ env.APP_ID }}/tests/integration
+      run: composer install --prefer-dist --no-progress
 
-    # Stage 1 (saga §5): wire the admin config via occ. NO authenticated calls to
-    # n8n yet — this only proves the connection config plumbing.
-    - name: Stage 1 — admin setup (no n8n calls)
-      run: bash "apps/$APP_ID/tests/integration/admin-setup.sh"
+    # Behat runs from the integration dir; OCC points back at the server root so
+    # `occ` resolves. Formatters (pretty → stdout, junit → junit/) are configured
+    # in behat.dist.yml, so no --format flags needed here.
+    - name: Run Behat
+      working-directory: apps/${{ env.APP_ID }}/tests/integration
+      env:
+        OCC: php ${{ github.workspace }}/occ
+        NC_BASE_URL: http://localhost:8080
+      run: vendor/bin/behat --config behat.dist.yml
+
+    - name: Publish integration results
+      if: always()
+      uses: EnricoMi/publish-unit-test-result-action@v2
+      with:
+        check_name: Integration test results
+        files: apps/${{ env.APP_ID }}/tests/integration/junit/*.xml
+        comment_mode: always
+
+    - name: Upload JUnit + NC log on failure
+      if: always()
+      uses: actions/upload-artifact@v7
+      with:
+        name: integration-junit
+        path: |
+          apps/${{ env.APP_ID }}/tests/integration/junit/*.xml
+        if-no-files-found: warn
 
     - name: Nextcloud log on failure
       if: failure()

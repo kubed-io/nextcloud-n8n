@@ -30,7 +30,14 @@ case "$cmd" in
 	down)  $COMPOSE down -v ;;
 	logs)  $COMPOSE logs -f ;;
 	occ)   occ "$@" ;;
-	test)  OCC="$COMPOSE exec -T -u www-data $NC_SVC php occ" "$HERE/install-uninstall.sh" ;;
+	test)
+		# Run the Behat integration suite against the running compose stack.
+		# occ goes through the nextcloud container; behat runs on the host.
+		( cd "$HERE" \
+			&& composer install --no-interaction --quiet \
+			&& OCC="$COMPOSE exec -T -u www-data $NC_SVC php occ" \
+				vendor/bin/behat --config behat.dist.yml )
+		;;
 	*)
 		echo "usage: tests/integration/stack.sh {up|down|logs|occ <args>|test}" >&2
 		exit 2
