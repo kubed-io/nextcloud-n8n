@@ -144,6 +144,14 @@ jobs:
         echo "key=$key" >> "$GITHUB_OUTPUT"
         echo "✅ n8n API key obtained (length ${#key})"
 
+    # PREREQUISITE control case: load example workflows into n8n through n8n's OWN
+    # API (not via the app under test), so mapping/pull scenarios have real,
+    # pre-existing tagged workflows to act on.
+    - name: Preload example workflows into n8n (prerequisite)
+      env:
+        N8N_API_KEY: ${{ steps.n8n_key.outputs.key }}
+      run: bash apps/$APP_ID/tests/integration/bin/preload-n8n.sh
+
     # Behat runs from the integration dir; OCC points back at the server root so
     # `occ` resolves. Formatters (pretty → stdout, junit → junit/) are configured
     # in behat.dist.yml, so no --format flags needed here.

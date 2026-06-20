@@ -219,7 +219,42 @@ A mapping binds an n8n workflow tag to a Nextcloud folder and defines who can se
 
 ## CLI Commands
 
-For scripting and troubleshooting, two `occ` commands are available:
+Every admin action is available over `occ`, so the whole connection + mappings setup can be
+automated (e.g. from a Kubernetes init/config job) — the same operations as the admin Settings
+panel. All commands exit `0` on success and non-zero on error.
+
+### Configure the connection
+
+```sh
+# Point the app at your n8n instance
+occ config:app:set n8n_sync n8n_url --value="https://n8n.example.com"
+
+# Store your n8n API key (encrypted, exactly as the Settings panel does).
+# Pass it as an argument, or pipe it on stdin to keep it out of shell history:
+echo "$N8N_API_KEY" | occ n8n_sync:set-api-key
+
+# Turn the REST API channel on
+occ config:app:set n8n_sync api_enabled --value=1
+
+# Verify it all works — the headless "Test connection" button
+occ n8n_sync:test-connection
+```
+
+### Manage folder mappings
+
+```sh
+# Add a mapping (JSON: n8n_tag → team_folder, with mode + writeback).
+# mode: "sync" (writeback "two-way"|"readonly") or "reference" (link, no writeback).
+occ n8n_sync:add-mapping '{"n8n_tag":"nextcloud:alpha","team_folder":"alpha","nc_groups":["admins"],"mode":"sync","writeback":"two-way","use_team_folder":true}'
+
+# List the configured mappings (JSON)
+occ n8n_sync:list-mappings
+
+# Remove a mapping by its id (from list-mappings)
+occ n8n_sync:remove-mapping <mapping-id>
+```
+
+### Inspect workflows (smoke tests)
 
 ```sh
 # List workflows from n8n (smoke-tests the REST client)
@@ -229,5 +264,3 @@ occ n8n_sync:list-workflows --limit=10 --tag=my-tag
 # Fetch a single workflow by ID
 occ n8n_sync:get-workflow <workflow-id>
 ```
-
-Both commands output raw JSON and exit with code `0` on success, `1` on error.
