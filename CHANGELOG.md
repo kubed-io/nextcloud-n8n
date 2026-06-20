@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Psalm now loads `nextcloud/ocp` (`extraFiles`), clearing ~176 false-positive
+  `UndefinedClass`/`MissingDependency` code-scanning alerts for built-in OCP classes.
 - JS unit tests (Vitest) for the Files-integration helpers, extracted into a dependency-free
   `src/files-helpers.js`; wired into the JS CI job.
 - `LICENSE` file: canonical AGPL-3.0 text, plus `info.xml` `<repository>` and corrected

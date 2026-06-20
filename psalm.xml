@@ -18,4 +18,14 @@
 			<directory name="vendor" />
 		</ignoreFiles>
 	</projectFiles>
+	<!--
+		Load the nextcloud/ocp class definitions so Psalm resolves OCP\* symbols
+		(IConfig, Files\Node, AppFramework\Controller, the Settings interfaces, …).
+		Without this, Psalm reports every OCP reference as UndefinedClass /
+		MissingDependency / UndefinedDocblockClass — ~176 false positives. We scan
+		only the OCP package (not all of vendor) to keep analysis fast.
+	-->
+	<extraFiles>
+		<directory name="vendor/nextcloud/ocp" />
+	</extraFiles>
 </psalm>
