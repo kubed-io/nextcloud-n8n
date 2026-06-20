@@ -145,16 +145,22 @@ jobs:
           ```
 
     - name: Summary
+      env:
+        VERSION: ${{ steps.bump.outputs.version }}
+        TAG: ${{ steps.bump.outputs.tag }}
+        TARBALL: ${{ steps.package.outputs.tarball }}
+        PUSHED: ${{ inputs.push }}
+        RELEASE_NOTES: ${{ steps.bump.outputs.release-notes }}
       run: |
         {
           echo "## Publish"
           echo ""
-          echo "- **Version**: ${{ steps.bump.outputs.version }}"
-          echo "- **Tag**: ${{ steps.bump.outputs.tag }}"
-          echo "- **Tarball**: ${{ steps.package.outputs.tarball }}"
-          echo "- **Pushed**: ${{ inputs.push }}"
+          echo "- **Version**: $VERSION"
+          echo "- **Tag**: $TAG"
+          echo "- **Tarball**: $TARBALL"
+          echo "- **Pushed**: $PUSHED"
           echo ""
           echo "### Release Notes"
           echo ""
-          echo "${{ steps.bump.outputs.release-notes }}"
+          echo "$RELEASE_NOTES"
         } >> "$GITHUB_STEP_SUMMARY"

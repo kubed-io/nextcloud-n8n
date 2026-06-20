@@ -34,8 +34,12 @@ concurrency:
   group: integration-${{ github.ref }}
   cancel-in-progress: true
 
+# Static values live here so `run:` steps are pure bash reading $VARS — never
+# inline `${{ }}` templating (see CONTRIBUTING.md "Workflow conventions").
 env:
   APP_ID: n8n_sync
+  OCC: php occ
+  N8N_URL: http://localhost:5678
 
 jobs:
 
@@ -112,14 +116,12 @@ jobs:
         echo "n8n did not become healthy" >&2; exit 1
 
     - name: Stage 0 — install / uninstall scaffolding
-      run: OCC="php occ" apps/${{ env.APP_ID }}/tests/integration/install-uninstall.sh
+      run: bash "apps/$APP_ID/tests/integration/install-uninstall.sh"
 
     # Stage 1 (saga §5): wire the admin config via occ. NO authenticated calls to
     # n8n yet — this only proves the connection config plumbing.
     - name: Stage 1 — admin setup (no n8n calls)
-      run: |
-        OCC="php occ" N8N_URL="http://localhost:5678" \
-          apps/${{ env.APP_ID }}/tests/integration/admin-setup.sh
+      run: bash "apps/$APP_ID/tests/integration/admin-setup.sh"
 
     - name: Nextcloud log on failure
       if: failure()
