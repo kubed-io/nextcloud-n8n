@@ -149,10 +149,20 @@ Long version in [CONTRIBUTING.md](CONTRIBUTING.md). Short version:
 2. **PR targets `main`.** Link the issue if there is one. Must pass CI and get one
    maintainer approval (hard gates).
 3. **Tests on every PR** that touches `lib/`, when reasonable. Skip with a note if not.
-4. **Changelog entry** under `## [Unreleased]` for user-visible changes. **The
-   changelog is the release notes** — one line per entry, short and sweet, no
-   paragraphs. Long descriptions are only for breaking changes. Details belong
-   in the PR description, not the changelog.
+4. **Changelog entry** under `## [Unreleased]`. **The changelog IS the release
+   notes** — write for a user reading the release. One line per entry, never a
+   paragraph. Length tracks user impact:
+   - **Functional change** (a feature/behavior users notice, e.g. "Publish a
+     workflow to n8n from the file action") → the most detail you get, but still
+     one line. This is where words are warranted.
+   - **Non-functional** (refactor, types, tests, lint) → short, often half a line.
+   - **DevOps/CI/tooling not touching app code** → shortest, e.g. "CI: add
+     integration workflow." No rationale, no file lists, no method names.
+   - Only `**BREAKING:**` entries may stretch. The why / file lists / design go in
+     the **saga** or PR description — never the changelog.
+   - **Only ever edit `## [Unreleased]`.** Every section below it has a version
+     number and is **immutable** — those notes already shipped; never reword,
+     reorder, or delete them. New work always goes under `[Unreleased]`.
 5. **Human validation on a real Nextcloud** is required before review — agents
    cannot skip this. State what was tested in the PR description.
 6. **Release is manual** via `publish.yml`. Don't bump versions in feature PRs.
