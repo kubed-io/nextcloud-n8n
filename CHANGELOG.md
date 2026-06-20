@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Integration tests mint an n8n API key as a CI prerequisite.
 - Gherkin `.feature` files moved to top-level `features/`.
 - Migrated deprecated `IConfig` app-config calls to `IAppConfig`.
 - Cleared most static-analysis findings (Psalm).
