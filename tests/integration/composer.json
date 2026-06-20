@@ -15,7 +15,7 @@
 	},
 	"autoload-dev": {
 		"psr-4": {
-			"OCA\\N8nSync\\Tests\\Integration\\": "features/bootstrap/"
+			"OCA\\N8nSync\\Tests\\Integration\\": "bootstrap/"
 		}
 	}
 }

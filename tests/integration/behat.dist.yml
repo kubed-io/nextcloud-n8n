@@ -12,11 +12,24 @@
 #   NC_BASE_URL, NC_ADMIN_USER, NC_ADMIN_PASS, N8N_URL, OCC
 
 default:
+  # @todo scenarios are the documented spec for stages not yet wired (their step
+  # defs don't exist yet); skip them so CI runs only live scenarios. Drop the
+  # filter (or retag) as each stage's steps land.
+  gherkin:
+    filters:
+      tags: '~@todo'
+
   suites:
     default:
       paths:
-        - '%paths.base%/features'
+        # Gherkin lives at the repo root (features/) so the human-readable use
+        # cases are prominent and linkable from docs; behat.dist.yml stays under
+        # tests/integration/ with the rest of the test plumbing.
+        - '%paths.base%/../../features'
       contexts:
+        # Context class lives with the test code (tests/integration/bootstrap/),
+        # loaded via the integration composer autoload — features/ stays pure
+        # Gherkin.
         - OCA\N8nSync\Tests\Integration\FeatureContext
 
   formatters:
