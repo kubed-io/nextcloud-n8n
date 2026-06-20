@@ -391,13 +391,31 @@ without making a single call to n8n:
 - **Exit:** `occ config:app:get` shows the values set; the app is "configured"; **still zero
   authenticated calls to n8n.** This is the deliberate scope line for the next milestone.
 
-**Stage 2 — The token conversation ☐.** *Where does the API key come from?* n8n has **no
-headless API-key mint** (§4a.1). Resolve it one of two ways, then store it the way the app
-expects (encrypted): **(A)** log in to the n8n service with the env-provisioned owner creds over
-REST and create a key, or **(B)** seed the key row into n8n's SQLite. Then write it through
-**`ICrypto::encrypt()`** (a tiny `occ` command or test bootstrap helper) so `N8nClient` can
-`decrypt()` it — *not* a raw `occ config:app:set`. Decide A vs B here; **(A) preferred**.
-- **Exit:** the stored `api_key` decrypts and authenticates.
+**Stage 2 — The token conversation ⚔️ (the main antagonist of this chapter).** *Where does
+the API key come from?* n8n has **no headless API-key mint** (§4a.1), so the token has been the
+one thing standing between us and live integration tests — the boss fight. **It is now
+defeated:** proven end-to-end against a real n8n that path A works, with pure `curl` and **zero
+secrets**. Once the token falls, the rest of the integration suite is off to the races.
+
+*The proven recipe (verified live — login → mint → public API all 200):*
+1. **`POST /rest/login`** with `{"emailOrLdapLoginId":"owner@example.com","password":"n8npassword"}`
+   → 200, sets an `n8n-auth` session cookie. **Read the `Set-Cookie` header and replay it
+   verbatim** — do NOT rely on curl's cookie jar: n8n's cookie attributes make curl's `-c/-b`
+   jar drop `n8n-auth`, which silently 401s the next call. (`node`'s manual replay or
+   `curl -D - … | grep -i ^set-cookie` both work; the jar does not.)
+2. **`POST /rest/api-keys`** with `Cookie: n8n-auth=…` and body
+   `{"label":"itest","expiresAt":null,"scopes":["workflow:read","workflow:list"]}`
+   → 200, returns `data.rawApiKey` (a ~267-char JWT). Route confirmed from source:
+   `@RestController('/api-keys')` → mounted at `/rest/api-keys`, guarded by `apiKey:create` +
+   the api-enabled middleware.
+3. **Verify:** `GET /api/v1/workflows?limit=1` with `X-N8N-API-KEY: <rawApiKey>` → 200
+   `{"data":[],"nextCursor":null}` — i.e. the minted key authenticates the *public* API exactly
+   as `N8nClient` uses it.
+
+*Storing it the way the app expects (the second half of the fight):* write the raw key through
+**`ICrypto::encrypt()`** (a tiny `occ` helper command on our side) so `N8nClient::decrypt()` can
+use it — **not** a raw `occ config:app:set` (that stores plaintext; `decrypt()` then throws).
+- **Exit:** the stored `api_key` decrypts and authenticates (Stage 3 is then trivial).
 
   *Secrets / registration — researched, decided (no GitHub secrets needed):*
   - **The emailed n8n "registration key" is NOT needed.** It's the optional *Registered
