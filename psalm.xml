@@ -51,10 +51,12 @@
 				<referencedClass name="OCA\Files_Trashbin\Events\NodeRestoredEvent" />
 			</errorLevel>
 		</UndefinedDocblockClass>
-		<MissingDependency>
-			<errorLevel type="suppress">
-				<referencedClass name="OCP\Files\IRootFolder" />
-			</errorLevel>
-		</MissingDependency>
+		<!--
+			MissingDependency doesn't support <referencedClass> in Psalm 6's schema.
+			The only instances are IRootFolder reporting its base oc\hooks\emitter as
+			missing — purely an OCP-stub artifact, not our code — so suppress the
+			whole (low-value) issue type.
+		-->
+		<MissingDependency errorLevel="suppress" />
 	</issueHandlers>
 </psalm>

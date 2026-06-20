@@ -76,7 +76,10 @@ jobs:
       id: seed_baseline
       run: |
         if [ ! -f tests/psalm-baseline.xml ]; then
-          vendor/bin/psalm --no-cache --threads=4 --set-baseline=tests/psalm-baseline.xml || true
+          # --ignore-baseline so the (now-absent) errorBaseline reference in
+          # psalm.xml doesn't abort generation.
+          vendor/bin/psalm --no-cache --threads=4 --ignore-baseline \
+            --set-baseline=tests/psalm-baseline.xml || true
           echo "seeded=true" >> "$GITHUB_OUTPUT"
         fi
 
