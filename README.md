@@ -71,9 +71,18 @@ already-mapped folder — the nearest enclosing mapping wins.
 Nextcloud lets you move a file anywhere — so the app guards the moves that would
 break the n8n link. A managed workflow may move freely **within its own mapping**
 (rename, or into a subfolder of the same mapped folder). Moving it **out** of its
-mapped folder, or into a **different** mapping, is **aborted with a message** — a
-deliberate block so sync never silently stops. The `move.feature` spec walks every
-branch (out / subfolder / mapped→mapped / nested-different-mapping).
+mapped folder, or into a **different** mapping, is currently **aborted with a
+message** — a deliberate block so sync never silently stops. The `move.feature`
+spec walks every branch (out / subfolder / mapped→mapped / nested-different-mapping).
+
+**Planned end state:** moving a **sync** workflow *out* of its folder will instead
+**strip its n8n metadata**, leaving a plain `.n8n.json` document in Nextcloud (no
+longer tracked in n8n); moving it back into a mapped folder will **re-create** it
+in n8n and re-stamp the metadata — a move in Nextcloud, a create in n8n. This was a
+Chapter-1 leftover whose prerequisites (the delete/restore lifecycle, metadata
+contract) now exist; it is intentionally **not implemented until the current
+behaviour is covered by passing integration tests**. **Link** and **backup**
+move-out stays blocked (not yet designed). See Chapter 2 of the saga for the plan.
 
 📋 spec: [`features/move.feature`](features/move.feature) · 🛠 [`lib/Listener/MoveGuardListener.php`](lib/Listener/MoveGuardListener.php)
 

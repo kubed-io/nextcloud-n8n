@@ -412,6 +412,27 @@ URL + n8n service all line up end to end. The smallest possible real round-trip.
 Each stage is independently committable and leaves CI green; the suite is the arbiter that the
 refactored data plane still behaves.
 
+#### 5.3 Deferred feature — "move a sync workflow out = unmap" (Chapter-1 leftover)
+
+A genuine behaviour gap surfaced while writing the `features/` specs against the code:
+
+- **Now (code):** `MoveGuardListener` **hard-blocks** moving a managed `*.n8n.json` out of /
+  across mappings, for *every* mode (`AbortedEventException`). The class comment is explicit:
+  *"the simple rule is 'you can't move it out'"*, chosen to dodge the delete/unlink/convert
+  edge cases.
+- **Intended end state (sync only):** moving a **sync** file *out* of its mapped folder should
+  **strip its n8n metadata** → a plain, unmanaged `.n8n.json` still present in NC but no longer
+  tracked in n8n. Moving it back into a mapped folder should be a **create in n8n + re-stamp
+  metadata** (a move in NC, a create in n8n). **Link/backup move-out stays blocked** — that
+  case isn't designed yet.
+- **Why deferred:** this was a Chapter-1 leftover that wasn't *enabled* then; its prerequisites
+  (the delete/restore lifecycle, the metadata contract, the move guard itself) now exist, so we
+  *could* build it — but **not until the current behaviour is covered by passing integration
+  tests.** Sequence: (1) `features/move.feature` documents today's block and goes green;
+  (2) then implement the sync strip/re-enrich, flipping those scenarios to the new end state.
+- The README "Moving files" section states this end state for users; `features/move.feature`
+  stays accurate-to-code (blocked) until step (2).
+
 #### Browser e2e (Cypress) — small, high-value set *(on the §4a stack, latest)*
 - The "Open in n8n" click opens the correct n8n URL
 - The n8n icon appears on `.n8n.json` rows in the Files view

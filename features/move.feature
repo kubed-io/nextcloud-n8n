@@ -7,10 +7,17 @@
 # Current rule (lib/Listener/MoveGuardListener.php): a managed .n8n.json file may
 # only move WITHIN its own mapping (rename, or into a subfolder of the same
 # mapped folder). Any move that lands under a *different* mapping, or under no
-# mapping, is aborted.
+# mapping, is aborted — for EVERY mode.
 #
-# @todo until the move/abort step defs land (saga §5); kept accurate to code so
-# it's the spec, not a wish.
+# These scenarios describe what the code does NOW, so they pass once the step
+# defs are wired. The intended END STATE differs for one case — moving a *sync*
+# file out of its folder should eventually strip its metadata to a plain
+# .n8n.json (and moving it back in re-creates it in n8n). That enhancement is
+# tracked in the README + Chapter 2 §5.3 and is deliberately NOT yet built;
+# link/backup move-out stays blocked (not yet designed). Until then, this stays
+# accurate-to-code: blocked for all.
+#
+# @todo until the move/abort step defs land (saga §5).
 
 @todo
 Feature: Moving a managed workflow file
