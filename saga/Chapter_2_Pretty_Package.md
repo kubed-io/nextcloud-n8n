@@ -366,14 +366,51 @@ order (do the dep-free ones first — they are the literal scaffold):
 - `PushService` routing — channel dispatch logic
 - Controller responses — admin-gated, JSON shapes
 
-#### Integration suite — `tests/integration/`, runs on the §4a stack *(scaffolded later)*
+#### Integration suite — `tests/integration/`, runs on the §4a stack *(staged roadmap)*
 
-Requires a live NC + n8n (the docker-compose stack in §4a; CI brings up the same stack).
-These are the tests whose entire value is the real wiring the unit suite mocks out:
-- Pull sync: trigger `pullAll()` → files appear in NC with correct metadata and mimetype
-- Writeback: save a file → n8n receives the PUT
-- Delete: trash a file → n8n archives; purge → n8n hard-deletes; restore → unarchives
-- Name sync: rename → JSON name and n8n name converge within one cron tick
+Requires a live NC + n8n (CI uses the checkout-server pattern + n8n as a service; §10).
+This is the wiring the unit suite mocks out, and the **automated safety net** that proves the
+real behaviour still works after all the Chapter-2 refactoring. It is built up the same way a
+human operator would set the integration up — each stage is a prerequisite for the next, so the
+suite grows along this road rather than in one leap:
+
+**Stage 0 — Install ✅ (PR #12).** App enables + uninstalls cleanly on a real NC
+(`tests/integration/install-uninstall.sh`). No n8n contact. The harness itself.
+
+**Stage 1 — Admin setup (no auth calls yet) ☐ ← NEXT MILESTONE.** Drive the same AppConfig
+the admin UI writes, via `occ config:app:set n8n_sync …`, to wire the connection *config*
+without making a single call to n8n:
+- `n8n_url` → the n8n service URL.
+- `api_enabled` → `1` (REST writeback/pull path on).
+- `api_key` → the token. **This is the crux** (see Stage 2): the key is stored
+  **`sensitive` and `ICrypto`-encrypted**; `N8nClient` calls `ICrypto::decrypt()` on it. A plain
+  `occ config:app:set … --sensitive` only *hides* the value, it does **not** `ICrypto`-encrypt
+  it, so a plaintext key fails `decrypt()`. Stage 1 just has to get a value *stored*; Stage 2
+  owns getting a *usable* one.
+- `mappings` → one entry (n8n tag → Team Folder) via the `mappings` JSON key.
+- **Exit:** `occ config:app:get` shows the values set; the app is "configured"; **still zero
+  authenticated calls to n8n.** This is the deliberate scope line for the next milestone.
+
+**Stage 2 — The token conversation ☐.** *Where does the API key come from?* n8n has **no
+headless API-key mint** (§4a.1). Resolve it one of two ways, then store it the way the app
+expects (encrypted): **(A)** log in to the n8n service with the env-provisioned owner creds over
+REST and create a key, or **(B)** seed the key row into n8n's SQLite. Then write it through
+**`ICrypto::encrypt()`** (a tiny `occ` command or test bootstrap helper) so `N8nClient` can
+`decrypt()` it — *not* a raw `occ config:app:set`. Decide A vs B here; **(A) preferred**.
+- **Exit:** the stored `api_key` decrypts and authenticates.
+
+**Stage 3 — First authenticated call ☐.** The "Test connection" path: `N8nClient` lists
+workflows (`GET /api/v1/workflows?limit=1`) with `X-N8N-API-KEY`. Proves the encrypted key +
+URL + n8n service all line up end to end. The smallest possible real round-trip.
+
+**Stage 4 — CRUD integration tests ☐.** The full safety net, building on Stages 1–3:
+- Pull: `pullAll()` → files appear in NC with correct metadata + mimetype.
+- Writeback: save a `sync·two-way` file → n8n receives the PATCH.
+- Delete: trash → n8n archives; purge → hard-delete; restore → unarchive.
+- Name sync: rename → JSON name and n8n name converge within one cron tick.
+
+Each stage is independently committable and leaves CI green; the suite is the arbiter that the
+refactored data plane still behaves.
 
 #### Browser e2e (Cypress) — small, high-value set *(on the §4a stack, latest)*
 - The "Open in n8n" click opens the correct n8n URL
@@ -582,37 +619,42 @@ baseline is the explicit ledger of deferred cleanup: shrink it over time
 So "refactor pass" reads as "keep the gates green and the baseline shrinking," not a single
 event gated on the test suite being finished.
 
-#### 12.1 Code-scanning paydown — progress + the remaining queue
+#### 12.1 Code-scanning paydown — DONE (239 → 14)
 
-The Psalm SARIF Security-tab count went **239 → ~73** (PR #15):
-- **Root cause:** Psalm wasn't loading `nextcloud/ocp`, so ~166 references to real OCP
-  classes were false `UndefinedClass`/`MissingDependency` errors. Fixed with `<extraFiles>`
-  pointing at `vendor/nextcloud/ocp` (type inference 89% → 97%).
-- **Applied:** 43 classes → `final`, 47 `#[\Override]` attributes; suppressed not-our-bug
-  refs (private `OC`/`OC_Util`, other-app event classes, the `IRootFolder`→`oc\hooks\emitter`
-  OCP-stub artifact) via `issueHandlers`; regenerated the baseline.
-- **Hard-won ops note:** the cluster's Nextcloud **pod cannot run Psalm** — it hangs on the
-  analysis phase even when fresh/idle, while CI does it in ~2.4s. **Run Psalm in CI**, not the
-  pod. Baseline regeneration is done via a `--ignore-baseline --set-baseline` CI step that
-  uploads the result as an artifact to commit back. (The pod is fine for `php -l` + composer.)
+The Psalm SARIF Security-tab count went **239 → 14** across four focused PRs:
+- **#15 (239 → ~73):** root cause — Psalm wasn't loading `nextcloud/ocp`, so ~166 references
+  to real OCP classes were false `UndefinedClass`/`MissingDependency`. Fixed with `<extraFiles>`
+  → `vendor/nextcloud/ocp` (type inference 89% → 97%). Plus 43 `final`, 47 `#[\Override]`, and
+  `issueHandlers` suppressions of not-our-bug refs (`OC`/`OC_Util`, other-app event classes,
+  the `IRootFolder`→`oc\hooks\emitter` OCP-stub artifact).
+- **#17 (~73 → 65):** batch A — suppress 2 `InvalidTemplateParam` false positives; `mixed`
+  param types on the background `run()` methods; type a closure; drop a redundant `array_values`.
+- **#18 (65 → 41):** batch B — real type bugs. The big one: `WorkflowMetadata::read()/write()`
+  docblocks declared 3 of 6 keys; correcting them to the full shape cascaded out the
+  `InvalidArrayOffset`/`InvalidArgument`/`InvalidReturn*` cluster. `JSON_THROW_ON_ERROR` killed
+  the falsable `json_encode` returns; fixed a possibly-undefined var in `MappingService::update`.
+- **#19 (41 → 14):** batch C — migrate `IConfig::getAppValue/setAppValue` →
+  `IAppConfig::getValueString/setValueString` (identical defaults; return type is `string`, so
+  the wrapping `(string)` casts became truly redundant and were removed). `IServerContainer` →
+  PSR `ContainerInterface`. The one `IAppContainer` deprecation is core's API (no non-deprecated
+  `IBootContext` accessor) — documented, rides the baseline.
+
+**The residual 14 are essentially noise** and a fine stopping point: ~7 low-value defensive
+`(string)` casts on non-config values, 4 OCP-gap false positives (`DocblockTypeContradiction`/
+`ImplementedParamTypeMismatch` on the other-app event listeners — Psalm can't see those
+classes), the 1 `IAppContainer` core deprecation, and 1 each `RedundantCondition` /
+`InvalidArgument` ($body in N8nClient). An optional "batch D" could chase these to ~5 but it's
+diminishing returns (stripping defensive casts). The Psalm gate **baseline is down to 1 entry**.
+
+**Hard-won lessons (keep):**
+- The cluster's Nextcloud **pod cannot run Psalm** — it hangs on the analysis phase even fresh/
+  idle, while CI does it in ~2.4s. **Run Psalm in CI.** Regenerate the baseline via a CI
+  `--ignore-baseline --set-baseline` step that uploads it as an artifact to commit back. (Pod is
+  fine for `php -l` + composer.)
 - **Psalm 6 schema gotcha:** `<referencedClass>` is only valid under `UndefinedClass` /
-  `UndefinedDocblockClass` (not `MissingDependency` — suppress that as a whole type).
-
-**Remaining queue (the ~73, to clear in focused follow-up PRs — decided split, not one sweep):**
-- **DEFERRED — `IConfig::getAppValue/setAppValue` → `IAppConfig` migration (14 + 2 related
-  `DeprecatedInterface` for `IAppContainer`/`IServerContainer`).** These are real NC API
-  deprecations in our own code across ~10 service files. Deferred deliberately: it changes the
-  config API surface (`getValueString`/`setValueString`) and needs careful default-value
-  parity checking, so it gets its **own dedicated PR**, not folded into mechanical cleanup.
-- Mechanical (~27): redundant casts/conditions/function-call, missing param/closure types.
-- Genuine type bugs (~28): `InvalidArrayOffset`, `InvalidArgument`, falsable returns,
-  `DocblockTypeContradiction`, `ImplementedParamTypeMismatch`, etc. — fix with judgment.
-- False positives (2): `InvalidTemplateParam` on the event listeners (same OCP-gap cause as
-  the suppressed `UndefinedClass` for those two other-app event classes) — suppress.
-
-> The GitHub Advanced Security bot now posts these as inline PR review comments — confirmed
-> they are **our own Psalm findings re-surfaced**, not a second scanner. Good signal the
-> security-review loop is working.
+  `UndefinedDocblockClass` — `MissingDependency` (and similar) must be suppressed as a whole type.
+- The GitHub Advanced Security bot posts these inline on PRs — confirmed they are **our own
+  Psalm findings re-surfaced**, not a second scanner. The security-review loop works.
 
 ### 13. GitHub Security — get all the green checkmarks ⚠️ (partly done via §10)
 
