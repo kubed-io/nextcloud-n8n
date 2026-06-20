@@ -399,6 +399,22 @@ REST and create a key, or **(B)** seed the key row into n8n's SQLite. Then write
 `decrypt()` it — *not* a raw `occ config:app:set`. Decide A vs B here; **(A) preferred**.
 - **Exit:** the stored `api_key` decrypts and authenticates.
 
+  *Secrets / registration — researched, decided (no GitHub secrets needed):*
+  - **The emailed n8n "registration key" is NOT needed.** It's the optional *Registered
+    Community Edition* license, which only unlocks Folders / Debug-in-editor / Custom execution
+    data — none of which the tests touch. The **public REST API + API keys work on the plain,
+    unregistered community edition**; the "API unavailable during free trial" caveat is n8n
+    *Cloud* only. Keep that personal license out of CI.
+  - **No GitHub Actions secrets required at all.** The throwaway stack's creds are non-secret
+    and committed: n8n owner (`owner@example.com` / bcrypt of `n8npassword`) and NC admin
+    (`admin`/`admin`). The API key is **minted at runtime** (path A), so there is nothing to
+    store. Plaintext throwaway creds in the repo are correct here — they live only inside the
+    job's disposable containers and grant access to nothing real.
+  - **Tell secret scanning it's not a leak** with `.github/secret_scanning.yml` →
+    `paths-ignore:` covering the test-fixture paths (the n8n owner hash, any seeded test key).
+    (A bcrypt *hash* generally isn't flagged anyway, but the exclusion makes intent explicit and
+    covers a plaintext seeded key if path B is ever used.)
+
 **Stage 3 — First authenticated call ☐.** The "Test connection" path: `N8nClient` lists
 workflows (`GET /api/v1/workflows?limit=1`) with `X-N8N-API-KEY`. Proves the encrypted key +
 URL + n8n service all line up end to end. The smallest possible real round-trip.
