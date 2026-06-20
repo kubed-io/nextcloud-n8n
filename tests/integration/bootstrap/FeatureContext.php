@@ -134,7 +134,77 @@ final class FeatureContext implements Context {
 		Assert::assertStringContainsString($needle, $res['output'], "config $key did not contain '$needle'");
 	}
 
+	// ── connection steps (the "admin makes connection" use case) ──────────────
+
+	/** @Given the n8n base URL is set */
+	public function theN8nBaseUrlIsSet(): void {
+		$url = getenv('N8N_URL') ?: 'http://localhost:5678';
+		$res = $this->occ('config:app:set ' . self::APP_ID . ' n8n_url --value=' . escapeshellarg($url));
+		Assert::assertSame(0, $res['exit'], "setting n8n_url failed:\n{$res['output']}");
+	}
+
+	/**
+	 * Store the real, CI-minted key the way the admin UI would (encrypted), via
+	 * the app's own `n8n_sync:set-api-key` command (piped on stdin).
+	 *
+	 * @Given the n8n API key is set
+	 */
+	public function theN8nApiKeyIsSet(): void {
+		$key = getenv('N8N_API_KEY') ?: '';
+		Assert::assertNotSame('', $key, 'N8N_API_KEY is not set — the CI prerequisite must mint it first');
+		$res = $this->occStdin($this->occ . ' n8n_sync:set-api-key', $key);
+		Assert::assertSame(0, $res['exit'], "set-api-key failed:\n{$res['output']}");
+	}
+
+	/** @Given the n8n API key is set to :key */
+	public function theN8nApiKeyIsSetTo(string $key): void {
+		$res = $this->occStdin($this->occ . ' n8n_sync:set-api-key', $key);
+		Assert::assertSame(0, $res['exit'], "set-api-key failed:\n{$res['output']}");
+	}
+
+	/** @Given the REST API is enabled */
+	public function theRestApiIsEnabled(): void {
+		$res = $this->occ('config:app:set ' . self::APP_ID . ' api_enabled --value=1');
+		Assert::assertSame(0, $res['exit'], "enabling api failed:\n{$res['output']}");
+	}
+
+	/** @When I run the connection test */
+	public function iRunTheConnectionTest(): void {
+		$this->occ('n8n_sync:test-connection');
+	}
+
+	/** @Then the connection test succeeds */
+	public function theConnectionTestSucceeds(): void {
+		Assert::assertSame(0, $this->lastExit, "test-connection failed (exit {$this->lastExit}):\n{$this->lastOutput}");
+	}
+
+	/** @Then the connection test fails */
+	public function theConnectionTestFails(): void {
+		Assert::assertNotSame(0, $this->lastExit, "test-connection unexpectedly succeeded:\n{$this->lastOutput}");
+	}
+
 	// ── helpers ───────────────────────────────────────────────────────────────
+
+	/**
+	 * Run an occ command with data piped on stdin (for `set-api-key`, which reads
+	 * the key from stdin to keep it off the process list).
+	 *
+	 * @return array{exit:int, output:string}
+	 */
+	private function occStdin(string $cmd, string $stdin): array {
+		$descriptors = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
+		$proc = proc_open($cmd, $descriptors, $pipes);
+		Assert::assertIsResource($proc, "could not start: $cmd");
+		fwrite($pipes[0], $stdin);
+		fclose($pipes[0]);
+		$out = stream_get_contents($pipes[1]) . stream_get_contents($pipes[2]);
+		fclose($pipes[1]);
+		fclose($pipes[2]);
+		$exit = proc_close($proc);
+		$this->lastExit = $exit;
+		$this->lastOutput = $out;
+		return ['exit' => $exit, 'output' => $out];
+	}
 
 	/** Slice the "Enabled:" block out of `occ app:list` output (stop at "Disabled:"). */
 	private function enabledBlock(string $appList): string {
