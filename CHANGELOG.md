@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- JS unit tests (Vitest) for the Files-integration helpers, extracted into a dependency-free
+  `src/files-helpers.js`; wired into the JS CI job.
 - `LICENSE` file: canonical AGPL-3.0 text, plus `info.xml` `<repository>` and corrected
   `<bugs>` URL.
 - Integration test scaffolding: `docker-compose.yaml` (dev/devcontainer NC + n8n),
@@ -36,6 +38,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Two unused `catch` bindings flagged by the new linter.
+- Security: bump dompurify to 3.4.11 and Vite to 8 (drops the vulnerable esbuild), clearing
+  both Dependabot alerts.
 
 ## [0.1.1] - 2026-06-19
 

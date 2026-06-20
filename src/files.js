@@ -24,9 +24,9 @@ import { registerDavProperty, getDefaultPropfind, getClient, getRootPath, result
 import { loadState } from '@nextcloud/initial-state'
 import { translate as t } from '@nextcloud/l10n'
 import { emit } from '@nextcloud/event-bus'
+import { getN8nId, buildUrl, isN8nFile } from './files-helpers.js'
 
 const APP_ID = 'n8n_sync'
-const N8N_MIME = 'application/n8n+json'
 
 // Register our metadata key as a DAV property so it rides the directory PROPFIND
 // (writes to the shared _nc_files_scope.v4_0 store core's PROPFIND reads). `nc`
@@ -42,17 +42,6 @@ const n8nUrl = (() => {
     return ''
   }
 })()
-
-/** Read the n8n workflow id from a node's DAV attributes (the listing fast path). */
-function getN8nId(node) {
-  const a = node?.attributes ?? {}
-  const id = a['metadata-n8n_id'] || a['n8n_id'] || a['{http://nextcloud.org/ns}metadata-n8n_id']
-  return typeof id === 'string' ? id : ''
-}
-
-function buildUrl(id) {
-  return n8nUrl && id ? `${n8nUrl}/workflow/${encodeURIComponent(id)}` : ''
-}
 
 /**
  * Fallback for the first-load race: ask the built-in WebDAV endpoint for just
@@ -75,15 +64,7 @@ async function propfindN8nId(node) {
 
 /** Node → n8n deep link: node attributes first (free), else a one-shot PROPFIND. */
 async function resolveUrl(node) {
-  return buildUrl(getN8nId(node)) || buildUrl(await propfindN8nId(node))
-}
-
-/** Is this a single n8n workflow file? (mime OR `.n8n.json`, never plain JSON.) */
-function isN8nFile(context) {
-  const node = context?.nodes?.[0]
-  if (!node || context.nodes.length !== 1) return false
-  return node.mime === N8N_MIME
-    || (typeof node.basename === 'string' && node.basename.endsWith('.n8n.json'))
+  return buildUrl(n8nUrl, getN8nId(node)) || buildUrl(n8nUrl, await propfindN8nId(node))
 }
 
 // ── "Edit as text" — a plain-text source editor in a modal ─────────────────

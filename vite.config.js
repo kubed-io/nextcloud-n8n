@@ -24,7 +24,11 @@ export default defineConfig({
     cssCodeSplit: false,
     sourcemap: true,
     target: 'es2020',
-    minify: 'esbuild',
+    // Vite 8 bundles with Rolldown and no longer ships esbuild; its default
+    // minifier is Oxc. Leaving minify at the default ('oxc') keeps esbuild out
+    // of the dependency tree entirely (which also avoids the esbuild dev-server
+    // advisory that prompted this bump). 'esbuild' is deprecated in Vite 8.
+    minify: 'oxc',
     lib: {
       // IIFE so the bundle adds nothing to the global scope and runs
       // inline at <script> load time — no module loader plumbing needed.
