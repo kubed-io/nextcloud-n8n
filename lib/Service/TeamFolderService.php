@@ -13,10 +13,10 @@ use OCA\N8nSync\AppInfo\Application;
 use OCP\Constants;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
-use OCP\IConfig;
+use OCP\IAppConfig;
 use OCP\IDBConnection;
 use OCP\IGroupManager;
-use OCP\IServerContainer;
+use Psr\Container\ContainerInterface;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -47,11 +47,11 @@ final class TeamFolderService {
 	private const FOLDER_MANAGER = 'OCA\\GroupFolders\\Folder\\FolderManager';
 
 	public function __construct(
-		private IServerContainer $container,
+		private ContainerInterface $container,
 		private IDBConnection $db,
 		private IGroupManager $groupManager,
 		private IRootFolder $rootFolder,
-		private IConfig $config,
+		private IAppConfig $config,
 		private LoggerInterface $logger,
 	) {
 	}
@@ -133,7 +133,7 @@ final class TeamFolderService {
 	 * override with AppConfig `sync_actor` if ever needed.
 	 */
 	public function resolveActorUid(): string {
-		$configured = (string)$this->config->getAppValue(Application::APP_ID, 'sync_actor', '');
+		$configured = $this->config->getValueString(Application::APP_ID, 'sync_actor', '');
 		if ($configured !== '') {
 			return $configured;
 		}

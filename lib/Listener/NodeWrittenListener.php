@@ -22,7 +22,7 @@ use OCP\EventDispatcher\IEventListener;
 use OCP\Files\Events\Node\NodeWrittenEvent;
 use OCP\Files\File;
 use OCP\Files\IMimeTypeLoader;
-use OCP\IConfig;
+use OCP\IAppConfig;
 use OCP\IUserSession;
 use Psr\Log\LoggerInterface;
 
@@ -46,7 +46,7 @@ use Psr\Log\LoggerInterface;
  */
 final class NodeWrittenListener implements IEventListener {
 	public function __construct(
-		private IConfig $config,
+		private IAppConfig $config,
 		private IJobList $jobList,
 		private PushService $pushService,
 		private WorkflowMetadata $metadata,
@@ -112,7 +112,7 @@ final class NodeWrittenListener implements IEventListener {
 		// re-resolves the node through).
 		$uid = $this->userSession->getUser()?->getUID() ?? $node->getOwner()?->getUID() ?? '';
 
-		$timing = (string)$this->config->getAppValue(Application::APP_ID, 'timing', 'async');
+		$timing = $this->config->getValueString(Application::APP_ID, 'timing', 'async');
 		if ($timing !== 'sync' && $uid !== '') {
 			// Defer to the job, which pushes and surfaces its own failure toast.
 			$this->jobList->add(PushWorkflowJob::class, ['fileId' => $node->getId(), 'userId' => $uid]);

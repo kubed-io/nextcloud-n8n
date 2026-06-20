@@ -11,7 +11,7 @@ namespace OCA\N8nSync\Service;
 
 use OCA\N8nSync\AppInfo\Application;
 use OCP\AppFramework\Utility\ITimeFactory;
-use OCP\IConfig;
+use OCP\IAppConfig;
 
 /**
  * Tracks the last-run state for the manual sync buttons.
@@ -38,7 +38,7 @@ final class SyncStatusService {
 	public const DIR_PUSH = 'push';
 
 	public function __construct(
-		private IConfig $config,
+		private IAppConfig $config,
 		private ITimeFactory $time,
 	) {
 	}
@@ -54,7 +54,7 @@ final class SyncStatusService {
 	/** @return array<string,mixed> */
 	public function get(string $direction): array {
 		$this->assertDirection($direction);
-		$raw = (string)$this->config->getAppValue(
+		$raw = $this->config->getValueString(
 			Application::APP_ID,
 			$this->key($direction),
 			'{}',
@@ -102,7 +102,7 @@ final class SyncStatusService {
 
 	private function save(string $direction, array $record): void {
 		$this->assertDirection($direction);
-		$this->config->setAppValue(
+		$this->config->setValueString(
 			Application::APP_ID,
 			$this->key($direction),
 			json_encode($record, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),

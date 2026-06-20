@@ -14,7 +14,7 @@ use OCA\N8nSync\BackgroundJob\ManualSyncJob;
 use OCP\BackgroundJob\IJobList;
 use OCP\Files\Folder;
 use OCP\Files\IMimeTypeLoader;
-use OCP\IConfig;
+use OCP\IAppConfig;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -53,7 +53,7 @@ final class SyncService {
 		private IMimeTypeLoader $mimeLoader,
 		private IJobList $jobList,
 		private SyncStatusService $status,
-		private IConfig $config,
+		private IAppConfig $config,
 		private LoggerInterface $logger,
 	) {
 	}
@@ -435,7 +435,7 @@ final class SyncService {
 	 */
 	private function encodeReference(array $workflow): string {
 		$id = (string)$workflow['id'];
-		$base = rtrim((string)$this->config->getAppValue(Application::APP_ID, 'n8n_url', ''), '/');
+		$base = rtrim($this->config->getValueString(Application::APP_ID, 'n8n_url', ''), '/');
 		$tags = [];
 		foreach ($workflow['tags'] ?? [] as $t) {
 			if (is_array($t) && isset($t['name'])) {

@@ -10,7 +10,7 @@ declare(strict_types=1);
 namespace OCA\N8nSync\Service;
 
 use OCA\N8nSync\AppInfo\Application;
-use OCP\IConfig;
+use OCP\IAppConfig;
 
 /**
  * Storage + CRUD for the folder-mapping list.
@@ -25,13 +25,13 @@ use OCP\IConfig;
  */
 final class MappingService {
 	public function __construct(
-		private IConfig $config,
+		private IAppConfig $config,
 	) {
 	}
 
 	/** @return list<Mapping> */
 	public function list(): array {
-		$raw = (string)$this->config->getAppValue(Application::APP_ID, 'mappings', '[]');
+		$raw = $this->config->getValueString(Application::APP_ID, 'mappings', '[]');
 		$decoded = json_decode($raw, true);
 		if (!is_array($decoded)) {
 			return [];
@@ -177,6 +177,6 @@ final class MappingService {
 			array_map(fn (Mapping $m) => $m->toArray(), $mappings),
 			JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES,
 		);
-		$this->config->setAppValue(Application::APP_ID, 'mappings', $json);
+		$this->config->setValueString(Application::APP_ID, 'mappings', $json);
 	}
 }
