@@ -5,49 +5,36 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+<!--
+  These ARE the release notes. One line per entry, written for a user — never a
+  paragraph. Length tracks impact: functional changes get the most words (still
+  one line); refactors/types/tests stay short; CI/devops are shortest. Only
+  **BREAKING:** may stretch. Deeper detail lives in the saga or the PR, not here.
+
+  ONLY EVER EDIT THE [Unreleased] SECTION. Every section below it carries a
+  version number and is IMMUTABLE — those notes shipped with a release and must
+  never be reworded, reordered, or removed. Add new work under [Unreleased].
+  See CONTRIBUTING.md / AGENTS.md.
+-->
+
 ## [Unreleased]
 
 ### Added
 
-- Psalm cleanup (batch A): suppress 2 InvalidTemplateParam false positives, add `mixed`
-  param type to background `run()` methods, type a closure, drop a redundant `array_values`.
-- Saga §12.1: record the code-scanning paydown (239→~73), the pod-can't-run-Psalm ops note,
-  and the deferred IConfig→IAppConfig migration queue.
-- Psalm cleanup: 43 classes marked `final`, 47 `#[\Override]` attributes added; suppressed
-  not-our-bug refs to private OC internals + other-app event classes; baseline regenerated.
-- Psalm now loads `nextcloud/ocp` (`extraFiles`), clearing ~176 false-positive
-  `UndefinedClass`/`MissingDependency` code-scanning alerts for built-in OCP classes.
-- JS unit tests (Vitest) for the Files-integration helpers, extracted into a dependency-free
-  `src/files-helpers.js`; wired into the JS CI job.
-- `LICENSE` file: canonical AGPL-3.0 text, plus `info.xml` `<repository>` and corrected
-  `<bugs>` URL.
-- Integration test scaffolding: `docker-compose.yaml` (dev/devcontainer NC + n8n),
-  an install/uninstall `occ` test, and `integration.yml` (checkout-server + SQLite,
-  n8n as a service).
-- Dependabot version updates for `github-actions`, `npm`, and `composer`.
-- Copilot cloud-agent setup workflow that preinstalls PHP, Node, and project dependencies.
-- `CONTRIBUTING.md` — process for human contributors: issue→PR flow, dev setup, build
-  loop, test policy, CI expectations, changelog/versioning, release flow.
-- `AGENTS.md` — cold-start orientation for AI coding agents: repo map, locked
-  architectural decisions, hard-won gotchas, and pointers to deeper docs.
-- `SECURITY.md` — vulnerability reporting policy via GitHub private security advisories,
-  supported-versions, scope, secrets policy, disclosure timeline.
-- `.github/workflows/pr.yml` — PR-only housekeeping workflow: auto-assigns the PR
-  author (`kentaro-m/auto-assign-action`) and enforces a `CHANGELOG.md` entry under
-  `[Unreleased]` (`tarides/changelog-check-action`).
-- ESLint JS linting (`npm run lint`) wired into the Quality workflow.
-- `CONTRIBUTING.md`, `AGENTS.md`, `SECURITY.md`.
-- PR housekeeping workflow: auto-assign author, enforce changelog entry.
+- `CONTRIBUTING.md`, `AGENTS.md`, and `SECURITY.md`.
+- `LICENSE` (AGPL-3.0).
+- PHP unit tests (PHPUnit) and frontend unit tests (Vitest).
+- Integration test scaffolding (Nextcloud + n8n).
+- CI: test, quality, integration, and PR-housekeeping workflows.
+- CI: Dependabot and Copilot agent setup.
 
 ### Changed
 
-- Dropped duplicate CodeQL job; JS scanning now via GitHub's default setup.
+- Cleared most static-analysis findings (Psalm).
 
 ### Fixed
 
-- Two unused `catch` bindings flagged by the new linter.
-- Security: bump dompurify to 3.4.11 and Vite to 8 (drops the vulnerable esbuild), clearing
-  both Dependabot alerts.
+- Security: bumped dompurify and Vite, clearing both Dependabot alerts.
 
 ## [0.1.1] - 2026-06-19
 

@@ -1,84 +1,8 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <files psalm-version="6.16.1@f1f5de594dc76faf8784e02d3dc4716c91c6f6ac">
-  <file src="lib/BackgroundJob/ReconcileNameJob.php">
-    <InvalidArrayOffset>
-      <code><![CDATA[$meta[WorkflowMetadata::KEY_WRITEBACK]]]></code>
-    </InvalidArrayOffset>
-  </file>
-  <file src="lib/Listener/DeleteToN8nListener.php">
-    <InvalidArrayOffset>
-      <code><![CDATA[$meta[WorkflowMetadata::KEY_MAPPING]]]></code>
-      <code><![CDATA[$meta[WorkflowMetadata::KEY_WRITEBACK]]]></code>
-    </InvalidArrayOffset>
-  </file>
-  <file src="lib/Listener/NameSyncListener.php">
-    <InvalidArrayOffset>
-      <code><![CDATA[$meta[WorkflowMetadata::KEY_WRITEBACK]]]></code>
-    </InvalidArrayOffset>
-  </file>
-  <file src="lib/Listener/NodeWrittenListener.php">
-    <InvalidArrayOffset>
-      <code><![CDATA[$meta[WorkflowMetadata::KEY_SYNCED_HASH]]]></code>
-      <code><![CDATA[$meta[WorkflowMetadata::KEY_WRITEBACK]]]></code>
-    </InvalidArrayOffset>
-  </file>
-  <file src="lib/Listener/RestoreFromTrashListener.php">
-    <InvalidArrayOffset>
-      <code><![CDATA[$meta[WorkflowMetadata::KEY_MAPPING]]]></code>
-      <code><![CDATA[$meta[WorkflowMetadata::KEY_WRITEBACK]]]></code>
-    </InvalidArrayOffset>
-  </file>
-  <file src="lib/Service/CreateService.php">
-    <InvalidArgument>
-      <code><![CDATA[[
-				WorkflowMetadata::KEY_ID => $id,
-				WorkflowMetadata::KEY_MODE => $mapping->mode,
-				WorkflowMetadata::KEY_WRITEBACK => (string)($mapping->writeback ?? ''),
-				WorkflowMetadata::KEY_VERSION_ID => $versionId,
-				WorkflowMetadata::KEY_SYNCED_HASH => sha1($content),
-				WorkflowMetadata::KEY_MAPPING => $mapping->id,
-			]]]></code>
-    </InvalidArgument>
-  </file>
   <file src="lib/Service/N8nClient.php">
     <InvalidArgument>
       <code><![CDATA[$body]]></code>
     </InvalidArgument>
-  </file>
-  <file src="lib/Service/PushService.php">
-    <InvalidArgument>
-      <code><![CDATA[$update]]></code>
-    </InvalidArgument>
-  </file>
-  <file src="lib/Service/SyncService.php">
-    <InvalidArgument>
-      <code><![CDATA[[
-				WorkflowMetadata::KEY_ID => $id,
-				WorkflowMetadata::KEY_MODE => $mapping->mode,
-				WorkflowMetadata::KEY_WRITEBACK => (string)($mapping->writeback ?? ''),
-				WorkflowMetadata::KEY_VERSION_ID => $versionId,
-				WorkflowMetadata::KEY_SYNCED_HASH => sha1($body),
-				WorkflowMetadata::KEY_MAPPING => $mapping->id,
-			]]]></code>
-      <code><![CDATA[[
-			WorkflowMetadata::KEY_ID => $id,
-			WorkflowMetadata::KEY_MODE => $mapping->mode,
-			WorkflowMetadata::KEY_WRITEBACK => (string)($mapping->writeback ?? ''),
-			WorkflowMetadata::KEY_VERSION_ID => $versionId,
-			WorkflowMetadata::KEY_SYNCED_HASH => sha1($body),
-			WorkflowMetadata::KEY_MAPPING => $mapping->id,
-		]]]></code>
-    </InvalidArgument>
-    <InvalidArrayOffset>
-      <code><![CDATA[$meta[WorkflowMetadata::KEY_MAPPING]]]></code>
-    </InvalidArrayOffset>
-  </file>
-  <file src="lib/Service/WorkflowMetadata.php">
-    <InvalidReturnStatement>
-      <code><![CDATA[$out]]></code>
-    </InvalidReturnStatement>
-    <InvalidReturnType>
-      <code><![CDATA[array{n8n_id:?string, n8n_mode:?string, n8n_versionId:?string}|null]]></code>
-    </InvalidReturnType>
   </file>
 </files>

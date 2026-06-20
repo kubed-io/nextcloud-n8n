@@ -90,7 +90,7 @@ final class MappingService {
 	public function update(string $id, Mapping $mapping): Mapping {
 		$all = $this->list();
 		$this->assertTagUnique($all, $mapping->n8nTag, $id);
-		$found = false;
+		$updated = null;
 		foreach ($all as $i => $existing) {
 			if ($existing->id === $id) {
 				// The storage backend is immutable (spec §14.1): switching moves
@@ -103,7 +103,7 @@ final class MappingService {
 					);
 				}
 				// Preserve the original id + backend even if the caller sent different ones.
-				$all[$i] = new Mapping(
+				$updated = new Mapping(
 					$id,
 					$mapping->n8nTag,
 					$mapping->teamFolder,
@@ -112,15 +112,15 @@ final class MappingService {
 					$mapping->writeback,
 					$existing->useTeamFolder,
 				);
-				$found = true;
+				$all[$i] = $updated;
 				break;
 			}
 		}
-		if (!$found) {
+		if ($updated === null) {
 			throw new \OutOfBoundsException('mapping not found');
 		}
 		$this->persist($all);
-		return $all[$i];
+		return $updated;
 	}
 
 	public function delete(string $id): void {

@@ -288,16 +288,23 @@ repos/<owner>/<repo>/releases/latest` — the stale-major footgun is documented 
   the `[Unreleased]` section has new content on every PR — a PR with no changelog entry
   fails the check. Internal-only refactors should still add a one-liner under `Changed`.
 
-  **The changelog is the release notes.** Keep entries short and sweet:
+  **The changelog is the release notes.** One line per entry — never a paragraph,
+  nested bullet, or implementation detail. Write for an end user reading "what's
+  new," not a maintainer reading git history. Entry length tracks user impact:
 
-  - One line per entry. No paragraphs, no nested bullets, no implementation detail.
-  - Write for an end user reading "what's new in this release," not for a future
-    maintainer reading git history. Git history is for git history.
-  - Tooling / CI / docs / refactor entries should be even shorter — often three or
-    four words is plenty (e.g. `- Dependabot enabled.`, `- Bumped Vite to v8.`).
-  - **Breaking changes are the only exception.** Spell those out clearly — what
-    breaks, how to migrate — under `Changed` with a leading `**BREAKING:**` marker.
+  - **Functional change** (a feature/behavior users notice, e.g.
+    `- Publish a workflow to n8n from the file action.`) → the most detail you
+    get, but still one line. This is the only place richer wording is warranted.
+  - **Non-functional** (refactor, types, tests, lint) → short, often half a line.
+  - **Tooling / CI / DevOps not touching app code** → shortest, three or four
+    words (e.g. `- Dependabot enabled.`, `- Bumped Vite to v8.`).
+  - **`**BREAKING:**` is the only thing that may stretch** — what breaks, how to
+    migrate — under `Changed`.
+  - The deeper why / file lists / design go in the **saga** or PR description.
   - When in doubt, write the line, then cut it in half.
+  - **Only ever edit `## [Unreleased]`.** Every versioned section below it is
+    **immutable** — those notes shipped with a release; never reword, reorder, or
+    remove them. This can only be enforced by convention, so respect it.
 - **Versioning**: SemVer. The release workflow (`publish.yml`) bumps `package.json` and
   mirrors the version into `appinfo/info.xml` — you don't bump these in feature PRs.
 - **Tags**: `v<major>.<minor>.<patch>`, applied by the release workflow via
