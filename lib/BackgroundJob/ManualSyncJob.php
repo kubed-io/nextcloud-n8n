@@ -23,7 +23,7 @@ use Psr\Log\LoggerInterface;
  *
  * Argument shape (IJobList::add): `{ direction: 'pull'|'push', mappingId?: string }`.
  */
-class ManualSyncJob extends QueuedJob {
+final class ManualSyncJob extends QueuedJob {
 	public function __construct(
 		ITimeFactory $time,
 		private SyncService $sync,
@@ -33,6 +33,7 @@ class ManualSyncJob extends QueuedJob {
 		parent::__construct($time);
 	}
 
+	#[\Override]
 	protected function run($argument): void {
 		$direction = (string)($argument['direction'] ?? SyncStatusService::DIR_PULL);
 		$mappingId = $argument['mappingId'] ?? null;

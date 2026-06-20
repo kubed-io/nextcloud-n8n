@@ -34,7 +34,7 @@ use Psr\Log\LoggerInterface;
  * Equivalent to running `occ maintenance:mimetype:update-db` +
  * `update-js`, but inline with the app's lifecycle: no human step.
  */
-class RegisterMimetype implements IRepairStep {
+final class RegisterMimetype implements IRepairStep {
 	private const APP_MIMETYPE = 'application/n8n+json';
 	private const APP_ALIAS_KEY = self::APP_MIMETYPE;
 	private const APP_ICON_NAME = 'n8n';
@@ -47,10 +47,12 @@ class RegisterMimetype implements IRepairStep {
 	) {
 	}
 
+	#[\Override]
 	public function getName(): string {
 		return 'Register the n8n_sync mimetype + icon';
 	}
 
+	#[\Override]
 	public function run(IOutput $output): void {
 		$serverRoot = \OC::$SERVERROOT;
 		$appRoot = $serverRoot . '/custom_apps/' . Application::APP_ID;

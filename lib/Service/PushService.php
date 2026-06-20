@@ -42,7 +42,7 @@ use Psr\Log\LoggerInterface;
  * a brand-new workflow from a hand-made file (UC-6) is a follow-up — such files
  * are skipped here with a log line.
  */
-class PushService {
+final class PushService {
 	public function __construct(
 		private IConfig $config,
 		private IAppConfig $appConfig,

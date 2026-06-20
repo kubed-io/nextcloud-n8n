@@ -40,7 +40,7 @@ use Psr\Log\LoggerInterface;
  *
  * @implements IEventListener<NodeRestoredEvent>
  */
-class RestoreFromTrashListener implements IEventListener {
+final class RestoreFromTrashListener implements IEventListener {
 	public function __construct(
 		private DeleteService $deleteService,
 		private MappingService $mappings,
@@ -50,6 +50,7 @@ class RestoreFromTrashListener implements IEventListener {
 	) {
 	}
 
+	#[\Override]
 	public function handle(Event $event): void {
 		if (!$event instanceof NodeRestoredEvent || $this->guard->active()) {
 			return;

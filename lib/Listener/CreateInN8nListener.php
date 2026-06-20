@@ -60,7 +60,7 @@ use Psr\Log\LoggerInterface;
  *
  * @implements IEventListener<NodeWrittenEvent|NodeRenamedEvent>
  */
-class CreateInN8nListener implements IEventListener {
+final class CreateInN8nListener implements IEventListener {
 	public function __construct(
 		private CreateService $createService,
 		private MappingService $mappings,
@@ -72,6 +72,7 @@ class CreateInN8nListener implements IEventListener {
 	) {
 	}
 
+	#[\Override]
 	public function handle(Event $event): void {
 		if ($this->guard->active()) {
 			return;

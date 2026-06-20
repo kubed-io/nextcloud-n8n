@@ -28,13 +28,14 @@ use OCP\Util;
  * Rendered last in the section: channels → Sync Settings → Folder mappings →
  * Sync Actions. The automatic-sync strategy lives in {@see WritebackSettings}.
  */
-class SyncSettings implements IDelegatedSettings {
+final class SyncSettings implements IDelegatedSettings {
 	public function __construct(
 		private SyncStatusService $status,
 		private IAppConfig $appConfig,
 	) {
 	}
 
+	#[\Override]
 	public function getForm(): TemplateResponse {
 		Util::addScript(Application::APP_ID, 'sync-settings');
 		Util::addStyle(Application::APP_ID, 'sync-settings');
@@ -54,19 +55,23 @@ class SyncSettings implements IDelegatedSettings {
 		);
 	}
 
+	#[\Override]
 	public function getSection(): string {
 		return Application::APP_ID;
 	}
 
+	#[\Override]
 	public function getPriority(): int {
 		// Last panel: Sync Settings (33) → Folder mappings (36) → Sync Actions (45).
 		return 45;
 	}
 
+	#[\Override]
 	public function getName(): ?string {
 		return null;
 	}
 
+	#[\Override]
 	public function getAuthorizedAppConfig(): array {
 		// Buttons hit dedicated controllers gated by their own
 		// #[AuthorizedAdminSetting]; no generic appconfig writes here.

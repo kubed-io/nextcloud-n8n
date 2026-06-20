@@ -26,13 +26,14 @@ use Symfony\Component\Console\Output\OutputInterface;
  * Output is the raw JSON returned by n8n, pretty-printed. Suitable for
  * piping into `jq` or comparing against the live n8n UI.
  */
-class ListWorkflows extends Command {
+final class ListWorkflows extends Command {
 	public function __construct(
 		private N8nClient $client,
 	) {
 		parent::__construct();
 	}
 
+	#[\Override]
 	protected function configure(): void {
 		$this
 			->setName('n8n_sync:list-workflows')
@@ -43,6 +44,7 @@ class ListWorkflows extends Command {
 				'Filter by tag name (repeatable). Multiple values are AND-joined by n8n.', []);
 	}
 
+	#[\Override]
 	protected function execute(InputInterface $input, OutputInterface $output): int {
 		$limit = max(1, min(50, (int)$input->getOption('limit')));
 		$cursor = (string)$input->getOption('cursor');

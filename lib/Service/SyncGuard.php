@@ -18,7 +18,7 @@ namespace OCA\N8nSync\Service;
  * request), so SyncService can wrap its writes and the listener can bail while
  * the guard is active. Counter-based so nested enters are safe.
  */
-class SyncGuard {
+final class SyncGuard {
 	private int $depth = 0;
 
 	public function enter(): void {

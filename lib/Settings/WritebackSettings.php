@@ -29,7 +29,8 @@ use OCP\Settings\IDeclarativeSettingsForm;
  * Same id-prefix gotcha as AdminSettings — the form id must NOT be prefixed with
  * the app id.
  */
-class WritebackSettings implements IDeclarativeSettingsForm {
+final class WritebackSettings implements IDeclarativeSettingsForm {
+	#[\Override]
 	public function getSchema(): array {
 		return [
 			'id' => 'data_sync',

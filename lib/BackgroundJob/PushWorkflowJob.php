@@ -28,7 +28,7 @@ use Psr\Log\LoggerInterface;
  *   - `fileId`  int   — the Node id to push
  *   - `userId`  string — owner uid for context (PushService may need it)
  */
-class PushWorkflowJob extends QueuedJob {
+final class PushWorkflowJob extends QueuedJob {
 	public function __construct(
 		ITimeFactory $time,
 		private PushService $pushService,
@@ -39,6 +39,7 @@ class PushWorkflowJob extends QueuedJob {
 		parent::__construct($time);
 	}
 
+	#[\Override]
 	protected function run($argument): void {
 		$fileId = (int)($argument['fileId'] ?? 0);
 		$userId = (string)($argument['userId'] ?? '');

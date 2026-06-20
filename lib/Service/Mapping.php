@@ -136,6 +136,7 @@ final class Mapping implements JsonSerializable {
 		];
 	}
 
+	#[\Override]
 	public function jsonSerialize(): array {
 		return $this->toArray();
 	}

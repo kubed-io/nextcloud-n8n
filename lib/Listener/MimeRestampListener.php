@@ -40,13 +40,14 @@ use Psr\Log\LoggerInterface;
  *
  * @implements IEventListener<NodeRenamedEvent>
  */
-class MimeRestampListener implements IEventListener {
+final class MimeRestampListener implements IEventListener {
 	public function __construct(
 		private IMimeTypeLoader $mimeLoader,
 		private LoggerInterface $logger,
 	) {
 	}
 
+	#[\Override]
 	public function handle(Event $event): void {
 		if (!$event instanceof NodeRenamedEvent) {
 			return;

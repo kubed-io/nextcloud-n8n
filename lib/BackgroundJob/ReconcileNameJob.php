@@ -39,7 +39,7 @@ use Psr\Log\LoggerInterface;
  * Idempotent: re-checks the gate + current values and no-ops if already in sync,
  * so a stale/duplicate enqueue is harmless.
  */
-class ReconcileNameJob extends QueuedJob {
+final class ReconcileNameJob extends QueuedJob {
 	public function __construct(
 		ITimeFactory $time,
 		private IRootFolder $rootFolder,
@@ -51,6 +51,7 @@ class ReconcileNameJob extends QueuedJob {
 		parent::__construct($time);
 	}
 
+	#[\Override]
 	protected function run($argument): void {
 		$fileId = (int)($argument['fileId'] ?? 0);
 		$uid = (string)($argument['userId'] ?? '');

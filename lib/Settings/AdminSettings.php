@@ -23,7 +23,8 @@ use OCP\Settings\IDeclarativeSettingsForm;
  * saved files are PUT to `/workflows/{id}` — turn it off to push *only* via the
  * webhook. (Pull + Test connection still require a valid key regardless.)
  */
-class AdminSettings implements IDeclarativeSettingsForm {
+final class AdminSettings implements IDeclarativeSettingsForm {
+	#[\Override]
 	public function getSchema(): array {
 		return [
 			// NOTE: do NOT prefix the form id with the app id. The settings

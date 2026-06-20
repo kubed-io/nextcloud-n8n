@@ -19,25 +19,29 @@ use OCP\Settings\IIconSection;
  * sidebar instead of living under "Additional settings". Uses the built-in
  * core "workflow" category icon (no shipped asset needed).
  */
-class AdminSection implements IIconSection {
+final class AdminSection implements IIconSection {
 	public function __construct(
 		private IL10N $l,
 		private IURLGenerator $urlGenerator,
 	) {
 	}
 
+	#[\Override]
 	public function getID(): string {
 		return Application::APP_ID;
 	}
 
+	#[\Override]
 	public function getName(): string {
 		return $this->l->t('n8n');
 	}
 
+	#[\Override]
 	public function getPriority(): int {
 		return 80;
 	}
 
+	#[\Override]
 	public function getIcon(): string {
 		return $this->urlGenerator->imagePath('core', 'categories/workflow.svg');
 	}

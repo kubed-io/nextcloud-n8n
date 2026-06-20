@@ -38,7 +38,7 @@ use OCP\IRequest;
  *   GET /apps/n8n_sync/debug/workflows         → listWorkflows(limit=5)
  *   GET /apps/n8n_sync/debug/workflows/{id}    → getWorkflow($id)
  */
-class DebugController extends Controller {
+final class DebugController extends Controller {
 	public function __construct(
 		string $appName,
 		IRequest $request,

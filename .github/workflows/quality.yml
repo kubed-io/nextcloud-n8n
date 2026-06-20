@@ -68,6 +68,29 @@ jobs:
     - name: Coding standard (php-cs-fixer)
       run: composer run cs:check
 
+    # One-shot: if the baseline is missing (e.g. after a deliberate reset to
+    # re-baseline post-cleanup), generate it from the current state and upload
+    # it as an artifact to commit back. No-ops once tests/psalm-baseline.xml
+    # exists again.
+    - name: Seed Psalm baseline if missing
+      id: seed_baseline
+      run: |
+        if [ ! -f tests/psalm-baseline.xml ]; then
+          # --ignore-baseline so the (now-absent) errorBaseline reference in
+          # psalm.xml doesn't abort generation.
+          vendor/bin/psalm --no-cache --threads=4 --ignore-baseline \
+            --set-baseline=tests/psalm-baseline.xml || true
+          echo "seeded=true" >> "$GITHUB_OUTPUT"
+        fi
+
+    - name: Upload regenerated baseline
+      if: steps.seed_baseline.outputs.seeded == 'true'
+      uses: actions/upload-artifact@v7
+      with:
+        name: psalm-baseline
+        path: tests/psalm-baseline.xml
+        if-no-files-found: error
+
     # Psalm is the PHP code scanner: inline GitHub annotations on new findings
     # AND a SARIF report for the Security tab. The committed psalm-baseline.xml
     # keeps the gate failing only on NEW issues. Always upload the SARIF, even

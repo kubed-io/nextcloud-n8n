@@ -23,7 +23,7 @@ use OCP\IConfig;
  * {@see Mapping}. Legacy rows (old `n8n_path`/`nc_path` keys, `mode: 'link'`)
  * are migrated transparently on read and re-persisted once.
  */
-class MappingService {
+final class MappingService {
 	public function __construct(
 		private IConfig $config,
 	) {

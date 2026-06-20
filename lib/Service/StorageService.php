@@ -30,7 +30,7 @@ use Psr\Log\LoggerInterface;
  * Both paths: never create groups (the content groups are admin-managed); files
  * carry the same metadata + tags written by {@see SyncService}.
  */
-class StorageService {
+final class StorageService {
 	public function __construct(
 		private TeamFolderService $teamFolders,
 		private IRootFolder $rootFolder,

@@ -26,7 +26,8 @@ use OCP\Settings\IDeclarativeSettingsForm;
  * A "Test webhook" button is intentionally deferred (low priority); it would
  * POST to n8n's test-event path pattern.
  */
-class WebhookSettings implements IDeclarativeSettingsForm {
+final class WebhookSettings implements IDeclarativeSettingsForm {
+	#[\Override]
 	public function getSchema(): array {
 		return [
 			// See AdminSettings for the "do NOT prefix the id" gotcha.

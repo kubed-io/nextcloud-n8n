@@ -1,376 +1,92 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <files psalm-version="6.16.1@f1f5de594dc76faf8784e02d3dc4716c91c6f6ac">
-  <file src="lib/AppInfo/Application.php">
-    <UndefinedClass>
-      <code><![CDATA[App]]></code>
-      <code><![CDATA[IBootstrap]]></code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/BackgroundJob/ManualSyncJob.php">
-    <UndefinedClass>
-      <code><![CDATA[QueuedJob]]></code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/BackgroundJob/PushWorkflowJob.php">
-    <UndefinedClass>
-      <code><![CDATA[QueuedJob]]></code>
-    </UndefinedClass>
-  </file>
   <file src="lib/BackgroundJob/ReconcileNameJob.php">
-    <UndefinedClass>
-      <code><![CDATA[QueuedJob]]></code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/BackgroundJob/ScheduledPullJob.php">
-    <UndefinedClass>
-      <code><![CDATA[TimedJob]]></code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Command/GetWorkflow.php">
-    <MissingOverrideAttribute>
-      <code><![CDATA[protected function configure(): void {]]></code>
-      <code><![CDATA[protected function execute(InputInterface $input, OutputInterface $output): int {]]></code>
-    </MissingOverrideAttribute>
-  </file>
-  <file src="lib/Command/ListWorkflows.php">
-    <MissingOverrideAttribute>
-      <code><![CDATA[protected function configure(): void {]]></code>
-      <code><![CDATA[protected function execute(InputInterface $input, OutputInterface $output): int {]]></code>
-    </MissingOverrideAttribute>
-  </file>
-  <file src="lib/Controller/ConfigController.php">
-    <UndefinedClass>
-      <code><![CDATA[Controller]]></code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Controller/DebugController.php">
-    <UndefinedClass>
-      <code><![CDATA[Controller]]></code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Controller/MappingController.php">
-    <UndefinedClass>
-      <code><![CDATA[Controller]]></code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Controller/SyncController.php">
-    <UndefinedClass>
-      <code><![CDATA[Controller]]></code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Listener/CreateInN8nListener.php">
-    <UndefinedClass>
-      <code><![CDATA[IEventListener]]></code>
-    </UndefinedClass>
+    <InvalidArrayOffset>
+      <code><![CDATA[$meta[WorkflowMetadata::KEY_WRITEBACK]]]></code>
+    </InvalidArrayOffset>
   </file>
   <file src="lib/Listener/DeleteToN8nListener.php">
-    <UndefinedClass>
-      <code><![CDATA[IEventListener]]></code>
-    </UndefinedClass>
+    <InvalidArrayOffset>
+      <code><![CDATA[$meta[WorkflowMetadata::KEY_MAPPING]]]></code>
+      <code><![CDATA[$meta[WorkflowMetadata::KEY_WRITEBACK]]]></code>
+    </InvalidArrayOffset>
   </file>
   <file src="lib/Listener/LoadFilesScriptListener.php">
-    <UndefinedClass>
+    <InvalidTemplateParam>
       <code><![CDATA[IEventListener]]></code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Listener/MimeRestampListener.php">
-    <UndefinedClass>
-      <code><![CDATA[IEventListener]]></code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Listener/MoveGuardListener.php">
-    <UndefinedClass>
-      <code><![CDATA[IEventListener]]></code>
-    </UndefinedClass>
+    </InvalidTemplateParam>
   </file>
   <file src="lib/Listener/NameSyncListener.php">
-    <UndefinedClass>
-      <code><![CDATA[IEventListener]]></code>
-    </UndefinedClass>
+    <InvalidArrayOffset>
+      <code><![CDATA[$meta[WorkflowMetadata::KEY_WRITEBACK]]]></code>
+    </InvalidArrayOffset>
   </file>
   <file src="lib/Listener/NodeWrittenListener.php">
-    <UndefinedClass>
-      <code><![CDATA[IEventListener]]></code>
-    </UndefinedClass>
+    <InvalidArrayOffset>
+      <code><![CDATA[$meta[WorkflowMetadata::KEY_SYNCED_HASH]]]></code>
+      <code><![CDATA[$meta[WorkflowMetadata::KEY_WRITEBACK]]]></code>
+    </InvalidArrayOffset>
   </file>
   <file src="lib/Listener/RestoreFromTrashListener.php">
-    <UndefinedClass>
+    <InvalidArrayOffset>
+      <code><![CDATA[$meta[WorkflowMetadata::KEY_MAPPING]]]></code>
+      <code><![CDATA[$meta[WorkflowMetadata::KEY_WRITEBACK]]]></code>
+    </InvalidArrayOffset>
+    <InvalidTemplateParam>
       <code><![CDATA[IEventListener]]></code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Migration/RegisterMimetype.php">
-    <UndefinedClass>
-      <code><![CDATA[IRepairStep]]></code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Notification/Notifier.php">
-    <UndefinedClass>
-      <code><![CDATA[INotifier]]></code>
-    </UndefinedClass>
+    </InvalidTemplateParam>
   </file>
   <file src="lib/Service/CreateService.php">
-    <MissingDependency>
-      <code><![CDATA[Application]]></code>
-    </MissingDependency>
-    <UndefinedClass>
-      <code><![CDATA[File]]></code>
-      <code><![CDATA[File]]></code>
-      <code><![CDATA[private]]></code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Service/DeleteService.php">
-    <MissingDependency>
-      <code><![CDATA[Application]]></code>
-      <code><![CDATA[Application]]></code>
-      <code><![CDATA[Application]]></code>
-      <code><![CDATA[Application]]></code>
-    </MissingDependency>
-  </file>
-  <file src="lib/Service/Mapping.php">
-    <MissingOverrideAttribute>
-      <code><![CDATA[public function jsonSerialize(): array {]]></code>
-    </MissingOverrideAttribute>
-  </file>
-  <file src="lib/Service/MappingService.php">
-    <MissingDependency>
-      <code><![CDATA[Application]]></code>
-      <code><![CDATA[Application]]></code>
-    </MissingDependency>
-    <UndefinedClass>
-      <code><![CDATA[$this->config]]></code>
-      <code><![CDATA[$this->config]]></code>
-      <code><![CDATA[private]]></code>
-    </UndefinedClass>
+    <InvalidArgument>
+      <code><![CDATA[[
+				WorkflowMetadata::KEY_ID => $id,
+				WorkflowMetadata::KEY_MODE => $mapping->mode,
+				WorkflowMetadata::KEY_WRITEBACK => (string)($mapping->writeback ?? ''),
+				WorkflowMetadata::KEY_VERSION_ID => $versionId,
+				WorkflowMetadata::KEY_SYNCED_HASH => sha1($content),
+				WorkflowMetadata::KEY_MAPPING => $mapping->id,
+			]]]></code>
+    </InvalidArgument>
   </file>
   <file src="lib/Service/N8nClient.php">
     <InvalidArgument>
       <code><![CDATA[$body]]></code>
-      <code><![CDATA[$e]]></code>
-      <code><![CDATA[$e]]></code>
     </InvalidArgument>
-    <MissingDependency>
-      <code><![CDATA[Application]]></code>
-      <code><![CDATA[Application]]></code>
-      <code><![CDATA[Application]]></code>
-      <code><![CDATA[Application]]></code>
-      <code><![CDATA[Application]]></code>
-    </MissingDependency>
-    <UndefinedClass>
-      <code><![CDATA[$res]]></code>
-      <code><![CDATA[$this->clientService]]></code>
-      <code><![CDATA[$this->clientService]]></code>
-      <code><![CDATA[$this->config]]></code>
-      <code><![CDATA[$this->config]]></code>
-      <code><![CDATA[$this->config]]></code>
-      <code><![CDATA[$this->config]]></code>
-      <code><![CDATA[$this->config]]></code>
-      <code><![CDATA[$this->crypto]]></code>
-      <code><![CDATA[$this->crypto]]></code>
-      <code><![CDATA[IClient]]></code>
-      <code><![CDATA[IResponse]]></code>
-      <code><![CDATA[IResponse]]></code>
-      <code><![CDATA[IResponse]]></code>
-      <code><![CDATA[LocalServerException]]></code>
-      <code><![CDATA[LocalServerException]]></code>
-      <code><![CDATA[private]]></code>
-      <code><![CDATA[private]]></code>
-      <code><![CDATA[private]]></code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Service/OwnershipTags.php">
-    <UndefinedClass>
-      <code><![CDATA[$desiredTag]]></code>
-      <code><![CDATA[$this->tagManager]]></code>
-      <code><![CDATA[$this->tagManager]]></code>
-      <code><![CDATA[$this->tagManager]]></code>
-      <code><![CDATA[$this->tagManager]]></code>
-      <code><![CDATA[$this->tagMapper]]></code>
-      <code><![CDATA[$this->tagMapper]]></code>
-      <code><![CDATA[$this->tagMapper]]></code>
-      <code><![CDATA[$this->tagMapper]]></code>
-      <code><![CDATA[ISystemTag]]></code>
-      <code><![CDATA[TagAlreadyExistsException]]></code>
-      <code><![CDATA[TagNotFoundException]]></code>
-      <code><![CDATA[TagNotFoundException]]></code>
-      <code><![CDATA[private]]></code>
-      <code><![CDATA[private]]></code>
-    </UndefinedClass>
   </file>
   <file src="lib/Service/PushService.php">
-    <UndefinedClass>
-      <code><![CDATA[Node]]></code>
-      <code><![CDATA[Node]]></code>
-      <code><![CDATA[private]]></code>
-      <code><![CDATA[private]]></code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Service/StorageService.php">
-    <UndefinedClass>
-      <code><![CDATA[$this->rootFolder]]></code>
-      <code><![CDATA[$this->rootFolder]]></code>
-      <code><![CDATA[?Folder]]></code>
-      <code><![CDATA[Folder]]></code>
-      <code><![CDATA[Folder]]></code>
-      <code><![CDATA[Folder]]></code>
-      <code><![CDATA[Folder]]></code>
-      <code><![CDATA[Folder]]></code>
-      <code><![CDATA[private]]></code>
-      <code><![CDATA[private]]></code>
-    </UndefinedClass>
+    <InvalidArgument>
+      <code><![CDATA[$update]]></code>
+    </InvalidArgument>
   </file>
   <file src="lib/Service/SyncService.php">
     <InvalidArgument>
-      <code><![CDATA[$node]]></code>
+      <code><![CDATA[[
+				WorkflowMetadata::KEY_ID => $id,
+				WorkflowMetadata::KEY_MODE => $mapping->mode,
+				WorkflowMetadata::KEY_WRITEBACK => (string)($mapping->writeback ?? ''),
+				WorkflowMetadata::KEY_VERSION_ID => $versionId,
+				WorkflowMetadata::KEY_SYNCED_HASH => sha1($body),
+				WorkflowMetadata::KEY_MAPPING => $mapping->id,
+			]]]></code>
+      <code><![CDATA[[
+			WorkflowMetadata::KEY_ID => $id,
+			WorkflowMetadata::KEY_MODE => $mapping->mode,
+			WorkflowMetadata::KEY_WRITEBACK => (string)($mapping->writeback ?? ''),
+			WorkflowMetadata::KEY_VERSION_ID => $versionId,
+			WorkflowMetadata::KEY_SYNCED_HASH => sha1($body),
+			WorkflowMetadata::KEY_MAPPING => $mapping->id,
+		]]]></code>
     </InvalidArgument>
-    <MissingDependency>
-      <code><![CDATA[Application]]></code>
-      <code><![CDATA[Application]]></code>
-      <code><![CDATA[Application]]></code>
-      <code><![CDATA[Application]]></code>
-      <code><![CDATA[Application]]></code>
-      <code><![CDATA[Application]]></code>
-      <code><![CDATA[Application]]></code>
-      <code><![CDATA[Application]]></code>
-      <code><![CDATA[Application]]></code>
-      <code><![CDATA[Application]]></code>
-      <code><![CDATA[Application]]></code>
-      <code><![CDATA[ManualSyncJob]]></code>
-    </MissingDependency>
-    <UndefinedClass>
-      <code><![CDATA[$folder]]></code>
-      <code><![CDATA[$folder]]></code>
-      <code><![CDATA[$node]]></code>
-      <code><![CDATA[$node]]></code>
-      <code><![CDATA[$node]]></code>
-      <code><![CDATA[$node]]></code>
-      <code><![CDATA[$node]]></code>
-      <code><![CDATA[$node]]></code>
-      <code><![CDATA[$this->config]]></code>
-      <code><![CDATA[$this->jobList]]></code>
-      <code><![CDATA[$this->mimeLoader]]></code>
-      <code><![CDATA[$this->mimeLoader]]></code>
-      <code><![CDATA[Folder]]></code>
-      <code><![CDATA[Folder]]></code>
-      <code><![CDATA[Folder]]></code>
-      <code><![CDATA[\OCP\Files\File]]></code>
-      <code><![CDATA[\OCP\Files\File]]></code>
-      <code><![CDATA[private]]></code>
-      <code><![CDATA[private]]></code>
-      <code><![CDATA[private]]></code>
-    </UndefinedClass>
-    <UndefinedDocblockClass>
-      <code><![CDATA[array<string,\OCP\Files\Node>]]></code>
-      <code><![CDATA[array<string,\OCP\Files\Node>]]></code>
-      <code><![CDATA[array<string,\OCP\Files\Node>]]></code>
-    </UndefinedDocblockClass>
-  </file>
-  <file src="lib/Service/SyncStatusService.php">
-    <MissingDependency>
-      <code><![CDATA[Application]]></code>
-      <code><![CDATA[Application]]></code>
-    </MissingDependency>
-    <UndefinedClass>
-      <code><![CDATA[$this->config]]></code>
-      <code><![CDATA[$this->config]]></code>
-      <code><![CDATA[$this->time]]></code>
-      <code><![CDATA[private]]></code>
-      <code><![CDATA[private]]></code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Service/TeamFolderService.php">
-    <MissingDependency>
-      <code><![CDATA[Application]]></code>
-    </MissingDependency>
-    <UndefinedClass>
-      <code><![CDATA[$this->config]]></code>
-      <code><![CDATA[$this->container]]></code>
-      <code><![CDATA[$this->container]]></code>
-      <code><![CDATA[$this->db]]></code>
-      <code><![CDATA[$this->db]]></code>
-      <code><![CDATA[$this->db]]></code>
-      <code><![CDATA[$this->groupManager]]></code>
-      <code><![CDATA[Constants]]></code>
-      <code><![CDATA[Constants]]></code>
-      <code><![CDATA[Constants]]></code>
-      <code><![CDATA[Constants]]></code>
-      <code><![CDATA[Constants]]></code>
-      <code><![CDATA[Constants]]></code>
-      <code><![CDATA[Folder]]></code>
-      <code><![CDATA[\OC_Util]]></code>
-      <code><![CDATA[private]]></code>
-      <code><![CDATA[private]]></code>
-      <code><![CDATA[private]]></code>
-      <code><![CDATA[private]]></code>
-      <code><![CDATA[private]]></code>
-    </UndefinedClass>
+    <InvalidArrayOffset>
+      <code><![CDATA[$meta[WorkflowMetadata::KEY_MAPPING]]]></code>
+    </InvalidArrayOffset>
   </file>
   <file src="lib/Service/WorkflowMetadata.php">
-    <UndefinedClass>
-      <code><![CDATA[$this->manager]]></code>
-      <code><![CDATA[$this->manager]]></code>
-      <code><![CDATA[$this->manager]]></code>
-      <code><![CDATA[$this->manager]]></code>
-      <code><![CDATA[FilesMetadataNotFoundException]]></code>
-      <code><![CDATA[IMetadataValueWrapper]]></code>
-      <code><![CDATA[IMetadataValueWrapper]]></code>
-      <code><![CDATA[private]]></code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Service/WritebackNotifier.php">
-    <MissingDependency>
-      <code><![CDATA[Application]]></code>
-      <code><![CDATA[Application]]></code>
-      <code><![CDATA[Application]]></code>
-      <code><![CDATA[Application]]></code>
-    </MissingDependency>
-    <UndefinedClass>
-      <code><![CDATA[$this->manager]]></code>
-      <code><![CDATA[$this->manager]]></code>
-      <code><![CDATA[$this->manager]]></code>
-      <code><![CDATA[$this->manager]]></code>
-      <code><![CDATA[$this->timeFactory]]></code>
-      <code><![CDATA[private]]></code>
-      <code><![CDATA[private]]></code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Settings/AdminSection.php">
-    <UndefinedClass>
-      <code><![CDATA[IIconSection]]></code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Settings/AdminSettings.php">
-    <UndefinedClass>
-      <code><![CDATA[IDeclarativeSettingsForm]]></code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Settings/AdminTest.php">
-    <UndefinedClass>
-      <code><![CDATA[IDelegatedSettings]]></code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Settings/InstanceSettings.php">
-    <UndefinedClass>
-      <code><![CDATA[IDeclarativeSettingsForm]]></code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Settings/MappingSettings.php">
-    <UndefinedClass>
-      <code><![CDATA[IDelegatedSettings]]></code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Settings/SyncSettings.php">
-    <UndefinedClass>
-      <code><![CDATA[IDelegatedSettings]]></code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Settings/WebhookSettings.php">
-    <UndefinedClass>
-      <code><![CDATA[IDeclarativeSettingsForm]]></code>
-    </UndefinedClass>
-  </file>
-  <file src="lib/Settings/WritebackSettings.php">
-    <UndefinedClass>
-      <code><![CDATA[IDeclarativeSettingsForm]]></code>
-    </UndefinedClass>
+    <InvalidReturnStatement>
+      <code><![CDATA[$out]]></code>
+    </InvalidReturnStatement>
+    <InvalidReturnType>
+      <code><![CDATA[array{n8n_id:?string, n8n_mode:?string, n8n_versionId:?string}|null]]></code>
+    </InvalidReturnType>
   </file>
 </files>

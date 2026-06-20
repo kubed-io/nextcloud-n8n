@@ -39,13 +39,14 @@ use OCP\Files\Events\Node\NodeWrittenEvent;
  * App bootstrap. Phase 0 is an intentionally empty skeleton: it must install,
  * enable, and disable cleanly before any behaviour is wired in.
  */
-class Application extends App implements IBootstrap {
+final class Application extends App implements IBootstrap {
 	public const APP_ID = 'n8n_sync';
 
 	public function __construct(array $params = []) {
 		parent::__construct(self::APP_ID, $params);
 	}
 
+	#[\Override]
 	public function register(IRegistrationContext $context): void {
 		// Declarative forms shown in the n8n_sync admin section.
 		// AdminSection (sidebar entry) and AdminTest (classic "Test connection"
@@ -118,6 +119,7 @@ class Application extends App implements IBootstrap {
 		$context->registerNotifierService(Notifier::class);
 	}
 
+	#[\Override]
 	public function boot(IBootContext $context): void {
 		$container = $context->getAppContainer();
 

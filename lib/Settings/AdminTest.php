@@ -24,12 +24,13 @@ use OCP\Util;
  * Implements IDelegatedSettings so the controller can gate the test endpoints
  * with the canonical #[AuthorizedAdminSetting] attribute.
  */
-class AdminTest implements IDelegatedSettings {
+final class AdminTest implements IDelegatedSettings {
 	public function __construct(
 		private IAppConfig $appConfig,
 	) {
 	}
 
+	#[\Override]
 	public function getForm(): TemplateResponse {
 		// JS + CSS must be added via Util so they pick up the CSP nonce —
 		// inline <script>/<style> in templates is blocked by NC's strict CSP.
@@ -43,6 +44,7 @@ class AdminTest implements IDelegatedSettings {
 		], 'blank');
 	}
 
+	#[\Override]
 	public function getSection(): string {
 		return Application::APP_ID;
 	}
@@ -52,15 +54,18 @@ class AdminTest implements IDelegatedSettings {
 	 * so the two test buttons sit together after everything they test is
 	 * configured. Writeback timing (25), Mappings (30), Manual sync (35) follow.
 	 */
+	#[\Override]
 	public function getPriority(): int {
 		return 22;
 	}
 
+	#[\Override]
 	public function getName(): ?string {
 		// The heading is rendered inside the template (see admin_test.php).
 		return null;
 	}
 
+	#[\Override]
 	public function getAuthorizedAppConfig(): array {
 		// Read-only test endpoint — no appconfig keys are modified.
 		return [];

@@ -28,7 +28,7 @@ use OCP\Util;
  * #[AuthorizedAdminSetting(settings: MappingSettings::class)] to gate the
  * REST endpoints — same canonical pattern as the Test connection button.
  */
-class MappingSettings implements IDelegatedSettings {
+final class MappingSettings implements IDelegatedSettings {
 	public function __construct(
 		private MappingService $service,
 		private IGroupManager $groupManager,
@@ -36,6 +36,7 @@ class MappingSettings implements IDelegatedSettings {
 	) {
 	}
 
+	#[\Override]
 	public function getForm(): TemplateResponse {
 		Util::addScript(Application::APP_ID, 'mapping-settings');
 		Util::addStyle(Application::APP_ID, 'mapping-settings');
@@ -60,6 +61,7 @@ class MappingSettings implements IDelegatedSettings {
 		);
 	}
 
+	#[\Override]
 	public function getSection(): string {
 		return Application::APP_ID;
 	}
@@ -69,14 +71,17 @@ class MappingSettings implements IDelegatedSettings {
 	 * repeating list (longest section), so they sit last before the buttons:
 	 * channels → how to sync → the mappings → the action buttons.
 	 */
+	#[\Override]
 	public function getPriority(): int {
 		return 36;
 	}
 
+	#[\Override]
 	public function getName(): ?string {
 		return null;
 	}
 
+	#[\Override]
 	public function getAuthorizedAppConfig(): array {
 		// Mappings are edited via the dedicated REST controller (which carries
 		// its own #[AuthorizedAdminSetting]), not via the generic appconfig

@@ -24,7 +24,7 @@ use Psr\Log\LoggerInterface;
  * ({@see cleared}) and repeated failures collapse onto one entry instead of
  * spamming the bell.
  */
-class WritebackNotifier {
+final class WritebackNotifier {
 	public function __construct(
 		private IManager $manager,
 		private ITimeFactory $timeFactory,

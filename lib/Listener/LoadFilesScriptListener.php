@@ -28,13 +28,14 @@ use OCP\Util;
  *
  * @implements IEventListener<LoadAdditionalScriptsEvent>
  */
-class LoadFilesScriptListener implements IEventListener {
+final class LoadFilesScriptListener implements IEventListener {
 	public function __construct(
 		private IConfig $config,
 		private IInitialState $initialState,
 	) {
 	}
 
+	#[\Override]
 	public function handle(Event $event): void {
 		if (!$event instanceof LoadAdditionalScriptsEvent) {
 			return;

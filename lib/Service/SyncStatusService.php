@@ -33,7 +33,7 @@ use OCP\IConfig;
  *   failed       : int
  *   message      : string (one-line summary, useful when status=error)
  */
-class SyncStatusService {
+final class SyncStatusService {
 	public const DIR_PULL = 'pull';
 	public const DIR_PUSH = 'push';
 

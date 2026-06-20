@@ -18,4 +18,45 @@
 			<directory name="vendor" />
 		</ignoreFiles>
 	</projectFiles>
+	<!--
+		Load the nextcloud/ocp class definitions so Psalm resolves OCP\* symbols
+		(IConfig, Files\Node, AppFramework\Controller, the Settings interfaces, …).
+		Without this, Psalm reports every OCP reference as UndefinedClass /
+		MissingDependency / UndefinedDocblockClass — ~176 false positives. We scan
+		only the OCP package (not all of vendor) to keep analysis fast.
+	-->
+	<extraFiles>
+		<directory name="vendor/nextcloud/ocp" />
+	</extraFiles>
+	<issueHandlers>
+		<!--
+			These reference classes that exist at runtime in a real Nextcloud but
+			are NOT shipped in nextcloud/ocp, so Psalm can't see them: private OC
+			internals (OC, OC_Util, the oc\hooks\emitter that IRootFolder extends)
+			and event classes owned by other bundled apps (Files, Files_Trashbin).
+			Suppressed by referenced class — not real bugs, and there is no public
+			stub to import. Mirrors the integration_openai psalm.xml approach.
+		-->
+		<UndefinedClass>
+			<errorLevel type="suppress">
+				<referencedClass name="OC" />
+				<referencedClass name="OC_Util" />
+				<referencedClass name="OCA\Files\Event\LoadAdditionalScriptsEvent" />
+				<referencedClass name="OCA\Files_Trashbin\Events\NodeRestoredEvent" />
+			</errorLevel>
+		</UndefinedClass>
+		<UndefinedDocblockClass>
+			<errorLevel type="suppress">
+				<referencedClass name="OCA\Files\Event\LoadAdditionalScriptsEvent" />
+				<referencedClass name="OCA\Files_Trashbin\Events\NodeRestoredEvent" />
+			</errorLevel>
+		</UndefinedDocblockClass>
+		<!--
+			MissingDependency doesn't support <referencedClass> in Psalm 6's schema.
+			The only instances are IRootFolder reporting its base oc\hooks\emitter as
+			missing — purely an OCP-stub artifact, not our code — so suppress the
+			whole (low-value) issue type.
+		-->
+		<MissingDependency errorLevel="suppress" />
+	</issueHandlers>
 </psalm>

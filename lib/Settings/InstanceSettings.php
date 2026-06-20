@@ -19,7 +19,8 @@ use OCP\Settings\IDeclarativeSettingsForm;
  * doesn't belong to either one. Credentials live in their own per-channel cards
  * (API key in {@see AdminSettings}, webhook token in {@see WebhookSettings}).
  */
-class InstanceSettings implements IDeclarativeSettingsForm {
+final class InstanceSettings implements IDeclarativeSettingsForm {
+	#[\Override]
 	public function getSchema(): array {
 		return [
 			// See AdminSettings for the "do NOT prefix the id with the app id"
