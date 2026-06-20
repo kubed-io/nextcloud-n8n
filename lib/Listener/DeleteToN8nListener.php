@@ -46,7 +46,7 @@ use Psr\Log\LoggerInterface;
  *
  * @implements IEventListener<BeforeNodeDeletedEvent>
  */
-class DeleteToN8nListener implements IEventListener {
+final class DeleteToN8nListener implements IEventListener {
 	public function __construct(
 		private DeleteService $deleteService,
 		private MappingService $mappings,
@@ -56,6 +56,7 @@ class DeleteToN8nListener implements IEventListener {
 	) {
 	}
 
+	#[\Override]
 	public function handle(Event $event): void {
 		if (!$event instanceof BeforeNodeDeletedEvent || $this->guard->active()) {
 			return;

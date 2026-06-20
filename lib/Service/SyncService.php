@@ -38,7 +38,7 @@ use Psr\Log\LoggerInterface;
  * update in place by `n8n_id` (rename-stable) and fall back to the canonical
  * filename for fresh writes.
  */
-class SyncService {
+final class SyncService {
 	/** Hard page cap so one click is bounded (n8n maxes at 250/page). */
 	private const MAX_PAGES = 20;
 

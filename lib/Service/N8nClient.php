@@ -44,7 +44,7 @@ use Psr\Log\LoggerInterface;
  * service or a later expansion of this one \u2014 we explicitly want this class
  * to stay small while the contract solidifies.
  */
-class N8nClient {
+final class N8nClient {
 	public function __construct(
 		private IConfig $config,
 		private ICrypto $crypto,

@@ -34,7 +34,7 @@ use Psr\Log\LoggerInterface;
  *   POST /apps/n8n_sync/sync/push    \u2192 NC \u2192 n8n (bulk export, stub)
  *   GET  /apps/n8n_sync/sync/status  \u2192 both records
  */
-class SyncController extends Controller {
+final class SyncController extends Controller {
 	public function __construct(
 		string $appName,
 		IRequest $request,

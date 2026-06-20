@@ -44,7 +44,7 @@ use Psr\Log\LoggerInterface;
  *
  * @implements IEventListener<NodeWrittenEvent>
  */
-class NodeWrittenListener implements IEventListener {
+final class NodeWrittenListener implements IEventListener {
 	public function __construct(
 		private IConfig $config,
 		private IJobList $jobList,
@@ -58,6 +58,7 @@ class NodeWrittenListener implements IEventListener {
 	) {
 	}
 
+	#[\Override]
 	public function handle(Event $event): void {
 		if (!($event instanceof NodeWrittenEvent)) {
 			return;

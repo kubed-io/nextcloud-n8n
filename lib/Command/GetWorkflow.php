@@ -22,13 +22,14 @@ use Symfony\Component\Console\Output\OutputInterface;
  * picked from `n8n_sync:list-workflows` round-trips through the same client
  * Phase 4 will use to PUT updates back.
  */
-class GetWorkflow extends Command {
+final class GetWorkflow extends Command {
 	public function __construct(
 		private N8nClient $client,
 	) {
 		parent::__construct();
 	}
 
+	#[\Override]
 	protected function configure(): void {
 		$this
 			->setName('n8n_sync:get-workflow')
@@ -36,6 +37,7 @@ class GetWorkflow extends Command {
 			->addArgument('id', InputArgument::REQUIRED, 'The n8n workflow id (from list-workflows).');
 	}
 
+	#[\Override]
 	protected function execute(InputInterface $input, OutputInterface $output): int {
 		$id = (string)$input->getArgument('id');
 		try {

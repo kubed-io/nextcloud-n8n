@@ -31,12 +31,13 @@ use OCP\Files\File;
  *
  * @implements IEventListener<BeforeNodeRenamedEvent>
  */
-class MoveGuardListener implements IEventListener {
+final class MoveGuardListener implements IEventListener {
 	public function __construct(
 		private MappingService $mappings,
 	) {
 	}
 
+	#[\Override]
 	public function handle(Event $event): void {
 		if (!$event instanceof BeforeNodeRenamedEvent) {
 			return;

@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Psalm cleanup: 43 classes marked `final`, 47 `#[\Override]` attributes added; suppressed
+  not-our-bug refs to private OC internals + other-app event classes; baseline regenerated.
 - Psalm now loads `nextcloud/ocp` (`extraFiles`), clearing ~176 false-positive
   `UndefinedClass`/`MissingDependency` code-scanning alerts for built-in OCP classes.
 - JS unit tests (Vitest) for the Files-integration helpers, extracted into a dependency-free

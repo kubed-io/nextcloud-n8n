@@ -27,7 +27,7 @@ use OCP\IRequest;
  * HTTP-transport noise that only the connection test cares about; deeper
  * callers (Phase 3/4) want raw exceptions to drive retry/backoff.
  */
-class ConfigController extends Controller {
+final class ConfigController extends Controller {
 	public function __construct(
 		string $appName,
 		IRequest $request,

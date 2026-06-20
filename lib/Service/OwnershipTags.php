@@ -34,7 +34,7 @@ use Psr\Log\LoggerInterface;
  * forbidden (it is `is_callable()` and crashes PROPFIND — see WorkflowMetadata);
  * tag names have no such constraint.
  */
-class OwnershipTags {
+final class OwnershipTags {
 	public const TAG_SYNC = 'n8n:sync';
 	public const TAG_BACKUP = 'n8n:backup';
 	public const TAG_LINK = 'n8n:link';

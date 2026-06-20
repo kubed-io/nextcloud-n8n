@@ -29,7 +29,7 @@ use Psr\Log\LoggerInterface;
  * SyncStatusService so the Manual sync panel's "last:" line reflects scheduled
  * runs too.
  */
-class ScheduledPullJob extends TimedJob {
+final class ScheduledPullJob extends TimedJob {
 	public function __construct(
 		ITimeFactory $time,
 		private IAppConfig $appConfig,
@@ -41,6 +41,7 @@ class ScheduledPullJob extends TimedJob {
 		$this->setInterval(max(60, $this->intervalSeconds()));
 	}
 
+	#[\Override]
 	protected function run($argument): void {
 		if (!$this->isEnabled()) {
 			return; // disabled — interval still gates how often we re-check

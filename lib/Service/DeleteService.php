@@ -39,7 +39,7 @@ use Psr\Log\LoggerInterface;
  * The service itself never throws on a "tag wasn't there" / "tag was already
  * there" — those are no-ops by design (idempotency).
  */
-class DeleteService {
+final class DeleteService {
 	public function __construct(
 		private N8nClient $n8n,
 		private LoggerInterface $logger,

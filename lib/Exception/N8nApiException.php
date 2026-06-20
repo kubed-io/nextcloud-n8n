@@ -18,7 +18,7 @@ namespace OCA\N8nSync\Exception;
  * into a toast/notification so a user can fix their workflow JSON. `httpStatus`
  * is the response code (0 for transport errors with no response).
  */
-class N8nApiException extends \RuntimeException {
+final class N8nApiException extends \RuntimeException {
 	public function __construct(
 		string $message,
 		public readonly int $httpStatus = 0,

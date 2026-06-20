@@ -33,7 +33,7 @@ use OCP\IRequest;
  *                                              Folder + foreign files are always
  *                                              kept (spec UC-4).
  */
-class MappingController extends Controller {
+final class MappingController extends Controller {
 	public function __construct(
 		string $appName,
 		IRequest $request,

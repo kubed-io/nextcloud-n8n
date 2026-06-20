@@ -39,7 +39,7 @@ use Psr\Log\LoggerInterface;
  * re-stamp) is wrapped in {@see SyncGuard} so the implicit re-write doesn't
  * echo into {@see \OCA\N8nSync\Listener\NodeWrittenListener} as a writeback.
  */
-class CreateService {
+final class CreateService {
 	/**
 	 * Same allowlist as {@see PushService::pushViaApi}. n8n's `WorkflowSettings`
 	 * schema is `additionalProperties: false`, so any extras 400 the request.

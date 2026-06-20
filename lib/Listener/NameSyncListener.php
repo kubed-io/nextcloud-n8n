@@ -45,7 +45,7 @@ use OCP\IUserSession;
  *
  * @implements IEventListener<NodeWrittenEvent|NodeRenamedEvent>
  */
-class NameSyncListener implements IEventListener {
+final class NameSyncListener implements IEventListener {
 	public function __construct(
 		private WorkflowMetadata $metadata,
 		private SyncGuard $guard,
@@ -54,6 +54,7 @@ class NameSyncListener implements IEventListener {
 	) {
 	}
 
+	#[\Override]
 	public function handle(Event $event): void {
 		if ($this->guard->active()) {
 			return;

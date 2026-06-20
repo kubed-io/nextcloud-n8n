@@ -39,7 +39,7 @@ use Psr\Log\LoggerInterface;
  * `admin` group, admins see managed Team Folders in their own Drive. Fine for
  * homelab/single-admin; revisit if per-user applicable lands upstream.
  */
-class TeamFolderService {
+final class TeamFolderService {
 	/** Built-in group used to grant the write actor access. We never create it. */
 	public const ADMIN_GROUP = 'admin';
 

@@ -47,7 +47,7 @@ use Psr\Log\LoggerInterface;
  * All keys are EDIT_FORBIDDEN: clients cannot mutate them via PROPPATCH.
  * Only the plugin itself writes them, from the pull/push reconcilers.
  */
-class WorkflowMetadata {
+final class WorkflowMetadata {
 	public const KEY_ID = 'n8n_id';
 	public const KEY_MODE = 'n8n_mode';       // reference | sync
 	public const KEY_WRITEBACK = 'n8n_writeback';  // two-way | readonly | '' (reference)
