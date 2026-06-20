@@ -504,11 +504,18 @@ file (branch naming, PR-vs-issue flow, conventional-ish commit style, when to up
 `CHANGELOG.md`, semver policy for an NC app, `v0.x.y` tag format). Branch protection
 rules in repo settings that *enforce* these are still to be turned on (§11, §13).
 
-### 9. License ✅ (chosen, not yet formalized)
+### 9. License ✅ (formalized)
 
-AGPL-3.0-or-later — required for Nextcloud app store eligibility and consistent with
-`package.json` (`"license": "AGPL-3.0-or-later"`). A `LICENSE` file should be added to
-the repo root if not already present. SPDX headers in source files are a bonus.
+**AGPL-3.0-or-later** — the de-facto Nextcloud license (server itself + deck +
+integration_openai + effectively every official/community app), and required for app-store
+eligibility. Now fully formalized:
+- **`LICENSE`** at the repo root — the **canonical AGPL-3.0 text copied verbatim from
+  gnu.org** (`agpl-3.0.txt`, 661 lines), not generated. Cross-checked against the SPDX copy.
+- SPDX `AGPL-3.0-or-later` already declared in `package.json`, `composer.json`, and source
+  `SPDX-License-Identifier` headers.
+- `info.xml` uses **`<licence>agpl</licence>`** — confirmed: the official apps use this short
+  form, NOT the SPDX string (see Chapter 3 §3.1). Also fixed the `bugs` URL and added
+  `<repository>` while here.
 
 ### 10. CI workflows — two flows: Tests vs Quality ✅ (implemented)
 
@@ -702,9 +709,10 @@ resolves and auto-closes on merge).
 
 A few items that naturally belong in this chapter:
 
-- **LICENSE file** — AGPL-3.0-or-later is chosen; the actual file needs to exist in the repo root.
-- **`info.xml` cleanup** — the `licence` field, `bugs` URL, and missing `repository` field
-  need fixing before Chapter 3 is possible. Small change, high consequence for the store submission.
+- **LICENSE file** — ✅ done: canonical AGPL-3.0 text from gnu.org at the repo root (§9).
+- **`info.xml` cleanup** — ✅ `bugs` URL fixed + `<repository>` added; `<licence>agpl</licence>`
+  confirmed correct (the official apps use the short form, not SPDX). Still pending for the
+  store: real `description` copy + at least one `screenshot` (Chapter 3 §3.1).
 - **`.gitignore` audit** — `dist/` and `node_modules/` are already gitignored; verify nothing
   sensitive (keys, `.env`) could accidentally slip in as the repo matures.
 - **Secrets hygiene** — the GitHub App private key and (eventually) the NC app signing key
