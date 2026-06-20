@@ -582,6 +582,38 @@ baseline is the explicit ledger of deferred cleanup: shrink it over time
 So "refactor pass" reads as "keep the gates green and the baseline shrinking," not a single
 event gated on the test suite being finished.
 
+#### 12.1 Code-scanning paydown — progress + the remaining queue
+
+The Psalm SARIF Security-tab count went **239 → ~73** (PR #15):
+- **Root cause:** Psalm wasn't loading `nextcloud/ocp`, so ~166 references to real OCP
+  classes were false `UndefinedClass`/`MissingDependency` errors. Fixed with `<extraFiles>`
+  pointing at `vendor/nextcloud/ocp` (type inference 89% → 97%).
+- **Applied:** 43 classes → `final`, 47 `#[\Override]` attributes; suppressed not-our-bug
+  refs (private `OC`/`OC_Util`, other-app event classes, the `IRootFolder`→`oc\hooks\emitter`
+  OCP-stub artifact) via `issueHandlers`; regenerated the baseline.
+- **Hard-won ops note:** the cluster's Nextcloud **pod cannot run Psalm** — it hangs on the
+  analysis phase even when fresh/idle, while CI does it in ~2.4s. **Run Psalm in CI**, not the
+  pod. Baseline regeneration is done via a `--ignore-baseline --set-baseline` CI step that
+  uploads the result as an artifact to commit back. (The pod is fine for `php -l` + composer.)
+- **Psalm 6 schema gotcha:** `<referencedClass>` is only valid under `UndefinedClass` /
+  `UndefinedDocblockClass` (not `MissingDependency` — suppress that as a whole type).
+
+**Remaining queue (the ~73, to clear in focused follow-up PRs — decided split, not one sweep):**
+- **DEFERRED — `IConfig::getAppValue/setAppValue` → `IAppConfig` migration (14 + 2 related
+  `DeprecatedInterface` for `IAppContainer`/`IServerContainer`).** These are real NC API
+  deprecations in our own code across ~10 service files. Deferred deliberately: it changes the
+  config API surface (`getValueString`/`setValueString`) and needs careful default-value
+  parity checking, so it gets its **own dedicated PR**, not folded into mechanical cleanup.
+- Mechanical (~27): redundant casts/conditions/function-call, missing param/closure types.
+- Genuine type bugs (~28): `InvalidArrayOffset`, `InvalidArgument`, falsable returns,
+  `DocblockTypeContradiction`, `ImplementedParamTypeMismatch`, etc. — fix with judgment.
+- False positives (2): `InvalidTemplateParam` on the event listeners (same OCP-gap cause as
+  the suppressed `UndefinedClass` for those two other-app event classes) — suppress.
+
+> The GitHub Advanced Security bot now posts these as inline PR review comments — confirmed
+> they are **our own Psalm findings re-surfaced**, not a second scanner. Good signal the
+> security-review loop is working.
+
 ### 13. GitHub Security — get all the green checkmarks ⚠️ (partly done via §10)
 
 A distinct, larger track from the Tests/Quality CI work, though it **reuses** it. The goal is

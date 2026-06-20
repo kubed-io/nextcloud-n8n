@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Saga §12.1: record the code-scanning paydown (239→~73), the pod-can't-run-Psalm ops note,
+  and the deferred IConfig→IAppConfig migration queue.
 - Psalm cleanup: 43 classes marked `final`, 47 `#[\Override]` attributes added; suppressed
   not-our-bug refs to private OC internals + other-app event classes; baseline regenerated.
 - Psalm now loads `nextcloud/ocp` (`extraFiles`), clearing ~176 false-positive
