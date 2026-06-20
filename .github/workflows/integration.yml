@@ -49,7 +49,7 @@ env:
 jobs:
 
   integration:
-    name: Behat on real Nextcloud
+    name: Integration Tests
     runs-on: ubuntu-latest
 
     strategy:
