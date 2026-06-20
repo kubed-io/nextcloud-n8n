@@ -49,7 +49,7 @@ env:
 jobs:
 
   integration:
-    name: Behat on real Nextcloud
+    name: Integration Tests
     runs-on: ubuntu-latest
 
     strategy:
@@ -82,6 +82,7 @@ jobs:
           --health-start-period 20s
 
     steps:
+    # ── Provision: install everything up front, before any action runs ───────
     - name: Checkout server
       uses: actions/checkout@v7
       with:
@@ -103,6 +104,10 @@ jobs:
         coverage: none
         tools: composer:v2
 
+    - name: Install Behat deps
+      working-directory: apps/${{ env.APP_ID }}/tests/integration
+      run: composer install --prefer-dist --no-progress
+
     - name: Install Nextcloud (SQLite)
       run: |
         mkdir -p data
@@ -112,6 +117,7 @@ jobs:
           --admin-pass="$NC_ADMIN_PASS"
         ./occ config:system:set trusted_domains 1 --value=localhost
 
+    # ── Readiness: wait for the n8n service container ────────────────────────
     - name: Wait for n8n
       run: |
         for i in $(seq 1 40); do
@@ -120,9 +126,23 @@ jobs:
         done
         echo "n8n did not become healthy" >&2; exit 1
 
-    - name: Install Behat deps
-      working-directory: apps/${{ env.APP_ID }}/tests/integration
-      run: composer install --prefer-dist --no-progress
+    # ── Act: everything provisioned and ready — now do the work ──────────────
+    # PREREQUISITE (not a feature): obtain a valid n8n API key so the tests can
+    # act as an admin who already has one. How the key is created is out of the
+    # app's scope — this is pure test setup. Fails the job loudly if no key, so
+    # we never run the suite without one. The key is exposed as a step output for
+    # later steps; it is NOT stored anywhere.
+    - name: Mint n8n API key (prerequisite)
+      id: n8n_key
+      env:
+        N8N_OWNER_EMAIL: owner@example.com
+        N8N_OWNER_PASSWORD: n8npassword
+      run: |
+        key="$(bash apps/$APP_ID/tests/integration/bin/mint-n8n-key.sh)"
+        if [ -z "$key" ]; then echo "no API key minted" >&2; exit 1; fi
+        echo "::add-mask::$key"
+        echo "key=$key" >> "$GITHUB_OUTPUT"
+        echo "✅ n8n API key obtained (length ${#key})"
 
     # Behat runs from the integration dir; OCC points back at the server root so
     # `occ` resolves. Formatters (pretty → stdout, junit → junit/) are configured
@@ -132,6 +152,8 @@ jobs:
       env:
         OCC: php ${{ github.workspace }}/occ
         NC_BASE_URL: http://localhost:8080
+        # The minted key, available to scenarios as an "admin already has a key".
+        N8N_API_KEY: ${{ steps.n8n_key.outputs.key }}
       run: vendor/bin/behat --config behat.dist.yml
 
     - name: Publish integration results

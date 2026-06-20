@@ -290,6 +290,11 @@ repos/<owner>/<repo>/releases/latest` — the stale-major footgun is documented 
 - **Prefer `env:` for static or derivable values too** (job-level `env:` for repo-wide
   constants like `APP_ID`), so each `run:` step reads as its actual purpose, not plumbing.
 - **Invoke scripts with `bash path/to/x.sh`** rather than relying on the executable bit.
+- **Provision first, act second — don't stagger.** Group all setup/install steps up front
+  (checkouts, language runtimes, dependency installs, service bring-up), then a readiness gate,
+  then the steps that *do the work*. Avoid the "install A → use A → install B → use B" pattern;
+  prefer "install A → install B → … → now run everything." It reads clearly, fails fast on a
+  bad dep before any work starts, and keeps phases obvious.
 
 ---
 

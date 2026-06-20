@@ -136,6 +136,8 @@ Things that have bitten contributors (human and AI) and shouldn't bite again:
   (injection risk + mixes templating with logic). Bind it to an `env:` entry and read the
   clean `$VAR` in bash. Prefer `env:` for static/derivable values too. Invoke scripts with
   `bash path/x.sh`, not the exec bit. (CONTRIBUTING.md → Workflow authoring conventions.)
+- **Provision first, act second.** Group all install/setup steps up front, then a readiness
+  gate, then the work. Don't stagger "install A → use A → install B → use B".
 - **`@nextcloud/files` major must match NC major.** v4 for NC 33+. Mismatched
   versions silently break the Files row script. (saga §11/§12)
 - **Don't run heavy tools (Psalm) repeatedly in the shared prod pod.** Stacked
