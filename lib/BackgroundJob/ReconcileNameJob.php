@@ -52,7 +52,7 @@ final class ReconcileNameJob extends QueuedJob {
 	}
 
 	#[\Override]
-	protected function run($argument): void {
+	protected function run(mixed $argument): void {
 		$fileId = (int)($argument['fileId'] ?? 0);
 		$uid = (string)($argument['userId'] ?? '');
 		$action = (string)($argument['action'] ?? '');
@@ -93,7 +93,9 @@ final class ReconcileNameJob extends QueuedJob {
 				}
 				// Write the JSON name guarded (so writeback/name-sync don't echo),
 				// then push to n8n ourselves — one tick, one push.
-				$this->guard->run(fn () => $node->putContent($encoded));
+				$this->guard->run(function () use ($node, $encoded): void {
+					$node->putContent($encoded);
+				});
 				$this->pushService->push($node);
 			} elseif ($action === 'filename_from_name') {
 				if ($jsonName === '' || $jsonName === $stem) {

@@ -42,7 +42,7 @@ final class ScheduledPullJob extends TimedJob {
 	}
 
 	#[\Override]
-	protected function run($argument): void {
+	protected function run(mixed $argument): void {
 		if (!$this->isEnabled()) {
 			return; // disabled — interval still gates how often we re-check
 		}

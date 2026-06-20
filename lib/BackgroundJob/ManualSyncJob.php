@@ -34,7 +34,7 @@ final class ManualSyncJob extends QueuedJob {
 	}
 
 	#[\Override]
-	protected function run($argument): void {
+	protected function run(mixed $argument): void {
 		$direction = (string)($argument['direction'] ?? SyncStatusService::DIR_PULL);
 		$mappingId = $argument['mappingId'] ?? null;
 		$mappingId = is_string($mappingId) && $mappingId !== '' ? $mappingId : null;
