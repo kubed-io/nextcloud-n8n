@@ -14,7 +14,7 @@ use OCA\N8nSync\AppInfo\Application;
 use OCP\AppFramework\Services\IInitialState;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
-use OCP\IConfig;
+use OCP\IAppConfig;
 use OCP\Util;
 
 /**
@@ -30,7 +30,7 @@ use OCP\Util;
  */
 final class LoadFilesScriptListener implements IEventListener {
 	public function __construct(
-		private IConfig $config,
+		private IAppConfig $config,
 		private IInitialState $initialState,
 	) {
 	}
@@ -42,7 +42,7 @@ final class LoadFilesScriptListener implements IEventListener {
 		}
 		$this->initialState->provideInitialState(
 			'n8n_url',
-			rtrim((string)$this->config->getAppValue(Application::APP_ID, 'n8n_url', ''), '/'),
+			rtrim($this->config->getValueString(Application::APP_ID, 'n8n_url', ''), '/'),
 		);
 		// Bundle lives under dist/ (built by `npm run build`, gitignored). NC's
 		// Util::addScript appends `js/<file>.js` to `apps/<appid>/`, so the

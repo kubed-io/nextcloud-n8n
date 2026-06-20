@@ -15,7 +15,7 @@ use OCP\Http\Client\IClient;
 use OCP\Http\Client\IClientService;
 use OCP\Http\Client\IResponse;
 use OCP\Http\Client\LocalServerException;
-use OCP\IConfig;
+use OCP\IAppConfig;
 use OCP\Security\ICrypto;
 use Psr\Log\LoggerInterface;
 
@@ -46,7 +46,7 @@ use Psr\Log\LoggerInterface;
  */
 final class N8nClient {
 	public function __construct(
-		private IConfig $config,
+		private IAppConfig $config,
 		private ICrypto $crypto,
 		private IClientService $clientService,
 		private LoggerInterface $logger,
@@ -133,7 +133,7 @@ final class N8nClient {
 	 * @return array{httpStatus:int, message:string}
 	 */
 	public function pingWebhook(): array {
-		$path = trim((string)$this->config->getAppValue(Application::APP_ID, 'webhook_path', ''));
+		$path = trim($this->config->getValueString(Application::APP_ID, 'webhook_path', ''));
 		if ($path === '') {
 			throw new \RuntimeException('Set the webhook path first.');
 		}
@@ -285,7 +285,7 @@ final class N8nClient {
 	 * @return array<string,mixed> decoded response (empty array if none)
 	 */
 	public function callWebhook(string $path, array $body): array {
-		$base = rtrim((string)$this->config->getAppValue(Application::APP_ID, 'n8n_url', ''), '/');
+		$base = rtrim($this->config->getValueString(Application::APP_ID, 'n8n_url', ''), '/');
 		if ($base === '') {
 			throw new \RuntimeException('Set the n8n base URL first.');
 		}
@@ -294,7 +294,7 @@ final class N8nClient {
 			'Content-Type' => 'application/json',
 			'Accept' => 'application/json',
 		];
-		$enc = (string)$this->config->getAppValue(Application::APP_ID, 'webhook_token', '');
+		$enc = $this->config->getValueString(Application::APP_ID, 'webhook_token', '');
 		if ($enc !== '') {
 			try {
 				$headers['Authorization'] = 'Bearer ' . $this->crypto->decrypt($enc);
@@ -332,8 +332,8 @@ final class N8nClient {
 	 * @param array<string,mixed>|null $jsonBody
 	 */
 	private function request(string $method, string $path, array $query = [], ?array $jsonBody = null): IResponse {
-		$base = rtrim((string)$this->config->getAppValue(Application::APP_ID, 'n8n_url', ''), '/');
-		$enc = (string)$this->config->getAppValue(Application::APP_ID, 'api_key', '');
+		$base = rtrim($this->config->getValueString(Application::APP_ID, 'n8n_url', ''), '/');
+		$enc = $this->config->getValueString(Application::APP_ID, 'api_key', '');
 		if ($base === '') {
 			throw new \RuntimeException('Set the n8n base URL first.');
 		}

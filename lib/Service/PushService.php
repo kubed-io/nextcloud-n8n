@@ -14,7 +14,6 @@ use OCA\N8nSync\Exception\N8nApiException;
 use OCP\Files\File;
 use OCP\Files\Node;
 use OCP\IAppConfig;
-use OCP\IConfig;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -44,7 +43,6 @@ use Psr\Log\LoggerInterface;
  */
 final class PushService {
 	public function __construct(
-		private IConfig $config,
 		private IAppConfig $appConfig,
 		private N8nClient $n8n,
 		private WorkflowMetadata $metadata,
@@ -180,7 +178,7 @@ final class PushService {
 	 * workflow decides what to do; we don't get a versionId back.
 	 */
 	private function pushViaWebhook(Node $node, string $id, string $content): ?string {
-		$path = (string)$this->config->getAppValue(Application::APP_ID, 'webhook_path', '');
+		$path = $this->appConfig->getValueString(Application::APP_ID, 'webhook_path', '');
 		if ($path === '') {
 			throw new \RuntimeException('Webhook writeback is enabled but no webhook path is configured.');
 		}

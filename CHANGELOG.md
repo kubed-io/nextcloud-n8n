@@ -30,6 +30,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Migrated deprecated `IConfig` app-config calls to `IAppConfig`.
 - Cleared most static-analysis findings (Psalm).
 
 ### Fixed

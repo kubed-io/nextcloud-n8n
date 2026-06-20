@@ -121,6 +121,10 @@ final class Application extends App implements IBootstrap {
 
 	#[\Override]
 	public function boot(IBootContext $context): void {
+		// getAppContainer() resolves THIS app's services (WorkflowMetadata etc.).
+		// Its declared return type (IAppContainer) is deprecated by core with no
+		// non-deprecated accessor on IBootContext, so this one Psalm deprecation
+		// is unavoidable and rides the baseline; the call itself is correct.
 		$container = $context->getAppContainer();
 
 		// Register our managed Files-Metadata keys (n8n_id, n8n_mode,
