@@ -18,14 +18,15 @@ before a submission will be accepted:
 
 | Field | Current | Fix needed |
 |---|---|---|
-| `licence` | `agpl` | Must be SPDX format: `AGPL-3.0-or-later` |
-| `bugs` | `kubed-io/nextcloud` | Must point to this app's actual issue tracker |
+| `licence` | `agpl` | ✅ already correct — the official apps (deck, integration_openai) use the **`agpl`** short form in `info.xml`, NOT the SPDX string. (SPDX `AGPL-3.0-or-later` belongs in `package.json`/`composer.json`/source headers + the root `LICENSE` file — all already present.) |
+| `bugs` | ~~`kubed-io/nextcloud`~~ → `kubed-io/nextcloud-n8n/issues` | ✅ fixed |
+| `repository` | ~~missing~~ → added (`…/nextcloud-n8n.git`) | ✅ fixed |
 | `description` | placeholder copy ("Phase 0 skeleton") | Write real user-facing copy |
-| `repository` | missing | Add the source repo URL |
 | `screenshot` | missing | Add at least one HTTPS screenshot URL (≤2 MiB each) |
 
 The store requires at minimum: `id`, `name`, `summary`, `description` (real English copy),
-`version`, `licence` (SPDX), `author`, `bugs` (URL), and `dependencies/nextcloud` with both
+`version`, `licence` (the `agpl` short form is accepted), `author`, `bugs` (URL), and
+`dependencies/nextcloud` with both
 `min-version` and `max-version`.
 
 ### Step 2 — Generate a signing key and submit the CSR

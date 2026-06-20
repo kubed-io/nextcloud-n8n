@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `LICENSE` file: canonical AGPL-3.0 text, plus `info.xml` `<repository>` and corrected
+  `<bugs>` URL.
 - Integration test scaffolding: `docker-compose.yaml` (dev/devcontainer NC + n8n),
   an install/uninstall `occ` test, and `integration.yml` (checkout-server + SQLite,
   n8n as a service).
