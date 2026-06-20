@@ -52,51 +52,55 @@ final class FeatureContext implements Context {
 	}
 
 	// ── lifecycle steps ───────────────────────────────────────────────────────
-
-	/** @When I run occ :args */
-	public function iRunOcc(string $args): void {
-		$this->occ($args);
-	}
-
-	/** @Then the occ command succeeds */
-	public function theOccCommandSucceeds(): void {
-		Assert::assertSame(0, $this->lastExit, "occ failed (exit {$this->lastExit}):\n{$this->lastOutput}");
-	}
+	// Steps read in plain English (medium-agnostic); occ is an implementation
+	// detail of the step definitions, not the feature.
 
 	/**
 	 * Precondition: make sure the app is enabled (idempotent).
 	 *
-	 * @Given the app :app is enabled
+	 * @Given the app is enabled
 	 */
-	public function givenTheAppIsEnabled(string $app): void {
-		$this->occ('app:enable --force ' . escapeshellarg($app));
+	public function givenTheAppIsEnabled(): void {
+		$this->occ('app:enable --force ' . self::APP_ID);
 	}
 
-	/** @Then the app :app should be enabled */
-	public function theAppShouldBeEnabled(string $app): void {
+	/** @When the admin enables the app */
+	public function theAdminEnablesTheApp(): void {
+		$res = $this->occ('app:enable --force ' . self::APP_ID);
+		Assert::assertSame(0, $res['exit'], "enabling the app failed:\n{$res['output']}");
+	}
+
+	/** @When the admin disables the app */
+	public function theAdminDisablesTheApp(): void {
+		$res = $this->occ('app:disable ' . self::APP_ID);
+		Assert::assertSame(0, $res['exit'], "disabling the app failed:\n{$res['output']}");
+	}
+
+	/** @Then the app should be enabled */
+	public function theAppIsEnabled(): void {
 		$res = $this->occ('app:list');
 		Assert::assertMatchesRegularExpression(
-			'/^\s+- ' . preg_quote($app, '/') . ':/m',
+			'/^\s+- ' . preg_quote(self::APP_ID, '/') . ':/m',
 			$this->enabledBlock($res['output']),
-			"$app is not in the Enabled list",
+			'the app is not in the Enabled list',
 		);
 	}
 
-	/** @Then the app :app should not be enabled */
-	public function theAppShouldNotBeEnabled(string $app): void {
+	/** @Then the app is not enabled */
+	public function theAppIsNotEnabled(): void {
 		$res = $this->occ('app:list');
 		Assert::assertDoesNotMatchRegularExpression(
-			'/^\s+- ' . preg_quote($app, '/') . ':/m',
+			'/^\s+- ' . preg_quote(self::APP_ID, '/') . ':/m',
 			$this->enabledBlock($res['output']),
-			"$app is still enabled",
+			'the app is still enabled',
 		);
 	}
 
-	/** @Then the app :app path resolves */
-	public function theAppPathResolves(string $app): void {
-		$res = $this->occ('app:getpath ' . escapeshellarg($app));
-		Assert::assertSame(0, $res['exit'], "app:getpath failed for $app");
-		Assert::assertNotSame('', trim($res['output']), "app:getpath returned empty for $app");
+	/** @Then the app is installed correctly */
+	public function theAppIsInstalledCorrectly(): void {
+		$res = $this->occ('app:getpath ' . self::APP_ID);
+		Assert::assertSame(0, $res['exit'], 'app:getpath failed');
+		Assert::assertNotSame('', trim($res['output']), 'app path did not resolve');
 	}
 
 	// ── admin-setup steps ─────────────────────────────────────────────────────
@@ -136,84 +140,164 @@ final class FeatureContext implements Context {
 
 	// ── connection steps (the "admin makes connection" use case) ──────────────
 
-	/** @Given the n8n base URL is set */
-	public function theN8nBaseUrlIsSet(): void {
+	/** @Given the app is installed and enabled */
+	public function theAppIsInstalledAndEnabled(): void {
+		$this->occ('app:enable --force ' . self::APP_ID);
+	}
+
+	/** @When the admin sets the n8n base URL */
+	public function theAdminSetsTheN8nBaseUrl(): void {
 		$url = getenv('N8N_URL') ?: 'http://localhost:5678';
 		$res = $this->occ('config:app:set ' . self::APP_ID . ' n8n_url --value=' . escapeshellarg($url));
-		Assert::assertSame(0, $res['exit'], "setting n8n_url failed:\n{$res['output']}");
+		Assert::assertSame(0, $res['exit'], "setting the base URL failed:\n{$res['output']}");
 	}
 
 	/**
-	 * Store the real, CI-minted key the way the admin UI would (encrypted), via
-	 * the app's own `n8n_sync:set-api-key` command (piped on stdin).
+	 * Store the real, CI-provided key the way the admin UI does (encrypted).
 	 *
-	 * @Given the n8n API key is set
+	 * @When the admin provides the n8n API key
 	 */
-	public function theN8nApiKeyIsSet(): void {
+	public function theAdminProvidesTheN8nApiKey(): void {
 		$key = getenv('N8N_API_KEY') ?: '';
-		Assert::assertNotSame('', $key, 'N8N_API_KEY is not set — the CI prerequisite must mint it first');
+		Assert::assertNotSame('', $key, 'N8N_API_KEY is not set — the test setup must provide it');
 		$res = $this->occStdin($this->occ . ' n8n_sync:set-api-key', $key);
-		Assert::assertSame(0, $res['exit'], "set-api-key failed:\n{$res['output']}");
+		Assert::assertSame(0, $res['exit'], "providing the API key failed:\n{$res['output']}");
 	}
 
-	/** @Given the n8n API key is set to :key */
-	public function theN8nApiKeyIsSetTo(string $key): void {
-		$res = $this->occStdin($this->occ . ' n8n_sync:set-api-key', $key);
-		Assert::assertSame(0, $res['exit'], "set-api-key failed:\n{$res['output']}");
+	/** @When the admin provides an invalid API key */
+	public function theAdminProvidesAnInvalidApiKey(): void {
+		$res = $this->occStdin($this->occ . ' n8n_sync:set-api-key', 'not-a-real-key');
+		Assert::assertSame(0, $res['exit'], "storing the (invalid) key failed:\n{$res['output']}");
 	}
 
-	/** @Given the REST API is enabled */
-	public function theRestApiIsEnabled(): void {
+	/** @When the admin enables the REST API */
+	public function theAdminEnablesTheRestApi(): void {
 		$res = $this->occ('config:app:set ' . self::APP_ID . ' api_enabled --value=1');
-		Assert::assertSame(0, $res['exit'], "enabling api failed:\n{$res['output']}");
+		Assert::assertSame(0, $res['exit'], "enabling the REST API failed:\n{$res['output']}");
 	}
 
-	/** @When I run the connection test */
-	public function iRunTheConnectionTest(): void {
+	/** @Given the admin has set the n8n base URL and enabled the REST API */
+	public function theAdminHasSetUrlAndEnabledApi(): void {
+		$this->theAdminSetsTheN8nBaseUrl();
+		$this->theAdminEnablesTheRestApi();
+	}
+
+	/** @When the admin tests the connection */
+	public function theAdminTestsTheConnection(): void {
 		$this->occ('n8n_sync:test-connection');
 	}
 
-	/** @Then the connection test succeeds */
-	public function theConnectionTestSucceeds(): void {
-		Assert::assertSame(0, $this->lastExit, "test-connection failed (exit {$this->lastExit}):\n{$this->lastOutput}");
+	/** @Then the connection is verified */
+	public function theConnectionIsVerified(): void {
+		Assert::assertSame(0, $this->lastExit, "the connection test failed:\n{$this->lastOutput}");
 	}
 
-	/** @Then the connection test fails */
-	public function theConnectionTestFails(): void {
-		Assert::assertNotSame(0, $this->lastExit, "test-connection unexpectedly succeeded:\n{$this->lastOutput}");
+	/** @Then the connection test reports a failure */
+	public function theConnectionTestReportsAFailure(): void {
+		Assert::assertNotSame(0, $this->lastExit, "the connection test unexpectedly succeeded:\n{$this->lastOutput}");
 	}
 
-	// ── mapping steps (occ n8n_sync:add/list/remove-mapping) ───────────────────
+	// ── mapping steps ─────────────────────────────────────────────────────────
+	// The feature describes mappings in plain English (titled table columns); the
+	// step translates "storage"/"mode" words into the data model and adds them.
 
-	/** @When I add a mapping: */
-	public function iAddAMapping(\Behat\Gherkin\Node\PyStringNode $json): void {
-		$res = $this->occ('n8n_sync:add-mapping ' . escapeshellarg($json->getRaw()));
-		Assert::assertSame(0, $res['exit'], "add-mapping failed:\n{$res['output']}");
+	/** @When the admin adds these mappings: */
+	public function theAdminAddsTheseMappings(\Behat\Gherkin\Node\TableNode $table): void {
+		foreach ($table->getHash() as $row) {
+			$res = $this->addMapping(
+				$row['n8n tag'],
+				$row['folder'],
+				$row['storage'],
+				$row['mode'],
+			);
+			Assert::assertSame(0, $res['exit'], "adding mapping {$row['n8n tag']} failed:\n{$res['output']}");
+		}
 	}
 
-	/** @When I try to add a mapping: */
-	public function iTryToAddAMapping(\Behat\Gherkin\Node\PyStringNode $json): void {
-		// Don't assert here — the scenario asserts the outcome (accepted/rejected).
-		$this->occ('n8n_sync:add-mapping ' . escapeshellarg($json->getRaw()));
+	/** @When the admin adds a sync mapping with no writeback for tag :tag */
+	public function theAdminAddsASyncMappingWithNoWriteback(string $tag): void {
+		// "sync" normally implies a writeback; build the invalid shape directly.
+		$json = json_encode([
+			'n8n_tag' => $tag, 'team_folder' => 'x', 'nc_groups' => ['admin'],
+			'mode' => 'sync', 'use_team_folder' => true,
+		], JSON_THROW_ON_ERROR);
+		$this->occ('n8n_sync:add-mapping ' . escapeshellarg($json));
+	}
+
+	/** @When the admin adds a link mapping that also writes back for tag :tag */
+	public function theAdminAddsALinkMappingThatWritesBack(string $tag): void {
+		$json = json_encode([
+			'n8n_tag' => $tag, 'team_folder' => 'x', 'nc_groups' => ['admin'],
+			'mode' => 'reference', 'writeback' => 'two-way', 'use_team_folder' => true,
+		], JSON_THROW_ON_ERROR);
+		$this->occ('n8n_sync:add-mapping ' . escapeshellarg($json));
 	}
 
 	/** @Then the mapping is rejected */
 	public function theMappingIsRejected(): void {
-		Assert::assertNotSame(0, $this->lastExit, "add-mapping unexpectedly succeeded:\n{$this->lastOutput}");
-	}
-
-	/** @Then the configured mappings include the tag :tag */
-	public function theConfiguredMappingsIncludeTag(string $tag): void {
-		$res = $this->occ('n8n_sync:list-mappings');
-		Assert::assertStringContainsString($tag, $res['output'], "no mapping for tag $tag");
+		Assert::assertNotSame(0, $this->lastExit, "the mapping was unexpectedly accepted:\n{$this->lastOutput}");
 	}
 
 	/** @Then there are :count configured mappings */
 	public function thereAreNConfiguredMappings(int $count): void {
+		Assert::assertCount($count, $this->listMappings(), "expected $count mappings");
+	}
+
+	/** @Then the mapping for tag :tag is a :storage folder in :mode mode */
+	public function theMappingForTagIs(string $tag, string $storage, string $mode): void {
+		$m = $this->findMapping($tag);
+		Assert::assertNotNull($m, "no mapping for tag $tag");
+		// storage: "team" → use_team_folder true; "admin" → false.
+		Assert::assertSame(str_contains($storage, 'team'), (bool)($m['use_team_folder'] ?? false), "tag $tag storage");
+		[$expMode, $expWriteback] = $this->modeToModel($mode);
+		Assert::assertSame($expMode, $m['mode'], "tag $tag mode");
+		if ($expWriteback !== null) {
+			Assert::assertSame($expWriteback, $m['writeback'] ?? null, "tag $tag writeback");
+		}
+	}
+
+	/** Translate a UI mode word to the stored (mode, writeback) pair. */
+	private function modeToModel(string $mode): array {
+		return match ($mode) {
+			'sync' => ['sync', 'two-way'],
+			'backup' => ['sync', 'readonly'],
+			'link' => ['reference', null],
+			default => throw new \InvalidArgumentException("unknown mode '$mode'"),
+		};
+	}
+
+	/** Build + run an add-mapping from plain-English storage/mode words. */
+	private function addMapping(string $tag, string $folder, string $storage, string $mode): array {
+		[$m, $writeback] = $this->modeToModel($mode);
+		$data = [
+			'n8n_tag' => $tag,
+			'team_folder' => $folder,
+			'nc_groups' => ['admin'],
+			'mode' => $m,
+			'use_team_folder' => str_contains($storage, 'team'),
+		];
+		if ($writeback !== null) {
+			$data['writeback'] = $writeback;
+		}
+		return $this->occ('n8n_sync:add-mapping ' . escapeshellarg(json_encode($data, JSON_THROW_ON_ERROR)));
+	}
+
+	/** @return list<array<string,mixed>> */
+	private function listMappings(): array {
 		$res = $this->occ('n8n_sync:list-mappings');
 		$decoded = json_decode($res['output'], true);
 		Assert::assertIsArray($decoded, "list-mappings did not return JSON:\n{$res['output']}");
-		Assert::assertCount($count, $decoded, "expected $count mappings, got " . count($decoded));
+		return $decoded;
+	}
+
+	/** @return array<string,mixed>|null */
+	private function findMapping(string $tag): ?array {
+		foreach ($this->listMappings() as $m) {
+			if (($m['n8n_tag'] ?? null) === $tag) {
+				return $m;
+			}
+		}
+		return null;
 	}
 
 	// ── helpers ───────────────────────────────────────────────────────────────
