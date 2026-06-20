@@ -21,6 +21,7 @@ on:
     - appinfo/**
     - lib/**
     - templates/**
+    - features/**
     - tests/integration/**
     - composer.json
   push:

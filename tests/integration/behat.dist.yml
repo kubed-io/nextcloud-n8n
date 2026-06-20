@@ -15,8 +15,14 @@ default:
   suites:
     default:
       paths:
-        - '%paths.base%/features'
+        # Gherkin lives at the repo root (features/) so the human-readable use
+        # cases are prominent and linkable from docs; behat.dist.yml stays under
+        # tests/integration/ with the rest of the test plumbing.
+        - '%paths.base%/../../features'
       contexts:
+        # Context class lives with the test code (tests/integration/bootstrap/),
+        # loaded via the integration composer autoload — features/ stays pure
+        # Gherkin.
         - OCA\N8nSync\Tests\Integration\FeatureContext
 
   formatters:
