@@ -449,7 +449,7 @@ final class SyncService {
 			'url' => $base === '' ? null : $base . '/workflow/' . $id,
 			'tags' => $tags,
 		];
-		return json_encode($payload, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+		return json_encode($payload, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 	}
 
 	/**
@@ -459,7 +459,7 @@ final class SyncService {
 	 * @param array<string,mixed> $workflow
 	 */
 	private function encodeSync(array $workflow): string {
-		return json_encode($workflow, JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
+		return json_encode($workflow, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 	}
 
 	/**

@@ -9,6 +9,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Psalm cleanup (batch B): fix real type findings — correct WorkflowMetadata read/write
+  array shapes (6 keys), JSON_THROW_ON_ERROR on json_encode (no falsable returns), and
+  remove a possibly-undefined-variable in MappingService::update.
 - Psalm cleanup (batch A): suppress 2 InvalidTemplateParam false positives, add `mixed`
   param type to background `run()` methods, type a closure, drop a redundant `array_values`.
 - Saga §12.1: record the code-scanning paydown (239→~73), the pod-can't-run-Psalm ops note,

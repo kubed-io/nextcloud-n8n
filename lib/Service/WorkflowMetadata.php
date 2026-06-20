@@ -106,7 +106,14 @@ final class WorkflowMetadata {
 	 * Upsert the managed keys for a file. Any key omitted from `$values` is
 	 * left as-is; pass an explicit empty string to overwrite.
 	 *
-	 * @param array{n8n_id?:string, n8n_mode?:string, n8n_versionId?:string} $values
+	 * @param array{
+	 *     n8n_id?:string,
+	 *     n8n_mode?:string,
+	 *     n8n_writeback?:string,
+	 *     n8n_versionId?:string,
+	 *     n8n_syncedHash?:string,
+	 *     n8n_mapping?:string
+	 * } $values
 	 */
 	public function write(int $fileId, array $values): void {
 		if ($values === []) {
@@ -130,7 +137,14 @@ final class WorkflowMetadata {
 	 * has ever been written for it). Returns an array with `null` entries
 	 * for individual keys that simply aren't set yet.
 	 *
-	 * @return array{n8n_id:?string, n8n_mode:?string, n8n_versionId:?string}|null
+	 * @return array{
+	 *     n8n_id:?string,
+	 *     n8n_mode:?string,
+	 *     n8n_writeback:?string,
+	 *     n8n_versionId:?string,
+	 *     n8n_syncedHash:?string,
+	 *     n8n_mapping:?string
+	 * }|null
 	 */
 	public function read(int $fileId): ?array {
 		try {
