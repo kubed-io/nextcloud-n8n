@@ -42,43 +42,73 @@ A lightweight read-only pointer. The file contains only the workflow ID, name, U
 
 ## Features
 
-### Create a Workflow
+This is a high-level showcase. Each feature links down to its **executable
+specification** — a Gherkin `.feature` file under [`features/`](features/) that
+describes the exact behaviour in plain language and drives the integration tests
+— and to the **code** that implements it. Docs, tests, and code are meant to stay
+aligned: the `.feature` files *are* the requirements.
 
-Drop a `.n8n.json` file into a mapped sync folder — either by creating a new file, uploading one, or copying an existing workflow file in — and the app automatically registers it as a real n8n workflow. The mapping tag is added to the new workflow, and the file is stamped with the workflow's ID so it's fully managed from that point on.
+### Create a workflow from Nextcloud
 
-This means you can author a workflow in your editor of choice, drop it into the sync folder, and have it live in n8n without ever touching the n8n UI.
+Make a `.n8n.json` file in a mapped sync folder (new file, upload, or copy-in) and
+the app registers it as a real n8n workflow — tagged with the mapping and stamped
+with the workflow's ID. Author in your editor of choice; it goes live in n8n
+without opening the n8n UI. A file created **outside** any mapped folder stays a
+plain, unmanaged document.
 
-### Renaming
+📋 spec: [`features/create-workflow.feature`](features/create-workflow.feature) · 🛠 [`lib/Listener/CreateInN8nListener.php`](lib/Listener/CreateInN8nListener.php)
 
-In **Sync mode**, renaming is three-way: the filename stem, the JSON `name` field inside the file, and the workflow name in n8n are always kept in agreement.
+### Mapping membership follows the folder
 
-- Rename the file → the JSON is updated and n8n is notified
-- Edit the `name` field inside the JSON → the file is renamed to match, and n8n is notified
-- Rename in the n8n UI → the next pull renames the file to match
+Folder mappings are **metadata on the folder**, so a file's mapping is resolved by
+where it lives. Because mappings are per-folder, you can map a folder **inside** an
+already-mapped folder — the nearest enclosing mapping wins.
 
-The stable link is the workflow ID, not the filename, so none of these renames break the connection. In **Backup** and **Link** modes, the filename follows whatever n8n calls the workflow on the next pull.
+📋 spec: [`features/mapping-membership.feature`](features/mapping-membership.feature) · 🛠 [`lib/Service/MappingService.php`](lib/Service/MappingService.php)
 
-### Moving Files
+### Moving files (safe by default)
 
-Files in a sync folder can be freely moved within subfolders of that folder. Moving a managed workflow file *out* of its mapped folder is blocked — the app will reject the move with a clear message. This prevents the workflow from ending up in an unmanaged location where sync would silently stop working.
+Nextcloud lets you move a file anywhere — so the app guards the moves that would
+break the n8n link. A managed workflow may move freely **within its own mapping**
+(rename, or into a subfolder of the same mapped folder). Moving it **out** of its
+mapped folder, or into a **different** mapping, is **aborted with a message** — a
+deliberate block so sync never silently stops. The `move.feature` spec walks every
+branch (out / subfolder / mapped→mapped / nested-different-mapping).
 
-### Deleting Files
+📋 spec: [`features/move.feature`](features/move.feature) · 🛠 [`lib/Listener/MoveGuardListener.php`](lib/Listener/MoveGuardListener.php)
 
-Deletion mirrors Nextcloud's own two-step trash model:
+### Renaming (three-way)
 
-| Action | Sync mode | Backup / Link mode |
-|---|---|---|
-| Move to trash | Workflow is **archived** in n8n (hidden, preserved) | Mapping tag stripped from workflow |
-| Purge from trash | Workflow is **permanently deleted** from n8n | No-op |
-| Restore from trash | Workflow is **unarchived** in n8n | Mapping tag re-added |
+In **sync mode** the filename stem, the JSON `name` field, and the n8n workflow
+name are kept in agreement. Rename the file → the JSON and n8n update. Edit the
+`name` inside the JSON → the file is renamed and n8n updates. The stable link is
+the workflow ID, so no rename ever breaks the connection.
 
-If n8n is unreachable when you delete, the delete is aborted — the file stays in Nextcloud rather than the two systems getting out of sync. Restoring is forgiving in the opposite direction: if n8n is down during a restore, the restore still completes and the re-sync happens on the next pull.
+📋 spec: [`features/rename.feature`](features/rename.feature) · 🛠 [`lib/Listener/NameSyncListener.php`](lib/Listener/NameSyncListener.php), [`lib/Service/FilenameCodec.php`](lib/Service/FilenameCodec.php)
 
-### WebDAV Metadata & MIME Type
+### Deleting (mode-aware)
 
-Every `.n8n.json` file is a first-class WebDAV resource. The app registers a custom MIME type (`application/n8n+json`) so the files show an n8n icon in the Files app instead of a generic JSON icon.
+Deletion mirrors Nextcloud's two-step trash model, and what happens in n8n depends
+on the mode:
 
-The following properties are embedded directly in the DAV resource and are readable by any WebDAV client via `PROPFIND`:
+| Action | Sync | Backup / Link | Unmapped |
+|---|---|---|---|
+| Move to trash | Workflow **archived** in n8n | Mapping tag stripped | nothing |
+| Purge from trash | Workflow **permanently deleted** | no-op | nothing |
+| Restore from trash | Workflow **unarchived** | Mapping tag re-added | nothing |
+
+If n8n is unreachable on delete, the delete aborts (the file stays) rather than
+desyncing the two systems.
+
+📋 spec: [`features/delete.feature`](features/delete.feature) · 🛠 [`lib/Service/DeleteService.php`](lib/Service/DeleteService.php), [`lib/Listener/DeleteToN8nListener.php`](lib/Listener/DeleteToN8nListener.php)
+
+### A first-class file type: custom icon, click-to-open, DAV metadata
+
+A managed workflow isn't a generic JSON blob — it's a proper file type. The app
+registers the `application/n8n+json` mimetype, so files show the **n8n icon** and a
+**click opens the workflow directly in n8n** (not a download, not the text editor).
+And every file's state is exposed over WebDAV: a raw `PROPFIND` returns the
+metadata in its XML —
 
 | DAV property | What it contains |
 |---|---|
@@ -88,7 +118,10 @@ The following properties are embedded directly in the DAV resource and are reada
 | `nc:metadata-n8n_versionId` | The version ID of the last successful sync |
 | `nc:metadata-n8n_mapping` | The mapping this file belongs to |
 
-These properties are read-only — clients cannot modify them via `PROPPATCH`. They are maintained entirely by the sync engine.
+These properties are read-only — clients cannot change them via `PROPPATCH`; the
+sync engine owns them.
+
+📋 spec: [`features/file-type.feature`](features/file-type.feature) · 🛠 [`src/files.js`](src/files.js), [`lib/Migration/RegisterMimetype.php`](lib/Migration/RegisterMimetype.php), [`lib/Service/WorkflowMetadata.php`](lib/Service/WorkflowMetadata.php)
 
 ### Tagging
 
