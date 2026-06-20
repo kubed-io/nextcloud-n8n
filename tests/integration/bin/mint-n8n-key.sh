@@ -36,12 +36,17 @@ if [ -z "$cookie" ]; then
   exit 1
 fi
 
-# 2. Create a public API key with the session cookie.
+# 2. Create a public API key with the session cookie. The label must be unique
+# per key (n8n: UNIQUE(userId, label) → a duplicate label 500s), so stamp it.
+label="integration-tests-$(date +%s)-$$"
+# Scopes the tests need: full workflow CRUD + tag management (the preload control
+# case creates tags and attaches them to workflows).
+scopes='["workflow:read","workflow:list","workflow:create","workflow:update","workflow:delete","workflow:move","tag:create","tag:read","tag:list","tag:update","workflowTags:list","workflowTags:update"]'
 raw=$(
   curl -fsS -X POST "$N8N_URL/rest/api-keys" \
     -H 'Content-Type: application/json' \
     -H "Cookie: $cookie" \
-    -d '{"label":"integration-tests","expiresAt":null,"scopes":["workflow:read","workflow:list","workflow:create","workflow:update","workflow:delete","workflow:move"]}' \
+    -d "{\"label\":\"$label\",\"expiresAt\":null,\"scopes\":$scopes}" \
   | sed -n 's/.*"rawApiKey":"\([^"]*\)".*/\1/p'
 )
 if [ -z "$raw" ]; then

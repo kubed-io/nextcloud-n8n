@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `occ n8n_sync:add-mapping` / `list-mappings` / `remove-mapping` — manage folder mappings from the CLI.
 - `occ n8n_sync:test-connection` — verify the n8n connection headlessly (same as the admin button).
 - `occ n8n_sync:set-api-key` — store the n8n API key (encrypted) from the CLI.
 - Integration tests now run on Behat (JUnit reported like the unit suite).

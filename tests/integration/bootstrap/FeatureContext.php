@@ -183,6 +183,39 @@ final class FeatureContext implements Context {
 		Assert::assertNotSame(0, $this->lastExit, "test-connection unexpectedly succeeded:\n{$this->lastOutput}");
 	}
 
+	// ── mapping steps (occ n8n_sync:add/list/remove-mapping) ───────────────────
+
+	/** @When I add a mapping: */
+	public function iAddAMapping(\Behat\Gherkin\Node\PyStringNode $json): void {
+		$res = $this->occ('n8n_sync:add-mapping ' . escapeshellarg($json->getRaw()));
+		Assert::assertSame(0, $res['exit'], "add-mapping failed:\n{$res['output']}");
+	}
+
+	/** @When I try to add a mapping: */
+	public function iTryToAddAMapping(\Behat\Gherkin\Node\PyStringNode $json): void {
+		// Don't assert here — the scenario asserts the outcome (accepted/rejected).
+		$this->occ('n8n_sync:add-mapping ' . escapeshellarg($json->getRaw()));
+	}
+
+	/** @Then the mapping is rejected */
+	public function theMappingIsRejected(): void {
+		Assert::assertNotSame(0, $this->lastExit, "add-mapping unexpectedly succeeded:\n{$this->lastOutput}");
+	}
+
+	/** @Then the configured mappings include the tag :tag */
+	public function theConfiguredMappingsIncludeTag(string $tag): void {
+		$res = $this->occ('n8n_sync:list-mappings');
+		Assert::assertStringContainsString($tag, $res['output'], "no mapping for tag $tag");
+	}
+
+	/** @Then there are :count configured mappings */
+	public function thereAreNConfiguredMappings(int $count): void {
+		$res = $this->occ('n8n_sync:list-mappings');
+		$decoded = json_decode($res['output'], true);
+		Assert::assertIsArray($decoded, "list-mappings did not return JSON:\n{$res['output']}");
+		Assert::assertCount($count, $decoded, "expected $count mappings, got " . count($decoded));
+	}
+
 	// ── helpers ───────────────────────────────────────────────────────────────
 
 	/**

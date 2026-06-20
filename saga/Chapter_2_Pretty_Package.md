@@ -377,7 +377,7 @@ suite grows along this road rather than in one leap:
 **Stage 0 — Install ✅ (PR #12).** App enables + uninstalls cleanly on a real NC
 (`tests/integration/install-uninstall.sh`). No n8n contact. The harness itself.
 
-**Stage 1 — Admin setup (no auth calls yet) ☐ ← NEXT MILESTONE.** Drive the same AppConfig
+**Stage 1 — Admin setup ✅ (PR #20).** Drive the same AppConfig
 the admin UI writes, via `occ config:app:set n8n_sync …`, to wire the connection *config*
 without making a single call to n8n:
 - `n8n_url` → the n8n service URL.
@@ -391,7 +391,7 @@ without making a single call to n8n:
 - **Exit:** `occ config:app:get` shows the values set; the app is "configured"; **still zero
   authenticated calls to n8n.** This is the deliberate scope line for the next milestone.
 
-**Stage 2 — The token conversation ⚔️ (the main antagonist of this chapter).** *Where does
+**Stage 2 — The token conversation ✅ DEFEATED (the main antagonist; PR #22).** *Where does
 the API key come from?* n8n has **no headless API-key mint** (§4a.1), so the token has been the
 one thing standing between us and live integration tests — the boss fight. **It is now
 defeated:** proven end-to-end against a real n8n that path A works, with pure `curl` and **zero
@@ -433,7 +433,7 @@ use it — **not** a raw `occ config:app:set` (that stores plaintext; `decrypt()
     (A bcrypt *hash* generally isn't flagged anyway, but the exclusion makes intent explicit and
     covers a plaintext seeded key if path B is ever used.)
 
-**Stage 3 — First authenticated call ☐.** The "Test connection" path: `N8nClient` lists
+**Stage 3 — First authenticated call ✅ (PR #23).** The "Test connection" path: `N8nClient` lists
 workflows (`GET /api/v1/workflows?limit=1`) with `X-N8N-API-KEY`. Proves the encrypted key +
 URL + n8n service all line up end to end. The smallest possible real round-trip.
 

@@ -37,6 +37,9 @@ Phase 0: skeleton only — installs and enables cleanly, registers nothing yet.
     <command>OCA\N8nSync\Command\GetWorkflow</command>
     <command>OCA\N8nSync\Command\SetApiKey</command>
     <command>OCA\N8nSync\Command\TestConnection</command>
+    <command>OCA\N8nSync\Command\AddMapping</command>
+    <command>OCA\N8nSync\Command\ListMappings</command>
+    <command>OCA\N8nSync\Command\RemoveMapping</command>
   </commands>
   <repair-steps>
     <!--
