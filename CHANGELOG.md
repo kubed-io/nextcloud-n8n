@@ -9,6 +9,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Psalm cleanup (batch A): suppress 2 InvalidTemplateParam false positives, add `mixed`
+  param type to background `run()` methods, type a closure, drop a redundant `array_values`.
 - Saga §12.1: record the code-scanning paydown (239→~73), the pod-can't-run-Psalm ops note,
   and the deferred IConfig→IAppConfig migration queue.
 - Psalm cleanup: 43 classes marked `final`, 47 `#[\Override]` attributes added; suppressed

@@ -58,5 +58,13 @@
 			whole (low-value) issue type.
 		-->
 		<MissingDependency errorLevel="suppress" />
+		<!--
+			Both instances are IEventListener<T> parameterised with other-app event
+			classes (LoadAdditionalScriptsEvent, NodeRestoredEvent). Those DO extend
+			OCP\EventDispatcher\Event at runtime, but Psalm can't see their parent
+			(not shipped in nextcloud/ocp) so it can't confirm the template bound —
+			same OCP-gap false positive as the suppressed UndefinedClass for them.
+		-->
+		<InvalidTemplateParam errorLevel="suppress" />
 	</issueHandlers>
 </psalm>

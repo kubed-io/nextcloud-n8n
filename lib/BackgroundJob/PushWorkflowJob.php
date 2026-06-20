@@ -40,7 +40,7 @@ final class PushWorkflowJob extends QueuedJob {
 	}
 
 	#[\Override]
-	protected function run($argument): void {
+	protected function run(mixed $argument): void {
 		$fileId = (int)($argument['fileId'] ?? 0);
 		$userId = (string)($argument['userId'] ?? '');
 		if ($fileId === 0 || $userId === '') {

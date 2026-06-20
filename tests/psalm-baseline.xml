@@ -11,11 +11,6 @@
       <code><![CDATA[$meta[WorkflowMetadata::KEY_WRITEBACK]]]></code>
     </InvalidArrayOffset>
   </file>
-  <file src="lib/Listener/LoadFilesScriptListener.php">
-    <InvalidTemplateParam>
-      <code><![CDATA[IEventListener]]></code>
-    </InvalidTemplateParam>
-  </file>
   <file src="lib/Listener/NameSyncListener.php">
     <InvalidArrayOffset>
       <code><![CDATA[$meta[WorkflowMetadata::KEY_WRITEBACK]]]></code>
@@ -32,9 +27,6 @@
       <code><![CDATA[$meta[WorkflowMetadata::KEY_MAPPING]]]></code>
       <code><![CDATA[$meta[WorkflowMetadata::KEY_WRITEBACK]]]></code>
     </InvalidArrayOffset>
-    <InvalidTemplateParam>
-      <code><![CDATA[IEventListener]]></code>
-    </InvalidTemplateParam>
   </file>
   <file src="lib/Service/CreateService.php">
     <InvalidArgument>

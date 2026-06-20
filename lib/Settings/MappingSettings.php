@@ -54,7 +54,7 @@ final class MappingSettings implements IDelegatedSettings {
 			'mapping_settings',
 			[
 				'mappings' => array_map(fn ($m) => $m->toArray(), $this->service->list()),
-				'groups' => array_values($groups),
+				'groups' => $groups,
 				'team_folders_available' => $this->teamFolders->isAvailable(),
 			],
 			'blank',
