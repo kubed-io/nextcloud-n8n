@@ -111,8 +111,15 @@ jobs:
         done
         echo "n8n did not become healthy" >&2; exit 1
 
-    - name: Run install / uninstall scaffolding test
+    - name: Stage 0 — install / uninstall scaffolding
       run: OCC="php occ" apps/${{ env.APP_ID }}/tests/integration/install-uninstall.sh
+
+    # Stage 1 (saga §5): wire the admin config via occ. NO authenticated calls to
+    # n8n yet — this only proves the connection config plumbing.
+    - name: Stage 1 — admin setup (no n8n calls)
+      run: |
+        OCC="php occ" N8N_URL="http://localhost:5678" \
+          apps/${{ env.APP_ID }}/tests/integration/admin-setup.sh
 
     - name: Nextcloud log on failure
       if: failure()
