@@ -10,7 +10,9 @@
     "dev": "vite --mode development build",
     "watch": "vite --mode development build --watch",
     "lint": "eslint .",
-    "lint:fix": "eslint . --fix"
+    "lint:fix": "eslint . --fix",
+    "test": "vitest run",
+    "test:watch": "vitest"
   },
   "dependencies": {
     "@nextcloud/files": "^4.0.0",
@@ -22,7 +24,8 @@
     "@eslint/js": "^10.0.1",
     "eslint": "^10.5.0",
     "globals": "^17.6.0",
-    "vite": "^7.1.10"
+    "vite": "^8.0.16",
+    "vitest": "^4.1.9"
   },
   "engines": {
     "node": "^20 || ^22 || ^24"

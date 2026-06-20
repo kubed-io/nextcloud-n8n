@@ -93,6 +93,11 @@ jobs:
     - name: Build bundle
       run: npm run build
 
+    # Pure-logic unit tests (Vitest) — fast regression net for the frontend
+    # helpers; the safety net that makes dependency major-bumps safe to land.
+    - name: Unit tests
+      run: npm test
+
     - name: Summarize build
       if: always()
       run: |
