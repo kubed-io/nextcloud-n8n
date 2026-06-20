@@ -12,14 +12,16 @@ Phase 0–5 are live in production on the homelab cluster. The code lives in a p
 GitHub repo. A working release pipeline exists but is rough around the edges. The
 development story is undocumented. That's what this chapter fixes.
 
-> **Progress (2026-06-19, late):** the **unit test suite + CI is live and green** (Tests +
-> Quality workflows, results surfaced in the GitHub UI — §5.1, §10). The **contribution
-> infrastructure shipped today**: `CONTRIBUTING.md`, `AGENTS.md`, `SECURITY.md` (PR #3), a
-> PR-housekeeping workflow with auto-assign + changelog enforcement (PR #3), **ESLint** wired
-> into the Quality flow with the duplicate CodeQL job dropped (PR #5), and
-> **Dependabot version updates** for `github-actions` + `npm` + `composer` (PR #7).
-> Remaining: integration/e2e tests (§4a stack), the rest of the GitHub **Security** track
-> (Dependabot **security** updates, secret scanning, dependency review, branch protection).
+> **Progress (2026-06-20):** unit + CI green and surfaced in the GitHub UI (§5.1, §10);
+> contribution infra shipped (CONTRIBUTING/AGENTS/SECURITY, PR-housekeeping, ESLint,
+> Dependabot — PRs #3/#5/#7); code-scanning paydown 239→14 (§12.1). The **integration suite
+> is now live and authenticated**: Behat on real NC + n8n, results in a sticky PR comment.
+> Done stages — install (§5 Stage 0, PR #12), admin connection incl. the **defeated token**
+> (Stages 1–3, PRs #20/#22/#23), and **admin mapping** (Stage 3a, PR #24) with example
+> workflows preloaded as a control case. A small **occ admin CLI** was added alongside (§5.4).
+> Remaining: the CRUD safety net (§5 Stage 4 — pull/writeback/delete/rename), the §4a
+> docker-compose stack for local/devcontainer parity, and the rest of the GitHub **Security**
+> track (Dependabot security updates, secret scanning, dependency review, branch protection).
 
 ---
 
@@ -374,6 +376,14 @@ real behaviour still works after all the Chapter-2 refactoring. It is built up t
 human operator would set the integration up — each stage is a prerequisite for the next, so the
 suite grows along this road rather than in one leap:
 
+> **Unplanned win — the app is now BDD.** Choosing Behat for the integration layer turned the
+> repo into a **behaviour-driven** project: the `features/*.feature` files are plain-English,
+> medium-agnostic Gherkin (no JSON, no `occ` — the *function*, not the medium), so they double
+> as **living, human-readable documentation** of every use case. The README's feature showcase
+> links straight to them, and they drive the tests — docs, spec, and tests are one artifact.
+> This wasn't in the original plan; it fell out of picking the Nextcloud-native test framework,
+> and it's a keeper.
+
 **Stage 0 — Install ✅ (PR #12).** App enables + uninstalls cleanly on a real NC
 (`tests/integration/install-uninstall.sh`). No n8n contact. The harness itself.
 
@@ -437,7 +447,18 @@ use it — **not** a raw `occ config:app:set` (that stores plaintext; `decrypt()
 workflows (`GET /api/v1/workflows?limit=1`) with `X-N8N-API-KEY`. Proves the encrypted key +
 URL + n8n service all line up end to end. The smallest possible real round-trip.
 
-**Stage 4 — CRUD integration tests ☐.** The full safety net, building on Stages 1–3:
+**Stage 3a — Admin mapping ✅ (PR #24).** "Admin makes a mapping" — bind an n8n tag to a NC
+folder with a storage kind (Team Folder vs admin-owned) and a mode (sync/backup/link), across a
+representative slice of that matrix, plus the reject-invalid rules (sync needs a writeback;
+reference must not have one). Two supporting pieces landed here:
+- **Control-case preload (prerequisite):** `tests/workflows/*.json` — example flows
+  (Manual Trigger → Set), validated as real via the n8n MCP `validate_workflow` (never created
+  on a live instance) — are loaded into the CI n8n through **n8n's own API** + tagged
+  (`tests/integration/bin/preload-n8n.sh`), so mapping/pull scenarios act on real, pre-existing
+  resources independent of our code.
+- **occ admin CLI (§5.4)** for the mapping operations.
+
+**Stage 4 — CRUD integration tests ☐.** The full safety net, building on Stages 1–3a:
 - Pull: `pullAll()` → files appear in NC with correct metadata + mimetype.
 - Writeback: save a `sync·two-way` file → n8n receives the PATCH.
 - Delete: trash → n8n archives; purge → hard-delete; restore → unarchive.
@@ -466,6 +487,29 @@ A genuine behaviour gap surfaced while writing the `features/` specs against the
   (2) then implement the sync strip/re-enrich, flipping those scenarios to the new end state.
 - The README "Moving files" section states this end state for users; `features/move.feature`
   stays accurate-to-code (blocked) until step (2).
+
+#### 5.4 occ admin CLI — headless parity for occ/helm/k8s ✅ (backfilled)
+
+The admin operations already existed (Settings panels + the `MappingController`/`ConfigController`
+HTTP endpoints). To make the app **automatable the k8s way** (and to give the integration tests a
+real CLI to drive — the medium the Behat steps shell out to), we bound the same operations to
+`occ`. These are **thin CLI bindings over the existing services — no new business logic**:
+
+| Command | Wraps | Added in |
+|---|---|---|
+| `n8n_sync:test-connection` | `N8nClient::ping()` (the admin "Test connection" button) | PR #23 |
+| `n8n_sync:set-api-key` | `ICrypto::encrypt()` + store (the Settings `sensitive` field's headless equivalent — plain `config:app:set` stores plaintext that won't decrypt) | PR #23 |
+| `n8n_sync:add-mapping` / `list-mappings` / `remove-mapping` | `Mapping::fromArray()` + `MappingService::add/list/delete` (the Settings mapping CRUD) | PR #24 |
+| `n8n_sync:list-workflows` / `get-workflow` | `N8nClient` read paths (pre-existing smoke commands) | earlier |
+
+Design notes worth keeping: these mirror how this repo's `apps/nextcloud` injects config/secrets
+via an app's own occ command (e.g. `user_oidc:provider --clientsecret`); each maps a validation
+failure to a **non-zero exit** so automation (and the tests' reject-invalid scenarios) can rely on
+it; and the integration **features stay medium-agnostic** — they describe the admin action, with
+occ hidden in the step definitions, so a scenario reads equally as CLI or admin-UI.
+
+> Still HTTP/UI-only (no occ binding yet, add if useful): the manual **sync** actions
+> (`SyncController` — pull all / per-mapping), the webhook test, and mapping `update`.
 
 #### Browser e2e (Cypress) — small, high-value set *(on the §4a stack, latest)*
 - The "Open in n8n" click opens the correct n8n URL
