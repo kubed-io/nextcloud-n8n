@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.2] - 2026-06-22
+
 ### Added
 
 - `occ n8n_sync:add-mapping` / `list-mappings` / `remove-mapping` — manage folder mappings from the CLI.

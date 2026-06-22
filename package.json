@@ -1,6 +1,6 @@
 {
   "name": "n8n_sync",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "description": "n8n Sync — Nextcloud frontend (Files row icon + Open in n8n action)",
   "private": true,
   "license": "AGPL-3.0-or-later",
