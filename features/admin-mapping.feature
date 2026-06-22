@@ -27,8 +27,6 @@ Feature: Admin configures folder mappings
     And the mapping for tag "nextcloud:delta" is a "admin" folder in "link" mode
 
   # New-model invariant (saga Chapter 2 §14): a mapping's mode is exactly sync or link.
-  # @todo until the model collapse lands (the validation message changes then).
-  @todo
   Scenario: A mapping mode must be sync or link
     When the admin adds a mapping with an unknown mode for tag "nextcloud:bad"
     Then the mapping is rejected

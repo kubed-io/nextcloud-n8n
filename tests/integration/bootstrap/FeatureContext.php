@@ -268,21 +268,13 @@ final class FeatureContext implements Context {
 		}
 	}
 
-	/** @When the admin adds a sync mapping with no writeback for tag :tag */
-	public function theAdminAddsASyncMappingWithNoWriteback(string $tag): void {
-		// "sync" normally implies a writeback; build the invalid shape directly.
+	/** @When the admin adds a mapping with an unknown mode for tag :tag */
+	public function theAdminAddsAMappingWithAnUnknownMode(string $tag): void {
+		// The mode model is exactly sync|link (saga Ch2 §14); anything else must be
+		// rejected by Mapping::fromArray validation.
 		$json = json_encode([
 			'n8n_tag' => $tag, 'team_folder' => 'x', 'nc_groups' => ['admin'],
-			'mode' => 'sync', 'use_team_folder' => true,
-		], JSON_THROW_ON_ERROR);
-		$this->occ('n8n_sync:add-mapping ' . escapeshellarg($json));
-	}
-
-	/** @When the admin adds a link mapping that also writes back for tag :tag */
-	public function theAdminAddsALinkMappingThatWritesBack(string $tag): void {
-		$json = json_encode([
-			'n8n_tag' => $tag, 'team_folder' => 'x', 'nc_groups' => ['admin'],
-			'mode' => 'reference', 'writeback' => 'two-way', 'use_team_folder' => true,
+			'mode' => 'bogus', 'use_team_folder' => true,
 		], JSON_THROW_ON_ERROR);
 		$this->occ('n8n_sync:add-mapping ' . escapeshellarg($json));
 	}
@@ -303,36 +295,27 @@ final class FeatureContext implements Context {
 		Assert::assertNotNull($m, "no mapping for tag $tag");
 		// storage: "team" → use_team_folder true; "admin" → false.
 		Assert::assertSame(str_contains($storage, 'team'), (bool)($m['use_team_folder'] ?? false), "tag $tag storage");
-		[$expMode, $expWriteback] = $this->modeToModel($mode);
-		Assert::assertSame($expMode, $m['mode'], "tag $tag mode");
-		if ($expWriteback !== null) {
-			Assert::assertSame($expWriteback, $m['writeback'] ?? null, "tag $tag writeback");
-		}
+		Assert::assertSame($this->modeToModel($mode), $m['mode'], "tag $tag mode");
 	}
 
-	/** Translate a UI mode word to the stored (mode, writeback) pair. */
-	private function modeToModel(string $mode): array {
+	/** Translate a UI mode word to the stored mode (sync|link; saga Ch2 §14). */
+	private function modeToModel(string $mode): string {
 		return match ($mode) {
-			'sync' => ['sync', 'two-way'],
-			'backup' => ['sync', 'readonly'],
-			'link' => ['reference', null],
+			'sync' => 'sync',
+			'link' => 'link',
 			default => throw new \InvalidArgumentException("unknown mode '$mode'"),
 		};
 	}
 
 	/** Build + run an add-mapping from plain-English storage/mode words. */
 	private function addMapping(string $tag, string $folder, string $storage, string $mode): array {
-		[$m, $writeback] = $this->modeToModel($mode);
 		$data = [
 			'n8n_tag' => $tag,
 			'team_folder' => $folder,
 			'nc_groups' => ['admin'],
-			'mode' => $m,
+			'mode' => $this->modeToModel($mode),
 			'use_team_folder' => str_contains($storage, 'team'),
 		];
-		if ($writeback !== null) {
-			$data['writeback'] = $writeback;
-		}
 		return $this->occ('n8n_sync:add-mapping ' . escapeshellarg(json_encode($data, JSON_THROW_ON_ERROR)));
 	}
 
@@ -368,17 +351,13 @@ final class FeatureContext implements Context {
 	 */
 	public function aFolderMappedAsModeToTag(string $mode, string $tag): void {
 		$folder = $this->folderNameForTag($tag);
-		[$m, $writeback] = $this->modeToModel($mode);
 		$data = [
 			'n8n_tag' => $tag,
 			'team_folder' => $folder,
 			'nc_groups' => ['admin'],
-			'mode' => $m,
+			'mode' => $this->modeToModel($mode),
 			'use_team_folder' => false,
 		];
-		if ($writeback !== null) {
-			$data['writeback'] = $writeback;
-		}
 		$res = $this->occ('n8n_sync:add-mapping ' . escapeshellarg(json_encode($data, JSON_THROW_ON_ERROR)));
 		Assert::assertSame(0, $res['exit'], "adding mapping for $tag failed:\n{$res['output']}");
 		$this->davMkdir($folder);
@@ -659,8 +638,8 @@ final class FeatureContext implements Context {
 	/** @Then the workflow itself is not archived or deleted */
 	public function theWorkflowIsNotArchivedOrDeleted(): void {
 		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
-		Assert::assertIsArray($wf, "workflow {$this->lastWorkflowId} was deleted — backup/link must leave it alone");
-		Assert::assertFalse((bool)($wf['isArchived'] ?? false), 'workflow was archived — backup/link must leave it alone');
+		Assert::assertIsArray($wf, "workflow {$this->lastWorkflowId} was deleted — link must leave it alone");
+		Assert::assertFalse((bool)($wf['isArchived'] ?? false), 'workflow was archived — link must leave it alone');
 	}
 
 	/** @Then n8n is not contacted */
@@ -686,11 +665,7 @@ final class FeatureContext implements Context {
 			$this->occStdin($this->occ . ' n8n_sync:set-api-key', $this->n8nApiKey);
 		}
 		$folder = $this->folderNameForTag($tag);
-		[$m, $writeback] = $this->modeToModel($mode);
-		$data = ['n8n_tag' => $tag, 'team_folder' => $folder, 'nc_groups' => ['admin'], 'mode' => $m, 'use_team_folder' => false];
-		if ($writeback !== null) {
-			$data['writeback'] = $writeback;
-		}
+		$data = ['n8n_tag' => $tag, 'team_folder' => $folder, 'nc_groups' => ['admin'], 'mode' => $this->modeToModel($mode), 'use_team_folder' => false];
 		$res = $this->occ('n8n_sync:add-mapping ' . escapeshellarg(json_encode($data, JSON_THROW_ON_ERROR)));
 		Assert::assertSame(0, $res['exit'], "adding mapping for $tag failed:\n{$res['output']}");
 		$this->davMkdir($folder);

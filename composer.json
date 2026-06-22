@@ -10,7 +10,8 @@
 		"nextcloud/ocp": "^33.0",
 		"nextcloud/coding-standard": "^1.4",
 		"phpunit/phpunit": "^12.0",
-		"vimeo/psalm": "^6.0"
+		"vimeo/psalm": "^6.0",
+		"dg/bypass-finals": "^1.5"
 	},
 	"config": {
 		"sort-packages": true,

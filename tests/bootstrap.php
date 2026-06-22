@@ -16,7 +16,18 @@ declare(strict_types=1);
  * tests, and pulls in nextcloud/ocp so NC interfaces are resolvable for the
  * classes whose collaborators get mocked. No Nextcloud server tree is required.
  *
+ * `dg/bypass-finals` strips the `final` keyword as classes are autoloaded so the
+ * mock builder can double our `final` services (e.g. N8nClient) — the §12.1
+ * paydown made most classes final, which PHPUnit otherwise refuses to mock.
+ *
  * The integration suite (later) does NOT use this bootstrap — it runs against
  * the §4a docker-compose stack.
  */
 require_once __DIR__ . '/../vendor/autoload.php';
+
+// nextcloud/ocp has no autoload block, so OCP base symbols don't resolve
+// standalone — these declaration-only shims let app classes that reference an
+// OCP symbol (e.g. Application's APP_ID constant) autoload. See the file header.
+require_once __DIR__ . '/ocp-stubs.php';
+
+\DG\BypassFinals::enable();

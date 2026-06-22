@@ -101,7 +101,6 @@ final class DeleteService {
 		$this->ensureTag($id, $mapping->n8nTag);
 	}
 
-
 	/**
 	 * Read-modify-write the workflow's tag list so it no longer contains
 	 * $tagName. n8n's `PUT /workflows/{id}/tags` is set-style (replaces the
