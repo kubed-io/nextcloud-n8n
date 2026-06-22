@@ -39,7 +39,7 @@ concurrency:
   cancel-in-progress: true
 
 # Static values here so `run:` steps are pure bash reading $VARS — never inline
-# `${{ }}` templating (see CONTRIBUTING.md "Workflow authoring conventions").
+# Github templating (see CONTRIBUTING.md "Workflow authoring conventions").
 env:
   APP_ID: n8n_sync
   N8N_URL: http://localhost:5678
