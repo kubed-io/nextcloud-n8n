@@ -9,10 +9,14 @@
 # JSON + the workflow id + versionId, clears the mapping, and the workflow is
 # archived in n8n. Moving it back into any mapping restores (unarchives) it.
 #
-# @todo until the motion listeners land (saga Chapter 2 §14, Phase 2). CI skips @todo
-# so this documents the intended behaviour now and goes live as the code lands.
+# LIVE (saga §14.2, Phase 2): the sync move-out → unmapped + archive, the
+# unmapped move-in → restore, within-mapping moves, link move-out refusal, and
+# unmapped relocation are wired (MoveGuardListener + MotionListener +
+# MotionService) and asserted here over WebDAV (MOVE) + the n8n REST API. The
+# harder edges — hard-deleted restore-fallback, merge-on-collision, brand-new
+# move-in create, and decision-cases a–d — stay @todo until their harness/design
+# lands.
 
-@todo
 Feature: Moving a workflow file is the same workflow leaving and returning
   As a Nextcloud user
   I want moves to mirror as the same workflow in n8n
@@ -28,7 +32,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
 
   Scenario: Move within the same mapping (rename) keeps it managed
     Given a managed "sync" workflow file in the "nextcloud:alpha" folder
-    When I move (rename) the file within the "nextcloud:alpha" folder
+    When I rename the file within the "nextcloud:alpha" folder
     Then the file stays in "sync" mode in the "nextcloud:alpha" mapping
     And nothing changes in n8n except the name
 
@@ -54,10 +58,11 @@ Feature: Moving a workflow file is the same workflow leaving and returning
   Scenario: Moving an unmapped file back into a mapping restores the workflow
     Given an unmapped workflow file that still carries its "n8n_id"
     When I move the file into the "nextcloud:beta" folder
-    Then the workflow is unarchived (restored) in n8n — not re-created
+    Then the workflow is unarchived in n8n
     And the file's mode becomes "sync" in the "nextcloud:beta" mapping
     And the "n8n_id" is unchanged
 
+  @todo
   Scenario: Restoring when the n8n workflow was hard-deleted falls back to create
     Given an unmapped workflow file that still carries its "n8n_id"
     And that workflow no longer exists in n8n (it was permanently deleted)
@@ -70,6 +75,9 @@ Feature: Moving a workflow file is the same workflow leaving and returning
   # mapping while the unmapped copy still existed. Moving the unmapped copy back in
   # then collides with the already-synced file; n8n (the synced copy) is the source
   # of truth, so the incoming copy is simply deleted. Feels like a merge.
+  # @todo: needs a metadata-by-id lookup to find the existing synced file
+  #   (MotionService::moveIn carries a TODO stub for it).
+  @todo
   Scenario: Moving an unmapped file in when a synced copy already exists merges (deletes the incoming)
     Given a managed "sync" workflow file in the "nextcloud:alpha" folder
     And an unmapped copy of that same workflow (same "n8n_id") outside any mapping
@@ -79,6 +87,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
     And the original synced file remains unchanged
     And nothing is restored or duplicated in n8n
 
+  @todo
   Scenario: Moving a brand-new workflow file into a mapping creates it
     Given a ".n8n.json" file that was never tracked in n8n
     When I move the file into the "nextcloud:alpha" folder
@@ -89,7 +98,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
 
   Scenario: Moving a link out of its mapping is blocked
     Given a managed "link" workflow file in the "nextcloud:links" folder
-    When I move the file to a folder that is not mapped
+    When I try to move the file to a folder that is not mapped
     Then the move is refused with a message
     And the file stays in the "nextcloud:links" folder
 
@@ -105,7 +114,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
   # ── decision cases (saga Chapter 2 §14.2 a–d): documented, not yet designed ─────────
   # These need a design decision before they get concrete Then-steps:
   #   a. sync moved directly mapping→mapping (different tag): re-tag in place vs
-  #      eject+reattach vs block.
+  #      eject+reattach vs block. (Currently blocked by MoveGuardListener.)
   #   b. moving into a nested subfolder owned by a different mapping (nearest
   #      enclosing wins) — interaction with case a.
   #   c. link rename within its mapping — does the filename matter, or is the n8n

@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - The release tarball now ships `LICENSE` (full AGPL-3.0 text), matching how the official Nextcloud apps package their releases.
+- Move a synced workflow file *out* of its mapped folder and it becomes **unmapped** — Nextcloud keeps the full JSON while the workflow is archived in n8n; move it back into any mapping and the same workflow is restored (unarchived), not re-created. Moving a `link` out is refused (it's only a pointer).
 
 ### Changed
 
@@ -31,6 +32,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Tests
 
 - Unit tests for the mode model: `Mapping` legacy-shape migration, `OwnershipTags::tagFor`, and the `DeleteService` sync/link rule table; integration suite updated to the single-mode mappings.
+- Unit tests for the move lifecycle (`MotionService`: archive-on-move-out, restore-on-move-in, hard-deleted create-fallback, 404-idempotency) and live `move.feature` scenarios over WebDAV; Gherkin Backgrounds DRYed to a single `the app is connected to n8n` step.
 
 ## [0.1.2] - 2026-06-22
 

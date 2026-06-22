@@ -16,6 +16,7 @@ use OCA\N8nSync\Listener\CreateInN8nListener;
 use OCA\N8nSync\Listener\DeleteToN8nListener;
 use OCA\N8nSync\Listener\LoadFilesScriptListener;
 use OCA\N8nSync\Listener\MimeRestampListener;
+use OCA\N8nSync\Listener\MotionListener;
 use OCA\N8nSync\Listener\MoveGuardListener;
 use OCA\N8nSync\Listener\NameSyncListener;
 use OCA\N8nSync\Listener\NodeWrittenListener;
@@ -82,9 +83,16 @@ final class Application extends App implements IBootstrap {
 		$context->registerEventListener(NodeWrittenEvent::class, CreateInN8nListener::class);
 		$context->registerEventListener(NodeRenamedEvent::class, CreateInN8nListener::class);
 
-		// §14.4 invariant: managed workflows can't be moved out of their mapping
-		// folder (subfolder moves + renames are fine).
+		// §14.2 motion guard: a managed workflow may rename / move within its
+		// mapping; moving a *sync* file out to an unmapped folder is allowed (it
+		// becomes `unmapped` + archived — see MotionListener); moving a *link* out,
+		// or any file directly into a different mapping, is blocked.
 		$context->registerEventListener(BeforeNodeRenamedEvent::class, MoveGuardListener::class);
+
+		// §14.2 motion consequence: after an allowed move, archive+unmap (sync
+		// move-out) or unarchive/restore (unmapped move-in) the same workflow in
+		// n8n. Untracked move-in (create-on-land) stays with CreateInN8nListener.
+		$context->registerEventListener(NodeRenamedEvent::class, MotionListener::class);
 
 		// Three-way name sync: keep filename stem ≡ JSON `name` ≡ n8n name for
 		// two-way files. Rename → name into JSON (writeback pushes); edit name +

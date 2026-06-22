@@ -11,6 +11,7 @@ namespace OCA\N8nSync\Tests\Unit\Service;
 
 use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\OwnershipTags;
+use OCA\N8nSync\Service\WorkflowMetadata;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -18,10 +19,10 @@ use PHPUnit\Framework\TestCase;
 /**
  * Unit tests for {@see OwnershipTags::tagFor} — the pure mode → tag mapping.
  *
- * The saga Ch2 §14 model collapse means exactly two modes carry a file tag:
- * `sync` → `n8n:sync`, `link` → `n8n:link`. `backup` is gone and any other mode
- * (incl. the Phase-2 `unmapped`/`ignored` states, which have no file tag) must
- * throw rather than silently mis-tag.
+ * Post saga Ch2 §14: `sync` → `n8n:sync`, `link` → `n8n:link`, and (Phase 2 motion)
+ * `unmapped` → `n8n:unmapped`. `backup` is gone, `reference` is wire-only, and the
+ * not-yet-produced `ignored` state has no file tag — all of those must throw rather
+ * than silently mis-tag.
  */
 #[CoversClass(OwnershipTags::class)]
 final class OwnershipTagsTest extends TestCase {
@@ -31,6 +32,10 @@ final class OwnershipTagsTest extends TestCase {
 
 	public function testLinkMode(): void {
 		self::assertSame('n8n:link', OwnershipTags::tagFor(Mapping::MODE_LINK));
+	}
+
+	public function testUnmappedMode(): void {
+		self::assertSame('n8n:unmapped', OwnershipTags::tagFor(WorkflowMetadata::MODE_UNMAPPED));
 	}
 
 	#[DataProvider('unknownModeProvider')]
@@ -44,7 +49,6 @@ final class OwnershipTagsTest extends TestCase {
 		return [
 			'dropped backup' => ['backup'],
 			'wire-only reference' => ['reference'],
-			'phase-2 unmapped' => ['unmapped'],
 			'phase-2 ignored' => ['ignored'],
 			'empty' => [''],
 		];

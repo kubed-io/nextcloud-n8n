@@ -1,0 +1,114 @@
+<?php
+
+/**
+ * SPDX-FileCopyrightText: 2026 Kelly Ferrone
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+declare(strict_types=1);
+
+namespace OCA\N8nSync\Service;
+
+use OCA\N8nSync\AppInfo\Application;
+use OCA\N8nSync\Exception\N8nApiException;
+use OCP\Files\File;
+use Psr\Log\LoggerInterface;
+
+/**
+ * The motion lifecycle (saga Ch2 §14.2) — what happens when a *managed* workflow
+ * file (one that already carries an `n8n_id`) is moved between folders. A MOVE is
+ * the SAME workflow relocating, never a duplicate; the stable link is the workflow
+ * id, so a move OUT then back IN is an **archive** then an **unarchive**, not a
+ * delete then a create. (COPY is the opposite — see saga §14.2 `copy.feature`.)
+ *
+ * Two entry points, called by {@see \OCA\N8nSync\Listener\MotionListener}:
+ *
+ *   - **moveOut** — a `sync` file left its mapping for an unmapped location.
+ *       Archive the workflow in n8n (`POST /workflows/{id}/archive`), then re-stamp
+ *       the file `mode=unmapped` with its mapping cleared. The id + versionId +
+ *       full JSON stay on the file, so nothing is lost and it is restorable.
+ *
+ *   - **moveIn** — a file carrying an `n8n_id` (an *unmapped* one) landed in a
+ *       mapping. Unarchive (`POST /workflows/{id}/unarchive`) the SAME workflow and
+ *       re-stamp `mode=sync` in the target mapping. If the workflow was hard-deleted
+ *       in n8n in the meantime (404), fall back to creating it fresh from the file.
+ *
+ * Error policy mirrors {@see DeleteService}: a 404 from archive is idempotent
+ * success (the workflow is already gone); a 404 from unarchive triggers the
+ * create-fallback; anything else bubbles as {@see N8nApiException} for the caller
+ * to log.
+ */
+final class MotionService {
+	public function __construct(
+		private N8nClient $n8n,
+		private CreateService $createService,
+		private WorkflowMetadata $metadata,
+		private OwnershipTags $ownershipTags,
+		private SyncGuard $guard,
+		private LoggerInterface $logger,
+	) {
+	}
+
+	/**
+	 * A `sync` file was moved OUT of its mapping. Archive it in n8n and re-stamp it
+	 * `unmapped` (mapping cleared; id + versionId preserved). Idempotent on the n8n
+	 * side — a missing workflow (404) is treated as already-archived.
+	 *
+	 * @throws N8nApiException on a non-404 n8n failure
+	 */
+	public function moveOut(File $node, string $id): void {
+		try {
+			$this->n8n->archiveWorkflow($id);
+		} catch (N8nApiException $e) {
+			if ($e->httpStatus !== 404) {
+				throw $e;
+			}
+			$this->logger->info('n8n_sync motion: archive on missing workflow — treating as success', [
+				'app' => Application::APP_ID,
+				'workflowId' => $id,
+			]);
+		}
+
+		$this->guard->run(function () use ($node): void {
+			$this->metadata->write($node->getId(), [
+				WorkflowMetadata::KEY_MODE => WorkflowMetadata::MODE_UNMAPPED,
+				WorkflowMetadata::KEY_MAPPING => '', // ejected — no longer in a mapping
+			]);
+			$this->ownershipTags->apply($node->getId(), WorkflowMetadata::MODE_UNMAPPED);
+		});
+	}
+
+	/**
+	 * An unmapped file (carrying its `n8n_id`) was moved INTO a mapping. Restore the
+	 * SAME workflow — unarchive it, re-stamp `mode=sync` in the target mapping. If the
+	 * workflow no longer exists in n8n (it was permanently deleted), recreate it from
+	 * the file content instead.
+	 *
+	 * @throws N8nApiException on a non-404 n8n failure
+	 */
+	public function moveIn(File $node, string $id, Mapping $tgtMapping): void {
+		try {
+			$this->n8n->unarchiveWorkflow($id);
+		} catch (N8nApiException $e) {
+			if ($e->httpStatus !== 404) {
+				throw $e;
+			}
+			// Workflow was hard-deleted in n8n — recreate from the file we still hold.
+			// createForFile() stamps a fresh id + mode=sync + mapping itself.
+			$this->logger->info('n8n_sync motion: workflow gone in n8n; creating fresh on move-in', [
+				'app' => Application::APP_ID,
+				'workflowId' => $id,
+			]);
+			$this->createService->createForFile($node, $tgtMapping);
+			return;
+		}
+
+		$this->guard->run(function () use ($node, $tgtMapping): void {
+			$this->metadata->write($node->getId(), [
+				WorkflowMetadata::KEY_MODE => Mapping::MODE_SYNC,
+				WorkflowMetadata::KEY_MAPPING => $tgtMapping->id,
+			]);
+			$this->ownershipTags->apply($node->getId(), Mapping::MODE_SYNC);
+		});
+	}
+}
