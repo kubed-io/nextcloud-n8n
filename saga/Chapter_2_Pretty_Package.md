@@ -952,6 +952,19 @@ resolves and auto-closes on merge).
 A few items that naturally belong in this chapter:
 
 - **LICENSE file** — ✅ done: canonical AGPL-3.0 text from gnu.org at the repo root (§9).
+- **Packaging-quality audit (2026-06-22, post v0.1.2)** — verified the published artifact
+  against the live store conventions. Findings: version propagation is correct across all
+  surfaces (`info.xml`, `package.json`, `package-lock.json`, the dated `CHANGELOG` section);
+  the tarball is lean (140K, top-level folder = app id) and a file-for-file diff confirmed it
+  carries **all 67 runtime files and nothing else** (`config/` mimetype JSONs included, `src/`
+  + `.map` + tests/CI/dev tooling correctly excluded, bundle minified). The publish step uses
+  an **allowlist** (`appinfo lib css js img templates config CHANGELOG.md README.md` + the
+  built bundle) rather than a `.nextcloudignore` denylist — safer (can't leak new dev files).
+  - **Task — ship `LICENSE` in the tarball (DONE, this PR):** the one gap vs the flagship apps
+    (deck/notes/integration_openai all ship their license text). Added `LICENSE` to the
+    publish allowlist. `CHANGELOG.md` is already shipped (store **strongly recommends** it; it
+    also feeds the GitHub release notes). No separate `COPYING` — that's just the old GNU name
+    for the same full-license-text file; our `LICENSE` already is the canonical AGPL-3.0 text.
 - **`info.xml` cleanup** — ✅ `bugs` URL fixed + `<repository>` added; `<licence>agpl</licence>`
   confirmed correct (the official apps use the short form, not SPDX). Still pending for the
   store: real `description` copy + at least one `screenshot` (Chapter 3 §3.1).
