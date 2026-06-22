@@ -16,10 +16,6 @@ permissions:
   # Auto-assign needs to write the assignee on the PR.
   pull-requests: write
 
-concurrency:
-  group: pr-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
 
   pr-tasks:

@@ -22,10 +22,6 @@ permissions:
   checks: write
   pull-requests: write
 
-concurrency:
-  group: tests-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
 
   php:
