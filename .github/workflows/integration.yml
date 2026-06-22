@@ -116,6 +116,24 @@ jobs:
           --admin-user="$NC_ADMIN_USER" \
           --admin-pass="$NC_ADMIN_PASS"
         ./occ config:system:set trusted_domains 1 --value=localhost
+        # WebDAV scenarios reach NC over HTTP at localhost:8080 (see below), so
+        # that host:port must be trusted too.
+        ./occ config:system:set trusted_domains 2 --value=localhost:8080
+
+    # ── Serve: occ-only scenarios need no HTTP, but the WebDAV channel (file
+    # create/PROPFIND, the create/delete/rename listeners) does. PHP's built-in
+    # server is enough for DAV; no nginx/fpm needed. Backgrounded, then waited on.
+    - name: Start Nextcloud (php built-in server)
+      run: |
+        php -S localhost:8080 -t "$GITHUB_WORKSPACE" >/tmp/nc-web.log 2>&1 &
+        echo "NC_WEB_PID=$!" >> "$GITHUB_ENV"
+        for i in $(seq 1 30); do
+          if curl -fsS -o /dev/null "$NC_BASE_URL/status.php"; then echo "NC web up"; exit 0; fi
+          sleep 2
+        done
+        echo "NC web server did not come up" >&2; cat /tmp/nc-web.log >&2; exit 1
+      env:
+        NC_BASE_URL: http://localhost:8080
 
     # ── Readiness: wait for the n8n service container ────────────────────────
     - name: Wait for n8n
@@ -184,4 +202,6 @@ jobs:
     - name: Nextcloud log on failure
       if: failure()
       run: |
-        if [ -f data/nextcloud.log ]; then cat data/nextcloud.log; else echo "no log"; fi
+        if [ -f data/nextcloud.log ]; then cat data/nextcloud.log; else echo "no nextcloud.log"; fi
+        echo "── php built-in server log ──"
+        if [ -f /tmp/nc-web.log ]; then cat /tmp/nc-web.log; else echo "no nc-web.log"; fi
