@@ -28,28 +28,35 @@ development story is undocumented. That's what this chapter fixes.
 ## The epics (this chapter's arc)
 
 A chapter is a large arc; these are the epic-sized units inside it (the numbered §items below
-are the detailed backlog under them). Roughly in order.
+are the detailed backlog). They're in *causal* order — each one enabled the next — and the
+seams between them are real **transitions** worth naming, because a good transition makes a
+good story.
 
-**The through-line: each testing layer paid for itself as a refactor.** The devops + unit +
-static-analysis work (epics 1–3) *uncovered* a pile of issues — which the **first refactor
-(security)** then cleaned up. The **integration suite** (epic 4) is the safety net that now
-makes the **second refactor** (the mode-model overhaul + motion, epic 6) safe to attempt at
-all. Testing wasn't a gate bolted on at the end; it was the thing that made each refactor
-possible.
+**The through-line: each testing layer paid for itself as a refactor, and each refactor
+transitioned into the next testing layer.**
+1. **DevOps + unit + static analysis** (epics 1–3) *uncovered* a pile of issues.
+2. → *transition* → the **first refactor (security)** cleaned them up **and** readied the code.
+3. → *transition* → that enabled **integration testing** — which itself required some changes
+   to wire up (the refactor and the suite met in the middle).
+4. → *transition* → the integration suite is the safety net that makes the **second refactor**
+   (the mode-model overhaul + motion) safe to attempt at all.
+5. → *transition: **branding*** (Ch3 §3.1) → once the app is market-ready, the work turns to identity.
+
+Testing was never a gate bolted on at the end; it was the thing that made each refactor possible.
 
 | # | Epic | Status | Detail |
 |---|---|---|---|
 | 1 | **DevOps workflows** — publish/test/quality/integration CI | ✅ | §2, §10, §13.1 |
 | 2 | **GitHub project setup** — repo, contributing/agents/standards, PR flow, security | ✅ / ⚠️ | §1, §6–8, §11, §13 |
-| 3 | **Testing: unit** | ✅ | §5.1 |
-| 4 | **Testing: integration** — Behat on real NC + n8n (create/rename/delete live) | ✅ | §5.3 |
-| 5 | **First refactor — security** — static-analysis/code-scanning paydown (Psalm 239→14), `IConfig → IAppConfig` migration | ✅ | §12, §12.1 |
-| 6 | **Second refactor + edge-case features** — the mode-model overhaul (sync/link/unmapped; drop backup/writeback) **+** the motion lifecycle (move-out/restore, copy-strips, merge), *made safe by the integration suite* | ☐ | §14 |
+| 3 | **Testing: unit + static analysis** — PHPUnit/Vitest + Psalm surfacing the issues | ✅ | §5.1, §10 |
+| 4 | **First refactor — security** — code-scanning paydown (Psalm 239→14), `IConfig → IAppConfig` migration | ✅ | §12, §12.1 |
+| 5 | **Testing: integration** — Behat on real NC + n8n (create/rename/delete live); enabled by epic 4, needed its own fixes | ✅ | §5.3 |
+| 6 | **Second refactor + edge-case features** — the mode-model overhaul (sync/link/unmapped; drop backup/writeback) **+** the motion lifecycle (move-out/restore, copy-strips, merge), *made safe by epic 5* | ☐ | §14 |
 | 7 | **Secondary refactor** — a cleanup pass once the edge-case work reveals the real shape (scope TBD) | ☐ | §14 (follow-on) |
 
-Epics 1–5 are delivered (the **first refactor was the security pass**); **6 is next** — the
-mode/motion work the testing was built to make safe. The chapter closes — and **branding**
-(Ch3 §3.1) begins — when Kelly judges the app fully functional and usable for the market.
+Epics 1–5 are delivered; **6 is next** — the mode/motion work the integration suite was built
+to make safe. The chapter closes — and **branding** (Ch3 §3.1) begins — when Kelly judges the
+app fully functional and usable for the market.
 
 ---
 
