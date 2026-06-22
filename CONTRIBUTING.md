@@ -125,6 +125,43 @@ bureaucratize a typo fix. Steps 3 onward are the actual gates.
 
 ---
 
+## Anatomy of a feature change
+
+Most features here follow one repeatable shape — a spec, the code, docs, tests. Touch all
+four and a feature PR practically reviews itself. Concretely, a feature PR should land:
+
+- **A feature file** in [`features/`](features/) — the behaviour in Gherkin, *first*. It's
+  the contract and the integration test at once. New behaviour starts life here, often as
+  `@todo` scenarios that document the target before the code exists; you flip a scenario
+  **live** (drop its `@todo`) in the same PR that lands its code. Keep the Gherkin DRY —
+  reuse shared `Background` steps (e.g. `Given the app is connected to n8n`) rather than
+  re-spelling setup. Validate with `behat --dry-run`: every live step must resolve.
+- **The code** in [`lib/`](lib/) — a `Service` for the testable logic, a thin `Listener`
+  (or `Controller`/`Command`) as the event adapter, wired in `lib/AppInfo/Application.php`.
+- **A unit test** in [`tests/unit/`](tests/unit/) for the service's rules, plus the step
+  definitions that make the feature file's live scenarios run. These live in per-concern
+  traits under [`tests/integration/bootstrap/Steps/`](tests/integration/bootstrap/Steps/)
+  (one trait per feature area — `CreateSteps`, `MoveSteps`, `CopySteps`, …), with shared
+  transport/setup helpers in [`bootstrap/Support/`](tests/integration/bootstrap/Support/)
+  (`OccTrait`, `WebDavTrait`, `N8nApiTrait`, `SetupTrait`). The thin
+  [`FeatureContext`](tests/integration/bootstrap/FeatureContext.php) just owns the shared
+  state + teardown and `use`s every trait. **Add a new `*Steps` trait (or grow the right
+  existing one) — don't pile every feature's steps into one file.**
+- **README updates** when the feature changes what a user can do — keep the user-facing
+  prose and the spec/impl links accurate.
+- **A `## [Unreleased]` changelog entry** (see [the flow](#the-flow-issue--pr--merge) above).
+
+Two artifacts differ by who's driving:
+
+- **Humans:** open **an issue** first to track what's desired or broken — the place scope
+  gets agreed before code is written (see steps 1–2 above).
+- **Agents:** update the **[saga](saga/)** — the long-form "why" behind the change (the
+  design narrative, the lessons learned, what's still `@todo`). The saga is the agent's
+  durable memory across sessions; the changelog and README are for users, the saga is for
+  whoever picks up the work next.
+
+---
+
 ## Getting set up
 
 The devcontainer is the supported path. Anything else, you're on your own.

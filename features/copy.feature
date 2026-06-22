@@ -4,13 +4,9 @@
 # it is copied. Copy is therefore the single safest point to strip metadata:
 # whatever the source was (sync, link, unmapped), the copy starts clean.
 #
-# Nextcloud distinguishes copy from move at the event layer, which is what lets us
-# treat them oppositely.
-#
-# @todo until the copy listener lands (saga Chapter 2 §14, Phase 2). CI skips @todo so
-# this documents the intended behaviour now and goes live as the code lands.
+# Nextcloud distinguishes copy from move at the event layer (NodeCopiedEvent vs
+# NodeRenamedEvent), which is what lets us treat them oppositely.
 
-@todo
 Feature: Copying a workflow file always makes a new instance
   As a Nextcloud user
   I want a copy to be a fresh workflow, never a hijack of the original

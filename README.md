@@ -83,7 +83,7 @@ Where a move is "the same workflow," a **copy** is always a *new* one. A copied 
 
 So duplicating a workflow is as simple as copying its file, and you never have to worry about a copy silently hijacking the original's n8n workflow.
 
-📋 spec: [`features/copy.feature`](features/copy.feature) · 🛠 [`lib/Listener/MoveGuardListener.php`](lib/Listener/MoveGuardListener.php)
+📋 spec: [`features/copy.feature`](features/copy.feature) · 🛠 [`lib/Listener/CopyListener.php`](lib/Listener/CopyListener.php) · [`lib/Service/CopyService.php`](lib/Service/CopyService.php)
 
 ### Renaming (three-way)
 

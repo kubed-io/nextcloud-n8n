@@ -161,6 +161,16 @@ final class WorkflowMetadata {
 		return $out;
 	}
 
+	/**
+	 * Drop the entire managed-metadata record for a file. Used when a COPY lands
+	 * (saga Ch2 §14 `copy.feature`): a copy is ALWAYS a brand-new instance and must
+	 * never inherit the original's `n8n_id` / mode / mapping, so its metadata is
+	 * wiped to a clean slate. Idempotent — safe on a file that has no record.
+	 */
+	public function clear(int $fileId): void {
+		$this->manager->deleteMetadata($fileId);
+	}
+
 	/** Canonical → stored: `link` mode is persisted as `reference`. */
 	private function toWire(string $key, string $value): string {
 		return ($key === self::KEY_MODE && $value === Mapping::MODE_LINK) ? self::WIRE_LINK : $value;

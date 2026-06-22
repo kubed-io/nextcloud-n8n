@@ -12,6 +12,7 @@ namespace OCA\N8nSync\AppInfo;
 use OCA\Files\Event\LoadAdditionalScriptsEvent;
 use OCA\Files_Trashbin\Events\NodeRestoredEvent;
 use OCA\N8nSync\BackgroundJob\ScheduledPullJob;
+use OCA\N8nSync\Listener\CopyListener;
 use OCA\N8nSync\Listener\CreateInN8nListener;
 use OCA\N8nSync\Listener\DeleteToN8nListener;
 use OCA\N8nSync\Listener\LoadFilesScriptListener;
@@ -33,6 +34,7 @@ use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
 use OCP\Files\Events\Node\BeforeNodeDeletedEvent;
 use OCP\Files\Events\Node\BeforeNodeRenamedEvent;
+use OCP\Files\Events\Node\NodeCopiedEvent;
 use OCP\Files\Events\Node\NodeRenamedEvent;
 use OCP\Files\Events\Node\NodeWrittenEvent;
 
@@ -93,6 +95,12 @@ final class Application extends App implements IBootstrap {
 		// move-out) or unarchive/restore (unmapped move-in) the same workflow in
 		// n8n. Untracked move-in (create-on-land) stays with CreateInN8nListener.
 		$context->registerEventListener(NodeRenamedEvent::class, MotionListener::class);
+
+		// §14.2 copy is the opposite of move: a copy is ALWAYS a brand-new instance.
+		// NC fires NodeCopiedEvent (not NodeWrittenEvent) on a copy, so create-on-land
+		// misses it; this listener strips the copy's inherited identity and registers
+		// it as a fresh workflow if it landed in a mapping (see CopyService).
+		$context->registerEventListener(NodeCopiedEvent::class, CopyListener::class);
 
 		// Three-way name sync: keep filename stem ≡ JSON `name` ≡ n8n name for
 		// two-way files. Rename → name into JSON (writeback pushes); edit name +
