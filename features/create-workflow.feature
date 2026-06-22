@@ -10,9 +10,7 @@ Feature: Create a workflow from Nextcloud
   So that I can author workflows without opening the n8n UI
 
   Background:
-    Given the app is installed and enabled
-    And the admin has set the n8n base URL and enabled the REST API
-    And the admin provides the n8n API key
+    Given the app is connected to n8n
 
   Scenario: New file in a mapped sync folder becomes a real workflow
     Given a folder mapped as "sync" to the n8n tag "nextcloud:demo"

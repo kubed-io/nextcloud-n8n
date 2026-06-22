@@ -48,3 +48,23 @@ namespace OCP\AppFramework\Bootstrap {
 		}
 	}
 }
+
+namespace OCP\Files {
+	// `File` (and its parent `Node`) are mocked in motion/listener tests; PHPUnit
+	// needs the interfaces to exist to generate the double. Declaration-only — the
+	// real server provides the full surface; here we name just what the tests call.
+	if (!interface_exists(Node::class, false)) {
+		interface Node {
+			public function getId(): int;
+
+			public function getName(): string;
+
+			public function getPath(): string;
+		}
+	}
+	if (!interface_exists(File::class, false)) {
+		interface File extends Node {
+			public function getContent(): string;
+		}
+	}
+}

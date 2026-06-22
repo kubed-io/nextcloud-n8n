@@ -1241,6 +1241,58 @@ Hard-won bits from finishing the model collapse that aren't captured elsewhere:
 Verify: re-grep for `writeback`/`backup` after Phase 1; live-smoke that n8n `unarchive` truly
 restores a workflow our move-out archived (the restore path is load-bearing).
 
+#### 14.4 Phase-2 motion — move (shipped 2026-06-22)
+
+First slice of Phase 2: the **move** lifecycle (the `unmapped` mode + its archive/restore),
+the highest-value motion path. Built to the §14.3 guiding principle — main flows live, fragile
+edges stubbed `@todo`.
+
+**What shipped (live + tested):**
+- **`MotionService`** (new) — `moveOut` (archive in n8n + re-stamp `mode=unmapped`, mapping
+  cleared, id/versionId/JSON kept) and `moveIn` (unarchive the SAME workflow + re-stamp
+  `mode=sync` in the target mapping; **create-fallback** if the workflow was hard-deleted in
+  n8n → 404). 404-on-archive is idempotent success; other errors bubble.
+- **`MotionListener`** (new, on `NodeRenamedEvent`) — applies the consequence after an allowed
+  move: sync-out-of-mapping → `moveOut`; unmapped-into-mapping → `moveIn`. Bails on untracked
+  files (those stay with `CreateInN8nListener`'s create-on-land) and on within-mapping /
+  unmapped→unmapped relocations. Failures logged + swallowed (the NC move already happened).
+- **`MoveGuardListener`** (evolved from the old hard "can't leave the folder" block) — now on
+  `BeforeNodeRenamedEvent` it *allows* a sync move-out, *blocks* a link move-out (only a
+  pointer, nothing to keep), and *blocks* a direct mapping→mapping move (decision-cases a/b
+  undesigned — eject-to-unmapped-first is the supported path).
+- **`OwnershipTags`** — added `n8n:unmapped`; `tagFor('unmapped')` now returns it (was: throw).
+- **`move.feature`** — flipped live: within-mapping move/rename, sync move-out→unmapped+archive,
+  unmapped move-in→restore, link move-out refused, unmapped relocation no-op. Still `@todo`:
+  hard-deleted restore-fallback (needs the "workflow gone in n8n" harness), merge-on-collision
+  (needs a metadata-by-id lookup — `MotionService::moveIn` carries the TODO), brand-new move-in
+  create, and decision-cases a–d.
+- **Gherkin DRY** — one canonical `the app is connected to n8n` Background step (enable + URL +
+  REST API + key) replaces the verbose three-line ritual everywhere except
+  `admin-connection.feature` (which *is* the connection-flow test). Validated with `behat
+  --dry-run`: every live step resolves, zero undefined.
+- **Tests** — `MotionServiceTest` (6 cases: archive+stamp, 404-swallow, 500-rethrow, restore+
+  stamp, create-fallback, 500-rethrow), `OwnershipTagsTest` updated for `unmapped`. 51 unit
+  tests green in the pod; cs clean. (Pod can't run the live Behat suite — **integration is
+  CI-only**; no local throwaway stack.)
+
+**Lessons (don't relearn):**
+- **Parenthesised step text needs the regex-form annotation.** `When I move (rename) the file`
+  won't match a turnip `#[When]`/`@When` pattern — Behat reads `(rename)` as a capture group
+  (so it matches the literal word `rename`, not `(rename)`). The existing `the workflow is
+  archived \(hidden, preserved\) in n8n` works *because* it uses the `/^…\(…\)…$/` regex form.
+  Cheapest fix: reword the Gherkin to drop the parens (and reuse an existing step where one
+  already says it).
+- **`behat --dry-run` is a free step-coverage check** — it loads the context and matches every
+  non-`@todo` step to a definition without touching NC/n8n, so it runs fine in the app pod even
+  though the full suite can't. Catches unmatched/typo'd steps before CI.
+- **A misplaced `@todo` silently un-skips a scenario.** Dry-run reported "1 undefined" because a
+  scenario's `@todo` tag went missing in an edit; the spec-only steps then counted as
+  undefined. Always re-run the dry-run after editing tags.
+
+Still pending for the wider Phase 2: copy-strips (`copy.feature`), manual per-mapping
+sync/prune (`reconcile.feature`), `ignored` mode + reserved tags, mode-change toggle, and the
+decision-cases a–d. The Phase-1 live-pod migration (§14.2c item f) is also still open.
+
 ## Things not on the original list worth noting
 
 A few items that naturally belong in this chapter:

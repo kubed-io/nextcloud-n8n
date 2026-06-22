@@ -20,12 +20,14 @@ use Psr\Log\LoggerInterface;
  * Owns the NC system tags this app puts on the files it manages — one per mode
  * (a coloured pill the user sees in the Files app):
  *
- *   n8n:sync  — full workflow JSON; edits push back to n8n.
- *   n8n:link  — a small pointer / deep link to a workflow that lives in n8n.
+ *   n8n:sync      — full workflow JSON; edits push back to n8n.
+ *   n8n:link      — a small pointer / deep link to a workflow that lives in n8n.
+ *   n8n:unmapped  — a sync file ejected from its mapping (moved out); the JSON is
+ *                   kept, the workflow archived in n8n, restorable on move-back-in.
  *
  * (saga Ch2 §14: `n8n:backup` was dropped along with backup mode — it migrates to
  * `n8n:sync`. The old `n8n:reference` tag was renamed to `n8n:link`. Both are
- * stripped as legacy on re-tag.)
+ * stripped as legacy on re-tag. `n8n:ignored` is saga §14 Phase 2, not yet produced.)
  *
  * On the Nextcloud side these tags are **authoritative**: the app keeps exactly one
  * on each managed file, matching the file's mode metadata. (The same `n8n:sync` /
@@ -38,9 +40,10 @@ use Psr\Log\LoggerInterface;
 final class OwnershipTags {
 	public const TAG_SYNC = 'n8n:sync';
 	public const TAG_LINK = 'n8n:link';
+	public const TAG_UNMAPPED = 'n8n:unmapped';
 
 	/** All tags this app currently manages — used to scrub competing assignments. */
-	public const ALL = [self::TAG_SYNC, self::TAG_LINK];
+	public const ALL = [self::TAG_SYNC, self::TAG_LINK, self::TAG_UNMAPPED];
 
 	/** Old tag names stripped on re-tag (n8n:reference → n8n:link; n8n:backup → n8n:sync). */
 	private const LEGACY = ['n8n:reference', 'n8n:backup'];
@@ -53,13 +56,14 @@ final class OwnershipTags {
 	}
 
 	/**
-	 * Pick the tag for a mode. Throws on a mode that has no file tag (the producing
-	 * behaviours for unmapped/ignored are saga Ch2 §14 Phase 2; sync/link only here).
+	 * Pick the tag for a mode. Throws on a mode that has no file tag (`ignored` is
+	 * saga Ch2 §14 Phase 2, not yet produced; an unknown mode is a programming error).
 	 */
 	public static function tagFor(string $mode): string {
 		return match ($mode) {
 			Mapping::MODE_SYNC => self::TAG_SYNC,
 			Mapping::MODE_LINK => self::TAG_LINK,
+			WorkflowMetadata::MODE_UNMAPPED => self::TAG_UNMAPPED,
 			default => throw new \InvalidArgumentException('Unknown mode for ownership tag: ' . $mode),
 		};
 	}
