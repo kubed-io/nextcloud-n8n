@@ -337,7 +337,7 @@ done by the maintainer (or a local agent), not a public-triggerable cloud workfl
 > author-association guard (`github.event.comment.author_association` ∈ {OWNER, MEMBER,
 > COLLABORATOR}) so public comments can't trigger it.
 
-### 5. Tests ⚠️ (unit layer shipped + reported in CI; integration/e2e still ☐)
+### 5. Tests ✅ (unit + integration live and green in CI)
 
 Implement the test suite in the two layers defined by the §4 boundary. The layers ship in
 order — **unit first** (no infrastructure), **integration second** (on the §4a stack).
@@ -346,6 +346,18 @@ order — **unit first** (no infrastructure), **integration second** (on the §4
 > and **green in CI**, with results surfaced in the GitHub UI. Integration + e2e remain
 > scaffolded-only (await §4a). See **§5.1 (what was built)** and **§5.2 (lessons learned)**
 > below for the completed-work report and the hard-won gotchas.
+>
+> **Status (2026-06-22):** the **integration layer is now LIVE** — Behat on a real Nextcloud
+> (stable33, SQLite) + a real n8n service container, **17 scenarios / 81 steps green**
+> (PR #20→#25). The big unlock was bootstrapping n8n headlessly in CI (mint an API key with
+> zero secrets, preload control-case workflows), then driving the app's real listeners over
+> **WebDAV** and asserting both sides — n8n over its REST API, the NC stamp over DAV PROPFIND.
+> Live features: **create-on-land**, **rename** (three-way name sync via `ReconcileNameJob`),
+> **delete** (trash→archive, restore→unarchive, backup/link tag-strip, unmapped no-op).
+> Deferred `@todo` (documented, CI-skipped): **purge→permanent-delete** (a manual trashbin
+> DAV DELETE doesn't appear to fire the Files `BeforeNodeDeletedEvent` the hard-delete leg
+> needs — a real listener-side follow-up) and **n8n-unreachable abort** (better as a unit test
+> vs a mocked `N8nClient`). See **§5.3** for the integration-layer build report + gotchas.
 
 #### Unit suite — `tests/unit/`, runs on every PR *(shipping first)*
 
@@ -588,6 +600,63 @@ where it needed a real PHP, validated against the cluster's Nextcloud pod (PHP 8
 - **Psalm baseline is the deferred-cleanup ledger.** 185 pre-existing findings (legacy
   strictness + `nextcloud/ocp` snapshot gaps like `IDelegatedSettings`); baseline them so the
   gate fails only on *new* issues, then shrink the baseline over time (§12).
+
+#### 5.3 Integration layer — what was built + lessons (2026-06-22)
+
+The integration suite went from "scaffolded, occ-only" to a real behavioural net across
+PRs #20→#25. What landed:
+
+- **Three transport channels in one `FeatureContext`** — `occ` (admin setup), **WebDAV**
+  (Guzzle, admin basic-auth: MKCOL/PUT/MOVE/DELETE/PROPFIND), **n8n REST** (Guzzle,
+  `X-N8N-API-KEY`: assertions + teardown). WebDAV is non-negotiable: the create/rename/delete
+  listeners only fire on real NC filesystem events, which a WebDAV write produces and an
+  `occ config` does not.
+- **Admin-owned mappings** (`use_team_folder=false`) so CI needs no groupfolders app.
+- **`@AfterScenario` teardown** deletes created workflows + folders and clears the `mappings`
+  key, keeping re-runs isolated on the shared CI n8n + NC.
+
+Hard-won lessons (the green came after each of these bit):
+
+- **CI must serve NC over HTTP for the WebDAV channel.** occ-only scenarios needed no web
+  server; once WebDAV entered, the suite needed `php -S localhost:8080 -t $GITHUB_WORKSPACE`
+  (enough for DAV) + `localhost:8080` trusted + a `status.php` readiness wait.
+- **Async listeners need a deterministic job drain.** Rename/JSON-edit defer to
+  `ReconcileNameJob` (the file is locked during a rename). `background-job:worker --once`
+  honours the worker's last-run/reservation timing and *skips* a job queued microseconds
+  earlier → flaky. The fix: `background-job:list --class=… --output=json`, then run each id
+  with `background-job:execute <id> --force-execute`.
+- **Don't assert with PHPUnit `Assert` on the failure path under Behat.** PHPUnit 12's
+  failure exporter reaches into `PHPUnit\TextUI\Configuration\Registry`, which is null with no
+  TextUI bootstrap → an opaque `Registry::get(): … null returned` TypeError that *masks* the
+  real value. Use a plain `RuntimeException` helper for HTTP-status checks; passing assertions
+  are fine, so a green run hides this until something fails.
+- **Literal `( )` in a step's Gherkin text becomes a regex capture group** → the step reads as
+  *undefined* and the suite fails while looking green. Pin with an escaped regex annotation.
+- **The PR-gating workflows' `cancel-in-progress` concurrency froze the PR.** Keyed on
+  `github.ref` (= `refs/pull/N/merge`), a rapid second push cancelled the first run during
+  GitHub's merge-ref recompute and the latest commit ended up with *no* status on HEAD →
+  required checks stuck "waiting" forever. Removed the `concurrency` block from pr/tests/
+  quality (kept it on the slow, non-required integration workflow). Separately, GitHub
+  occasionally just fails to create runs for a push (event-delivery wedge) — a fresh push or
+  PR close/reopen clears it; it is not a quota/billing limit (public repo = unlimited CI).
+
+#### 5.4 First real-instance install (2026-06-22) ✅
+
+Deployed the merged `main` build (0.1.1) into the live homelab Nextcloud (NC 33.0.4, the
+`cloud/nextcloud` pod) — the instance had been running the end-of-Chapter-1 0.0.2 copy. Method
+is still a manual `kubectl cp` into `custom_apps/` (persistent host volume; no automated app
+installer in the Nextcloud deployment yet).
+
+- **Avoiding the "update failed" limbo.** A higher `info.xml` version copied in *while the app
+  is enabled* makes NC try to auto-run the app upgrade on the next page load and, with
+  auto-update off, can wedge it half-upgraded. The clean sequence that sidesteps it:
+  `maintenance:mode --on` → `app:disable` (still at old version) → swap files →
+  `maintenance:mode --off` → `app:enable` (clean version transition, repair steps run). Keep
+  `app:remove` + re-copy + `app:enable` staged as the recovery.
+- **Result:** `installed_version` 0.0.2 → 0.1.1, enabled, instance healthy (no needsupgrade),
+  mimetype repair step re-ran (`application/n8n+json` registered), existing mappings preserved,
+  zero warn/error log entries. As expected for a refactor, no behavioural change — UI parity
+  is the remaining manual confirmation.
 
 ### 6. CONTRIBUTING.md / developer setup doc ✅ (PR #3)
 
@@ -898,8 +967,8 @@ A few items that naturally belong in this chapter:
 Chapter 2 is complete when:
 
 1. A contributor can open the devcontainer and have a working build environment
-2. There is a documented path from clone to a running test Nextcloud with the app installed — ⚠️ **documented in CONTRIBUTING.md (§6);** end-to-end devcontainer run still untested
-3. A test suite exists and runs in CI on every PR — ✅ **unit layer done** (§5.1); integration/e2e pending
+2. There is a documented path from clone to a running test Nextcloud with the app installed — ⚠️ **documented in CONTRIBUTING.md (§6);** CI integration stack proves it end-to-end (§5.3); the merged build is also installed on the live instance (§5.4); devcontainer run still untested
+3. A test suite exists and runs in CI on every PR — ✅ **done** — unit (§5.1) **and** integration (§5.3, 17 scenarios green on real NC + n8n); e2e/UI still manual
 4. Code scanning runs on every PR and push to main — ✅ **done** (CodeQL default setup for JS + Psalm SARIF for PHP, §10 / §13.1)
 5. CONTRIBUTING.md and AGENTS.md exist and are accurate — ✅ **done** (§6, §7, PR #3)
 6. Branch protection + PR rules are enforced on GitHub — ⚠️ **PR rules documented + workflow-enforced** (§11, §13.1 PR housekeeping); branch protection toggles still ☐
