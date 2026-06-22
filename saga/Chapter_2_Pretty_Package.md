@@ -1342,6 +1342,68 @@ Still pending for the wider Phase 2: manual per-mapping sync/prune (`reconcile.f
 `ignored` mode + reserved tags, mode-change toggle, merge-on-collision, and decision-cases a–d.
 The Phase-1 live-pod migration (§14.2c item f) is also still open.
 
+#### 14.6 Phase-2 — DOUBLE FEATURE (reconcile + mode-change) — IN PROGRESS
+
+> **Two agents, one PR.** This slice is built by **two agents working in parallel** on a single
+> branch — `feat/reconcile-and-mode-change` — that lands as **one "double feature" PR**. The two
+> features are deliberately chosen to be *independent* (disjoint `lib/` files, one new
+> `features/*.feature` each, one new `bootstrap/Steps/*Steps` trait each), so the two agents
+> rarely touch the same file. The per-concern Behat trait split (§5.3 refactor) is what makes
+> this safe: a feature now = its own `*Steps` trait + one `use` line in `FeatureContext`.
+
+**Who owns git (read this first).**
+- **Copilot owns ALL git operations** — branch, `add`, `commit`, `push`, the PR, CI watching,
+  and merge-readiness. **Claude has no git access this round.** Claude writes/edits files only;
+  when a logical unit is ready, Claude tells Copilot "ready to commit X" and Copilot stages +
+  commits it (crediting Claude in the commit body). Claude must **not** run `git`.
+- **Copilot serializes the shared files.** The handful of files both features touch are edited
+  **only by Copilot**, on request, so there are no mid-air collisions:
+  - `tests/integration/bootstrap/FeatureContext.php` — the two new `use …Steps;` lines.
+  - `lib/AppInfo/Application.php` — event/listener + service registrations for both features.
+  - `CHANGELOG.md` `[Unreleased]` — one entry per feature.
+  - `OwnershipTags` / `SyncService` / `WorkflowMetadata` — if **both** need a new method here,
+    Copilot adds it once and both call it. Prefer adding to your *own* new service instead.
+
+**Assignment A — `mode-change.feature` → CLAUDE.** The sync ⇄ link re-mode transition on a
+managed file, identity (`n8n_id`) preserved. Mutual exclusivity: exactly one of
+`n8n:sync`/`n8n:link` per file; manually adding the second resolves to the just-added one and
+strips the other. Transition rewrites the file: **sync→link** collapses content to the pointer
+(id/name/URL) and stops pushing; **link→sync** pulls the full JSON down and resumes two-way.
+Triggered three ways (Files context-menu toggle, manual system-tag change, n8n-side override tag
+applied on next pull). Build to the §14.3 principle — land the main paths live, leave honest
+`// TODO:` stubs + `@todo` on the fragile ones.
+- *New files (Claude's own):* `lib/Service/ModeChangeService.php` (the transition engine:
+  re-stamp `KEY_MODE`, enforce tag mutual-exclusivity via `OwnershipTags`, collapse-or-pull the
+  body via `SyncService`), a tag-change listener (`OCP\SystemTag` events) e.g.
+  `lib/Listener/ModeTagListener.php`, the Files context-menu front-end action, a unit test
+  `tests/unit/Service/ModeChangeServiceTest.php`, and a new step trait
+  `tests/integration/bootstrap/Steps/ModeChangeSteps.php`.
+- *Flip live in `features/mode-change.feature`:* the Files context-menu toggle, the manual
+  second-tag-resolves, and the two retag (sync→link / link→sync) scenarios. The two **from-n8n
+  override-tag** scenarios may stay `@todo` if the pull-side override plumbing isn't ready —
+  label them honestly.
+- *Hand off to Copilot for commit:* the `use ModeChangeSteps;` line in `FeatureContext`, the
+  `Application.php` registrations, and the `[Unreleased]` CHANGELOG line.
+
+**Assignment B — `reconcile.feature` → COPILOT.** The two manual, **mapping-scoped** sync
+controls: **Sync from n8n** (pull the mapping's tagged workflows into its folder, update in place
+matched by id, prune a file whose workflow lost the tag) and **Sync to n8n** (push the mapping's
+sync files up). Both **fully ignore `unmapped` files** — they're outside any mapping's scope. No
+merge logic here (merge is move-time, §14.4).
+- *New files (Copilot's own):* `lib/Service/ReconcileService.php` (`syncFrom(mapping)` /
+  `syncTo(mapping)`, leaning on existing `SyncService` pull/push + `MappingService`), an occ
+  command `lib/Command/Reconcile.php` (and/or a controller endpoint for the admin buttons), a
+  unit test `tests/unit/Service/ReconcileServiceTest.php`, and a new step trait
+  `tests/integration/bootstrap/Steps/ReconcileSteps.php`.
+- *Flip live in `features/reconcile.feature`:* both scenarios (pull-with-prune, push), with the
+  "unmapped file untouched" assertions. Prune + id-match are the load-bearing bits.
+
+**Coordination rhythm.** Each agent: write code → `php -l` + PHPUnit + `php-cs-fixer` **in the
+pod** (`nextcloud-dbb454476-dvxwz`, ns `cloud`, container `nextcloud`) → `behat --dry-run` for
+step coverage → hand the shared-file edits to Copilot → Copilot commits. Integration is **CI-only**
+(no local stack); Psalm is **CI-only** (pod Psalm hangs, §12.1). Copilot opens the PR as a
+**draft**, flips it to ready once both features are green, and watches `gh pr checks --watch`.
+
 ## Things not on the original list worth noting
 
 A few items that naturally belong in this chapter:
