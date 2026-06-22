@@ -28,7 +28,14 @@ development story is undocumented. That's what this chapter fixes.
 ## The epics (this chapter's arc)
 
 A chapter is a large arc; these are the epic-sized units inside it (the numbered §items below
-are the detailed backlog under them). Roughly in order:
+are the detailed backlog under them). Roughly in order.
+
+**The through-line: each testing layer paid for itself as a refactor.** The devops + unit +
+static-analysis work (epics 1–3) *uncovered* a pile of issues — which the **first refactor
+(security)** then cleaned up. The **integration suite** (epic 4) is the safety net that now
+makes the **second refactor** (the mode-model overhaul + motion, epic 6) safe to attempt at
+all. Testing wasn't a gate bolted on at the end; it was the thing that made each refactor
+possible.
 
 | # | Epic | Status | Detail |
 |---|---|---|---|
@@ -36,13 +43,13 @@ are the detailed backlog under them). Roughly in order:
 | 2 | **GitHub project setup** — repo, contributing/agents/standards, PR flow, security | ✅ / ⚠️ | §1, §6–8, §11, §13 |
 | 3 | **Testing: unit** | ✅ | §5.1 |
 | 4 | **Testing: integration** — Behat on real NC + n8n (create/rename/delete live) | ✅ | §5.3 |
-| 5 | **First refactor** — collapse the mode model (sync/link/unmapped; drop backup/writeback) + migrate live data | ☐ | §14 Phase 1 |
-| 6 | **Edge-case features** — the motion lifecycle (move-out/restore, copy-strips, merge) | ☐ | §14 Phase 2 |
-| 7 | **Secondary refactor** — a cleanup pass once the motion features reveal the real shape (scope TBD) | ☐ | §14 (follow-on) |
+| 5 | **First refactor — security** — static-analysis/code-scanning paydown (Psalm 239→14), `IConfig → IAppConfig` migration | ✅ | §12, §12.1 |
+| 6 | **Second refactor + edge-case features** — the mode-model overhaul (sync/link/unmapped; drop backup/writeback) **+** the motion lifecycle (move-out/restore, copy-strips, merge), *made safe by the integration suite* | ☐ | §14 |
+| 7 | **Secondary refactor** — a cleanup pass once the edge-case work reveals the real shape (scope TBD) | ☐ | §14 (follow-on) |
 
-Epics 1–4 are delivered; **5 is next** (the safe refactor the testing was built for). The
-chapter closes — and **branding** (Ch3 §3.1) begins — when Kelly judges the app fully
-functional and usable for the market.
+Epics 1–5 are delivered (the **first refactor was the security pass**); **6 is next** — the
+mode/motion work the testing was built to make safe. The chapter closes — and **branding**
+(Ch3 §3.1) begins — when Kelly judges the app fully functional and usable for the market.
 
 ---
 
