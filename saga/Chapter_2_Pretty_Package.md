@@ -1124,6 +1124,67 @@ How a workflow's mode is *chosen* and *changed*, on top of the mapping default:
   exclusivity** is enforced — exactly one of `n8n:sync`/`n8n:link` per file; adding the second
   by hand resolves to the just-added one and strips the other. (`features/mode-change.feature`.)
 
+#### 14.2c Phase 1 HANDOFF (in progress — branch `refactor/mode-model-collapse`)
+
+> **For the agent taking over.** Phase 1 (the model collapse) is **partially done and
+> committed** to branch `refactor/mode-model-collapse` (one WIP commit, pushed). The lib code
+> compiles (every changed file `php -l` clean; a grep for `->writeback|WRITEBACK|MODE_REFERENCE|
+> KEY_WRITEBACK|isSyncTwoWay` over `lib/` is empty). **CI will be RED until the integration
+> FeatureContext is updated (see TODO h).** Do NOT merge until green.
+
+**DONE (committed):**
+- `Mapping` — `mode ∈ {sync, link}` (consts `MODE_SYNC`/`MODE_LINK`); `writeback` property +
+  consts removed; `fromArray` back-compat (`reference`→`link`; `sync`+any writeback incl. old
+  `backup`→`sync`); validation `mode ∈ {sync,link}`; `toArray` drops `writeback`.
+- `tests/unit/Service/MappingTest.php` — NEW, covers the above (the only test added so far).
+- `MappingService` — `update()` no longer passes `writeback`; `list()` legacy markers now fire
+  on `mode==='reference'` or a stray `writeback` key (lazy re-persist on read → this IS the
+  mappings-config migration; see TODO e).
+- `WorkflowMetadata` — dropped `KEY_WRITEBACK`; `KEY_MODE` now INDEXED; `link`⇄`reference` wire
+  translation isolated in `toWire()`/`fromWire()` (THE one place `reference` exists); added
+  `MODE_UNMAPPED`/`MODE_IGNORED` consts.
+- `OwnershipTags` — dropped `TAG_BACKUP`; `tagFor(string $mode)` single-arg; `apply(int,string)`
+  single-arg; `n8n:backup`/`n8n:reference` are LEGACY (stripped on re-tag).
+- `DeleteService` — `softDelete/hardDelete/restore` dropped `$writeback`; rule is now
+  `mode===sync` → archive/delete/unarchive, `link` → untag/retag. Removed `isSyncTwoWay()`.
+- Callers updated: `DeleteToN8nListener`, `RestoreFromTrashListener` (drop writeback reads).
+- Push/name gates collapsed to `mode===sync`: `NameSyncListener`, `NodeWrittenListener`,
+  `ReconcileNameJob`.
+- `CreateService` (stamp drops `KEY_WRITEBACK`, `apply(id,mode)`), `SyncService` (`pushAll` gate
+  `mode===sync`; pull body `MODE_LINK`; metadata writes drop writeback; `tags->apply(id,mode)`),
+  `StorageService` + `TeamFolderService` (`ensure()` dropped `$writeback` param; perms gate
+  `mode===sync`).
+- Admin UI JS `js/mapping-settings.js` — mode `<select>` is now Sync/Link only; `readCard`
+  returns single `mode`; header comment fixed.
+
+**TODO (to finish Phase 1):**
+- **a. `templates/mapping_settings.php`** (lines ~58–79): the *existing-mapping* mode `<select>`
+  still renders `reference`/`sync`/`readonly` with `$modeSel` derived from writeback. Change to
+  `sync`/`link` (`$modeSel = ($m['mode'] === 'link') ? 'link' : 'sync'`), drop the readonly/
+  reference options. (The JS handles NEW cards; the template handles pre-existing ones.)
+- **b. `lib/Controller/MappingController.php`** — docstring mentions `writeback?` (cosmetic;
+  confirm no writeback logic — it just passes the body to `Mapping::fromArray`, which ignores it).
+- **c. `lib/Command/AddMapping.php`** — docstring example has `"writeback":"two-way"` (cosmetic).
+- **d. Settings wording** (`WritebackSettings`/`WebhookSettings`/`AdminSettings`): "two-way file"
+  → "sync file" in descriptions (cosmetic, optional).
+- **e. Migration** — mappings-config migration is already handled LAZILY by
+  `MappingService::list()` re-persist. Decide whether to also add an explicit RepairStep (saga
+  said yes) or rely on lazy. **File-metadata bulk migration is DEFERRED** (dangling
+  `n8n_writeback` prop is harmless once unread; files re-stamp on next sync) — the guiding
+  principle's "don't rathole" applies.
+- **f. Live pod migration** — after deploy, the lazy re-persist fires on first mappings read;
+  verify the `cloud/nextcloud` mappings config rewrote (both are `sync+two-way`→`sync`).
+- **g. Unit tests** — add `OwnershipTagsTest` (pure `tagFor`) and `DeleteServiceTest` (mock
+  `N8nClient`, assert mode-based archive/delete/unarchive + link untag/retag). MappingTest done.
+- **h. ⚠️ Integration `tests/integration/bootstrap/FeatureContext.php`** — the live
+  `admin-mapping.feature` will FAIL until fixed. `modeToModel()` returns `[mode, writeback]` and
+  `theMappingForTagIs` asserts `writeback`; `add-mapping` JSON includes writeback. Rework to the
+  single-mode model: `add-mapping` sends `{mode: sync|link}`; the assertion checks only `mode`
+  (list-mappings no longer returns `writeback`). Then flip the `@todo` "mode must be sync|link"
+  invariant + the `file-type` model-only specs live if feasible.
+- **i. CHANGELOG** `[Unreleased]` entry for the model collapse.
+- **j. Open the PR, verify unit + integration green, then it's mergeable.**
+
 #### 14.3 Attack (two PRs)
 
 > **Guiding principle for the build.** Cover the **main use cases, main flows, and
