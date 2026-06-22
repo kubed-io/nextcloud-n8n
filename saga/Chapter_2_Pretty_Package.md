@@ -32,8 +32,11 @@ are the detailed backlog). They're in *causal* order — each one enabled the ne
 seams between them are real **transitions** worth naming, because a good transition makes a
 good story.
 
-**The through-line: each testing layer paid for itself as a refactor, and each refactor
-transitioned into the next testing layer.**
+**The through-line: a chain of transitions, each enabling the next — and within it, every
+testing layer paid for itself as a refactor.**
+0. **Kickoff — the transition *out of* Chapter 1.** Kelly approved the Chapter 1 *vibe* and
+   decided it was time for a first-class project. So the very first act of Chapter 2 was to
+   stand up the **GitHub project and move the code out** (epics 1–2).
 1. **DevOps + unit + static analysis** (epics 1–3) *uncovered* a pile of issues.
 2. → *transition* → the **first refactor (security)** cleaned them up **and** readied the code.
 3. → *transition* → that enabled **integration testing** — which itself required some changes
