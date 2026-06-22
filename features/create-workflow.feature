@@ -1,13 +1,18 @@
 # Creating workflows from Nextcloud. These scenarios are the human-readable spec
-# for the "author in NC, live in n8n" flow. Tagged @todo until the n8n-auth step
-# definitions land (saga §5 Stage 2+); CI skips @todo so the files document
-# intended behaviour now and become live tests as the stages are built.
+# for the "author in NC, live in n8n" flow. LIVE: a .n8n.json written over WebDAV
+# into a mapped folder fires NodeWrittenEvent → CreateInN8nListener → the workflow
+# appears in n8n. The n8n side is asserted over its REST API; the NC stamp over
+# DAV PROPFIND of nc:metadata-n8n_id.
 
-@todo
 Feature: Create a workflow from Nextcloud
   As a Nextcloud user
   I want to create n8n workflows by making files
   So that I can author workflows without opening the n8n UI
+
+  Background:
+    Given the app is installed and enabled
+    And the admin has set the n8n base URL and enabled the REST API
+    And the admin provides the n8n API key
 
   Scenario: New file in a mapped sync folder becomes a real workflow
     Given a folder mapped as "sync" to the n8n tag "nextcloud:demo"

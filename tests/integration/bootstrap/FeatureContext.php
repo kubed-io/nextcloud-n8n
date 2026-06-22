@@ -10,18 +10,34 @@ declare(strict_types=1);
 namespace OCA\N8nSync\Tests\Integration;
 
 use Behat\Behat\Context\Context;
+use GuzzleHttp\Client;
+use GuzzleHttp\Exception\GuzzleException;
 use PHPUnit\Framework\Assert;
 
 /**
  * Behat step definitions for the n8n_sync integration suite.
  *
- * Transport: `occ` is invoked via the shell (the $OCC env var, e.g. "php occ"
- * run from the Nextcloud server root) — the same way the lifecycle/admin-setup
- * steps a human operator would run. Later stages add HTTP calls to NC's API and
- * to the n8n service (Guzzle) for behavioural assertions.
+ * Transport: three channels, each faithful to a real actor —
+ *  - **occ** (the $OCC env var, e.g. "php occ" run from the server root) drives
+ *    admin setup the way an operator / our own CLI commands do.
+ *  - **WebDAV** (Guzzle, basic-auth as the admin user) writes/reads/PROPFINDs
+ *    files the way the desktop client or web UI would — this is what fires the
+ *    NodeWrittenEvent the create/delete/rename listeners hang off, so it is the
+ *    only way to exercise the real server-side wiring.
+ *  - **n8n REST** (Guzzle, X-N8N-API-KEY) is the assertion side: did the app
+ *    actually create / tag / archive / delete the workflow in n8n? It is also
+ *    used to clean up workflows the scenarios create so re-runs stay isolated.
  */
 final class FeatureContext implements Context {
 	private const APP_ID = 'n8n_sync';
+
+	/**
+	 * The DAV-exposed metadata key for the workflow id. Mirrors
+	 * {@see \OCA\N8nSync\Service\WorkflowMetadata::KEY_ID}; redeclared here as a
+	 * literal because the integration suite autoloads only its own bootstrap/,
+	 * not the app's lib/. The Gherkin says "n8n_id"; this is the same string.
+	 */
+	private const META_ID = 'n8n_id';
 
 	/** The occ invocation prefix, e.g. "php occ". */
 	private string $occ;
@@ -30,8 +46,44 @@ final class FeatureContext implements Context {
 	private int $lastExit = 0;
 	private string $lastOutput = '';
 
+	// ── HTTP channels (lazily built so occ-only scenarios pay nothing) ────────
+	private ?Client $dav = null;
+	private ?Client $n8n = null;
+
+	private string $ncBaseUrl;
+	private string $ncUser;
+	private string $ncPass;
+	private string $n8nUrl;
+	private string $n8nApiKey;
+
+	/**
+	 * NC folders this scenario created (relative to the user's files root), torn
+	 * down after the scenario so re-runs start clean.
+	 *
+	 * @var list<string>
+	 */
+	private array $createdFolders = [];
+
+	/**
+	 * n8n workflow ids the app (or the scenario) created, deleted in teardown so
+	 * the n8n service doesn't accumulate test workflows across re-runs.
+	 *
+	 * @var list<string>
+	 */
+	private array $createdWorkflowIds = [];
+
+	/** State carried between steps within a scenario. */
+	private string $currentFolder = '';
+	private string $currentFilePath = '';
+	private ?string $lastWorkflowId = null;
+
 	public function __construct() {
 		$this->occ = getenv('OCC') ?: 'php occ';
+		$this->ncBaseUrl = rtrim(getenv('NC_BASE_URL') ?: 'http://localhost:8080', '/');
+		$this->ncUser = getenv('NC_ADMIN_USER') ?: 'admin';
+		$this->ncPass = getenv('NC_ADMIN_PASS') ?: 'admin';
+		$this->n8nUrl = rtrim(getenv('N8N_URL') ?: 'http://localhost:5678', '/');
+		$this->n8nApiKey = getenv('N8N_API_KEY') ?: '';
 	}
 
 	// ── occ plumbing ────────────────────────────────────────────────────────
@@ -298,6 +350,263 @@ final class FeatureContext implements Context {
 			}
 		}
 		return null;
+	}
+
+	// ── create-on-land steps (UC-6: author in NC, live in n8n) ─────────────────
+	// A managed .n8n.json written into a mapped folder over WebDAV fires
+	// NodeWrittenEvent → CreateInN8nListener → the workflow appears in n8n. We
+	// assert the n8n side over its REST API and the NC stamp over DAV PROPFIND.
+
+	/**
+	 * Set up an admin-owned (no groupfolders) mapping + the backing folder so a
+	 * WebDAV PUT into it resolves to a mapping. Admin-owned keeps CI free of the
+	 * groupfolders app; resolveForPath only cares about the folder name.
+	 *
+	 * @Given a folder mapped as :mode to the n8n tag :tag
+	 */
+	public function aFolderMappedAsModeToTag(string $mode, string $tag): void {
+		$folder = $this->folderNameForTag($tag);
+		[$m, $writeback] = $this->modeToModel($mode);
+		$data = [
+			'n8n_tag' => $tag,
+			'team_folder' => $folder,
+			'nc_groups' => ['admin'],
+			'mode' => $m,
+			'use_team_folder' => false,
+		];
+		if ($writeback !== null) {
+			$data['writeback'] = $writeback;
+		}
+		$res = $this->occ('n8n_sync:add-mapping ' . escapeshellarg(json_encode($data, JSON_THROW_ON_ERROR)));
+		Assert::assertSame(0, $res['exit'], "adding mapping for $tag failed:\n{$res['output']}");
+		$this->davMkdir($folder);
+		$this->currentFolder = $folder;
+	}
+
+	/** @Given a folder that is not mapped */
+	public function aFolderThatIsNotMapped(): void {
+		$folder = 'unmapped-' . bin2hex(random_bytes(3));
+		$this->davMkdir($folder);
+		$this->currentFolder = $folder;
+	}
+
+	/**
+	 * Create a workflow file over WebDAV. Both phrasings ("via the Files New
+	 * menu" and a plain create) land the same way server-side — a PUT that fires
+	 * NodeWrittenEvent — so one step backs both.
+	 *
+	 * @When I create a new :ext file in that folder via the Files "New" menu
+	 * @When I create a :ext file in that folder
+	 */
+	public function iCreateAWorkflowFile(string $ext): void {
+		Assert::assertNotSame('', $this->currentFolder, 'no current folder — a Given must set one');
+		$name = 'demo-' . bin2hex(random_bytes(3)) . $ext;
+		$path = $this->currentFolder . '/' . $name;
+		// A minimal but valid starter workflow body, like the New-menu template.
+		$body = json_encode([
+			'name' => 'Demo ' . substr($name, 0, 12),
+			'nodes' => [],
+			'connections' => new \stdClass(),
+			'settings' => new \stdClass(),
+		], JSON_THROW_ON_ERROR);
+		$this->davPut($path, $body);
+		$this->currentFilePath = $path;
+		// Remember any workflow the app just created so teardown can delete it.
+		$id = $this->davReadMetadataId($path);
+		if ($id !== null && $id !== '') {
+			$this->lastWorkflowId = $id;
+			$this->createdWorkflowIds[] = $id;
+		} else {
+			$this->lastWorkflowId = null;
+		}
+	}
+
+	/** @Then a matching workflow is created in n8n */
+	public function aMatchingWorkflowIsCreatedInN8n(): void {
+		Assert::assertNotNull($this->lastWorkflowId, 'the file was not stamped with an n8n_id — no workflow was created');
+		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
+		Assert::assertIsArray($wf, "n8n has no workflow with id {$this->lastWorkflowId}");
+		Assert::assertSame($this->lastWorkflowId, (string)($wf['id'] ?? ''), 'n8n returned a different workflow id');
+	}
+
+	/** @Then the workflow carries the :tag tag */
+	public function theWorkflowCarriesTheTag(string $tag): void {
+		Assert::assertNotNull($this->lastWorkflowId, 'no workflow id captured');
+		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
+		$names = array_map(
+			static fn (array $t): string => (string)($t['name'] ?? ''),
+			array_values(array_filter((array)($wf['tags'] ?? []), 'is_array')),
+		);
+		Assert::assertContains($tag, $names, "workflow {$this->lastWorkflowId} is not tagged '$tag' (has: " . implode(',', $names) . ')');
+	}
+
+	/** @Then the file is stamped with the workflow's :key */
+	public function theFileIsStampedWith(string $key): void {
+		$value = $this->davReadMetadata($this->currentFilePath, $key);
+		Assert::assertNotNull($value, "file has no metadata-$key");
+		Assert::assertNotSame('', $value, "metadata-$key is empty");
+		if ($key === self::META_ID) {
+			Assert::assertSame($this->lastWorkflowId, $value, 'stamped id disagrees with the n8n workflow id');
+		}
+	}
+
+	/** @Then no workflow is created in n8n */
+	public function noWorkflowIsCreatedInN8n(): void {
+		Assert::assertNull($this->lastWorkflowId, "a workflow ({$this->lastWorkflowId}) was unexpectedly created in n8n");
+	}
+
+	/** @Then the file has no :key metadata */
+	public function theFileHasNoMetadata(string $key): void {
+		$value = $this->davReadMetadata($this->currentFilePath, $key);
+		Assert::assertTrue($value === null || $value === '', "file unexpectedly has metadata-$key='$value'");
+	}
+
+	/** @Then the file is treated as a plain document (unmapped state) */
+	public function theFileIsTreatedAsPlain(): void {
+		// "Plain" = no n8n metadata id; the create listener bailed (outside any
+		// mapping). The id check above is the operative assertion; this step is a
+		// readable restatement so the scenario reads as a sentence.
+		$this->theFileHasNoMetadata(self::META_ID);
+	}
+
+	// ── HTTP plumbing: WebDAV (NC) + REST (n8n) ───────────────────────────────
+
+	private function davClient(): Client {
+		if ($this->dav === null) {
+			$this->dav = new Client([
+				'base_uri' => $this->ncBaseUrl . '/remote.php/dav/files/' . rawurlencode($this->ncUser) . '/',
+				'auth' => [$this->ncUser, $this->ncPass],
+				'http_errors' => false,
+				'timeout' => 30,
+			]);
+		}
+		return $this->dav;
+	}
+
+	private function n8nClient(): Client {
+		if ($this->n8n === null) {
+			Assert::assertNotSame('', $this->n8nApiKey, 'N8N_API_KEY is not set — n8n assertions need it');
+			$this->n8n = new Client([
+				'base_uri' => $this->n8nUrl . '/api/v1/',
+				'headers' => ['X-N8N-API-KEY' => $this->n8nApiKey, 'Accept' => 'application/json'],
+				'http_errors' => false,
+				'timeout' => 30,
+			]);
+		}
+		return $this->n8n;
+	}
+
+	/** Create a top-level folder in the admin's files root (idempotent). */
+	private function davMkdir(string $folder): void {
+		$res = $this->davClient()->request('MKCOL', rawurlencode($folder));
+		$code = $res->getStatusCode();
+		// 201 created, 405 already exists — both are fine for our purposes.
+		Assert::assertContains($code, [201, 405], "MKCOL $folder failed ($code): " . (string)$res->getBody());
+		if (!in_array($folder, $this->createdFolders, true)) {
+			$this->createdFolders[] = $folder;
+		}
+	}
+
+	/** PUT file content at a path under the user's files root. */
+	private function davPut(string $path, string $body): void {
+		$res = $this->davClient()->request('PUT', $this->davEncode($path), ['body' => $body]);
+		$code = $res->getStatusCode();
+		Assert::assertContains($code, [201, 204], "PUT $path failed ($code): " . (string)$res->getBody());
+	}
+
+	/**
+	 * PROPFIND a single nc:metadata-<key> on a file. Returns the property value,
+	 * or null if the property is absent (404 inside the multistatus). This is the
+	 * exact DAV surface the README documents for the file-type feature.
+	 */
+	private function davReadMetadata(string $path, string $key): ?string {
+		$ns = 'http://nextcloud.org/ns';
+		$reqBody = '<?xml version="1.0"?>'
+			. '<d:propfind xmlns:d="DAV:" xmlns:nc="' . $ns . '">'
+			. '<d:prop><nc:metadata-' . $key . '/></d:prop></d:propfind>';
+		$res = $this->davClient()->request('PROPFIND', $this->davEncode($path), [
+			'headers' => ['Depth' => '0', 'Content-Type' => 'application/xml'],
+			'body' => $reqBody,
+		]);
+		Assert::assertSame(207, $res->getStatusCode(), "PROPFIND $path failed: " . (string)$res->getBody());
+		$xml = (string)$res->getBody();
+		$doc = new \SimpleXMLElement($xml);
+		$doc->registerXPathNamespace('d', 'DAV:');
+		$doc->registerXPathNamespace('nc', $ns);
+		// Only consider the 200-OK propstat block; a missing prop lands in a 404 block.
+		foreach ($doc->xpath('//d:propstat') ?: [] as $propstat) {
+			$propstat->registerXPathNamespace('d', 'DAV:');
+			$propstat->registerXPathNamespace('nc', $ns);
+			$status = (string)($propstat->xpath('d:status')[0] ?? '');
+			if (!str_contains($status, '200')) {
+				continue;
+			}
+			$node = $propstat->xpath('d:prop/nc:metadata-' . $key);
+			if ($node) {
+				return trim((string)$node[0]);
+			}
+		}
+		return null;
+	}
+
+	/** Convenience: read just the n8n_id (used right after a create to capture it). */
+	private function davReadMetadataId(string $path): ?string {
+		return $this->davReadMetadata($path, self::META_ID);
+	}
+
+	/** GET an n8n workflow by id; returns the decoded body or null on 404. */
+	private function n8nGetWorkflow(string $id): ?array {
+		$res = $this->n8nClient()->request('GET', 'workflows/' . rawurlencode($id));
+		if ($res->getStatusCode() === 404) {
+			return null;
+		}
+		Assert::assertSame(200, $res->getStatusCode(), "GET n8n workflow $id failed: " . (string)$res->getBody());
+		$decoded = json_decode((string)$res->getBody(), true);
+		return is_array($decoded) ? $decoded : null;
+	}
+
+	/** Percent-encode each path segment but keep the slashes. */
+	private function davEncode(string $path): string {
+		return implode('/', array_map('rawurlencode', explode('/', ltrim($path, '/'))));
+	}
+
+	/** A stable, filesystem-safe folder name derived from an n8n tag. */
+	private function folderNameForTag(string $tag): string {
+		$slug = preg_replace('/[^a-z0-9]+/i', '-', $tag) ?? 'mapped';
+		return trim(strtolower($slug), '-') ?: 'mapped';
+	}
+
+	// ── per-scenario lifecycle (teardown) ─────────────────────────────────────
+
+	/**
+	 * After every scenario, delete any n8n workflows the app created and the NC
+	 * folders we made, and clear the mappings list. Keeps re-runs isolated on the
+	 * shared CI n8n + NC instance. Best-effort: failures here never fail a test.
+	 *
+	 * @AfterScenario
+	 */
+	public function tearDown(): void {
+		foreach ($this->createdWorkflowIds as $id) {
+			try {
+				$this->n8nClient()->request('DELETE', 'workflows/' . rawurlencode($id));
+			} catch (GuzzleException) {
+				// best-effort cleanup
+			}
+		}
+		foreach ($this->createdFolders as $folder) {
+			try {
+				$this->davClient()->request('DELETE', rawurlencode($folder));
+			} catch (GuzzleException) {
+				// best-effort cleanup
+			}
+		}
+		// Reset the mapping list so the next scenario starts from zero mappings.
+		$this->occ('config:app:delete ' . self::APP_ID . ' mappings');
+		$this->createdWorkflowIds = [];
+		$this->createdFolders = [];
+		$this->currentFolder = '';
+		$this->currentFilePath = '';
+		$this->lastWorkflowId = null;
 	}
 
 	// ── helpers ───────────────────────────────────────────────────────────────
