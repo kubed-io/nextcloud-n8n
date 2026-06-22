@@ -198,23 +198,36 @@ a duplicate `n8n_id` (one mapped, one unmapped) is the signal.
 - [ ] Merge/prune: pull/reconcile detects an `unmapped` file duplicating a now-mapped
       `n8n_id` and deletes the redundant unmapped copy.
 
-### Specs to author / update (the `features/` ask — do these first, they are the spec)
+### Specs to author / update (the `features/` ask — done first; they ARE the spec)
 
-- [ ] **NEW `features/copy.feature`** — copy within mapped (→ new workflow), copy outside
-      (→ plain file), copy of an unmapped file (→ strip), the "always strips" principle.
-- [ ] **Rewrite `features/move.feature`** — currently "blocked for all" + `@todo`. New
-      scenarios: sync move-out → unmapped + archived; move-in with id → restore/unarchive;
-      move-in without id → create; **link** move-out blocked; (any "more scenarios" Kelly
-      has in mind — capture them here).
-- [ ] **`features/delete.feature`** — drop backup/link `writeback` framing; re-express in the
-      `sync|link|unmapped` model. (Purge→permanent-delete stays `@todo` per Chapter 2 §5.3.)
-- [ ] **`features/file-type.feature`** — drop the `nc:metadata-n8n_writeback` DAV row; mode
-      values become `sync|reference(=link)|unmapped`.
-- [ ] **`features/admin-mapping.feature`** — drop the `backup` example + the writeback column;
-      mode = sync | link only.
-- [ ] **`features/create-workflow.feature` / `rename.feature` / `mapping-membership.feature`**
-      — sweep for `writeback`/`backup` assumptions.
-- [ ] Integration `FeatureContext::modeToModel()` and step defs — collapse to the new model.
+> **Spec campaign complete (2026-06-22).** All feature files + the README now describe the
+> target model as if implemented. New-behaviour scenarios are `@todo` (CI skips them) until
+> the code lands; the live suite stayed green. `FeatureContext` step defs remain on the old
+> model until Phase 1 (one binding renamed: `untracked` file ≠ `unmapped` mode).
+
+- [x] **NEW `features/copy.feature`** — copy within mapped (→ new workflow), copy outside
+      (→ plain file), copy of an unmapped file (→ strip). The "always strips" principle. `@todo`.
+- [x] **NEW `features/reconcile.feature`** — the merge/prune (§4.2): a pull prunes the
+      redundant unmapped copy when its workflow returns to the mapping. `@todo`.
+- [x] **Rewrote `features/move.feature`** — the §4.2 matrix (within-mapping, sync move-out →
+      unmapped+archive, move-in → restore, hard-deleted → create, brand-new → create, link
+      move-out blocked, unmapped relocation no-op) + the a–d decision cases as comments. `@todo`.
+- [x] **`features/delete.feature`** — dropped backup; the tag-strip outline is now link-only
+      (live); renamed the plain-file case to **untracked**; added `unmapped`-mode trash/purge/
+      restore as `@todo`. (Purge of sync stays `@todo` per Chapter 2 §5.3.)
+- [x] **`features/file-type.feature`** — dropped the `nc:metadata-n8n_writeback` DAV row;
+      noted mode values `sync | reference(=link) | unmapped`. `@todo`.
+- [x] **`features/admin-mapping.feature`** — dropped backup + the writeback-invariant
+      scenarios; full storage × {sync,link} matrix (live); new-model "mode must be sync|link"
+      invariant as `@todo`.
+- [x] **`features/mapping-membership.feature`** — added the "outside every mapping →
+      untracked or unmapped" case.
+- [x] **`features/create-workflow.feature` / `rename.feature`** — swept; already `sync`-clean,
+      no change needed.
+- [x] **`README.md`** — rewritten as the end-state advertisement (Modes = sync/link/unmapped;
+      Move = same-workflow/restore; Copy = always-new; Reconcile & prune; no backup/writeback).
+- [ ] Integration `FeatureContext::modeToModel()` and step defs — collapse to the new model
+      (Phase 1 code work; this flips the `@todo` model scenarios live).
 
 ### Audit / verify
 

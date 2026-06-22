@@ -1,52 +1,100 @@
-# How the app reacts to every move a Nextcloud user can attempt on a managed
-# workflow file. Nextcloud lets you move files anywhere; this documents what our
-# MoveGuardListener does in each case. A *block* is a real, tested feature — we
-# wrote code to prevent silent desync, so the end-state here is "the move is
-# refused with a message", not "it silently works".
+# How the app reacts to every move a Nextcloud user can make on a workflow file.
+# A MOVE mirrors as the SAME workflow moving in n8n — never a duplicate. The
+# stable link is the workflow id, so a move out and back in is an archive then a
+# restore, not a delete then a create. (COPY is the opposite — always a new
+# instance; see copy.feature.)
 #
-# Current rule (lib/Listener/MoveGuardListener.php): a managed .n8n.json file may
-# only move WITHIN its own mapping (rename, or into a subfolder of the same
-# mapped folder). Any move that lands under a *different* mapping, or under no
-# mapping, is aborted — for EVERY mode.
+# Model (saga Chapter 4): modes are sync / link / unmapped. "unmapped" is the
+# state a sync file enters when moved OUT of its mapped folder: NC keeps the full
+# JSON + the workflow id + versionId, clears the mapping, and the workflow is
+# archived in n8n. Moving it back into any mapping restores (unarchives) it.
 #
-# These scenarios describe what the code does NOW, so they pass once the step
-# defs are wired. The intended END STATE differs for one case — moving a *sync*
-# file out of its folder should eventually strip its metadata to a plain
-# .n8n.json (and moving it back in re-creates it in n8n). That enhancement is
-# tracked in the README + Chapter 2 §5.3 and is deliberately NOT yet built;
-# link/backup move-out stays blocked (not yet designed). Until then, this stays
-# accurate-to-code: blocked for all.
-#
-# @todo until the move/abort step defs land (saga §5).
+# @todo until the motion listeners land (saga Chapter 4, Phase 2). CI skips @todo
+# so this documents the intended behaviour now and goes live as the code lands.
 
 @todo
-Feature: Moving a managed workflow file
+Feature: Moving a workflow file is the same workflow leaving and returning
   As a Nextcloud user
-  I want clear, safe behaviour when I move a workflow file around
-  So that a move never silently breaks the n8n connection
+  I want moves to mirror as the same workflow in n8n
+  So that relocating a file never duplicates or silently desyncs a workflow
 
   Background:
-    Given a folder mapped to the n8n tag "nextcloud:alpha"
-    And a separate folder mapped to the n8n tag "nextcloud:beta"
-    And a managed "sync" workflow file in the "nextcloud:alpha" folder
+    Given the app is connected to n8n
+    And a folder mapped as "sync" to the n8n tag "nextcloud:alpha"
+    And a folder mapped as "sync" to the n8n tag "nextcloud:beta"
+    And a folder mapped as "link" to the n8n tag "nextcloud:links"
 
-  Scenario: Move within the same mapping (into a subfolder) is allowed
+  # ── within the same mapping: no n8n change ───────────────────────────────────
+
+  Scenario: Move within the same mapping (rename) keeps it managed
+    Given a managed "sync" workflow file in the "nextcloud:alpha" folder
+    When I move (rename) the file within the "nextcloud:alpha" folder
+    Then the file stays in "sync" mode in the "nextcloud:alpha" mapping
+    And nothing changes in n8n except the name
+
+  Scenario: Move into a subfolder of the same mapping keeps it managed
+    Given a managed "sync" workflow file in the "nextcloud:alpha" folder
     When I move the file into a subfolder of the "nextcloud:alpha" folder
-    Then the move succeeds
-    And the file stays managed by the "nextcloud:alpha" mapping
+    Then the file stays in "sync" mode in the "nextcloud:alpha" mapping
+    And nothing changes in n8n
 
-  Scenario: Move out to an unmapped folder is blocked
+  # ── sync move-out → unmapped + archived ──────────────────────────────────────
+
+  Scenario: Moving a sync file out of its mapping unmaps it and archives in n8n
+    Given a managed "sync" workflow file in the "nextcloud:alpha" folder
     When I move the file to a folder that is not mapped
-    Then the move is aborted with a message naming the synced folder
-    And the file remains in the "nextcloud:alpha" folder
+    Then the file's mode becomes "unmapped"
+    And the file keeps its "n8n_id" and "n8n_versionId"
+    And the file's "n8n_mapping" is cleared
+    And the workflow is archived (hidden, preserved) in n8n
+    And the full workflow JSON is still in the Nextcloud file
 
-  Scenario: Move from one mapped folder to another is blocked
+  # ── move back in → restore (same workflow, not a new one) ────────────────────
+
+  Scenario: Moving an unmapped file back into a mapping restores the workflow
+    Given an unmapped workflow file that still carries its "n8n_id"
     When I move the file into the "nextcloud:beta" folder
-    Then the move is aborted with a message naming the synced folder
-    And the file remains in the "nextcloud:alpha" folder
+    Then the workflow is unarchived (restored) in n8n — not re-created
+    And the file's mode becomes "sync" in the "nextcloud:beta" mapping
+    And the "n8n_id" is unchanged
 
-  Scenario: Move into a nested folder belonging to a different mapping is blocked
-    Given a subfolder of the "nextcloud:alpha" folder mapped to "nextcloud:beta"
-    When I move the file into that nested "nextcloud:beta" subfolder
-    Then the move is aborted with a message naming the synced folder
-    And the file remains in its original location
+  Scenario: Restoring when the n8n workflow was hard-deleted falls back to create
+    Given an unmapped workflow file that still carries its "n8n_id"
+    And that workflow no longer exists in n8n (it was permanently deleted)
+    When I move the file into the "nextcloud:beta" folder
+    Then a new workflow is created in n8n from the file
+    And the file's mode becomes "sync" in the "nextcloud:beta" mapping
+
+  Scenario: Moving a brand-new workflow file into a mapping creates it
+    Given a ".n8n.json" file that was never tracked in n8n
+    When I move the file into the "nextcloud:alpha" folder
+    Then a matching workflow is created in n8n
+    And the file's mode becomes "sync" in the "nextcloud:alpha" mapping
+
+  # ── link move-out is refused ─────────────────────────────────────────────────
+
+  Scenario: Moving a link out of its mapping is blocked
+    Given a managed "link" workflow file in the "nextcloud:links" folder
+    When I move the file to a folder that is not mapped
+    Then the move is refused with a message
+    And the file stays in the "nextcloud:links" folder
+
+  # ── relocating an already-unmapped file: pure relocation ─────────────────────
+
+  Scenario: Moving an unmapped file between unmapped locations changes nothing
+    Given an unmapped workflow file that still carries its "n8n_id"
+    When I move the file to another folder that is not mapped
+    Then the file stays "unmapped"
+    And its "n8n_id" and "n8n_versionId" are unchanged
+    And nothing changes in n8n
+
+  # ── decision cases (saga Ch4 §4.2 a–d): documented, not yet designed ─────────
+  # These need a design decision before they get concrete Then-steps:
+  #   a. sync moved directly mapping→mapping (different tag): re-tag in place vs
+  #      eject+reattach vs block.
+  #   b. moving into a nested subfolder owned by a different mapping (nearest
+  #      enclosing wins) — interaction with case a.
+  #   c. link rename within its mapping — does the filename matter, or is the n8n
+  #      name authoritative?
+  #   d. deleting an unmapped file (it has an id + an archived workflow) — see
+  #      delete.feature.

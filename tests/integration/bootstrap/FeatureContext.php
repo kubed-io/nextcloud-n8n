@@ -582,9 +582,14 @@ final class FeatureContext implements Context {
 		$this->davDelete($this->currentFilePath); // → trashbin (soft step)
 	}
 
-	/** @Given an unmapped :ext file */
-	public function anUnmappedFile(string $ext): void {
-		$folder = 'unmapped-' . bin2hex(random_bytes(3));
+	/**
+	 * A plain .n8n.json with no n8n metadata — "untracked", distinct from the
+	 * "unmapped" mode (saga Ch4) which keeps its id + an archived workflow.
+	 *
+	 * @Given an untracked :ext file
+	 */
+	public function anUntrackedFile(string $ext): void {
+		$folder = 'untracked-' . bin2hex(random_bytes(3));
 		$this->davMkdir($folder);
 		$this->currentFolder = $folder;
 		$path = $folder . '/plain-' . bin2hex(random_bytes(3)) . $ext;
