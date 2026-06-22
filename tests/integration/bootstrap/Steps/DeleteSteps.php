@@ -1,0 +1,116 @@
+<?php
+
+/**
+ * SPDX-FileCopyrightText: 2026 Kelly Ferrone
+ * SPDX-License-Identifier: AGPL-3.0-or-later
+ */
+
+declare(strict_types=1);
+
+namespace OCA\N8nSync\Tests\Integration\Steps;
+
+use PHPUnit\Framework\Assert;
+
+/**
+ * Delete steps (UC-7: delete/trash/restore mirrors into n8n). DeleteToN8nListener
+ * runs synchronously on BeforeNodeDeletedEvent (it must, to abort the NC delete
+ * when n8n is down). Soft step = trash-move; hard = purge from trash; restore =
+ * move back out of the trashbin. Composed into
+ * {@see \OCA\N8nSync\Tests\Integration\FeatureContext}.
+ */
+trait DeleteSteps {
+	/** @Given a trashed :mode workflow file */
+	public function aTrashedWorkflowFile(string $mode): void {
+		$this->aManagedWorkflowFile($mode);
+		$this->davDelete($this->currentFilePath); // → trashbin (soft step)
+	}
+
+	/**
+	 * A plain .n8n.json with no n8n metadata — "untracked", distinct from the
+	 * "unmapped" mode (saga Chapter 2 §14) which keeps its id + an archived workflow.
+	 *
+	 * @Given an untracked :ext file
+	 */
+	public function anUntrackedFile(string $ext): void {
+		$folder = 'untracked-' . bin2hex(random_bytes(3));
+		$this->davMkdir($folder);
+		$this->currentFolder = $folder;
+		$path = $folder . '/plain-' . bin2hex(random_bytes(3)) . $ext;
+		$this->davPut($path, json_encode(['name' => 'Plain', 'nodes' => [], 'connections' => new \stdClass()], JSON_THROW_ON_ERROR));
+		$this->currentFilePath = $path;
+		$this->lastWorkflowId = null;
+	}
+
+	/**
+	 * @When I move it to the trash
+	 * @When I delete it
+	 */
+	public function iMoveItToTheTrash(): void {
+		$this->lastDeleteStatus = $this->davDeleteStatus($this->currentFilePath);
+	}
+
+	/** @When I purge it from the trash */
+	public function iPurgeItFromTheTrash(): void {
+		$trashPath = $this->trashbinPathFor($this->currentFilePath);
+		Assert::assertNotNull($trashPath, 'could not find the file in the trashbin to purge');
+		$res = $this->davClient()->request('DELETE', $this->trashHref($trashPath));
+		$this->assertStatus($res, [204, 200], 'purge from trash');
+	}
+
+	/** @When I restore it from the trash */
+	public function iRestoreItFromTheTrash(): void {
+		$trashPath = $this->trashbinPathFor($this->currentFilePath);
+		Assert::assertNotNull($trashPath, 'could not find the file in the trashbin to restore');
+		$dest = $this->ncBaseUrl . '/remote.php/dav/trashbin/' . rawurlencode($this->ncUser) . '/restore/' . rawurlencode(basename($trashPath));
+		$res = $this->davClient()->request('MOVE', $this->trashHref($trashPath), [
+			'headers' => ['Destination' => $dest],
+		]);
+		$this->assertStatus($res, [201, 204], 'restore from trash');
+	}
+
+	/** @Then /^the workflow is archived \(hidden, preserved\) in n8n$/ */
+	public function theWorkflowIsArchivedInN8n(): void {
+		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
+		Assert::assertIsArray($wf, "workflow {$this->lastWorkflowId} is gone — it should be archived, not deleted");
+		Assert::assertTrue((bool)($wf['isArchived'] ?? false), 'workflow is not archived in n8n');
+	}
+
+	/** @Then the workflow is permanently deleted in n8n */
+	public function theWorkflowIsDeletedInN8n(): void {
+		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
+		Assert::assertNull($wf, "workflow {$this->lastWorkflowId} still exists in n8n");
+	}
+
+	/** @Then the workflow is unarchived in n8n */
+	public function theWorkflowIsUnarchivedInN8n(): void {
+		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
+		Assert::assertIsArray($wf, "workflow {$this->lastWorkflowId} is gone");
+		Assert::assertFalse((bool)($wf['isArchived'] ?? false), 'workflow is still archived in n8n');
+	}
+
+	/** @Then the mapping tag is stripped from the workflow in n8n */
+	public function theMappingTagIsStripped(): void {
+		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
+		Assert::assertIsArray($wf, "workflow {$this->lastWorkflowId} is gone");
+		$names = array_map(
+			static fn (array $t): string => (string)($t['name'] ?? ''),
+			array_values(array_filter((array)($wf['tags'] ?? []), 'is_array')),
+		);
+		Assert::assertNotContains($this->currentTag, $names, "tag '{$this->currentTag}' was not stripped (has: " . implode(',', $names) . ')');
+	}
+
+	/** @Then the workflow itself is not archived or deleted */
+	public function theWorkflowIsNotArchivedOrDeleted(): void {
+		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
+		Assert::assertIsArray($wf, "workflow {$this->lastWorkflowId} was deleted — link must leave it alone");
+		Assert::assertFalse((bool)($wf['isArchived'] ?? false), 'workflow was archived — link must leave it alone');
+	}
+
+	/** @Then n8n is not contacted */
+	public function n8nIsNotContacted(): void {
+		// Operative meaning: the unmapped file had no n8n id, so nothing could be
+		// contacted, and the NC delete succeeded normally.
+		Assert::assertNull($this->lastWorkflowId, 'an unmapped file unexpectedly had an n8n id');
+		Assert::assertContains($this->lastDeleteStatus, [204, 200], 'the unmapped delete did not succeed');
+	}
+}

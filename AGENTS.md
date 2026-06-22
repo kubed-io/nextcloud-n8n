@@ -186,8 +186,10 @@ In short, a feature PR touches:
   scenario live in the same PR as the code (keep it DRY, `behat --dry-run` clean);
 - the **code** in [`lib/`](lib/) — `Service` (logic) + thin `Listener`/`Controller`,
   wired in `AppInfo/Application.php`;
-- **tests** — a unit test in [`tests/unit/`](tests/unit/) + the step defs in
-  `FeatureContext.php`;
+- **tests** — a unit test in [`tests/unit/`](tests/unit/) + step defs in a per-concern
+  trait under [`tests/integration/bootstrap/Steps/`](tests/integration/bootstrap/Steps/)
+  (add/grow a `*Steps` trait; the thin `FeatureContext` `use`s them all — don't bloat one
+  file);
 - **README** updates when user-facing behaviour changes;
 - a **`## [Unreleased]`** changelog entry.
 

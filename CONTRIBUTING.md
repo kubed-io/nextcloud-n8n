@@ -139,8 +139,14 @@ four and a feature PR practically reviews itself. Concretely, a feature PR shoul
 - **The code** in [`lib/`](lib/) — a `Service` for the testable logic, a thin `Listener`
   (or `Controller`/`Command`) as the event adapter, wired in `lib/AppInfo/Application.php`.
 - **A unit test** in [`tests/unit/`](tests/unit/) for the service's rules, plus the step
-  definitions in [`tests/integration/bootstrap/FeatureContext.php`](tests/integration/bootstrap/FeatureContext.php)
-  that make the feature file's live scenarios run.
+  definitions that make the feature file's live scenarios run. These live in per-concern
+  traits under [`tests/integration/bootstrap/Steps/`](tests/integration/bootstrap/Steps/)
+  (one trait per feature area — `CreateSteps`, `MoveSteps`, `CopySteps`, …), with shared
+  transport/setup helpers in [`bootstrap/Support/`](tests/integration/bootstrap/Support/)
+  (`OccTrait`, `WebDavTrait`, `N8nApiTrait`, `SetupTrait`). The thin
+  [`FeatureContext`](tests/integration/bootstrap/FeatureContext.php) just owns the shared
+  state + teardown and `use`s every trait. **Add a new `*Steps` trait (or grow the right
+  existing one) — don't pile every feature's steps into one file.**
 - **README updates** when the feature changes what a user can do — keep the user-facing
   prose and the spec/impl links accurate.
 - **A `## [Unreleased]` changelog entry** (see [the flow](#the-flow-issue--pr--merge) above).
