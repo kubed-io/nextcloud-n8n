@@ -1126,6 +1126,14 @@ How a workflow's mode is *chosen* and *changed*, on top of the mapping default:
 
 #### 14.3 Attack (two PRs)
 
+> **Guiding principle for the build.** Cover the **main use cases, main flows, and
+> most-likely scenarios** well — and *don't get caught in the weeds* on hard-to-test edge
+> cases. The fragile/awkward ones (e.g. trashbin-purge propagation, n8n-unreachable abort, the
+> move decision-cases a–d) get **stub code with a clear `// TODO: …` message** to fill in when
+> ready, and their scenarios stay `@todo` in `features/`. Thorough specs ≠ thorough
+> implementation on day one: the specs capture the full target so nothing is forgotten; the
+> code lands the high-value paths first and leaves honest, labelled stubs for the rest.
+
 - **Phase 1 — model collapse + migration.** `Mapping`/`MappingService` (single `mode`; legacy
   `{mode,writeback}`/`reference`/`backup` back-compat), `WorkflowMetadata` (drop `KEY_WRITEBACK`,
   index `KEY_MODE`, link↔reference translation), `OwnershipTags` (drop `n8n:backup`), every
