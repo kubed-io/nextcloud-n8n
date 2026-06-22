@@ -26,6 +26,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - `occ n8n_sync:set-api-key` — store the n8n API key (encrypted) from the CLI.
 - Integration tests now run on Behat (JUnit reported like the unit suite).
 - Integration test: create-on-land — a `.n8n.json` written over WebDAV into a mapped folder creates + tags the workflow in n8n and stamps `n8n_id`.
+- Integration test: rename — file rename and JSON-`name` edit propagate three ways (file ⇄ JSON ⇄ n8n) via `ReconcileNameJob`; the `n8n_id` link is unchanged.
+- Integration test: delete — trash/purge/restore archive/delete/unarchive a sync workflow; backup/link only strip the mapping tag; unmapped deletes don't touch n8n.
 - `CONTRIBUTING.md`, `AGENTS.md`, and `SECURITY.md`.
 - `LICENSE` (AGPL-3.0).
 - PHP unit tests (PHPUnit) and frontend unit tests (Vitest).

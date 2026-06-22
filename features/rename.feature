@@ -1,11 +1,16 @@
 # Three-way name agreement in sync mode: filename stem ⇄ JSON "name" ⇄ n8n name.
 # The stable link is the workflow id, so none of these break the connection.
+# LIVE: rename/edit go over WebDAV; the file-locked reconcile runs in
+# ReconcileNameJob, so the steps drain that job class with the occ worker before
+# asserting both the file (PROPFIND/GET) and n8n (REST) sides.
 
-@todo
 Feature: Renaming keeps file, JSON, and n8n in agreement
   As a Nextcloud user
   I want renames to propagate everywhere
   So that the file name, its JSON name, and the n8n workflow name never drift
+
+  Background:
+    Given the app is installed and enabled
 
   Scenario: Renaming the file updates the backend JSON name and n8n
     Given a managed "sync" workflow file named "Old Name.n8n.json"

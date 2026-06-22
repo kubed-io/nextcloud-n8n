@@ -76,6 +76,8 @@ final class FeatureContext implements Context {
 	private string $currentFolder = '';
 	private string $currentFilePath = '';
 	private ?string $lastWorkflowId = null;
+	private string $currentTag = '';
+	private int $lastDeleteStatus = 0;
 
 	public function __construct() {
 		$this->occ = getenv('OCC') ?: 'php occ';
@@ -469,6 +471,249 @@ final class FeatureContext implements Context {
 		$this->theFileHasNoMetadata(self::META_ID);
 	}
 
+	// ── rename steps (UC name-sync: filename ⇄ JSON name ⇄ n8n name) ──────────
+	// Rename/edit are deferred to ReconcileNameJob (the file is locked during a
+	// rename), so each scenario drains that job class with the occ worker before
+	// asserting. The stable link is the n8n id, which never changes.
+
+	/**
+	 * Create a managed sync file with a specific name (so the rename has a known
+	 * "before"). Reuses the create-on-land path: a WebDAV PUT into a sync mapping.
+	 *
+	 * @Given a managed :mode workflow file named :filename
+	 */
+	public function aManagedWorkflowFileNamed(string $mode, string $filename): void {
+		$tag = 'nextcloud:rename-' . bin2hex(random_bytes(3));
+		$this->setupSyncMappingAndFolder($mode, $tag);
+		$stem = preg_replace('/\.n8n\.json$/', '', $filename) ?? $filename;
+		$this->putManagedFile($this->currentFolder . '/' . $filename, $stem);
+	}
+
+	/**
+	 * Create a managed sync file with a generated name. The same step text backs
+	 * the "…file", "…file with a known n8n_id" phrasings — all we need is a
+	 * managed sync file; the extra clauses are just narrative.
+	 *
+	 * @Given a managed :mode workflow file
+	 * @Given a managed :mode workflow file with a known :key
+	 */
+	public function aManagedWorkflowFile(string $mode, ?string $key = null): void {
+		$tag = 'nextcloud:rename-' . bin2hex(random_bytes(3));
+		$this->setupSyncMappingAndFolder($mode, $tag);
+		$name = 'Old Name';
+		$this->putManagedFile($this->currentFolder . '/' . $name . '.n8n.json', $name);
+	}
+
+	/** @When I rename the file to :filename */
+	public function iRenameTheFileTo(string $filename): void {
+		$dest = $this->currentFolder . '/' . $filename;
+		$this->davMove($this->currentFilePath, $dest);
+		$this->currentFilePath = $dest;
+		$this->drainJobs('OCA\\N8nSync\\BackgroundJob\\ReconcileNameJob');
+	}
+
+	/** @When I edit the file and change the JSON :field field to :value */
+	public function iEditTheJsonField(string $field, string $value): void {
+		$body = (string)$this->davGet($this->currentFilePath);
+		$wf = json_decode($body, true);
+		if (!is_array($wf)) {
+			$wf = [];
+		}
+		$wf[$field] = $value;
+		$this->davPut($this->currentFilePath, json_encode($wf, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT));
+		// The save's writeback push (async) and the filename reconcile both run as
+		// jobs; drain push first so n8n has the new name, then the rename job.
+		$this->drainJobs('OCA\\N8nSync\\BackgroundJob\\PushWorkflowJob');
+		$this->drainJobs('OCA\\N8nSync\\BackgroundJob\\ReconcileNameJob');
+		// After a filename_from_name reconcile the file moved; track its new path.
+		$expected = $this->currentFolder . '/' . $value . '.n8n.json';
+		if ($this->davExists($expected)) {
+			$this->currentFilePath = $expected;
+		}
+	}
+
+	/** @Then the JSON :field field inside the file becomes :value */
+	public function theJsonFieldBecomes(string $field, string $value): void {
+		$body = (string)$this->davGet($this->currentFilePath);
+		$wf = json_decode($body, true);
+		Assert::assertIsArray($wf, "file is not JSON:\n$body");
+		Assert::assertSame($value, (string)($wf[$field] ?? ''), "JSON $field did not become '$value'");
+	}
+
+	/** @Then the workflow is renamed to :name in n8n */
+	public function theWorkflowIsRenamedInN8n(string $name): void {
+		Assert::assertNotNull($this->lastWorkflowId, 'no workflow id captured');
+		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
+		Assert::assertIsArray($wf, "n8n has no workflow {$this->lastWorkflowId}");
+		Assert::assertSame($name, (string)($wf['name'] ?? ''), "n8n workflow name is not '$name'");
+	}
+
+	/** @Then the file is renamed to :filename */
+	public function theFileIsRenamedTo(string $filename): void {
+		$expected = $this->currentFolder . '/' . $filename;
+		Assert::assertTrue($this->davExists($expected), "expected the file at $expected, but it isn't there");
+		$this->currentFilePath = $expected;
+	}
+
+	/** @When the file is renamed by any of the above means */
+	public function theFileIsRenamedByAnyMeans(): void {
+		// Exercise the filename→everywhere path (the simplest of the two).
+		$this->iRenameTheFileTo('Renamed Link Check.n8n.json');
+	}
+
+	/** @Then the :key metadata is unchanged */
+	public function theMetadataIsUnchanged(string $key): void {
+		$value = $this->davReadMetadata($this->currentFilePath, $key);
+		if ($key === self::META_ID) {
+			Assert::assertSame($this->lastWorkflowId, $value, 'the n8n_id changed across the rename — the link broke');
+		} else {
+			Assert::assertNotNull($value, "metadata-$key is missing after rename");
+		}
+	}
+
+	// ── delete steps (UC-7: delete/trash/restore mirrors into n8n) ────────────
+	// DeleteToN8nListener runs synchronously on BeforeNodeDeletedEvent (it must,
+	// to abort the NC delete when n8n is down). Soft step = trash-move; hard =
+	// purge from trash; restore = move back out of the trashbin.
+
+	/** @Given a trashed :mode workflow file */
+	public function aTrashedWorkflowFile(string $mode): void {
+		$this->aManagedWorkflowFile($mode);
+		$this->davDelete($this->currentFilePath); // → trashbin (soft step)
+	}
+
+	/** @Given an unmapped :ext file */
+	public function anUnmappedFile(string $ext): void {
+		$folder = 'unmapped-' . bin2hex(random_bytes(3));
+		$this->davMkdir($folder);
+		$this->currentFolder = $folder;
+		$path = $folder . '/plain-' . bin2hex(random_bytes(3)) . $ext;
+		$this->davPut($path, json_encode(['name' => 'Plain', 'nodes' => [], 'connections' => new \stdClass()], JSON_THROW_ON_ERROR));
+		$this->currentFilePath = $path;
+		$this->lastWorkflowId = null;
+	}
+
+	/**
+	 * @When I move it to the trash
+	 * @When I delete it
+	 */
+	public function iMoveItToTheTrash(): void {
+		$this->lastDeleteStatus = $this->davDeleteStatus($this->currentFilePath);
+	}
+
+	/** @When I purge it from the trash */
+	public function iPurgeItFromTheTrash(): void {
+		$trashPath = $this->trashbinPathFor($this->currentFilePath);
+		Assert::assertNotNull($trashPath, 'could not find the file in the trashbin to purge');
+		$res = $this->davClient()->request('DELETE', $this->trashHref($trashPath));
+		Assert::assertContains($res->getStatusCode(), [204, 200], 'purge from trash failed');
+	}
+
+	/** @When I restore it from the trash */
+	public function iRestoreItFromTheTrash(): void {
+		$trashPath = $this->trashbinPathFor($this->currentFilePath);
+		Assert::assertNotNull($trashPath, 'could not find the file in the trashbin to restore');
+		$dest = $this->ncBaseUrl . '/remote.php/dav/trashbin/' . rawurlencode($this->ncUser) . '/restore/' . rawurlencode(basename($trashPath));
+		$res = $this->davClient()->request('MOVE', $this->trashHref($trashPath), [
+			'headers' => ['Destination' => $dest],
+		]);
+		Assert::assertContains($res->getStatusCode(), [201, 204], 'restore from trash failed: ' . (string)$res->getBody());
+	}
+
+	/** @Then the workflow is archived (hidden, preserved) in n8n */
+	public function theWorkflowIsArchivedInN8n(): void {
+		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
+		Assert::assertIsArray($wf, "workflow {$this->lastWorkflowId} is gone — it should be archived, not deleted");
+		Assert::assertTrue((bool)($wf['isArchived'] ?? false), 'workflow is not archived in n8n');
+	}
+
+	/** @Then the workflow is permanently deleted in n8n */
+	public function theWorkflowIsDeletedInN8n(): void {
+		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
+		Assert::assertNull($wf, "workflow {$this->lastWorkflowId} still exists in n8n");
+	}
+
+	/** @Then the workflow is unarchived in n8n */
+	public function theWorkflowIsUnarchivedInN8n(): void {
+		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
+		Assert::assertIsArray($wf, "workflow {$this->lastWorkflowId} is gone");
+		Assert::assertFalse((bool)($wf['isArchived'] ?? false), 'workflow is still archived in n8n');
+	}
+
+	/** @Then the mapping tag is stripped from the workflow in n8n */
+	public function theMappingTagIsStripped(): void {
+		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
+		Assert::assertIsArray($wf, "workflow {$this->lastWorkflowId} is gone");
+		$names = array_map(
+			static fn (array $t): string => (string)($t['name'] ?? ''),
+			array_values(array_filter((array)($wf['tags'] ?? []), 'is_array')),
+		);
+		Assert::assertNotContains($this->currentTag, $names, "tag '{$this->currentTag}' was not stripped (has: " . implode(',', $names) . ')');
+	}
+
+	/** @Then the workflow itself is not archived or deleted */
+	public function theWorkflowIsNotArchivedOrDeleted(): void {
+		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
+		Assert::assertIsArray($wf, "workflow {$this->lastWorkflowId} was deleted — backup/link must leave it alone");
+		Assert::assertFalse((bool)($wf['isArchived'] ?? false), 'workflow was archived — backup/link must leave it alone');
+	}
+
+	/** @Then n8n is not contacted */
+	public function n8nIsNotContacted(): void {
+		// Operative meaning: the unmapped file had no n8n id, so nothing could be
+		// contacted, and the NC delete succeeded normally.
+		Assert::assertNull($this->lastWorkflowId, 'an unmapped file unexpectedly had an n8n id');
+		Assert::assertContains($this->lastDeleteStatus, [204, 200], 'the unmapped delete did not succeed');
+	}
+
+	// ── shared setup helpers for the above ────────────────────────────────────
+
+	/**
+	 * Create an admin-owned mapping for $tag in mode $mode + its backing folder,
+	 * wiring the connection so create/push/delete can reach n8n. Records the tag
+	 * for tag-strip assertions and sets currentFolder.
+	 */
+	private function setupSyncMappingAndFolder(string $mode, string $tag): void {
+		// Connection (idempotent): URL + key + REST API on.
+		$this->occ('config:app:set ' . self::APP_ID . ' n8n_url --value=' . escapeshellarg($this->n8nUrl));
+		$this->occ('config:app:set ' . self::APP_ID . ' api_enabled --value=1');
+		if ($this->n8nApiKey !== '') {
+			$this->occStdin($this->occ . ' n8n_sync:set-api-key', $this->n8nApiKey);
+		}
+		$folder = $this->folderNameForTag($tag);
+		[$m, $writeback] = $this->modeToModel($mode);
+		$data = ['n8n_tag' => $tag, 'team_folder' => $folder, 'nc_groups' => ['admin'], 'mode' => $m, 'use_team_folder' => false];
+		if ($writeback !== null) {
+			$data['writeback'] = $writeback;
+		}
+		$res = $this->occ('n8n_sync:add-mapping ' . escapeshellarg(json_encode($data, JSON_THROW_ON_ERROR)));
+		Assert::assertSame(0, $res['exit'], "adding mapping for $tag failed:\n{$res['output']}");
+		$this->davMkdir($folder);
+		$this->currentFolder = $folder;
+		$this->currentTag = $tag;
+	}
+
+	/** PUT a starter workflow body and capture the n8n id the app stamped. */
+	private function putManagedFile(string $path, string $name): void {
+		$body = json_encode([
+			'name' => $name,
+			'nodes' => [],
+			'connections' => new \stdClass(),
+			'settings' => new \stdClass(),
+		], JSON_THROW_ON_ERROR);
+		$this->davPut($path, $body);
+		$this->currentFilePath = $path;
+		$id = $this->davReadMetadataId($path);
+		Assert::assertNotNull($id, "the file at $path was not stamped with an n8n_id — create-on-land did not run");
+		$this->lastWorkflowId = $id;
+		$this->createdWorkflowIds[] = $id;
+	}
+
+	/** Run one pass of the named background-job class so a queued job executes now. */
+	private function drainJobs(string $jobClass): void {
+		$this->occ('background-job:worker --once ' . escapeshellarg($jobClass));
+	}
+
 	// ── HTTP plumbing: WebDAV (NC) + REST (n8n) ───────────────────────────────
 
 	private function davClient(): Client {
@@ -512,6 +757,73 @@ final class FeatureContext implements Context {
 		$res = $this->davClient()->request('PUT', $this->davEncode($path), ['body' => $body]);
 		$code = $res->getStatusCode();
 		Assert::assertContains($code, [201, 204], "PUT $path failed ($code): " . (string)$res->getBody());
+	}
+
+	/** GET a file's content. */
+	private function davGet(string $path): string {
+		$res = $this->davClient()->request('GET', $this->davEncode($path));
+		Assert::assertSame(200, $res->getStatusCode(), "GET $path failed: " . (string)$res->getBody());
+		return (string)$res->getBody();
+	}
+
+	/** True if a file exists (HEAD 200). */
+	private function davExists(string $path): bool {
+		return $this->davClient()->request('HEAD', $this->davEncode($path))->getStatusCode() === 200;
+	}
+
+	/** MOVE (rename) a file within the user's files root. */
+	private function davMove(string $from, string $to): void {
+		$dest = $this->ncBaseUrl . '/remote.php/dav/files/' . rawurlencode($this->ncUser) . '/' . $this->davEncode($to);
+		$res = $this->davClient()->request('MOVE', $this->davEncode($from), [
+			'headers' => ['Destination' => $dest, 'Overwrite' => 'F'],
+		]);
+		Assert::assertContains($res->getStatusCode(), [201, 204], "MOVE $from → $to failed: " . (string)$res->getBody());
+	}
+
+	/** DELETE a file (asserting success → trash). */
+	private function davDelete(string $path): void {
+		$code = $this->davDeleteStatus($path);
+		Assert::assertContains($code, [204, 200], "DELETE $path failed ($code)");
+	}
+
+	/** DELETE a file, returning the raw status (so abort scenarios can inspect it). */
+	private function davDeleteStatus(string $path): int {
+		return $this->davClient()->request('DELETE', $this->davEncode($path))->getStatusCode();
+	}
+
+	/**
+	 * Find the trashbin entry for a file we deleted, by basename. NC trashbin DAV
+	 * lives at /remote.php/dav/trashbin/<user>/trash and renames entries with a
+	 * `.dNNNN` deletion-time suffix, so we match on the original basename prefix.
+	 * Returns the trashbin entry filename (e.g. "Old Name.n8n.json.d171...") or null.
+	 */
+	private function trashbinPathFor(string $originalPath): ?string {
+		$base = basename($originalPath);
+		$href = $this->ncBaseUrl . '/remote.php/dav/trashbin/' . rawurlencode($this->ncUser) . '/trash';
+		$res = $this->davClient()->request('PROPFIND', $href, [
+			'headers' => ['Depth' => '1', 'Content-Type' => 'application/xml'],
+			'body' => '<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:nc="http://nextcloud.org/ns">'
+				. '<d:prop><nc:trashbin-filename/></d:prop></d:propfind>',
+		]);
+		Assert::assertSame(207, $res->getStatusCode(), 'trashbin PROPFIND failed: ' . (string)$res->getBody());
+		$doc = new \SimpleXMLElement((string)$res->getBody());
+		$doc->registerXPathNamespace('d', 'DAV:');
+		$doc->registerXPathNamespace('nc', 'http://nextcloud.org/ns');
+		foreach ($doc->xpath('//d:response') ?: [] as $resp) {
+			$resp->registerXPathNamespace('d', 'DAV:');
+			$resp->registerXPathNamespace('nc', 'http://nextcloud.org/ns');
+			$origName = trim((string)($resp->xpath('.//nc:trashbin-filename')[0] ?? ''));
+			$rawHref = rawurldecode(trim((string)($resp->xpath('d:href')[0] ?? '')));
+			if ($origName === $base && $rawHref !== '') {
+				return basename(rtrim($rawHref, '/'));
+			}
+		}
+		return null;
+	}
+
+	/** Full trashbin href for a trash entry filename. */
+	private function trashHref(string $entry): string {
+		return $this->ncBaseUrl . '/remote.php/dav/trashbin/' . rawurlencode($this->ncUser) . '/trash/' . rawurlencode($entry);
 	}
 
 	/**
