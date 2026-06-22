@@ -25,7 +25,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Folder mappings collapse to a single mode — `sync` or `link` (the `backup` mode and the separate `writeback` setting are gone; `sync` is the former two-way). Existing mappings auto-migrate the first time they're read.
 - README + feature specs rewritten to the target model: modes are `sync` / `link` / `unmapped` (no `backup`, no `writeback`), with the move (same-workflow / restore), copy (always-new), and reconcile/prune lifecycle. Spec-only; behaviour change tracked in saga Chapter 4.
+
+### Tests
+
+- Unit tests for the mode model: `Mapping` legacy-shape migration, `OwnershipTags::tagFor`, and the `DeleteService` sync/link rule table; integration suite updated to the single-mode mappings.
 
 ## [0.1.2] - 2026-06-22
 

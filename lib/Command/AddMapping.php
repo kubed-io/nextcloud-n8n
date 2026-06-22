@@ -27,7 +27,7 @@ use Symfony\Component\Console\Output\OutputInterface;
  *
  * The JSON is the mapping shape, e.g.:
  *   {"n8n_tag":"nextcloud:alpha","team_folder":"alpha","nc_groups":["admin"],
- *    "mode":"sync","writeback":"two-way","use_team_folder":true}
+ *    "mode":"sync","use_team_folder":true}
  */
 final class AddMapping extends Command {
 	public function __construct(

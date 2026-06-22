@@ -55,9 +55,7 @@ $info = static function (string $tip): string {
 			<?php
 			$selectedGroups = $m['nc_groups'] ?? [];
 			$useTf = (bool)($m['use_team_folder'] ?? true);
-			$modeSel = $m['mode'] === 'reference'
-				? 'reference'
-				: ((($m['writeback'] ?? '') === 'readonly') ? 'readonly' : 'sync');
+			$modeSel = ($m['mode'] === 'link') ? 'link' : 'sync';
 			?>
 			<div class="n8n-sync-mappings__card" data-id="<?php p($m['id']); ?>">
 				<div class="n8n-sync-mappings__grid">
@@ -70,15 +68,12 @@ $info = static function (string $tip): string {
 						<label><?php p($l->t('Mode'));
 			print_unescaped($info($desc['mode'])); ?></label>
 						<select class="js-mode">
-							<option value="reference" <?php if ($modeSel === 'reference') {
-								print_unescaped('selected');
-							} ?>><?php p($l->t('Link (reference)')); ?></option>
 							<option value="sync" <?php if ($modeSel === 'sync') {
 								print_unescaped('selected');
-							} ?>><?php p($l->t('Sync (two-way)')); ?></option>
-							<option value="readonly" <?php if ($modeSel === 'readonly') {
+							} ?>><?php p($l->t('Sync')); ?></option>
+							<option value="link" <?php if ($modeSel === 'link') {
 								print_unescaped('selected');
-							} ?>><?php p($l->t('Backup (read-only)')); ?></option>
+							} ?>><?php p($l->t('Link')); ?></option>
 						</select>
 					</div>
 					<div class="n8n-sync-field nf-folder">

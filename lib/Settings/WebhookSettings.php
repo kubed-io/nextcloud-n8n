@@ -42,7 +42,7 @@ final class WebhookSettings implements IDeclarativeSettingsForm {
 				[
 					'id' => 'webhook_enabled',
 					'title' => 'Write back via a webhook',
-					'description' => 'When on, saving a two-way file POSTs it to the webhook path below — on its own, or alongside the REST API if that is also enabled.',
+					'description' => 'When on, saving a sync file POSTs it to the webhook path below — on its own, or alongside the REST API if that is also enabled.',
 					'type' => DeclarativeSettingsTypes::CHECKBOX,
 					'default' => '0',
 				],

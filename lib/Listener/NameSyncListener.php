@@ -72,9 +72,8 @@ final class NameSyncListener implements IEventListener {
 		if (!is_string($id) || $id === '') {
 			return; // not managed yet — create-on-land owns the first write
 		}
-		if (($meta[WorkflowMetadata::KEY_MODE] ?? '') !== Mapping::MODE_SYNC
-			|| ($meta[WorkflowMetadata::KEY_WRITEBACK] ?? '') !== Mapping::WRITEBACK_TWO_WAY) {
-			return; // reference / backup are n8n-driven
+		if (($meta[WorkflowMetadata::KEY_MODE] ?? '') !== Mapping::MODE_SYNC) {
+			return; // only sync pushes back + name-syncs; link is n8n-driven
 		}
 
 		$stem = FilenameCodec::parse($node->getName())['name'] ?? '';

@@ -1124,6 +1124,99 @@ How a workflow's mode is *chosen* and *changed*, on top of the mapping default:
   exclusivity** is enforced — exactly one of `n8n:sync`/`n8n:link` per file; adding the second
   by hand resolves to the just-added one and strips the other. (`features/mode-change.feature`.)
 
+#### 14.2c Phase 1 HANDOFF (in progress — branch `refactor/mode-model-collapse`)
+
+> **For the agent taking over.** Phase 1 (the model collapse) is **partially done and
+> committed** to branch `refactor/mode-model-collapse` (one WIP commit, pushed). The lib code
+> compiles (every changed file `php -l` clean; a grep for `->writeback|WRITEBACK|MODE_REFERENCE|
+> KEY_WRITEBACK|isSyncTwoWay` over `lib/` is empty). **CI will be RED until the integration
+> FeatureContext is updated (see TODO h).** Do NOT merge until green.
+
+**DONE (committed):**
+- `Mapping` — `mode ∈ {sync, link}` (consts `MODE_SYNC`/`MODE_LINK`); `writeback` property +
+  consts removed; `fromArray` back-compat (`reference`→`link`; `sync`+any writeback incl. old
+  `backup`→`sync`); validation `mode ∈ {sync,link}`; `toArray` drops `writeback`.
+- `tests/unit/Service/MappingTest.php` — NEW, covers the above (the only test added so far).
+- `MappingService` — `update()` no longer passes `writeback`; `list()` legacy markers now fire
+  on `mode==='reference'` or a stray `writeback` key (lazy re-persist on read → this IS the
+  mappings-config migration; see TODO e).
+- `WorkflowMetadata` — dropped `KEY_WRITEBACK`; `KEY_MODE` now INDEXED; `link`⇄`reference` wire
+  translation isolated in `toWire()`/`fromWire()` (THE one place `reference` exists); added
+  `MODE_UNMAPPED`/`MODE_IGNORED` consts.
+- `OwnershipTags` — dropped `TAG_BACKUP`; `tagFor(string $mode)` single-arg; `apply(int,string)`
+  single-arg; `n8n:backup`/`n8n:reference` are LEGACY (stripped on re-tag).
+- `DeleteService` — `softDelete/hardDelete/restore` dropped `$writeback`; rule is now
+  `mode===sync` → archive/delete/unarchive, `link` → untag/retag. Removed `isSyncTwoWay()`.
+- Callers updated: `DeleteToN8nListener`, `RestoreFromTrashListener` (drop writeback reads).
+- Push/name gates collapsed to `mode===sync`: `NameSyncListener`, `NodeWrittenListener`,
+  `ReconcileNameJob`.
+- `CreateService` (stamp drops `KEY_WRITEBACK`, `apply(id,mode)`), `SyncService` (`pushAll` gate
+  `mode===sync`; pull body `MODE_LINK`; metadata writes drop writeback; `tags->apply(id,mode)`),
+  `StorageService` + `TeamFolderService` (`ensure()` dropped `$writeback` param; perms gate
+  `mode===sync`).
+- Admin UI JS `js/mapping-settings.js` — mode `<select>` is now Sync/Link only; `readCard`
+  returns single `mode`; header comment fixed.
+
+**TODO (to finish Phase 1):**
+- ~~**a. `templates/mapping_settings.php`**~~ ✅ existing-mapping mode `<select>` now renders
+  `sync`/`link` only (`$modeSel = ($m['mode'] === 'link') ? 'link' : 'sync'`); readonly/reference
+  options dropped — matches the JS new-card select.
+- ~~**b. `lib/Controller/MappingController.php`**~~ ✅ docstring `writeback?` removed (no logic change).
+- ~~**c. `lib/Command/AddMapping.php`**~~ ✅ docstring example writeback removed.
+- ~~**d. Settings wording**~~ ✅ "two-way file" → "sync file" in `WritebackSettings`/`WebhookSettings`/
+  `AdminSettings` descriptions.
+- ~~**e. Migration**~~ ✅ relies on the LAZY `MappingService::list()` re-persist (rewrites the
+  cleaned `sync`/`link` config on the first admin-page load or sync). **No explicit RepairStep** —
+  this is a single homelab instance with a handful of test mappings, not a high-stakes fleet
+  migration; the few existing files get fixed with a throwaway `occ`/manual command. File-metadata
+  bulk migration stays DEFERRED (harmless dangling `n8n_writeback` prop; files re-stamp on next sync).
+- **f. Live pod migration** ☐ — still pending a deploy of this branch; the lazy
+  `MappingService::list()` re-persist rewrites the `cloud/nextcloud` mappings (`sync+two-way`→`sync`)
+  on first read (admin page / sync). No repair step (per the e. decision).
+- ~~**g. Unit tests**~~ ✅ `OwnershipTagsTest` (pure `tagFor` + unknown-mode throws) and
+  `DeleteServiceTest` (mock `N8nClient`: sync archive/delete/unarchive, link untag/retag, 404
+  swallow / 5xx throw). Required adding **`dg/bypass-finals`** (mock the `final` `N8nClient`) +
+  `tests/ocp-stubs.php` (nextcloud/ocp ships no autoload, so OCP base symbols don't resolve
+  standalone) wired into `tests/bootstrap.php`. **Committed a root `composer.lock`** (was missing —
+  CI now reproducible). 45 unit tests green in the pod; cs:check clean.
+- ~~**h. ⚠️ Integration `FeatureContext.php`**~~ ✅ `modeToModel()` now returns a single `sync|link`
+  string; `add-mapping` JSON + assertions drop `writeback`; the old `…NoWriteback`/`…WritesBack`
+  steps replaced by a single `…WithAnUnknownMode` step. `admin-mapping.feature` reject scenario
+  un-`@todo`'d. (`file-type.feature` stays whole-`@todo` — its `unmapped`/`ignored` examples need
+  Phase 2 motion states.)
+- ~~**i. CHANGELOG**~~ ✅ `[Unreleased]` Changed + Tests entries for the model collapse.
+- **j. Open the PR, verify unit + integration green, then it's mergeable.** ☐ — Psalm runs in CI
+  (pod Psalm is unstable per §12.1); unit + cs validated in the pod.
+
+> **Status (2026-06-22, handoff resumed):** Phase 1 is **code-complete**. All of a–e, g–i done;
+> only **f** (live-pod deploy) and **j** (open PR / confirm CI green incl. Psalm + the live Behat
+> suite) remain. Phase 2 (motion) is unchanged below.
+
+#### 14.2d Phase-1 lessons learned (don't relearn these)
+
+Hard-won bits from finishing the model collapse that aren't captured elsewhere:
+
+- **`nextcloud/ocp` ships NO composer autoload block.** Its public API is bare source; after a
+  clean install, `interface_exists(OCP\IConfig::class)` is **false**. Pure-logic unit tests
+  (FilenameCodec, Mapping) never notice, but the moment a test loads a class that *references* an
+  OCP base symbol — e.g. `Application extends OCP\AppFramework\App` (pulled in only for its
+  `APP_ID` constant used in log context) — the class won't declare. Fix: a tiny declaration-only
+  `tests/ocp-stubs.php` (App + the three IBootstrap/IRegistrationContext/IBootContext shims),
+  `require`d from `tests/bootstrap.php`. Don't try to make ocp autoload — it isn't meant to.
+- **Mocking a `final` class needs `dg/bypass-finals`.** The §12.1 code-scanning paydown made most
+  services `final`. PHPUnit refuses to mock a final class, so `createMock(N8nClient::class)` throws
+  until `\DG\BypassFinals::enable()` runs in the bootstrap (it strips `final` as classes autoload).
+  This is the standard NC-ecosystem approach; it's a dev-only dep.
+- **A root `composer.lock` was never committed.** Cause matches the suspicion: PHP work happens
+  *in the pod* (copy app in, run there) and the generated lock was never copied back. Generated it
+  with `composer update --no-install` in the pod and committed it — CI's `composer install` is now
+  reproducible. (The integration suite already had its own committed lock; the root one was the gap.)
+- **`expectNotToPerformAssertions()` + a configured mock = a PHPUnit *notice*** ("test is not
+  expected to perform assertions but does"). Non-fatal (exit 0), but `failOnRisky` is on, so prefer
+  an explicit `->expects(self::once())` on the mock over the no-assertions marker. Clears the notice.
+- **The pod is the right PHP for `php -l` + PHPUnit + php-cs-fixer, but NOT Psalm** (§12.1: it hangs
+  on analysis even idle). Validate cs + unit in the pod; leave Psalm to CI where it runs in ~seconds.
+
 #### 14.3 Attack (two PRs)
 
 > **Guiding principle for the build.** Cover the **main use cases, main flows, and

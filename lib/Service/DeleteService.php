@@ -17,18 +17,17 @@ use Psr\Log\LoggerInterface;
  * Three-step delete/restore rule table for §17.7. Listeners delegate the
  * effective-state branching to this one place so it's trivial to audit.
  *
- * Lifecycle (mirrors NC's own model for the `sync + two-way` row):
+ * Lifecycle (saga Ch2 §14 — mode is `sync` | `link`):
  *   - **softDelete** — user moved the file to NC trash.
- *       sync+two-way → archive workflow (`POST /workflows/{id}/archive`).
- *       reference / sync+readonly → strip the mapping tag (additive untag).
- *       detached → no-op.
+ *       sync → archive workflow (`POST /workflows/{id}/archive`).
+ *       link → strip the mapping tag (additive untag).
  *   - **hardDelete** — final purge from trash (or trash-bypassed direct delete).
- *       sync+two-way → hard-delete the workflow (`DELETE /workflows/{id}`).
- *       others → no-op (the workflow has been live in n8n all along; only the
- *       tag was touched on softDelete).
+ *       sync → hard-delete the workflow (`DELETE /workflows/{id}`).
+ *       link → no-op (the workflow has been live in n8n all along; only the tag
+ *       was touched on softDelete).
  *   - **restore** — user restored the file from trash.
- *       sync+two-way → unarchive (`POST /workflows/{id}/unarchive`).
- *       reference / sync+readonly → re-add the mapping tag (idempotent).
+ *       sync → unarchive (`POST /workflows/{id}/unarchive`).
+ *       link → re-add the mapping tag (idempotent).
  *
  * Error policy:
  *   - 404 → idempotent success (something already happened on the n8n side).
@@ -51,12 +50,12 @@ final class DeleteService {
 	 *
 	 * @throws N8nApiException on n8n failure (caller decides to abort)
 	 */
-	public function softDelete(string $id, string $mode, ?string $writeback, ?Mapping $mapping): void {
-		if ($this->isSyncTwoWay($mode, $writeback)) {
+	public function softDelete(string $id, string $mode, ?Mapping $mapping): void {
+		if ($mode === Mapping::MODE_SYNC) {
 			$this->callIdempotent(fn () => $this->n8n->archiveWorkflow($id), $id, 'archive');
 			return;
 		}
-		// reference OR sync+readonly → untag (additive: remove just our tag).
+		// link → untag (additive: remove just our tag).
 		if ($mapping === null) {
 			$this->logger->info('n8n_sync delete: no mapping resolvable; skipping untag', [
 				'app' => Application::APP_ID,
@@ -68,14 +67,13 @@ final class DeleteService {
 	}
 
 	/**
-	 * Hard step (trash-purge or trash-bypassed delete). Only sync+two-way
-	 * actually removes the n8n workflow; everything else is a no-op because the
-	 * workflow was never NC's to delete.
+	 * Hard step (trash-purge or trash-bypassed delete). Only sync actually removes
+	 * the n8n workflow; link is a no-op because the workflow was never NC's to delete.
 	 *
 	 * @throws N8nApiException on n8n failure (caller decides to abort)
 	 */
-	public function hardDelete(string $id, string $mode, ?string $writeback): void {
-		if (!$this->isSyncTwoWay($mode, $writeback)) {
+	public function hardDelete(string $id, string $mode): void {
+		if ($mode !== Mapping::MODE_SYNC) {
 			return;
 		}
 		$this->callIdempotent(fn () => $this->n8n->deleteWorkflow($id), $id, 'delete');
@@ -83,14 +81,13 @@ final class DeleteService {
 
 	/**
 	 * Restore step (NC restore-from-trash). Mirror of softDelete: unarchive the
-	 * workflow for sync+two-way, or re-add the mapping tag for ref/backup. The
-	 * caller is expected to log + swallow failures here (don't abort a restore
-	 * just because n8n is down).
+	 * workflow for sync, or re-add the mapping tag for link. The caller is expected
+	 * to log + swallow failures here (don't abort a restore just because n8n is down).
 	 *
 	 * @throws N8nApiException on n8n failure (caller chooses to log+swallow)
 	 */
-	public function restore(string $id, string $mode, ?string $writeback, ?Mapping $mapping): void {
-		if ($this->isSyncTwoWay($mode, $writeback)) {
+	public function restore(string $id, string $mode, ?Mapping $mapping): void {
+		if ($mode === Mapping::MODE_SYNC) {
 			$this->callIdempotent(fn () => $this->n8n->unarchiveWorkflow($id), $id, 'unarchive');
 			return;
 		}
@@ -102,11 +99,6 @@ final class DeleteService {
 			return;
 		}
 		$this->ensureTag($id, $mapping->n8nTag);
-	}
-
-	/** True when the file's effective state is `sync` + `two-way`. */
-	private function isSyncTwoWay(string $mode, ?string $writeback): bool {
-		return $mode === Mapping::MODE_SYNC && $writeback === Mapping::WRITEBACK_TWO_WAY;
 	}
 
 	/**

@@ -25,7 +25,7 @@ use OCP\IRequest;
  *
  * Routes (see appinfo/routes.php):
  *   GET    /apps/n8n_sync/mappings           → list
- *   POST   /apps/n8n_sync/mappings           → add   { n8n_tag, team_folder, nc_groups, mode, writeback? }
+ *   POST   /apps/n8n_sync/mappings           → add   { n8n_tag, team_folder, nc_groups, mode }
  *   PUT    /apps/n8n_sync/mappings/{id}      → update
  *   DELETE /apps/n8n_sync/mappings/{id}      → delete; ?purge=1 also deletes the
  *                                              integration's managed files (those

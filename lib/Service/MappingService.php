@@ -42,17 +42,18 @@ final class MappingService {
 			if (!is_array($entry)) {
 				continue;
 			}
-			// One-shot migration markers: the old folder-mapping shape used
-			// `n8n_path` + `nc_path`; the old read-only mode was `link`.
-			// Mapping::fromArray accepts all of these and rewrites them; we just
-			// remember whether we saw any so we can re-persist the cleaned list.
+			// One-shot migration markers (saga Ch2 §14): the old folder-mapping
+			// shape used `n8n_path` + `nc_path`; the old link mode was `reference`;
+			// and every old row carried a `writeback` field that no longer exists.
+			// Mapping::fromArray rewrites all of these — we just remember whether we
+			// saw any so we can re-persist the cleaned list once.
 			if (array_key_exists('n8n_path', $entry) && !array_key_exists('n8n_tag', $entry)) {
 				$legacySeen = true;
 			}
 			if (array_key_exists('nc_path', $entry) && !array_key_exists('team_folder', $entry)) {
 				$legacySeen = true;
 			}
-			if (($entry['mode'] ?? null) === 'link') {
+			if (($entry['mode'] ?? null) === 'reference' || array_key_exists('writeback', $entry)) {
 				$legacySeen = true;
 			}
 			try {
@@ -109,7 +110,6 @@ final class MappingService {
 					$mapping->teamFolder,
 					$mapping->ncGroups,
 					$mapping->mode,
-					$mapping->writeback,
 					$existing->useTeamFolder,
 				);
 				$all[$i] = $updated;

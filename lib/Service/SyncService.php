@@ -231,7 +231,7 @@ final class SyncService {
 		$failed = 0;
 		$errors = [];
 		foreach ($this->mappings->list() as $mapping) {
-			if (!($mapping->mode === Mapping::MODE_SYNC && $mapping->writeback === Mapping::WRITEBACK_TWO_WAY)) {
+			if ($mapping->mode !== Mapping::MODE_SYNC) {
 				continue;
 			}
 			if (!$this->storage->isAvailable($mapping)) {
@@ -368,7 +368,7 @@ final class SyncService {
 		$displayName = (string)($workflow['name'] ?? $id);
 		$versionId = (string)($workflow['versionId'] ?? '');
 
-		$body = $mapping->mode === Mapping::MODE_REFERENCE
+		$body = $mapping->mode === Mapping::MODE_LINK
 			? $this->encodeReference($workflow)
 			: $this->encodeSync($workflow);
 
@@ -393,12 +393,11 @@ final class SyncService {
 			$this->metadata->write($existing->getId(), [
 				WorkflowMetadata::KEY_ID => $id,
 				WorkflowMetadata::KEY_MODE => $mapping->mode,
-				WorkflowMetadata::KEY_WRITEBACK => (string)($mapping->writeback ?? ''),
 				WorkflowMetadata::KEY_VERSION_ID => $versionId,
 				WorkflowMetadata::KEY_SYNCED_HASH => sha1($body),
 				WorkflowMetadata::KEY_MAPPING => $mapping->id,
 			]);
-			$this->tags->apply($existing->getId(), $mapping->mode, $mapping->writeback);
+			$this->tags->apply($existing->getId(), $mapping->mode);
 			return;
 		}
 
@@ -420,12 +419,11 @@ final class SyncService {
 		$this->metadata->write($file->getId(), [
 			WorkflowMetadata::KEY_ID => $id,
 			WorkflowMetadata::KEY_MODE => $mapping->mode,
-			WorkflowMetadata::KEY_WRITEBACK => (string)($mapping->writeback ?? ''),
 			WorkflowMetadata::KEY_VERSION_ID => $versionId,
 			WorkflowMetadata::KEY_SYNCED_HASH => sha1($body),
 			WorkflowMetadata::KEY_MAPPING => $mapping->id,
 		]);
-		$this->tags->apply($file->getId(), $mapping->mode, $mapping->writeback);
+		$this->tags->apply($file->getId(), $mapping->mode);
 	}
 
 	/**

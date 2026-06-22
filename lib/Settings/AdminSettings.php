@@ -43,7 +43,7 @@ final class AdminSettings implements IDeclarativeSettingsForm {
 				[
 					'id' => 'api_enabled',
 					'title' => 'Write back via the REST API',
-					'description' => 'When on, saving a two-way file updates the workflow in n8n through the REST API. Turn off to push only via the webhook below. (Bulk pull and the Test API button always use the REST API regardless of this toggle.)',
+					'description' => 'When on, saving a sync file updates the workflow in n8n through the REST API. Turn off to push only via the webhook below. (Bulk pull and the Test API button always use the REST API regardless of this toggle.)',
 					'type' => DeclarativeSettingsTypes::CHECKBOX,
 					'default' => '1',
 				],

@@ -44,7 +44,7 @@ final class WritebackSettings implements IDeclarativeSettingsForm {
 				[
 					'id' => 'timing',
 					'title' => 'Nextcloud → n8n: when you save a workflow file',
-					'description' => 'Async (recommended): the push runs in the background after the save. Sync: pushes during the save for instant feedback, but can briefly lock the file. Only two-way mappings push back.',
+					'description' => 'Async (recommended): the push runs in the background after the save. Sync: pushes during the save for instant feedback, but can briefly lock the file. Only sync mappings push back.',
 					'type' => DeclarativeSettingsTypes::RADIO,
 					'default' => 'async',
 					'options' => [

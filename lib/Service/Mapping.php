@@ -17,36 +17,36 @@ use JsonSerializable;
  * Each Mapping binds an **n8n tag** (the only stable subdivision n8n's public
  * REST API exposes — there is no folder API; see plan §12.2) to a **Team Folder**
  * (groupfolders mount point), shared with a set of **Nextcloud groups**, plus the
- * default sync semantics for files under it.
+ * default mode for files under it.
  *
  * Ownership model (plan §12.4, decided H-B): Team Folders are owned by no user,
  * so there is no owner field. `nc_groups` are the user-facing groups the Team
  * Folder is shared with; the plugin additionally grants itself write access via
  * a dedicated actor group ({@see TeamFolderService::ACTOR_GROUP}).
  *
- * Per-workflow tags in n8n can still override mode at the file level (Phase 2
- * metadata layer); this object only carries the folder-level default.
+ * Per-workflow tags in n8n can override the mode at the file level (saga Ch2 §14
+ * reserved tags); this object only carries the folder-level default.
+ *
+ * Mode model (saga Ch2 §14): a mapping's mode is exactly **`sync`** or **`link`**.
+ * `writeback` is gone (the old `sync + two-way` is now just `sync`); `backup`
+ * (old `sync + readonly`) is dropped and migrates to `sync`; the old `reference`
+ * is renamed to `link`. {@see fromArray()} reads all of those legacy shapes and
+ * MappingService re-persists the cleaned list on first read.
+ *
+ * (The on-the-wire DAV metadata value for `link` is `reference` — the literal
+ * string `link` is `is_callable()` and crashes core PROPFIND — but that
+ * translation lives in {@see WorkflowMetadata}, not here; a Mapping says `link`.)
  *
  * Invariants:
- *  - `mode === 'reference'` → `writeback` MUST be null (reference is read-only by nature).
- *  - `mode === 'sync'`      → `writeback` MUST be 'two-way' or 'readonly'.
+ *  - `mode` MUST be `sync` or `link`.
  *  - `n8nTag` MUST NOT contain commas (n8n uses comma as the multi-tag delimiter).
  *  - `teamFolder` MUST be non-empty.
  *  - `ncGroups` MAY be empty here, but a mapping with no groups produces a Team
  *    Folder nobody can see — the pull reconciler warns + skips those.
- *
- * Mode value note: 'link' is forbidden as a metadata value (it is `is_callable()`
- * and detonates PROPFIND through core's FilesPlugin); the read-only mode is
- * 'reference'. Legacy rows with `mode: 'link'`, or with the old `n8n_path` /
- * `nc_path` keys, are auto-upgraded by {@see fromArray()} and re-persisted once
- * by MappingService on first read.
  */
 final class Mapping implements JsonSerializable {
-	public const MODE_REFERENCE = 'reference';
 	public const MODE_SYNC = 'sync';
-
-	public const WRITEBACK_TWO_WAY = 'two-way';
-	public const WRITEBACK_READONLY = 'readonly';
+	public const MODE_LINK = 'link';
 
 	/**
 	 * @param list<string> $ncGroups
@@ -57,7 +57,6 @@ final class Mapping implements JsonSerializable {
 		public readonly string $teamFolder,
 		public readonly array $ncGroups,
 		public readonly string $mode,
-		public readonly ?string $writeback,
 		public readonly bool $useTeamFolder,
 	) {
 	}
@@ -67,8 +66,11 @@ final class Mapping implements JsonSerializable {
 	 * Mapping. Throws InvalidArgumentException on any invariant violation so the
 	 * controller returns a clean 400 rather than persisting nonsense.
 	 *
-	 * Accepts legacy keys (`n8n_path` for the tag, `nc_path` for the folder) so
-	 * the one-shot migration in MappingService::list() needn't know field shapes.
+	 * Reads legacy shapes (saga Ch2 §14 migration):
+	 *  - keys `n8n_path` (tag) / `nc_path` (folder) → `n8n_tag` / `team_folder`;
+	 *  - `mode: 'reference'` → `link`;
+	 *  - `mode: 'sync'` with any (now-ignored) `writeback`, incl. the old `backup`
+	 *    = `sync + readonly` → `sync`.
 	 *
 	 * @param array<string,mixed> $data
 	 */
@@ -85,13 +87,11 @@ final class Mapping implements JsonSerializable {
 
 		$ncGroups = self::normaliseGroups($data['nc_groups'] ?? []);
 
+		// Mode, with legacy normalisation. `writeback` is read only to be ignored
+		// (the old sync+readonly "backup" collapses into sync); `reference` → link.
 		$mode = (string)($data['mode'] ?? '');
-		if ($mode === 'link') {
-			$mode = self::MODE_REFERENCE; // legacy rename
-		}
-		$writeback = $data['writeback'] ?? null;
-		if ($writeback === '') {
-			$writeback = null;
+		if ($mode === 'reference') {
+			$mode = self::MODE_LINK;
 		}
 
 		// Storage backend (immutability enforced in MappingService::update).
@@ -109,18 +109,11 @@ final class Mapping implements JsonSerializable {
 		if ($teamFolder === '') {
 			throw new \InvalidArgumentException('team_folder is required');
 		}
-		if (!in_array($mode, [self::MODE_REFERENCE, self::MODE_SYNC], true)) {
-			throw new \InvalidArgumentException('mode must be "reference" or "sync"');
-		}
-		if ($mode === self::MODE_REFERENCE && $writeback !== null) {
-			throw new \InvalidArgumentException('writeback is not valid when mode=reference');
-		}
-		if ($mode === self::MODE_SYNC
-			&& !in_array($writeback, [self::WRITEBACK_TWO_WAY, self::WRITEBACK_READONLY], true)) {
-			throw new \InvalidArgumentException('writeback must be "two-way" or "readonly" when mode=sync');
+		if (!in_array($mode, [self::MODE_SYNC, self::MODE_LINK], true)) {
+			throw new \InvalidArgumentException('mode must be "sync" or "link"');
 		}
 
-		return new self($id, $n8nTag, $teamFolder, $ncGroups, $mode, $writeback === null ? null : (string)$writeback, $useTeamFolder);
+		return new self($id, $n8nTag, $teamFolder, $ncGroups, $mode, $useTeamFolder);
 	}
 
 	/** @return array<string,mixed> */
@@ -131,7 +124,6 @@ final class Mapping implements JsonSerializable {
 			'team_folder' => $this->teamFolder,
 			'nc_groups' => $this->ncGroups,
 			'mode' => $this->mode,
-			'writeback' => $this->writeback,
 			'use_team_folder' => $this->useTeamFolder,
 		];
 	}

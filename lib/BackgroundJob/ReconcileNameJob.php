@@ -70,8 +70,7 @@ final class ReconcileNameJob extends QueuedJob {
 			if (!is_string($id) || $id === '') {
 				return;
 			}
-			if (($meta[WorkflowMetadata::KEY_MODE] ?? '') !== Mapping::MODE_SYNC
-				|| ($meta[WorkflowMetadata::KEY_WRITEBACK] ?? '') !== Mapping::WRITEBACK_TWO_WAY) {
+			if (($meta[WorkflowMetadata::KEY_MODE] ?? '') !== Mapping::MODE_SYNC) {
 				return;
 			}
 

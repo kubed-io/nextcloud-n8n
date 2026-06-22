@@ -228,12 +228,11 @@ final class CreateService {
 			$this->metadata->write($node->getId(), [
 				WorkflowMetadata::KEY_ID => $id,
 				WorkflowMetadata::KEY_MODE => $mapping->mode,
-				WorkflowMetadata::KEY_WRITEBACK => (string)($mapping->writeback ?? ''),
 				WorkflowMetadata::KEY_VERSION_ID => $versionId,
 				WorkflowMetadata::KEY_SYNCED_HASH => sha1($content),
 				WorkflowMetadata::KEY_MAPPING => $mapping->id,
 			]);
-			$this->ownershipTags->apply($node->getId(), $mapping->mode, $mapping->writeback);
+			$this->ownershipTags->apply($node->getId(), $mapping->mode);
 			try {
 				$this->mimeLoader->updateFilecache('n8n.json', $this->mimeLoader->getId('application/n8n+json'));
 			} catch (\Throwable $e) {

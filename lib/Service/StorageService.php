@@ -55,7 +55,7 @@ final class StorageService {
 					'This mapping uses a Team Folder, but the Team Folders (groupfolders) app is not enabled.',
 				);
 			}
-			$this->teamFolders->ensure($mapping->teamFolder, $mapping->ncGroups, $mapping->mode, $mapping->writeback);
+			$this->teamFolders->ensure($mapping->teamFolder, $mapping->ncGroups, $mapping->mode);
 			return $this->teamFolders->getWritableFolder($mapping->teamFolder);
 		}
 
@@ -121,7 +121,7 @@ final class StorageService {
 	 * so we never clobber a manual share).
 	 */
 	private function syncGroupShares(Folder $folder, string $ownerUid, Mapping $mapping): void {
-		$perms = ($mapping->mode === Mapping::MODE_SYNC && $mapping->writeback === Mapping::WRITEBACK_TWO_WAY)
+		$perms = ($mapping->mode === Mapping::MODE_SYNC)
 			? (Constants::PERMISSION_READ | Constants::PERMISSION_UPDATE | Constants::PERMISSION_CREATE | Constants::PERMISSION_DELETE)
 			: Constants::PERMISSION_READ;
 

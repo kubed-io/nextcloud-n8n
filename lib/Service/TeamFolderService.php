@@ -62,15 +62,15 @@ final class TeamFolderService {
 
 	/**
 	 * Ensure a Team Folder named $mountPoint exists, is shared with the content
-	 * groups at the right permission level for $mode/$writeback, and is writable
-	 * by the actor (via the `admin` group). Returns the groupfolders folder id.
+	 * groups at the right permission level for $mode, and is writable by the actor
+	 * (via the `admin` group). Returns the groupfolders folder id.
 	 *
 	 * Idempotent: re-running re-asserts assignments + permissions and prunes
 	 * content groups no longer desired (spec UC-5).
 	 *
 	 * @param list<string> $contentGroups user-facing groups (admin-managed; ≥1 expected)
 	 */
-	public function ensure(string $mountPoint, array $contentGroups, string $mode, ?string $writeback): int {
+	public function ensure(string $mountPoint, array $contentGroups, string $mode): int {
 		$fm = $this->container->get(self::FOLDER_MANAGER);
 
 		$folderId = $this->findByMountPoint($mountPoint);
@@ -78,8 +78,8 @@ final class TeamFolderService {
 			$folderId = $fm->createFolder($mountPoint);
 		}
 
-		// Content groups: read-only for reference/sync·readonly; read+write for sync·two-way.
-		$contentPerms = ($mode === Mapping::MODE_SYNC && $writeback === Mapping::WRITEBACK_TWO_WAY)
+		// Content groups: read+write for sync; read-only for link.
+		$contentPerms = ($mode === Mapping::MODE_SYNC)
 			? (Constants::PERMISSION_READ | Constants::PERMISSION_UPDATE | Constants::PERMISSION_CREATE | Constants::PERMISSION_DELETE)
 			: Constants::PERMISSION_READ;
 		foreach ($contentGroups as $gid) {

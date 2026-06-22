@@ -94,9 +94,8 @@ final class NodeWrittenListener implements IEventListener {
 		if (!is_string($id) || $id === '') {
 			return; // not (yet) one of ours — new-file create is a future step
 		}
-		if (($meta[WorkflowMetadata::KEY_MODE] ?? '') !== Mapping::MODE_SYNC
-			|| ($meta[WorkflowMetadata::KEY_WRITEBACK] ?? '') !== Mapping::WRITEBACK_TWO_WAY) {
-			return; // reference / backup never push
+		if (($meta[WorkflowMetadata::KEY_MODE] ?? '') !== Mapping::MODE_SYNC) {
+			return; // only sync pushes; link never does
 		}
 
 		try {
