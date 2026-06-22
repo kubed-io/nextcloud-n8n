@@ -126,7 +126,7 @@ final class WorkflowMetadata {
 			if (!array_key_exists($key, $values)) {
 				continue;
 			}
-			$stored = $this->toWire($key, (string)$values[$key]);
+			$stored = $this->toWire($key, $values[$key]);
 			// Indexed keys must be written with the index flag so they're searchable.
 			$metadata->setString($key, $stored, in_array($key, self::INDEXED_KEYS, true));
 		}

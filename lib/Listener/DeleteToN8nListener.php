@@ -75,7 +75,7 @@ final class DeleteToN8nListener implements IEventListener {
 			// Detached file — no n8n side. Let NC do its normal delete.
 			return;
 		}
-		$mode = (string)($meta[WorkflowMetadata::KEY_MODE] ?? '');
+		$mode = $meta[WorkflowMetadata::KEY_MODE] ?? '';
 		$mappingId = $meta[WorkflowMetadata::KEY_MAPPING] ?? null;
 		$mapping = is_string($mappingId) && $mappingId !== ''
 			? $this->mappings->getById($mappingId)
