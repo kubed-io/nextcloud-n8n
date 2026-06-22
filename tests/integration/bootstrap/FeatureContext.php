@@ -461,7 +461,7 @@ final class FeatureContext implements Context {
 		Assert::assertTrue($value === null || $value === '', "file unexpectedly has metadata-$key='$value'");
 	}
 
-	/** @Then the file is treated as a plain document (unmapped state) */
+	/** @Then /^the file is treated as a plain document \(unmapped state\)$/ */
 	public function theFileIsTreatedAsPlain(): void {
 		// "Plain" = no n8n metadata id; the create listener bailed (outside any
 		// mapping). The id check above is the operative assertion; this step is a
