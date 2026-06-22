@@ -93,7 +93,7 @@ jobs:
         STAGE="dist/pkg/${APP_ID}"
         rm -rf dist/pkg
         mkdir -p "$STAGE"
-        for entry in appinfo lib css js img templates config CHANGELOG.md README.md; do
+        for entry in appinfo lib css js img templates config CHANGELOG.md README.md LICENSE; do
           [[ -e "$entry" ]] && cp -R "$entry" "$STAGE/"
         done
         mkdir -p "$STAGE/dist"
