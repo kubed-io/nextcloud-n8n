@@ -7,7 +7,14 @@
 #
 #   n8n:sync    — pull this one as sync,  whatever the mapping default is
 #   n8n:link    — pull this one as a link, whatever the mapping default is
-#   n8n:ignore  — skip this one entirely, even though it carries the mapped tag
+#   n8n:ignore  — exclude this one. Two facets:
+#                 • never-pulled workflow → no Nextcloud file at all;
+#                 • a file already IN a mapped folder → "ignored" mode (it stays put,
+#                   keeps its id, is archived in n8n, and the sync skips it).
+#
+# OUT OF SCOPE (documented, not built): if a workflow carries BOTH n8n:sync and
+# n8n:link, the pull resolves to sync and ignores the stray link — optionally warning
+# via a notification. (NC-side both-tags is handled in mode-change.feature.)
 #
 # The mode tags are the SAME vocabulary the app already stamps on every managed
 # file in Nextcloud (`n8n:sync` / `n8n:link`): one mode language, two sides — but
@@ -51,11 +58,20 @@ Feature: Reserved n8n tags override the mapping default per workflow
     When the "team:links" mapping is pulled
     Then that workflow's file is in "sync" mode
 
-  Scenario: n8n:ignore excludes a workflow that otherwise matches
+  Scenario: n8n:ignore on a never-pulled workflow creates no file
     Given n8n has a workflow tagged "team:flows" and "n8n:ignore"
     When the "team:flows" mapping is pulled
     Then that workflow is not pulled into Nextcloud
     And no file is created for it
+
+  Scenario: n8n:ignore on a file already in a mapped folder gives it "ignored" mode
+    Given a managed "sync" workflow file in the "team:flows" folder
+    When I tag it "n8n:ignore"
+    Then the file's mode becomes "ignored"
+    And the file stays in the mapped folder and keeps its "n8n_id"
+    And the workflow is archived in n8n
+    And subsequent pulls/pushes for "team:flows" skip it
+    And removing "n8n:ignore" returns it to the mapping's default mode
 
   Scenario: A mapping tag needs no "nextcloud:" prefix
     Given a folder mapped as "sync" to the n8n tag "myfoobarflows"

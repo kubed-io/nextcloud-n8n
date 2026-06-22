@@ -1024,13 +1024,21 @@ README) were written first, as the end-state requirements; the code follows unde
 > the target as if shipped, new behaviour `@todo` so the live suite stays green. Code is
 > Phase 1 (model collapse + migration) then Phase 2 (motion).
 
-#### 14.1 The model — one `mode`, three values
+#### 14.1 The model — one `mode`, four values
 
-| `mode` | What the file is | Pushes to n8n? | n8n tag |
+| `mode` | What the file is | In a mapping? | Pushes to n8n? |
 |---|---|---|---|
-| **`sync`** | Full workflow JSON, NC-authoritative | Yes (two-way) | `n8n:sync` |
-| **`link`** | Tiny pointer (id, name, URL) | No — click opens n8n | `n8n:link` |
-| **`unmapped`** | A workflow file living outside any mapping | No | *(none)* |
+| **`sync`** | Full workflow JSON, NC-authoritative | yes | Yes (two-way) |
+| **`link`** | Tiny pointer (id, name, URL) | yes | No — click opens n8n |
+| **`unmapped`** | Full JSON, **ejected** from a mapping (moved out); archived in n8n; restorable | no (mapping cleared) | No |
+| **`ignored`** | Full JSON, **left in** a mapped folder but deliberately skipped; archived/deleted in n8n | yes (mapping kept) | No |
+
+`unmapped` vs `ignored` — both keep the id and are archived in n8n, but they differ by
+**location + why the pull leaves them alone**: `unmapped` lives *outside* any mapping (so the
+mapping-scoped pull never sees it); `ignored` lives *inside* a mapped folder, so the pull —
+which walks that folder — needs an explicit mode value to know to **skip** it. That's the whole
+reason `ignored` must be its own mode and can't just be `unmapped`. (Set via `n8n:ignore`; remove
+the tag → back to the mapping default. `ignored` is not a callable string, so it stores as-is.)
 
 Decisions (locked):
 
@@ -1050,8 +1058,14 @@ Decisions (locked):
   files *ejected from a mapping* get stamped; a never-mapped `.n8n.json` stays untouched
   (that's "untracked", not "unmapped").
 
-Metadata shape: `n8n_id`, `n8n_versionId`, `n8n_syncedHash` on all; `n8n_mapping` cleared when
-unmapped; `n8n_mode` (indexed) = `sync` | `reference`(=link) | `unmapped`; `n8n_writeback` removed.
+Metadata shape: `n8n_id`, `n8n_versionId`, `n8n_syncedHash` on all; `n8n_mapping` cleared only
+when **unmapped** (kept when ignored — it's still in the folder); `n8n_mode` (indexed) =
+`sync` | `reference`(=link) | `unmapped` | `ignored`; `n8n_writeback` removed.
+
+**Out of scope (documented, not built):** if an n8n workflow carries *both* `n8n:sync` and
+`n8n:link`, the pull resolves to **sync** (ignore the stray link) — optionally surfacing a
+notification explaining what happened and the consequence. (NC-side both-tags is handled
+differently — the just-added one wins, §14.2b — because there we can see which was added.)
 
 #### 14.2 Motion — move, copy, restore, merge
 
@@ -1092,10 +1106,12 @@ How a workflow's mode is *chosen* and *changed*, on top of the mapping default:
 
 - **Mapping tag = any name.** The `nextcloud:` prefix is convention only, not required.
 - **Reserved n8n tags (optional, n8n side, app never writes them):** `n8n:sync` / `n8n:link`
-  override one workflow's mode vs the mapping default; `n8n:ignore` skips it. Same vocabulary as
-  the NC file system tags — but on the NC side the app keeps the file tag **authoritative**
-  (always matches the mode metadata), while on the n8n side they're hand-set overrides it only
-  *reads*. (`features/reserved-tags.feature`.)
+  override one workflow's mode vs the mapping default; `n8n:ignore` excludes it — a never-pulled
+  workflow gets no file, while a file already in a mapped folder enters **`ignored` mode**
+  (stays put, keeps its id, archived in n8n, sync skips it; remove the tag → back to default).
+  Same vocabulary as the NC file system tags — but on the NC side the app keeps the file tag
+  **authoritative** (always matches the mode metadata), while on the n8n side they're hand-set
+  overrides it only *reads*. (`features/reserved-tags.feature`.)
 - **Re-mode (sync ⇄ link) on a managed file**, identity (`n8n_id`) preserved; sync→link collapses
   to the pointer, link→sync pulls the full JSON. Triggered three ways: a Files **context-menu
   toggle**, a manual **retag**, or an **n8n-side tag** applied on the next pull. **Mutual

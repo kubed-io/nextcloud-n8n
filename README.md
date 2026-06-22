@@ -18,13 +18,14 @@ The sync is reconcile-based: re-running a pull never duplicates files. The link 
 
 ## Modes
 
-Every managed `.n8n.json` file is in exactly one of three modes. The mode is the single source of truth for how much authority Nextcloud has over the workflow — there is no separate "writeback" setting to reason about.
+Every managed `.n8n.json` file is in exactly one of four modes. The mode is the single source of truth for how much authority Nextcloud has over the workflow — there is no separate "writeback" setting to reason about.
 
-| Mode | File content | Pushes to n8n? | Tag |
+| Mode | File content | In a mapping? | Pushes to n8n? |
 |---|---|---|---|
-| **Sync** | Full workflow JSON | Yes — bidirectional | `n8n:sync` |
-| **Link** | Tiny pointer (id, name, URL) | No — click opens n8n | `n8n:link` |
-| **Unmapped** | Full workflow JSON, no longer in a mapping | No | *(none)* |
+| **Sync** | Full workflow JSON | yes | Yes — bidirectional |
+| **Link** | Tiny pointer (id, name, URL) | yes | No — click opens n8n |
+| **Unmapped** | Full JSON, moved *out* of a mapping (archived in n8n, restorable) | no | No |
+| **Ignored** | Full JSON, left *in* a mapped folder but deliberately skipped | yes | No |
 
 ### Sync
 
@@ -37,6 +38,10 @@ A lightweight pointer. The file holds only the workflow's ID, name, and URL — 
 ### Unmapped
 
 When you **move** a sync workflow *out* of its mapped folder, it becomes **unmapped**: Nextcloud keeps the full JSON (and the workflow's identity), while the workflow is archived in n8n. The file is now a free-standing, self-contained copy you can keep anywhere. Move it back into any mapping and the workflow is **restored** in n8n — same workflow, not a new one. An unmapped file is, in effect, a portable archive of a workflow.
+
+### Ignored
+
+Sometimes you want to keep a workflow file **in** its mapped folder but stop syncing it. Tag it `n8n:ignore` and it becomes **ignored**: it stays put and keeps its identity, the workflow is archived in n8n, and every sync (scheduled or manual) skips it. It's the in-place sibling of *unmapped* — same "parked, archived, restorable" idea, but the file never leaves the folder. Remove the `n8n:ignore` tag and it returns to the mapping's default mode.
 
 ---
 
