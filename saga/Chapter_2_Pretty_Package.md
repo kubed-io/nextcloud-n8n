@@ -1086,6 +1086,22 @@ Decision cases still open (need a call before they get live scenarios — `move.
 **c** link rename within its mapping; **d** deleting an unmapped file (trash no-op? purge
 hard-delete the archived workflow?).
 
+#### 14.2b Mode control — reserved tags + re-mode
+
+How a workflow's mode is *chosen* and *changed*, on top of the mapping default:
+
+- **Mapping tag = any name.** The `nextcloud:` prefix is convention only, not required.
+- **Reserved n8n tags (optional, n8n side, app never writes them):** `n8n:sync` / `n8n:link`
+  override one workflow's mode vs the mapping default; `n8n:ignore` skips it. Same vocabulary as
+  the NC file system tags — but on the NC side the app keeps the file tag **authoritative**
+  (always matches the mode metadata), while on the n8n side they're hand-set overrides it only
+  *reads*. (`features/reserved-tags.feature`.)
+- **Re-mode (sync ⇄ link) on a managed file**, identity (`n8n_id`) preserved; sync→link collapses
+  to the pointer, link→sync pulls the full JSON. Triggered three ways: a Files **context-menu
+  toggle**, a manual **retag**, or an **n8n-side tag** applied on the next pull. **Mutual
+  exclusivity** is enforced — exactly one of `n8n:sync`/`n8n:link` per file; adding the second
+  by hand resolves to the just-added one and strips the other. (`features/mode-change.feature`.)
+
 #### 14.3 Attack (two PRs)
 
 - **Phase 1 — model collapse + migration.** `Mapping`/`MappingService` (single `mode`; legacy
