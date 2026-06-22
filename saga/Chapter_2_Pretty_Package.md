@@ -745,7 +745,7 @@ eligibility. Now fully formalized:
 - SPDX `AGPL-3.0-or-later` already declared in `package.json`, `composer.json`, and source
   `SPDX-License-Identifier` headers.
 - `info.xml` uses **`<licence>agpl</licence>`** — confirmed: the official apps use this short
-  form, NOT the SPDX string (see Chapter 3 §3.1). Also fixed the `bugs` URL and added
+  form, NOT the SPDX string (see Chapter 3 §3.2). Also fixed the `bugs` URL and added
   `<repository>` while here.
 
 ### 10. CI workflows — two flows: Tests vs Quality ✅ (implemented)
@@ -1108,4 +1108,8 @@ Chapter 2 is complete when:
    ✅, Dependabot version updates ✅; Dependabot alerts/security updates, secret scanning
    + push protection, dependency review still ☐ (§13 table)
 
-At that point the repo is in a state where Chapter 3 (store submission) is just execution.
+There is no fixed "done" line here — this chapter closes when Kelly judges the app fully
+functional and usable for the market (the §14 refactor + edge cases covered to his
+satisfaction). The moment he does, the work turns from *function* to *identity*: **branding**
+(Chapter 3 §3.1) is the transition, and it's fine for it to start on the tail end of this
+chapter. After branding, Chapter 3's store submission is just execution.
