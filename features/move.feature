@@ -4,12 +4,12 @@
 # restore, not a delete then a create. (COPY is the opposite — always a new
 # instance; see copy.feature.)
 #
-# Model (saga Chapter 4): modes are sync / link / unmapped. "unmapped" is the
+# Model (saga Chapter 2 §14): modes are sync / link / unmapped. "unmapped" is the
 # state a sync file enters when moved OUT of its mapped folder: NC keeps the full
 # JSON + the workflow id + versionId, clears the mapping, and the workflow is
 # archived in n8n. Moving it back into any mapping restores (unarchives) it.
 #
-# @todo until the motion listeners land (saga Chapter 4, Phase 2). CI skips @todo
+# @todo until the motion listeners land (saga Chapter 2 §14, Phase 2). CI skips @todo
 # so this documents the intended behaviour now and goes live as the code lands.
 
 @todo
@@ -65,6 +65,20 @@ Feature: Moving a workflow file is the same workflow leaving and returning
     Then a new workflow is created in n8n from the file
     And the file's mode becomes "sync" in the "nextcloud:beta" mapping
 
+  # Merge UX: the unmapped + mapped duplicate (same id) is a fine, intentional
+  # state — e.g. an admin restored the workflow in n8n and it synced back into the
+  # mapping while the unmapped copy still existed. Moving the unmapped copy back in
+  # then collides with the already-synced file; n8n (the synced copy) is the source
+  # of truth, so the incoming copy is simply deleted. Feels like a merge.
+  Scenario: Moving an unmapped file in when a synced copy already exists merges (deletes the incoming)
+    Given a managed "sync" workflow file in the "nextcloud:alpha" folder
+    And an unmapped copy of that same workflow (same "n8n_id") outside any mapping
+    When I move the unmapped copy into the "nextcloud:alpha" folder
+    Then the app sees the existing synced file with the same "n8n_id"
+    And the incoming unmapped copy is deleted from Nextcloud
+    And the original synced file remains unchanged
+    And nothing is restored or duplicated in n8n
+
   Scenario: Moving a brand-new workflow file into a mapping creates it
     Given a ".n8n.json" file that was never tracked in n8n
     When I move the file into the "nextcloud:alpha" folder
@@ -88,7 +102,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
     And its "n8n_id" and "n8n_versionId" are unchanged
     And nothing changes in n8n
 
-  # ── decision cases (saga Ch4 §4.2 a–d): documented, not yet designed ─────────
+  # ── decision cases (saga Chapter 2 §14.2 a–d): documented, not yet designed ─────────
   # These need a design decision before they get concrete Then-steps:
   #   a. sync moved directly mapping→mapping (different tag): re-tag in place vs
   #      eject+reattach vs block.

@@ -7,7 +7,7 @@
 # Nextcloud distinguishes copy from move at the event layer, which is what lets us
 # treat them oppositely.
 #
-# @todo until the copy listener lands (saga Chapter 4, Phase 2). CI skips @todo so
+# @todo until the copy listener lands (saga Chapter 2 §14, Phase 2). CI skips @todo so
 # this documents the intended behaviour now and goes live as the code lands.
 
 @todo

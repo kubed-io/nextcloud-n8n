@@ -64,6 +64,7 @@ A move in Nextcloud mirrors as the *same workflow* moving in n8n — never a dup
 - **Out of its mapped folder** (sync only): the file becomes **unmapped** — Nextcloud keeps the full JSON and the workflow's ID, and the workflow is **archived** in n8n. Nothing is lost; you simply hold the only live copy in Nextcloud.
 - **Back into any mapping**: if the file still carries its workflow ID, the workflow is **restored** (unarchived) in n8n — the same workflow returns, not a fresh one.
 - **A link** cannot be moved out of its mapping (ejecting a pointer is meaningless); that move is refused with a message.
+- **Merge on collision**: if you move an unmapped copy back into a mapping that *already* holds that workflow (e.g. someone restored it in n8n and it synced back), the app sees the matching workflow ID, keeps the already-synced file (n8n is the source of truth), and simply removes the incoming copy — it feels like the two merged.
 
 📋 spec: [`features/move.feature`](features/move.feature) · 🛠 [`lib/Listener/MoveGuardListener.php`](lib/Listener/MoveGuardListener.php)
 
@@ -99,9 +100,14 @@ If n8n is unreachable on delete, the delete aborts (the file stays) rather than 
 
 📋 spec: [`features/delete.feature`](features/delete.feature) · 🛠 [`lib/Service/DeleteService.php`](lib/Service/DeleteService.php), [`lib/Listener/DeleteToN8nListener.php`](lib/Listener/DeleteToN8nListener.php)
 
-### Reconcile & prune (no duplicates, ever)
+### Manual per-mapping sync (Sync from / Sync to n8n)
 
-Because a move-out archives the workflow in n8n while Nextcloud keeps the copy, a duplicate can briefly appear if someone independently **restores that workflow in n8n** — the next pull would bring it back into its mapped folder while the unmapped copy still exists. The reconcile pass detects this (two files, one workflow ID — one mapped, one unmapped) and **prunes the redundant unmapped copy**, keeping the authoritative n8n-sourced one.
+Each mapping has two on-demand buttons in admin settings, both **scoped to that one mapping**:
+
+- **Sync from n8n** (pull) brings the mapping's tagged workflows into its folder — adding new files, updating existing ones in place (matched by workflow ID, never duplicated), and pruning a mapped file whose workflow no longer carries the tag.
+- **Sync to n8n** (push) sends the mapping's sync files up to n8n.
+
+Both **ignore unmapped files entirely** — those live outside any mapping, so a mapping-scoped sync never touches them. (The unmapped-plus-mapped "duplicate" you can briefly hold after a move-out and an n8n-side restore is fine and intentional; it's resolved at *move* time, not by a sync — see [Moving a workflow](#moving-a-workflow-its-the-same-workflow-leaving-and-coming-back).)
 
 📋 spec: [`features/reconcile.feature`](features/reconcile.feature) · 🛠 [`lib/Service/SyncService.php`](lib/Service/SyncService.php)
 
@@ -137,7 +143,7 @@ Tags are visible as coloured pills in the Files app. They are mutually exclusive
 
 **Nextcloud → n8n** happens on every file save for sync-mode files. The app compares the file's content hash to the last-pushed hash so unchanged files are never pushed twice. Pushes can go via the REST API, a webhook, or both simultaneously.
 
-**n8n → Nextcloud** happens on a schedule you configure, or on-demand via the "Sync from n8n" button in the admin panel. On each pull, the app fetches all workflows carrying the mapped tag, writes or updates the corresponding files, reconciles filenames (matching on workflow ID so renames don't create duplicates), and prunes any redundant unmapped copies.
+**n8n → Nextcloud** happens on a schedule you configure, or on-demand via the per-mapping "Sync from n8n" button. Each pull is **scoped to its mapping**: it fetches the workflows carrying that mapping's tag, writes or updates the corresponding files (matching on workflow ID so renames don't create duplicates), and prunes a mapped file whose workflow has lost the tag. Files outside the mapping — including unmapped workflows — are never touched.
 
 A request-scoped guard prevents the app from pushing its own pull writes back to n8n (the classic bidirectional sync loop problem).
 

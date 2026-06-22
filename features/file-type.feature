@@ -28,7 +28,7 @@ Feature: n8n workflow is a first-class file type
       | nc:metadata-n8n_mapping   |
     And those properties are read-only (PROPPATCH cannot change them)
     # n8n_mode is "sync", "reference" (= link, on-the-wire only), or "unmapped";
-    # n8n_writeback is gone (saga Chapter 4 — mode is the single source of truth).
+    # n8n_writeback is gone (saga Chapter 2 §14 — mode is the single source of truth).
 
   Scenario: The mode property carries the descriptive value
     Given a managed "sync" workflow file

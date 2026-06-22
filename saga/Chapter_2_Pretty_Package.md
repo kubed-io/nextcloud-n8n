@@ -668,8 +668,8 @@ later (some unblock only after infra work):
   behaviour (a link is *pulled* from n8n, not authored; click-opens n8n; delete untags; it
   never pushes; move-out is blocked) is under-specified in `features/`. Add link-specific
   scenarios across create-from-pull, file-type (click-to-open), and delete. *(Note: the
-  `mode` model itself is being reworked in [Chapter 4](Chapter_4_Modes_and_Motion.md) —
-  write these against the new `sync`/`link`/`unmapped` model, not the old mode+writeback.)*
+  `mode` model itself is being reworked in §14 above — write these against the new
+  `sync`/`link`/`unmapped` model, not the old mode+writeback.)*
 - **Admin-owned vs Team Folder is untested.** All integration mappings use
   `use_team_folder=false` (admin-owned) so CI needs no groupfolders app. The Team Folder path
   (`TeamFolderService`, groupfolders mount, the actor group, group-scoped visibility) has
@@ -972,6 +972,97 @@ resolves and auto-closes on merge).
   off those pages — not LLM memory, which would have invented a syntax half of the time.
 
 ---
+
+### 14. The mode-model & motion refactor ☐ (the payoff)
+
+This is what all the testing + devops was *for*: a safety net thick enough to refactor the
+core data model and finally build the deferred file-motion lifecycle without fear. Two linked
+bodies of work — **(1)** collapse the muddled `mode`+`writeback` encoding into one clean,
+descriptive `mode`; **(2)** build the **motion** lifecycle (move-out / move-back / copy /
+merge) that Chapter 1 left as a "planned end state." The specs (`features/*.feature` + the
+README) were written first, as the end-state requirements; the code follows under this item.
+
+> **Status (2026-06-22):** specs authored (PR #27) — every feature file + the README describe
+> the target as if shipped, new behaviour `@todo` so the live suite stays green. Code is
+> Phase 1 (model collapse + migration) then Phase 2 (motion).
+
+#### 14.1 The model — one `mode`, three values
+
+| `mode` | What the file is | Pushes to n8n? | n8n tag |
+|---|---|---|---|
+| **`sync`** | Full workflow JSON, NC-authoritative | Yes (two-way) | `n8n:sync` |
+| **`link`** | Tiny pointer (id, name, URL) | No — click opens n8n | `n8n:link` |
+| **`unmapped`** | A workflow file living outside any mapping | No | *(none)* |
+
+Decisions (locked):
+
+- **Drop `writeback`** — the concept + the `nc:metadata-n8n_writeback` DAV property. Fully
+  inferable from `mode` (`two-way` *was* just `sync`).
+- **Drop `backup` mode.** Redundant with `sync` (sync already keeps the full JSON, so it *is* a
+  backup); its read-only promise was **never enforced** (verified — no edit-disabling anywhere,
+  backup just didn't push); `link` is the implicit read-only option; an `unmapped` file is a
+  fine archive. Less surface, less redundancy. Migration: any `backup` → `sync`.
+- **`link` everywhere** (code, UI, docs, tag). The single exception is the DAV property *value*:
+  a stored value equal to the global `link()` function makes `is_callable()` true and crashes
+  core PROPFIND, so `n8n_mode` for a link stores **`reference`** — isolated to one translation
+  point in `WorkflowMetadata` with a note that `reference` ≡ `link`. `sync`/`unmapped` store as-is.
+- **Index `n8n_mode`** — one descriptive field makes "every sync" / "every unmapped" a real query.
+- **`unmapped` is an explicit, stored `mode`**, not derived — only `sync` files can ever become
+  unmapped (so no info lost), and a single indexed `mode=unmapped` beats a compound query. Only
+  files *ejected from a mapping* get stamped; a never-mapped `.n8n.json` stays untouched
+  (that's "untracked", not "unmapped").
+
+Metadata shape: `n8n_id`, `n8n_versionId`, `n8n_syncedHash` on all; `n8n_mapping` cleared when
+unmapped; `n8n_mode` (indexed) = `sync` | `reference`(=link) | `unmapped`; `n8n_writeback` removed.
+
+#### 14.2 Motion — move, copy, restore, merge
+
+**Move OUT** (sync only; link move-out stays blocked): archive the workflow in n8n
+(`archiveWorkflow`), keep `n8n_id`+`n8n_versionId`, clear `n8n_mapping`, set `mode=unmapped`. NC
+keeps the full JSON, so nothing is lost.
+
+**Move BACK IN** (re-attach / restore / merge):
+- id+versionId present → **unarchive/restore** in n8n (`unarchiveWorkflow`), re-stamp mapping +
+  `mode=sync` (not a fresh create).
+- **Merge on collision** — if the mapping *already* holds a file with that `n8n_id` (e.g. an
+  admin restored it in n8n and it synced back while the unmapped copy still existed), the synced
+  file is source of truth: **delete the incoming unmapped copy**, keep the existing one. Feels
+  like a merge; no n8n call.
+- no id → create-on-land makes a new workflow.
+
+**Copy** (`features/copy.feature`): **always a brand-new instance — strip metadata on every
+copy, everywhere.** Copy within a mapped folder → a *new* workflow in n8n; copy outside → plain
+untracked file; copy of an unmapped file → stripped wherever it lands. This is what makes *move*
+"the same workflow" and *copy* "a new thing."
+
+Move scenario matrix (now in `features/move.feature`): within-mapping (no n8n change) · sync
+out→unmapped+archive · unmapped in→restore · plain in→create · link out→blocked · unmapped
+relocation→no-op · hard-deleted→create · merge-on-collision.
+
+The duplicate state (one unmapped + one mapped, same id) is **fine and intentional** — it
+resolves only at move-in (merge), never by a sync. The manual **Sync from/to n8n** buttons are
+**mapping-scoped** and ignore unmapped files entirely (`features/reconcile.feature`).
+
+Decision cases still open (need a call before they get live scenarios — `move.feature` comments):
+**a** sync moved mapping→mapping (re-tag vs eject+reattach vs block); **b** nested mappings;
+**c** link rename within its mapping; **d** deleting an unmapped file (trash no-op? purge
+hard-delete the archived workflow?).
+
+#### 14.3 Attack (two PRs)
+
+- **Phase 1 — model collapse + migration.** `Mapping`/`MappingService` (single `mode`; legacy
+  `{mode,writeback}`/`reference`/`backup` back-compat), `WorkflowMetadata` (drop `KEY_WRITEBACK`,
+  index `KEY_MODE`, link↔reference translation), `OwnershipTags` (drop `n8n:backup`), every
+  `(mode,writeback)` check → `mode`, admin UI + occ + controllers, a migration `RepairStep`
+  (rewrite mappings config + re-stamp files), **+ run the migration on the live `cloud/nextcloud`
+  pod**, and update `FeatureContext::modeToModel` so the model-only `@todo` specs flip live. Bump
+  version. Clean, shippable.
+- **Phase 2 — motion.** Move-out/in (archive/restore), merge-on-collision, copy-strips, the
+  manual per-mapping sync + within-mapping prune. Flip each `@todo` scenario live as code lands
+  (the create/rename/delete rhythm from §5.3).
+
+Verify: re-grep for `writeback`/`backup` after Phase 1; live-smoke that n8n `unarchive` truly
+restores a workflow our move-out archived (the restore path is load-bearing).
 
 ## Things not on the original list worth noting
 

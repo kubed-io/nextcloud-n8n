@@ -1,39 +1,40 @@
-# Reconcile & prune. The move-out lifecycle (move.feature) can create a transient
-# duplicate: a sync file moved out becomes an UNMAPPED copy in NC while its
-# workflow is archived in n8n. If someone independently restores that workflow in
-# n8n, the mapping's next pull brings it back into the mapped folder — now there
-# are TWO Nextcloud files for one workflow id (one mapped, one unmapped).
+# The two manual sync controls in admin settings, each SCOPED TO A MAPPING:
+#   - "Sync from n8n" (pull): bring the mapping's tagged workflows into its folder.
+#   - "Sync to n8n"   (push): send the mapping's sync files up to n8n.
+# Both reconcile the mapped folder against the workflows carrying that mapping's
+# tag, and both FULLY IGNORE "unmapped" files — those live outside any mapping, so
+# a mapping-scoped sync never sees them. Pruning here is therefore mapping-scoped:
+# it only ever concerns files/workflows inside the mapping.
 #
-# The reconcile pass (part of the n8n→NC pull) detects this by workflow id and
-# prunes the redundant UNMAPPED copy: the n8n-sourced mapped file is authoritative
-# and newer. No duplicates survive a sync.
+# (The "merge" that happens when you MOVE an unmapped file back into a mapping that
+# already holds its workflow is a MOVE-time behaviour, not a sync — see
+# move.feature. The duplicate state, one unmapped + one mapped with the same id, is
+# perfectly fine and intentional; a sync does not touch the unmapped one.)
 #
-# @todo until the reconcile/prune logic lands (saga Chapter 4, Phase 2). CI skips
-# @todo so this documents the intended behaviour now and goes live as code lands.
+# @todo until the manual-sync step defs land (saga Chapter 2 §14). CI skips @todo.
 
 @todo
-Feature: Reconcile prunes a duplicate left by a move-out then n8n-side restore
+Feature: Manual per-mapping sync (Sync from / Sync to n8n)
   As a Nextcloud admin
-  I want a sync pull to remove redundant unmapped copies
-  So that one workflow never ends up as two files
+  I want the per-mapping sync buttons to reconcile just that mapping
+  So that a folder matches its n8n tag on demand, ignoring everything else
 
   Background:
     Given the app is connected to n8n
     And a folder mapped as "sync" to the n8n tag "nextcloud:alpha"
 
-  Scenario: A pull prunes the unmapped copy when its workflow returns to the mapping
-    Given a managed "sync" workflow file in the "nextcloud:alpha" folder
-    And I move the file out to an unmapped location
-    # → file is now "unmapped" (keeps its id); workflow archived in n8n
-    And that workflow is independently restored (unarchived) in n8n
-    And that workflow still carries the "nextcloud:alpha" tag
-    When the scheduled pull for "nextcloud:alpha" runs
-    Then the workflow appears as a mapped file in the "nextcloud:alpha" folder
-    And the redundant unmapped copy is pruned
-    And only one Nextcloud file remains for that workflow id
+  Scenario: Sync from n8n pulls the tagged workflows into the mapped folder
+    Given n8n has workflows tagged "nextcloud:alpha"
+    And an unmapped workflow file exists outside every mapping
+    When the admin clicks "Sync from n8n" for the "nextcloud:alpha" mapping
+    Then each "nextcloud:alpha" workflow appears as a file in the mapped folder
+    And existing files are updated in place — matched by workflow id, never duplicated
+    And a mapped file whose workflow no longer carries the tag is pruned from the folder
+    And the unmapped file is left untouched (it is outside the mapping's scope)
 
-  Scenario: Reconcile leaves a genuinely separate unmapped file alone
-    Given an unmapped workflow file whose workflow is still archived in n8n
-    When the scheduled pull for "nextcloud:alpha" runs
-    Then the unmapped file is not pruned
-    And it keeps its "n8n_id"
+  Scenario: Sync to n8n pushes the mapping's sync files up to n8n
+    Given the "nextcloud:alpha" folder has sync workflow files with local changes
+    And an unmapped workflow file exists outside every mapping
+    When the admin clicks "Sync to n8n" for the "nextcloud:alpha" mapping
+    Then each sync file in the folder is pushed to its workflow in n8n
+    And the unmapped file is not pushed (it is outside the mapping's scope)
