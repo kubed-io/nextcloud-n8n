@@ -640,7 +640,7 @@ Hard-won lessons (the green came after each of these bit):
   occasionally just fails to create runs for a push (event-delivery wedge) — a fresh push or
   PR close/reopen clears it; it is not a quota/billing limit (public repo = unlimited CI).
 
-#### 5.4 First real-instance install (2026-06-22) ✅
+#### 5.5 First real-instance install (2026-06-22) ✅
 
 Deployed the merged `main` build (0.1.1) into the live homelab Nextcloud (NC 33.0.4, the
 `cloud/nextcloud` pod) — the instance had been running the end-of-Chapter-1 0.0.2 copy. Method
@@ -657,6 +657,32 @@ installer in the Nextcloud deployment yet).
   mimetype repair step re-ran (`application/n8n+json` registered), existing mappings preserved,
   zero warn/error log entries. As expected for a refactor, no behavioural change — UI parity
   is the remaining manual confirmation.
+
+#### 5.6 Known coverage gaps (future tasks) ☐
+
+The integration suite green-lit the create/rename/delete *happy paths*, but it leans on a
+narrow slice of the configuration matrix. These cracks are real and worth their own scenarios
+later (some unblock only after infra work):
+
+- **`link` vs `sync` coverage is thin.** Almost every live scenario exercises `sync`. `link`
+  behaviour (a link is *pulled* from n8n, not authored; click-opens n8n; delete untags; it
+  never pushes; move-out is blocked) is under-specified in `features/`. Add link-specific
+  scenarios across create-from-pull, file-type (click-to-open), and delete. *(Note: the
+  `mode` model itself is being reworked in [Chapter 4](Chapter_4_Modes_and_Motion.md) —
+  write these against the new `sync`/`link`/`unmapped` model, not the old mode+writeback.)*
+- **Admin-owned vs Team Folder is untested.** All integration mappings use
+  `use_team_folder=false` (admin-owned) so CI needs no groupfolders app. The Team Folder path
+  (`TeamFolderService`, groupfolders mount, the actor group, group-scoped visibility) has
+  **zero** integration coverage. Future task: stand up groupfolders in the CI stack and add
+  team-folder scenarios — the storage-backend branch is a real fork we never exercise.
+- **Async vs sync push timing is untested.** The admin `push_timing` setting (async via
+  `PushWorkflowJob` vs inline) changes *when* a save reaches n8n. The integration tests drain
+  jobs manually and implicitly assume one path; neither timing is asserted as a distinct
+  behaviour. Future task: scenarios that flip `push_timing` and assert the save lands in n8n
+  under both (inline immediately; async only after the worker runs).
+
+These are **documentation of gaps**, not regressions — the shipped behaviour works; it's the
+*test matrix* that's partial.
 
 ### 6. CONTRIBUTING.md / developer setup doc ✅ (PR #3)
 

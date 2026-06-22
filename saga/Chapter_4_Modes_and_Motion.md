@@ -47,7 +47,7 @@ entirely — it was always inferable from the mode.
   sync file" / "every link" a real indexed metadata query — the "querying by mode much
   easier" win.
 
-### Decision (proposed — confirm before building)
+### Decision (confirmed 2026-06-22)
 
 - **`unmapped` is an explicit, stored `mode` value, not a derived state.** A file that was
   moved out of a mapped folder gets `mode = unmapped` stamped on it. Rationale: querying a
@@ -115,6 +115,33 @@ moment to strip metadata, full stop. Scenarios:
 
 This is what makes **move** feel natural as "the same workflow leaving n8n and coming back"
 (restore), while **copy** is unambiguously "a new thing."
+
+### Move scenario matrix (for the rewritten `features/move.feature`)
+
+The clear-behaviour cases:
+
+| # | Move | Result |
+|---|---|---|
+| 1 | sync, **within** its own mapping (rename / into a subfolder) | stays `sync`/managed; no n8n change |
+| 2 | **sync, out** to an unmapped location | → `unmapped`; **archive** in n8n; keep id+versionId; clear mapping |
+| 3 | **unmapped (has id), into** any mapping | **unarchive/restore** in n8n; → `sync`; re-stamp mapping |
+| 4 | plain `.n8n.json` (never in n8n), into a mapping | create-on-land → new workflow |
+| 5 | **link, out** of its mapping | **blocked** with a message (ejecting a pointer is meaningless) |
+| 6 | link / unmapped, within / to another unmapped spot | relocation only; no n8n change; metadata unchanged |
+| 7 | unmapped (has id), into a mapping, **but the n8n workflow was hard-deleted** | unarchive 404 → fall back to create-on-land |
+
+Cases that **need a decision** before they get a scenario (flagging, not deciding here):
+
+- **`a` — sync moved directly mapping→mapping (different tag).** Re-tag in place
+  (swap mapping A's tag for B's, keep the same workflow)? Or treat as eject-from-A +
+  reattach-to-B? Or block? The old model blocked all mapped→mapped moves.
+- **`b` — nested mappings.** Moving a file into a *subfolder* that belongs to a different
+  mapping (mapping-membership says "nearest enclosing wins"). How does that interact with
+  case `a`?
+- **`c` — link rename within its mapping.** Does the link file's name matter / sync, or is
+  a link's filename purely cosmetic (the n8n workflow name is authoritative)?
+- **`d` — deleting an `unmapped` file** (it still has an id, and its workflow is archived in
+  n8n). Trash → no-op? Purge → hard-delete the archived workflow? (Ties into delete.feature.)
 
 ### Merge / prune (NEW — reconcile duplicates)
 
@@ -210,11 +237,18 @@ a duplicate `n8n_id` (one mapped, one unmapped) is the signal.
       flipping each `@todo` scenario live as its step defs + code land — exactly the rhythm
       that worked for create/rename/delete in Chapter 2 §5.3.
 
-### Open questions for Kelly
+### Resolved (2026-06-22)
 
-- Confirm **explicit `unmapped` mode** (§4.1 proposed decision) vs derived.
-- Any **additional `move.feature` scenarios** you had in mind beyond the four states above?
-- Phase 1 and Phase 2 as **two PRs**, or fold together? (Recommend two — Phase 1 is a clean,
-      shippable cleanup; Phase 2 is riskier new behaviour.)
-- Backup-mapping migration target: **backup → sync** (keep full content) — agree? (Live has
-      none, so this only matters for correctness of the migration code.)
+- ✅ **Explicit `unmapped` mode** (§4.1).
+- ✅ **Two PRs.** Phase 1 = the cleanup **and** the new-metadata migration, so the live data
+      is converted to the new shape up front. Phase 2 = the motion features (move/copy/
+      restore/merge) as an isolated, sizeable body of work across **code + tests + docs**,
+      built on the Phase 1 foundation.
+- ✅ **backup → sync** on migration (keep full content). Live has none; correctness only.
+
+### Still open (decide when we reach them)
+
+- The **move decision cases `a`–`d`** in §4.2 (mapped→mapped, nested mappings, link rename,
+      deleting an unmapped file).
+- Additional `move.feature` scenarios beyond the matrix above — none more from Kelly right
+      now; the matrix + decision-cases is the working set.
