@@ -25,6 +25,27 @@ development story is undocumented. That's what this chapter fixes.
 
 ---
 
+## The epics (this chapter's arc)
+
+A chapter is a large arc; these are the epic-sized units inside it (the numbered §items below
+are the detailed backlog under them). Roughly in order:
+
+| # | Epic | Status | Detail |
+|---|---|---|---|
+| 1 | **DevOps workflows** — publish/test/quality/integration CI | ✅ | §2, §10, §13.1 |
+| 2 | **GitHub project setup** — repo, contributing/agents/standards, PR flow, security | ✅ / ⚠️ | §1, §6–8, §11, §13 |
+| 3 | **Testing: unit** | ✅ | §5.1 |
+| 4 | **Testing: integration** — Behat on real NC + n8n (create/rename/delete live) | ✅ | §5.3 |
+| 5 | **First refactor** — collapse the mode model (sync/link/unmapped; drop backup/writeback) + migrate live data | ☐ | §14 Phase 1 |
+| 6 | **Edge-case features** — the motion lifecycle (move-out/restore, copy-strips, merge) | ☐ | §14 Phase 2 |
+| 7 | **Secondary refactor** — a cleanup pass once the motion features reveal the real shape (scope TBD) | ☐ | §14 (follow-on) |
+
+Epics 1–4 are delivered; **5 is next** (the safe refactor the testing was built for). The
+chapter closes — and **branding** (Ch3 §3.1) begins — when Kelly judges the app fully
+functional and usable for the market.
+
+---
+
 ## The items (loose chronological order; status noted per item)
 
 ### 1. Public repo ✅
