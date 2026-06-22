@@ -1,15 +1,59 @@
 # Chapter 3 — Showtime
 
-> **Prerequisite:** Chapter 2 (Pretty Package) must be complete — a clean, signed, versioned
-> release tarball produced by the CI/CD pipeline is the input to everything here.
+> **Prerequisite:** Chapter 2 (Pretty Package) is functionally complete *to Kelly's
+> satisfaction* — the app does everything it should, the safe-refactor work (Ch2 §14) has
+> covered the edge cases, and a clean, signed, versioned release tarball comes out of the
+> pipeline. There is no fixed checklist for "done"; it's done when it's ready for the market.
 
-The app works. It packages. Now it needs to be on
-[apps.nextcloud.com](https://apps.nextcloud.com) — the official Nextcloud app store — so
-anyone can install it with one click from their admin panel.
+The app works. It packages. Chapter 2 was about *function* — making it do the right thing and
+making it safe to change. Chapter 3 is about *presence* — getting it onto
+[apps.nextcloud.com](https://apps.nextcloud.com), the official Nextcloud app store, so anyone
+can install it with one click.
+
+But there's a hinge between the two, and it deserves to be named: **branding.** The moment the
+app is functionally ready for the market, the work pivots from *what it does* to *what it is* —
+its name, its face, its story. That pivot starts on the tail end of Chapter 2 and is the first
+thing we do in Chapter 3. A good transition makes a good story.
 
 ---
 
-## 3.1 One-time setup (do once, never again)
+## 3.1 Branding — from a functional app to a product
+
+This is the transition. It begins the instant Kelly decides the app is **fully functional and
+usable for the market** (the close of the Chapter 2 refactor work) and carries us into the
+store submission below. Everything mechanical in §3.2+ *consumes the assets this phase
+produces* — the description, the screenshots, the icon, the name. Brand first; submit second.
+
+Deliverables (☐):
+
+- **Name & tagline.** The app id stays `n8n_sync`; the display **name** is "n8n Sync". Land a
+  one-line **summary** (the `<summary>` in `info.xml`, shown under the title in the store) that
+  says what it is and who it's for — e.g. "Your n8n workflows as native Nextcloud files."
+- **Identity / icon.** The app needs its **own** store + app-list icon, distinct from the n8n
+  workflow *mimetype* icon (`img/n8n.svg`, which marks files). Pick an accent colour. This is
+  the face users scan in the store grid and the Files sidebar.
+- **Description copy.** Replace the Phase-0 placeholder `<description>` with real, benefit-led
+  store copy — the rewritten README intro (Modes, Move/Copy lifecycle) is the source material.
+  This is the body of the store listing; write it for a user deciding whether to install.
+- **Screenshots.** The visual proof, telling the story in 3–4 frames: the Files app showing
+  `.n8n.json` files with the n8n icon + mode tags; the admin Settings (mappings + sync); a
+  click opening a workflow in n8n. ≥1 HTTPS URL, each ≤2 MiB (store rule).
+- **Store presentation.** Category (`integration`), keywords, and the first-impression order
+  of the listing.
+- **Repo branding.** README header / banner, the GitHub social-preview image + About blurb +
+  topics, and a consistent voice across README ↔ store ↔ changelog.
+
+**Gate:** none of this should start while the model is still in flux — branding a moving target
+wastes the work. It begins when Kelly calls the function done. (It's fine for the very tail of
+Chapter 2 to bleed into early branding — that overlap *is* the transition.)
+
+The outputs here flow straight into the store mechanics: **description + summary + screenshots →
+`info.xml` (§3.2 Step 1) and store registration (§3.2 Step 3)**, and the **icon** ships in the
+tarball.
+
+---
+
+## 3.2 One-time setup (do once, never again)
 
 ### Step 1 — Fix `appinfo/info.xml`
 
@@ -28,6 +72,10 @@ The store requires at minimum: `id`, `name`, `summary`, `description` (real Engl
 `version`, `licence` (the `agpl` short form is accepted), `author`, `bugs` (URL), and
 `dependencies/nextcloud` with both
 `min-version` and `max-version`.
+
+> The `summary`, `description`, and `screenshot` values are **branding outputs** (§3.1) — this
+> step just drops the finished assets into `info.xml`. Don't write store copy here; write it in
+> the branding phase and paste it in.
 
 ### Step 2 — Generate a signing key and submit the CSR
 
@@ -65,7 +113,7 @@ This is a one-time claim that proves you hold the private key for the app id `n8
 
 ---
 
-## 3.2 Per-release: sign and upload
+## 3.3 Per-release: sign and upload
 
 Every release needs two things beyond what Chapter 2's pipeline already produces:
 
@@ -123,7 +171,7 @@ GitHub release asset URL works.
 
 ---
 
-## 3.3 App store rules checklist
+## 3.4 App store rules checklist
 
 Things that must be true or the app will be rejected / removed:
 
@@ -138,7 +186,7 @@ Things that must be true or the app will be rejected / removed:
 
 ---
 
-## 3.4 What the publish pipeline needs added (Chapter 2 → Chapter 3 delta)
+## 3.5 What the publish pipeline needs added (Chapter 2 → Chapter 3 delta)
 
 The Chapter 2 pipeline produces a tarball. To go to the store, it needs:
 
@@ -154,11 +202,12 @@ The Chapter 2 pipeline produces a tarball. To go to the store, it needs:
    Requires a store API token as a GitHub secret.
 
 3. **`info.xml` fixes** — the schema validation happens server-side on upload; failures
-   return a clear error. Fix the fields in §3.1 before the first upload attempt.
+   return a clear error. Fix the fields in §3.2 (with the copy/screenshots from §3.1 branding)
+   before the first upload attempt.
 
 ---
 
-## 3.5 Sequence (order matters)
+## 3.6 Sequence (order matters)
 
 ```
 Fix info.xml  ──┐

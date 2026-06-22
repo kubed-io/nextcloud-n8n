@@ -1,5 +1,8 @@
 # Deletion semantics differ by mode. Mirrors Nextcloud's two-step trash model.
 # The matrix here is the contract the delete listener must satisfy.
+# Modes (saga Chapter 2 §14): sync / link / unmapped. A file with NO n8n metadata is
+# "untracked" (a plain document) — distinct from "unmapped" (a sync file moved out
+# of its mapping that still carries its id + an archived n8n workflow).
 # LIVE: delete/purge/restore go over WebDAV (incl. the trashbin DAV endpoint);
 # DeleteToN8nListener runs synchronously, and the n8n side is asserted over REST.
 
@@ -34,20 +37,36 @@ Feature: Deleting a workflow file
     When I restore it from the trash
     Then the workflow is unarchived in n8n
 
-  Scenario Outline: Backup and link modes only manage the mapping tag
-    Given a managed "<mode>" workflow file
+  Scenario: Trashing a link only strips the mapping tag
+    Given a managed "link" workflow file
     When I move it to the trash
     Then the mapping tag is stripped from the workflow in n8n
     And the workflow itself is not archived or deleted
 
-    Examples:
-      | mode   |
-      | backup |
-      | link   |
-
-  Scenario: Deleting an unmapped workflow file touches nothing in n8n
-    Given an unmapped ".n8n.json" file
+  Scenario: Deleting an untracked workflow file touches nothing in n8n
+    Given an untracked ".n8n.json" file
     When I delete it
+    Then n8n is not contacted
+
+  # ── unmapped mode (a moved-out sync file: keeps its id, workflow archived) ────
+  # @todo until "unmapped" mode lands (saga Chapter 2 §14, Phase 2). Decision-case d.
+  @todo
+  Scenario: Trashing an unmapped file is a no-op in n8n (already archived)
+    Given an unmapped workflow file that still carries its "n8n_id"
+    When I move it to the trash
+    Then n8n is not contacted
+    And the archived workflow in n8n is left as-is
+
+  @todo
+  Scenario: Purging an unmapped file permanently deletes the archived workflow
+    Given a trashed unmapped workflow file that still carries its "n8n_id"
+    When I purge it from the trash
+    Then the (archived) workflow is permanently deleted in n8n
+
+  @todo
+  Scenario: Restoring an unmapped file from trash touches nothing in n8n
+    Given a trashed unmapped workflow file that still carries its "n8n_id"
+    When I restore it from the trash
     Then n8n is not contacted
 
   # Error-path branch — documented but not wired. Forcing a real transport
