@@ -1040,6 +1040,12 @@ which walks that folder — needs an explicit mode value to know to **skip** it.
 reason `ignored` must be its own mode and can't just be `unmapped`. (Set via `n8n:ignore`; remove
 the tag → back to the mapping default. `ignored` is not a callable string, so it stores as-is.)
 
+**Open-with follows the mode** (a concern distinct from but related to the file type):
+`sync`/`link` have a live workflow, so "Open in n8n" is the default click + context action;
+`unmapped`/`ignored` have no live workflow, so "Open in n8n" is hidden and the **text editor** is
+the default. The file type itself (mimetype, icon, read-only DAV metadata, indexed/queryable
+mode) is `features/file-type.feature`; the openers are `features/open-with.feature`.
+
 Decisions (locked):
 
 - **Drop `writeback`** — the concept + the `nc:metadata-n8n_writeback` DAV property. Fully

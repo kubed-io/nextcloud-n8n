@@ -116,22 +116,31 @@ Both **ignore unmapped files entirely** — those live outside any mapping, so a
 
 📋 spec: [`features/reconcile.feature`](features/reconcile.feature) · 🛠 [`lib/Service/SyncService.php`](lib/Service/SyncService.php)
 
-### A first-class file type: custom icon, click-to-open, DAV metadata
+### A first-class file type: custom mimetype, icon, queryable metadata
 
-A managed workflow isn't a generic JSON blob — it's a proper file type. The app registers the `application/n8n+json` mimetype, so files show the **n8n icon** and a **click opens the workflow directly in n8n** (not a download, not the text editor). And every file's state is exposed over WebDAV: a raw `PROPFIND` returns the metadata in its XML —
+A managed workflow isn't a generic JSON blob — it's a proper file type. The app registers the `application/n8n+json` mimetype, so files show the **n8n icon** instead of a generic JSON glyph. Every file's state is exposed over WebDAV — a raw `PROPFIND` returns the metadata in its XML:
 
 | DAV property | What it contains |
 |---|---|
 | `nc:metadata-n8n_id` | The workflow's ID in n8n |
-| `nc:metadata-n8n_mode` | `sync`, `reference`¹, or `unmapped` |
+| `nc:metadata-n8n_mode` | `sync`, `reference`¹, `unmapped`, or `ignored` |
 | `nc:metadata-n8n_versionId` | The version ID of the last successful sync |
 | `nc:metadata-n8n_mapping` | The mapping this file belongs to (empty when unmapped) |
 
 ¹ `reference` is the on-the-wire value for **link** mode. The two are synonyms; the metadata value is stored as `reference` *only* because Nextcloud's PROPFIND treats a stored value equal to the built-in `link()` function as a callback (so the literal string `link` would crash it). Everywhere else — UI, tag, docs — it's **link**.
 
-These properties are read-only — clients cannot change them via `PROPPATCH`; the sync engine owns them. `n8n_mode` is indexed, so "find every sync workflow" / "find every unmapped file" is a fast metadata query.
+These properties are **read-only** — clients cannot change them via `PROPPATCH`; the sync engine owns them. And because `n8n_mode` is **indexed**, "find every sync workflow" / "every unmapped file" is a fast DAV query (REPORT), not a folder walk.
 
-📋 spec: [`features/file-type.feature`](features/file-type.feature) · 🛠 [`src/files.js`](src/files.js), [`lib/Migration/RegisterMimetype.php`](lib/Migration/RegisterMimetype.php), [`lib/Service/WorkflowMetadata.php`](lib/Service/WorkflowMetadata.php)
+📋 spec: [`features/file-type.feature`](features/file-type.feature) · 🛠 [`lib/Migration/RegisterMimetype.php`](lib/Migration/RegisterMimetype.php), [`lib/Service/WorkflowMetadata.php`](lib/Service/WorkflowMetadata.php)
+
+### Opening a workflow: Open in n8n vs text editor
+
+Closely related to the file type, but driven by the file's **mode**. Two openers:
+
+- **Open in n8n** — jumps straight to the live workflow. Offered for **sync** and **link** files (there's a workflow to open), and it's their default click.
+- **Open with text editor** — edits the raw JSON; always available on any workflow file. For **unmapped** and **ignored** files there's no live workflow, so "Open in n8n" is hidden and the text editor is the default.
+
+📋 spec: [`features/open-with.feature`](features/open-with.feature) · 🛠 [`src/files.js`](src/files.js)
 
 ### Tagging
 
