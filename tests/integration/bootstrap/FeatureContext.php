@@ -606,7 +606,7 @@ final class FeatureContext implements Context {
 		$trashPath = $this->trashbinPathFor($this->currentFilePath);
 		Assert::assertNotNull($trashPath, 'could not find the file in the trashbin to purge');
 		$res = $this->davClient()->request('DELETE', $this->trashHref($trashPath));
-		Assert::assertContains($res->getStatusCode(), [204, 200], 'purge from trash failed');
+		$this->assertStatus($res, [204, 200], 'purge from trash');
 	}
 
 	/** @When I restore it from the trash */
@@ -617,10 +617,10 @@ final class FeatureContext implements Context {
 		$res = $this->davClient()->request('MOVE', $this->trashHref($trashPath), [
 			'headers' => ['Destination' => $dest],
 		]);
-		Assert::assertContains($res->getStatusCode(), [201, 204], 'restore from trash failed: ' . (string)$res->getBody());
+		$this->assertStatus($res, [201, 204], 'restore from trash');
 	}
 
-	/** @Then the workflow is archived (hidden, preserved) in n8n */
+	/** @Then /^the workflow is archived \(hidden, preserved\) in n8n$/ */
 	public function theWorkflowIsArchivedInN8n(): void {
 		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
 		Assert::assertIsArray($wf, "workflow {$this->lastWorkflowId} is gone — it should be archived, not deleted");
@@ -709,9 +709,28 @@ final class FeatureContext implements Context {
 		$this->createdWorkflowIds[] = $id;
 	}
 
-	/** Run one pass of the named background-job class so a queued job executes now. */
+	/**
+	 * Execute every queued job of $jobClass now, deterministically.
+	 *
+	 * `background-job:worker --once` honours the worker's last-run / reservation
+	 * timing, so a job queued microseconds ago is often skipped on an immediate
+	 * pass — which made rename reconciles flaky. Instead we list the jobs of the
+	 * class (JSON) and run each by id with `--force-execute`, which bypasses the
+	 * last-run + reservation gates. Idempotent: the reconcile job no-ops if the
+	 * names are already in sync, so running a stale id is harmless.
+	 */
 	private function drainJobs(string $jobClass): void {
-		$this->occ('background-job:worker --once ' . escapeshellarg($jobClass));
+		$res = $this->occ('background-job:list --class=' . escapeshellarg($jobClass) . ' --output=json');
+		$jobs = json_decode($res['output'], true);
+		if (!is_array($jobs)) {
+			return;
+		}
+		foreach ($jobs as $job) {
+			$id = $job['id'] ?? null;
+			if (is_int($id) || (is_string($id) && $id !== '')) {
+				$this->occ('background-job:execute ' . escapeshellarg((string)$id) . ' --force-execute');
+			}
+		}
 	}
 
 	// ── HTTP plumbing: WebDAV (NC) + REST (n8n) ───────────────────────────────
@@ -741,12 +760,27 @@ final class FeatureContext implements Context {
 		return $this->n8n;
 	}
 
+	/**
+	 * Assert an HTTP response status is in $allowed, throwing a plain, legible
+	 * exception otherwise. Deliberately NOT a PHPUnit assertion: PHPUnit 12's
+	 * failure exporter reaches into PHPUnit\TextUI\Configuration\Registry, which
+	 * is null under Behat (no TextUI bootstrap), so a failing PHPUnit assertion
+	 * here throws an opaque "Registry::get(): ... null returned" TypeError that
+	 * masks the real status. A RuntimeException shows the actual code + body.
+	 *
+	 * @param list<int> $allowed
+	 */
+	private function assertStatus(\Psr\Http\Message\ResponseInterface $res, array $allowed, string $what): void {
+		$code = $res->getStatusCode();
+		if (!in_array($code, $allowed, true)) {
+			throw new \RuntimeException("$what failed: HTTP $code (expected " . implode('/', $allowed) . ")\n" . (string)$res->getBody());
+		}
+	}
+
 	/** Create a top-level folder in the admin's files root (idempotent). */
 	private function davMkdir(string $folder): void {
-		$res = $this->davClient()->request('MKCOL', rawurlencode($folder));
-		$code = $res->getStatusCode();
 		// 201 created, 405 already exists — both are fine for our purposes.
-		Assert::assertContains($code, [201, 405], "MKCOL $folder failed ($code): " . (string)$res->getBody());
+		$this->assertStatus($this->davClient()->request('MKCOL', rawurlencode($folder)), [201, 405], "MKCOL $folder");
 		if (!in_array($folder, $this->createdFolders, true)) {
 			$this->createdFolders[] = $folder;
 		}
@@ -754,15 +788,13 @@ final class FeatureContext implements Context {
 
 	/** PUT file content at a path under the user's files root. */
 	private function davPut(string $path, string $body): void {
-		$res = $this->davClient()->request('PUT', $this->davEncode($path), ['body' => $body]);
-		$code = $res->getStatusCode();
-		Assert::assertContains($code, [201, 204], "PUT $path failed ($code): " . (string)$res->getBody());
+		$this->assertStatus($this->davClient()->request('PUT', $this->davEncode($path), ['body' => $body]), [201, 204], "PUT $path");
 	}
 
 	/** GET a file's content. */
 	private function davGet(string $path): string {
 		$res = $this->davClient()->request('GET', $this->davEncode($path));
-		Assert::assertSame(200, $res->getStatusCode(), "GET $path failed: " . (string)$res->getBody());
+		$this->assertStatus($res, [200], "GET $path");
 		return (string)$res->getBody();
 	}
 
@@ -777,13 +809,12 @@ final class FeatureContext implements Context {
 		$res = $this->davClient()->request('MOVE', $this->davEncode($from), [
 			'headers' => ['Destination' => $dest, 'Overwrite' => 'F'],
 		]);
-		Assert::assertContains($res->getStatusCode(), [201, 204], "MOVE $from → $to failed: " . (string)$res->getBody());
+		$this->assertStatus($res, [201, 204], "MOVE $from → $to");
 	}
 
 	/** DELETE a file (asserting success → trash). */
 	private function davDelete(string $path): void {
-		$code = $this->davDeleteStatus($path);
-		Assert::assertContains($code, [204, 200], "DELETE $path failed ($code)");
+		$this->assertStatus($this->davClient()->request('DELETE', $this->davEncode($path)), [204, 200], "DELETE $path");
 	}
 
 	/** DELETE a file, returning the raw status (so abort scenarios can inspect it). */
