@@ -17,33 +17,33 @@ use OCP\SystemTag\TagNotFoundException;
 use Psr\Log\LoggerInterface;
 
 /**
- * Owns the NC system tags this app puts on the files it manages — one per
- * effective state (a coloured pill the user sees in Drive):
+ * Owns the NC system tags this app puts on the files it manages — one per mode
+ * (a coloured pill the user sees in the Files app):
  *
- *   n8n:sync    — full workflow JSON; two-way (NC edits push back to n8n).
- *   n8n:backup  — full workflow JSON; read-only backup (edits only from n8n).
- *   n8n:link    — a small pointer / deep link to a workflow that lives in n8n.
+ *   n8n:sync  — full workflow JSON; edits push back to n8n.
+ *   n8n:link  — a small pointer / deep link to a workflow that lives in n8n.
  *
- * Why both these tags AND Files-Metadata? Tags are human-visible + survive a
- * metadata wipe, and let a user opt a hand-made file in. Metadata is the
- * authoritative machine store.
+ * (saga Ch2 §14: `n8n:backup` was dropped along with backup mode — it migrates to
+ * `n8n:sync`. The old `n8n:reference` tag was renamed to `n8n:link`. Both are
+ * stripped as legacy on re-tag.)
  *
- * NOTE on "link"/"reference" and "backup"/"read-only": these are synonyms. The
- * user-facing tags + UI say "link"/"backup"; the metadata value + Mapping
- * constants say "reference"/"readonly". Only the *metadata value* `link` is
- * forbidden (it is `is_callable()` and crashes PROPFIND — see WorkflowMetadata);
- * tag names have no such constraint.
+ * On the Nextcloud side these tags are **authoritative**: the app keeps exactly one
+ * on each managed file, matching the file's mode metadata. (The same `n8n:sync` /
+ * `n8n:link` vocabulary may also be set by hand on a *workflow in n8n* as an
+ * optional override — but the app only reads those; it never writes them in n8n.)
+ *
+ * Why both these tags AND Files-Metadata? Tags are human-visible, survive a metadata
+ * wipe, and let a user opt a hand-made file in. Metadata is the authoritative store.
  */
 final class OwnershipTags {
 	public const TAG_SYNC = 'n8n:sync';
-	public const TAG_BACKUP = 'n8n:backup';
 	public const TAG_LINK = 'n8n:link';
 
-	/** All tags this app manages — used to scrub competing assignments. */
-	public const ALL = [self::TAG_SYNC, self::TAG_BACKUP, self::TAG_LINK];
+	/** All tags this app currently manages — used to scrub competing assignments. */
+	public const ALL = [self::TAG_SYNC, self::TAG_LINK];
 
-	/** Old tag names stripped on re-tag (n8n:reference -> n8n:link). */
-	private const LEGACY = ['n8n:reference'];
+	/** Old tag names stripped on re-tag (n8n:reference → n8n:link; n8n:backup → n8n:sync). */
+	private const LEGACY = ['n8n:reference', 'n8n:backup'];
 
 	public function __construct(
 		private ISystemTagManager $tagManager,
@@ -53,25 +53,23 @@ final class OwnershipTags {
 	}
 
 	/**
-	 * Pick the tag for an effective state. Throws on an unknown combination so a
-	 * caller bug surfaces rather than mis-tagging.
+	 * Pick the tag for a mode. Throws on a mode that has no file tag (the producing
+	 * behaviours for unmapped/ignored are saga Ch2 §14 Phase 2; sync/link only here).
 	 */
-	public static function tagFor(string $mode, ?string $writeback): string {
-		if ($mode === Mapping::MODE_REFERENCE) {
-			return self::TAG_LINK;
-		}
-		if ($mode === Mapping::MODE_SYNC) {
-			return $writeback === Mapping::WRITEBACK_READONLY ? self::TAG_BACKUP : self::TAG_SYNC;
-		}
-		throw new \InvalidArgumentException('Unknown mode for ownership tag: ' . $mode);
+	public static function tagFor(string $mode): string {
+		return match ($mode) {
+			Mapping::MODE_SYNC => self::TAG_SYNC,
+			Mapping::MODE_LINK => self::TAG_LINK,
+			default => throw new \InvalidArgumentException('Unknown mode for ownership tag: ' . $mode),
+		};
 	}
 
 	/**
 	 * Stamp the right ownership tag on a file id and strip any of our other tags
 	 * (incl. legacy names). Idempotent — safe to call on every sync run.
 	 */
-	public function apply(int $fileId, string $mode, ?string $writeback): void {
-		$desiredName = self::tagFor($mode, $writeback);
+	public function apply(int $fileId, string $mode): void {
+		$desiredName = self::tagFor($mode);
 		$desiredTag = $this->ensureTag($desiredName);
 		$objId = (string)$fileId;
 

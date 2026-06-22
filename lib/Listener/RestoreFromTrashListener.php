@@ -69,15 +69,13 @@ final class RestoreFromTrashListener implements IEventListener {
 			return;
 		}
 		$mode = (string)($meta[WorkflowMetadata::KEY_MODE] ?? '');
-		$writeback = $meta[WorkflowMetadata::KEY_WRITEBACK] ?? null;
-		$writeback = is_string($writeback) && $writeback !== '' ? $writeback : null;
 		$mappingId = $meta[WorkflowMetadata::KEY_MAPPING] ?? null;
 		$mapping = is_string($mappingId) && $mappingId !== ''
 			? $this->mappings->getById($mappingId)
 			: null;
 
 		try {
-			$this->deleteService->restore($id, $mode, $writeback, $mapping);
+			$this->deleteService->restore($id, $mode, $mapping);
 		} catch (\Throwable $e) {
 			// Log + swallow: see class docblock for rationale.
 			$this->logger->warning('n8n_sync restore: n8n-side restore failed; NC file already back', [

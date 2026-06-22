@@ -76,8 +76,6 @@ final class DeleteToN8nListener implements IEventListener {
 			return;
 		}
 		$mode = (string)($meta[WorkflowMetadata::KEY_MODE] ?? '');
-		$writeback = $meta[WorkflowMetadata::KEY_WRITEBACK] ?? null;
-		$writeback = is_string($writeback) && $writeback !== '' ? $writeback : null;
 		$mappingId = $meta[WorkflowMetadata::KEY_MAPPING] ?? null;
 		$mapping = is_string($mappingId) && $mappingId !== ''
 			? $this->mappings->getById($mappingId)
@@ -86,9 +84,9 @@ final class DeleteToN8nListener implements IEventListener {
 		$isHardStep = $this->isInTrashbin($node->getPath());
 		try {
 			if ($isHardStep) {
-				$this->deleteService->hardDelete($id, $mode, $writeback);
+				$this->deleteService->hardDelete($id, $mode);
 			} else {
-				$this->deleteService->softDelete($id, $mode, $writeback, $mapping);
+				$this->deleteService->softDelete($id, $mode, $mapping);
 			}
 		} catch (\Throwable $e) {
 			$this->logger->warning('n8n_sync ' . ($isHardStep ? 'hard' : 'soft') . '-delete failed; aborting NC delete', [

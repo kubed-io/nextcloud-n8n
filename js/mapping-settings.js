@@ -5,7 +5,7 @@
  * Folder-mapping admin handlers (vanilla JS, no build step).
  *
  * One card per mapping. The single "Mode" selector has three values
- * (reference / sync / readonly) mapped to the backend's {mode, writeback} pair.
+ * a single Mode value (sync / link) — saga Ch2 §14 (writeback/backup dropped).
  * Groups are a wrapping checkbox list. Available groups + Team Folder
  * availability are embedded on the root element's data-* attributes.
  */
@@ -54,15 +54,9 @@
 		});
 	}
 
-	// Map the single Mode selector value -> backend {mode, writeback}.
-	function modeToBackend(sel) {
-		if (sel === 'reference') { return { mode: 'reference', writeback: null }; }
-		if (sel === 'readonly') { return { mode: 'sync', writeback: 'readonly' }; }
-		return { mode: 'sync', writeback: 'two-way' }; // 'sync'
-	}
-
 	function readCard(card) {
-		var m = modeToBackend(card.querySelector('.js-mode').value);
+		// Mode is a single value now: 'sync' or 'link' (saga Ch2 §14 — writeback gone).
+		var mode = card.querySelector('.js-mode').value === 'link' ? 'link' : 'sync';
 		var groups = [];
 		Array.prototype.forEach.call(
 			card.querySelectorAll('.js-groups input[type="checkbox"]:checked'),
@@ -74,8 +68,7 @@
 			n8n_tag: card.querySelector('.js-n8n-tag').value.trim(),
 			team_folder: card.querySelector('.js-team-folder').value.trim(),
 			nc_groups: groups,
-			mode: m.mode,
-			writeback: m.writeback,
+			mode: mode,
 			use_team_folder: tfEl ? tfEl.checked : true,
 		};
 	}
@@ -187,9 +180,8 @@
 			+     '<input type="text" class="js-n8n-tag" placeholder="nextcloud:tasking" /></div>'
 			+   '<div class="n8n-sync-field nf-mode"><label>' + t('n8n_sync', 'Mode') + info(DESC.mode) + '</label>'
 			+     '<select class="js-mode">'
-			+       '<option value="reference">' + t('n8n_sync', 'Link (reference)') + '</option>'
-			+       '<option value="sync" selected>' + t('n8n_sync', 'Sync (two-way)') + '</option>'
-			+       '<option value="readonly">' + t('n8n_sync', 'Backup (read-only)') + '</option>'
+			+       '<option value="sync" selected>' + t('n8n_sync', 'Sync') + '</option>'
+			+       '<option value="link">' + t('n8n_sync', 'Link') + '</option>'
 			+     '</select></div>'
 			+   '<div class="n8n-sync-field nf-folder"><label>' + t('n8n_sync', 'Folder') + info(DESC.folder) + '</label>'
 			+     '<input type="text" class="js-team-folder" placeholder="n8n" /></div>'
