@@ -1293,6 +1293,55 @@ Still pending for the wider Phase 2: copy-strips (`copy.feature`), manual per-ma
 sync/prune (`reconcile.feature`), `ignored` mode + reserved tags, mode-change toggle, and the
 decision-cases a–d. The Phase-1 live-pod migration (§14.2c item f) is also still open.
 
+#### 14.5 Phase-2 motion — copy (shipped 2026-06-22)
+
+The second motion slice, and the deliberate mirror of §14.4's move: where a **move** is the
+SAME workflow relocating, a **copy** is ALWAYS a brand-new instance. Nextcloud splits the two at
+the event layer — a copy fires `NodeCopiedEvent`, a move fires `NodeRenamedEvent` — which is the
+whole reason we can treat them oppositely from one place each.
+
+**What shipped (live + tested):**
+- **`CopyService`** (new) — `onCopy(File)`: (1) **strip identity** — wipe the copy's managed
+  metadata (`WorkflowMetadata::clear` → `IFilesMetadataManager::deleteMetadata`) and ownership
+  tags (`OwnershipTags::clear`), wrapped in the `SyncGuard`; (2) **register if mapped** — if the
+  copy landed in a mapping, `CreateService::createForFile` mints a brand-new workflow (it builds
+  the create body from name/nodes/connections/settings only — it never reads an `id` out of the
+  JSON, so a copy can't reuse the original's id even in principle). A copy outside any mapping is
+  left a plain, untracked file.
+- **`CopyListener`** (new, on `NodeCopiedEvent`) — the thin event adapter: guard/`.n8n.json`
+  bail checks, then `CopyService::onCopy($event->getTarget())`. Failures logged + swallowed.
+- **`WorkflowMetadata::clear` / `OwnershipTags::clear`** (new) — the wipe primitives. `clear` is
+  idempotent (NC's `deleteMetadata` no-ops on a file with no record; tag-unassign is guarded by
+  `haveTag`).
+- **`copy.feature`** — flipped fully live (all four scenarios): copy-within-mapping → new
+  workflow; copy-outside → plain file, nothing created; copy-of-unmapped-outside → stripped,
+  original keeps its id; copy-of-unmapped-into-mapping → new workflow, original's (archived)
+  workflow untouched. Harness gained a `davCopy` (WebDAV `COPY`) helper + the copy step defs,
+  tracking the copy as a second workflow id (`copyWorkflowId`) so "two distinct workflows" and
+  "original unchanged" are real assertions, and registering it for teardown.
+- **Tests** — `CopyServiceTest` (2 cases: strip+create in a mapping, strip-only outside). 53
+  unit tests green in the pod; cs clean; `behat --dry-run` 25 live scenarios, 0 undefined.
+
+**Design note — why a strip at all if NC doesn't copy metadata?** Confirmed against the live
+pod: core's FilesMetadata does **not** listen to `NodeCopiedEvent`, and system tags are
+object-mapped by fileid, so a copy already lands with a fresh, empty identity. The explicit strip
+is therefore belt-and-suspenders — but cheap, idempotent, and it turns "a copy starts clean" from
+*an accident of core internals we don't control* into *a guarantee this app makes*. Worth it: it's
+the one place the saga singled out as "the single safest point to strip metadata," and if core
+ever does propagate metadata on copy, this is already correct.
+
+**Lessons (don't relearn):**
+- **`NodeCopiedEvent` lives in `OCP\Files\Events\Node` and extends `AbstractNodesEvent`** —
+  `getSource()` / `getTarget()` (two Nodes), not the single-node `getNode()` of
+  `NodeWrittenEvent`. The target is the new copy.
+- **A copy does NOT fire `NodeWrittenEvent`** — so create-on-land (which listens on
+  Written + Renamed) never sees a copy. That gap is exactly why copy needs its own listener; it
+  isn't redundant with `CreateInN8nListener`.
+
+Still pending for the wider Phase 2: manual per-mapping sync/prune (`reconcile.feature`),
+`ignored` mode + reserved tags, mode-change toggle, merge-on-collision, and decision-cases a–d.
+The Phase-1 live-pod migration (§14.2c item f) is also still open.
+
 ## Things not on the original list worth noting
 
 A few items that naturally belong in this chapter:

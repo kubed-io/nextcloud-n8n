@@ -176,6 +176,25 @@ Long version in [CONTRIBUTING.md](CONTRIBUTING.md). Short version:
 If you're working on behalf of a human, **point them at CONTRIBUTING.md** rather
 than re-explaining the flow each session.
 
+### Shape of a feature change
+
+Features here follow one repeatable shape — see **[CONTRIBUTING.md → Anatomy of a
+feature change](CONTRIBUTING.md#anatomy-of-a-feature-change)** for the full version.
+In short, a feature PR touches:
+
+- a **feature file** in [`features/`](features/) — Gherkin first; flip its `@todo`
+  scenario live in the same PR as the code (keep it DRY, `behat --dry-run` clean);
+- the **code** in [`lib/`](lib/) — `Service` (logic) + thin `Listener`/`Controller`,
+  wired in `AppInfo/Application.php`;
+- **tests** — a unit test in [`tests/unit/`](tests/unit/) + the step defs in
+  `FeatureContext.php`;
+- **README** updates when user-facing behaviour changes;
+- a **`## [Unreleased]`** changelog entry.
+
+Two artifacts split by who's driving: **humans open an issue** to track the work;
+**agents update the [saga](saga/)** (the durable "why" + lessons + remaining `@todo`
+for the next session). Do the saga update — it's your memory across sessions.
+
 ---
 
 ## Principles for AI work in this repo

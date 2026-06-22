@@ -94,6 +94,25 @@ final class OwnershipTags {
 		}
 	}
 
+	/**
+	 * Strip every ownership tag this app manages (current + legacy) from a file.
+	 * Used when a COPY lands (saga Ch2 §14 `copy.feature`): the copy must start with
+	 * no n8n identity, so it carries none of our pills. Idempotent.
+	 */
+	public function clear(int $fileId): void {
+		$objId = (string)$fileId;
+		foreach (array_merge(self::ALL, self::LEGACY) as $name) {
+			try {
+				$tag = $this->tagManager->getTag($name, true, true);
+			} catch (TagNotFoundException) {
+				continue;
+			}
+			if ($this->tagMapper->haveTag([$objId], 'files', $tag->getId())) {
+				$this->tagMapper->unassignTags($objId, 'files', [$tag->getId()]);
+			}
+		}
+	}
+
 	/** True if the file carries any of our ownership tags (cheap second signal). */
 	public function isOwned(int $fileId): bool {
 		$objId = (string)$fileId;
