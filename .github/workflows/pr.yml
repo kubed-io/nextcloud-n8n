@@ -1,10 +1,6 @@
 name: 🔀 PR
 
-# Lightweight PR-only housekeeping that doesn't belong in the Tests or Quality
-# loops: assign the PR author to their own PR, and verify CHANGELOG.md has a
-# fresh entry under [Unreleased]. Both checks only make sense on a pull_request
-# event — there is no author to assign or diff to inspect on a push-to-main —
-# so this workflow only triggers there.
+# Ensure the PR owner is set and they added to the changleog. 
 
 on:
   pull_request:
