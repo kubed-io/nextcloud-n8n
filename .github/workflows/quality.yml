@@ -27,10 +27,6 @@ on:
     branches:
     - main
 
-concurrency:
-  group: quality-${{ github.ref }}
-  cancel-in-progress: true
-
 jobs:
 
   php:
