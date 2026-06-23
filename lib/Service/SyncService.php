@@ -430,10 +430,11 @@ final class SyncService {
 	}
 
 	/**
+	 * Ignored files are kept OUT of $index (so prune leaves them) but their n8n ids
+	 * are collected into $ignoredIds, so the pull can skip re-pulling them (see pullOne).
+	 *
 	 * @param array<string,\OCP\Files\Node> $index
-	 * @param array<string,true> $ignoredIds Receives the n8n ids of `ignored` files
-	 *   (kept OUT of $index so prune leaves them, but surfaced so the pull can skip
-	 *   re-pulling them — see pullOne).
+	 * @param array<string,true> $ignoredIds
 	 */
 	private function collectManaged(Folder $folder, Mapping $mapping, array &$index, array &$ignoredIds): void {
 		foreach ($folder->getDirectoryListing() as $node) {
