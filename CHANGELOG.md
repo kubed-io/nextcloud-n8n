@@ -29,11 +29,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Workflow files now offer mode-aware openers — **Open in n8n** (shown only when a live workflow exists, i.e. `sync`/`link`) and **Open with text editor** (always available); a plain click defaults to n8n for `sync`/`link` and to the text editor otherwise.
 - Optional, per-workflow **reserved n8n tags** read at pull time — `n8n:sync` / `n8n:link` override a mapping's default mode for one workflow, and `n8n:ignore` excludes one (never pulled). Hand-tagging a managed file `n8n:ignore` in Nextcloud gives it the new **`ignored`** mode: the file stays put and keeps its id while the workflow is archived in n8n and every sync skips it. The app only ever reads these tags off workflows — it never writes them.
 - Workflow files are a **first-class file type** over WebDAV — they carry the custom `application/n8n+json` mimetype (and the n8n icon), and a desktop client's PROPFIND sees the four `nc:metadata-*` properties (`n8n_id`, `n8n_mode`, `n8n_mapping`, `n8n_managed`). Those properties are **read-only** (a PROPPATCH against them is rejected — the sync engine owns them), and `n8n_mode` carries the descriptive value (e.g. `sync`, `unmapped`).
+- Folder mappings **nest** — a mapping on a subfolder of an already-mapped folder takes precedence for files inside it (the nearest-enclosing mapping wins), so a workflow's membership is always the closest mapped folder above it.
 
 ### Changed
 
 - Folder mappings collapse to a single mode — `sync` or `link` (the `backup` mode and the separate `writeback` setting are gone; `sync` is the former two-way). Existing mappings auto-migrate the first time they're read.
 - README + feature specs rewritten to the target model: modes are `sync` / `link` / `unmapped` (no `backup`, no `writeback`), with the move (same-workflow / restore), copy (always-new), and reconcile/prune lifecycle. Spec-only; behaviour change tracked in saga Chapter 3.
+- The Files context-menu **Toggle n8n mode** action now flips a file `sync` ⇄ `link` in one click (it assigns the opposite `n8n:sync` / `n8n:link` tag and the listener re-modes it), instead of pointing at the Tags sidebar; shown only for `sync`/`link` files.
 
 ### Tests
 
@@ -41,6 +43,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unit tests for the move lifecycle (`MotionService`: archive-on-move-out, restore-on-move-in, hard-deleted create-fallback, 404-idempotency) and live `move.feature` scenarios over WebDAV; Gherkin Backgrounds DRYed to a single `the app is connected to n8n` step.
 - Unit tests for the copy lifecycle (`CopyService`: strip-then-create in a mapping, strip-only outside one) and live `copy.feature` scenarios over WebDAV.
 - Integration `FeatureContext` split from one 1300-line class into per-concern step traits (`bootstrap/Steps/`) + transport/setup traits (`bootstrap/Support/`); behaviour-identical, dry-run clean.
+- Integration suite now proves the `ignored` mode end-to-end — the mode-aware openers (Open in n8n hidden, text editor the default) and the read-only `n8n_mode` DAV value for an ignored file.
+- Unit + live integration coverage for **nested folder mappings** — `MappingService::resolveForPath` nearest-enclosing resolution (deepest mapped folder wins; siblings sharing a name prefix are not swallowed) and the `mapping-membership.feature` scenarios proving membership over WebDAV.
 
 ## [0.1.2] - 2026-06-22
 

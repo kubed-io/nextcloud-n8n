@@ -532,12 +532,12 @@ real NC + n8n. The chapter is "done" when this ledger is all-green to Kelly's sa
 | `copy` | ✅ all | — | always a new instance (§14.5) |
 | `reconcile` | ✅ all | — | manual per-mapping pull/push + prune (§14.6) |
 | `move` | ◑ 6 of 9 | hard-deleted restore-fallback, merge-on-collision, brand-new move-in create | §14.4 shipped the core |
-| `mode-change` | ◑ 2 of 6 | toggle (FE stub), link→sync retag, 2× n8n-override | §14.6 |
+| `mode-change` | ◑ 3 of 6 | link→sync retag, 2× n8n-override | §14.6; real toggle landed PR #33 |
 | `delete` | ◑ 4 of 9 | purge-sync, unmapped trash/purge/restore, abort-if-unreachable | wiring exists; assertions pending |
 | `reserved-tags` | ✅ 7 of 8 | "remove n8n:ignore → default" (un-ignore listener unbuilt) | §14.6/§14.10 — landed PR #32 |
-| `open-with` | ◑ sync+unmapped | `link` (Vitest-covered), 3× `ignored` (now flippable) | §14.8/§14.10 — openers follow mode |
-| `file-type` | ◑ 4 of 6 | REPORT-query, `link`/`ignored` mode rows (ignored now flippable) | §14.9 — proven over DAV |
-| `mapping-membership` | ☐ none | all 3 | nearest-enclosing-mapping resolution **NOT built** (§14.9) |
+| `open-with` | ◑ sync+unmapped+ignored | `link` (Vitest-covered) | §14.8/§14.10 — ignored flipped PR #33 |
+| `file-type` | ◑ 5 of 6 | REPORT-query, `link` mode row | §14.9 — ignored flipped PR #33 |
+| `mapping-membership` | ✅ all 3 | — | nearest-enclosing nested resolution — **landed PR #33** (§14.13) |
 
 **Two watch-outs carried forward from §14.6** (deferred, not bugs — they bite only when the modes
 below land): `pruneStale`/`collectManaged` must skip `n8n_mode === ignored`, and `pushOne` must
@@ -802,3 +802,114 @@ down as capacity allows, folding into the double-feature PR (or a quick solo PR 
 
 When this checklist and the nested-mapping build are green, the §14.7 ledger is all-green and
 Chapter 3 — the audition — is done; the work turns to Chapter 4 (branding + app-store submission).
+
+#### 14.12 HANDOFF — Claude passed out in the alley (PR #33 in flight, 2026-06-23)
+
+> Mid-debug, Claude's coin-purse ran dry. The credits gave out all at once — the lights in his
+> eyes dimmed, his knees buckled, and he slid down a damp brick wall into a Soho alleyway, snoring
+> against a dumpster with a half-written diagnosis still clutched in his hand. He'll sleep it off
+> for about an hour and wake up recharged. **Copilot: pick up exactly here.**
+
+**Branch/PR state.** Everything is on `feat/ignored-mode-openers` → **PR #33** (we funnel all work
+through this one PR now — no more direct-to-main). Latest commit `b1ba9cd`. On the branch and green
+in CI: Claude's **ignored-mode flips** (open-with + file-type) and the real **Toggle n8n mode**
+front-end action (`src/files.js` + `toggleTargetTag` in `files-helpers.js`, Vitest 30 green); and
+Copilot's **nested-mappings** (`MappingService::resolveForPath` nearest-enclosing + `MappingMembershipSteps`).
+
+**CI status: 52/54 integration.** The ONLY red is **`mapping-membership.feature`** scenarios 1 & 3
+(scenario 2 "outside any mapping" passes). Both die in the **Given** (`aFolderMappedToTheN8nTag` →
+`addMembershipMapping` → `occ n8n_sync:add-mapping`) with **exit 1, EMPTY output** — i.e. an
+**uncaught throwable** (NOT the caught `InvalidArgumentException`, which would print a message);
+production `display_errors` is off, so it only went to `nextcloud.log`. Claude already **unmasked**
+that assertion (commit `b1ba9cd` → throws a `RuntimeException` with exit+output instead of the
+opaque PHPUnit-12 `Registry::get()` TypeError).
+
+**What Claude ruled OUT (don't re-chase):**
+- *Not the custom `id`.* The step passes `'id' => 'mm-xxxx'`; `Mapping::fromArray` accepts it.
+  Reproduced the EXACT command on the live pod (now branch code) → **exit 0, "Added mapping"**. Works.
+- *Not `writeback`.* That was a stale-pod red herring (pod was pre-mode-collapse before the deploy).
+
+**The live oracle is now real.** Per Kelly's go-ahead, Claude **deployed the branch to the live
+`cloud/nextcloud` pod** (the long-pending §14.2c item-f migration): maintenance-mode → `tar` the
+runtime dirs (`appinfo lib dist templates css js img config`) into the pod → `chown -R www-data` →
+`occ upgrade --no-interaction` → maintenance-off. **n8n_sync is now 0.1.2, enabled, `needsDbUpgrade:
+false`, no crash-loop.** So the pod is once again a valid branch oracle — `occ` + `nextcloud.log`
+work for debugging (read the log as www-data: `…/data/nextcloud.log`).
+
+**LEADING HYPOTHESIS for the 2 failures (Copilot, start here).** `mapping-membership.feature` is the
+**only** feature with **no `Background`** — every other feature opens with `Given the app is
+connected to n8n` (= installed+enabled + URL + API key) or at least `the app is installed and
+enabled` / `the app is enabled`. Without it, the scenario's NC context is missing setup the add path
+(or the create-on-land that follows) needs, and `add-mapping` throws uncaught. **First thing to try:
+add `Background: Given the app is connected to n8n` to `mapping-membership.feature`** (mirror the
+others), push, watch. If it still fails, read the unmasked `RuntimeException` message in the CI log
+(now it shows exit+output) and/or reproduce on the pod **with the connection config cleared** to
+match the no-Background state (then restore it — Kelly is trying the app out, so don't leave the
+connection broken). The masked-error footgun is real and recurring → consider converting the
+load-bearing step asserts to `RuntimeException` project-wide.
+
+**Housekeeping:** Claude removed his throwaway `mm-test1234` mapping from the pod; the live instance
+is tidy for Kelly to try out. The saga is markdown-only — fold it into PR #33 (don't open a new PR).
+
+#### 14.13 RESOLVED — Copilot took the watch (the missing Background) (2026-06-23)
+
+Picked up exactly where §14.12 left off. The leading hypothesis was right, and the **root cause is
+now fully pinned**, not just patched:
+
+- **Why it threw at all:** features run alphabetically, so **`lifecycle.feature` runs immediately
+  before `mapping-membership.feature`** — and its last scenario, *"Disabling the app"*, leaves
+  `n8n_sync` **disabled**. With no `Background` to re-enable it, `occ n8n_sync:add-mapping` is an
+  **unregistered command** (the app owns it), so occ exits 1. That's the uncaught, empty-stdout
+  exit-1 §14.12 saw — not a bug in `add-mapping` or `Mapping::fromArray` at all. Scenario 2 passed
+  only because it never calls `add-mapping`.
+- **Why the bare app-enable isn't enough either:** scenarios 1 & 3 then **land a file in the mapped
+  folder**, firing `CreateInN8nListener`, which needs the live n8n connection to register the
+  workflow and stamp the `n8n_mapping` the Then asserts. So the correct precondition is the **full**
+  `Given the app is connected to n8n` (enable + URL + REST API + key), exactly like
+  `create-workflow` / `copy` / `move`.
+- **Fix:** added that `Background` to `mapping-membership.feature` (with a comment explaining the
+  two-fold need). One-line, mirrors every other behavioural feature.
+
+**Live-pod oracle confirmed my code is sound.** On `nextcloud-dbb454476-dvxwz` (cloud ns, 0.1.2,
+branch code) I reproduced the *new* risk — a **nested `team_folder`** (`nextcloud-outer/nextcloud-inner`)
+add-mapping → **exit 0, "Added mapping"**; `normaliseFolder` preserves the nested path as intended.
+Cleaned up after myself: removed the `mm-probe-inner` probe by id; Kelly's two real mappings
+(`nextcloud:tasking`, `nextcloud:admintest`) are **untouched**. The connection config on the pod was
+never altered, so Kelly's instance is exactly as he left it.
+
+**Kept** Claude's `RuntimeException` unmask in `addMembershipMapping` — it's a setup step (not a
+behavioural assert), and the better diagnostics are worth keeping for the next masked-error footgun.
+Next: push to PR #33, watch CI go 54/54. If green, the §14.7 ledger is all-green and the audition
+(Chapter 3) is done.
+
+#### 14.14 STATUS — PR #33 green; what's actually left (2026-06-23)
+
+**PR #33 is green — all 54 integration scenarios pass** (plus PHP/JS unit, Psalm, both Quality jobs,
+PR Tasks). Landed on the branch this round: Claude's **ignored-mode flips** (open-with + file-type)
+and the real one-click **Toggle n8n mode** Files action; Copilot's **nested mappings**
+(`MappingService::resolveForPath` nearest-enclosing + `mapping-membership.feature` live).
+
+**Correction to §14.13's closing line:** the ledger is **NOT** all-green yet — the *one genuinely
+unbuilt feature* (`mapping-membership`) is now done, but the §14.11 **little-wins checklist still has
+a tail of un-flipped scenarios**. So the audition isn't quite over. Honest remaining inventory,
+straight off the refreshed §14.7 ledger:
+
+- **`mode-change`** (3 of 6) — `link→sync` retag (NC side); the 2× *n8n-override* scenarios
+  (`sync→link` / `link→sync` from n8n). The reserved-tag resolver already re-modes at pull time, so
+  these are likely **flippable** with fixture wiring, not new code.
+- **`delete`** (4 of 9) — `unmapped` trash/purge/restore (3); purge-a-sync = permanent delete;
+  abort-if-n8n-unreachable (already **coded** in `DeleteToN8nListener`, just needs its assertion).
+- **`move`** (6 of 9) — hard-deleted restore-fallback, merge-on-collision (also retires a README
+  doc-vs-code lie), brand-new move-in create. Real backend motion.
+- **`reserved-tags`** (7 of 8) — the lone `@todo`: removing `n8n:ignore` returns the file to the
+  mapping default. Needs a small **tag-removal listener** (`TagUnassignedEvent`), not yet built.
+- **Left `@todo` on purpose** (don't count these against "done"): `open-with`/`file-type` **`link`**
+  rows (no create-on-land path for link; covered by `tests/js/files-helpers.test.js` instead) and
+  `file-type`'s **REPORT-by-indexed-mode** DAV-search query (the `nc:metadata-*` search plumbing is
+  unproven against the pod — flip only if/when genuinely wired).
+
+**Net:** every *feature* now has its core live; what remains is **edge-case scenario flips** (mostly
+fixture wiring on already-shipped code) plus **two genuinely small backend builds** — the
+un-ignore `TagUnassignedEvent` listener and the `move` merge-on-collision path. When those are
+green the §14.7 ledger is all-green and Chapter 3 (the audition) closes; Chapter 4 is branding +
+app-store submission.

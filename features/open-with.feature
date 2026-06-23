@@ -39,7 +39,6 @@ Feature: Opening a workflow file (Open in n8n / Open with text editor)
     Given a managed workflow file in "unmapped" mode
     Then "Open in n8n" is hidden from its context menu
 
-  @todo
   Scenario: Open in n8n is hidden when there is no live workflow (ignored)
     Given a managed workflow file in "ignored" mode
     Then "Open in n8n" is hidden from its context menu
@@ -55,17 +54,19 @@ Feature: Opening a workflow file (Open in n8n / Open with text editor)
       | mode     |
       | sync     |
       | unmapped |
+      | ignored  |
 
+  # link integration is uncertain (it has no create-on-land path); its opener
+  # logic is covered concretely by tests/js/files-helpers.test.js instead.
   @todo
-  Scenario Outline: Open with text editor — modes pending other slices
+  Scenario Outline: Open with text editor — link (covered by JS unit tests)
     Given a managed workflow file in "<mode>" mode
     When I choose "Open with text editor" from its context menu
     Then the file's raw JSON opens in the text editor
 
     Examples:
-      | mode    |
-      | link    |
-      | ignored |
+      | mode |
+      | link |
 
   # ── Default click action follows the mode ───────────────────────────────────────
 
@@ -78,14 +79,15 @@ Feature: Opening a workflow file (Open in n8n / Open with text editor)
       | mode     | opener      |
       | sync     | n8n         |
       | unmapped | text editor |
+      | ignored  | text editor |
 
+  # link: covered by the JS unit tests (see note above).
   @todo
-  Scenario Outline: The default click — modes pending other slices
+  Scenario Outline: The default click — link (covered by JS unit tests)
     Given a managed workflow file in "<mode>" mode
     When I click the file in the Files app
     Then it opens with "<opener>" by default
 
     Examples:
-      | mode    | opener      |
-      | link    | n8n         |
-      | ignored | text editor |
+      | mode | opener |
+      | link | n8n    |
