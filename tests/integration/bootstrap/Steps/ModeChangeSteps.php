@@ -27,6 +27,10 @@ use PHPUnit\Framework\Assert;
  */
 trait ModeChangeSteps {
 	private ?Client $tagDav = null;
+	/** The n8n workflow id behind the file under test, for n8n-side override steps. */
+	private string $overrideWorkflowId = '';
+	/** The mapping's n8n tag that the override workflow must keep, alongside the override. */
+	private string $overrideMappingTag = '';
 
 	/** Guzzle client rooted at the dav base, admin basic-auth (systemtags live there). */
 	private function tagDavClient(): Client {
@@ -53,6 +57,66 @@ trait ModeChangeSteps {
 	public function iChangeItsSystemTagFromTo(string $from, string $to): void {
 		// The app strips the other mode tag itself; assigning the target is enough.
 		$this->assignSystemTag($this->currentFilePath, $to);
+	}
+
+	// ── n8n-side override (sync ⇄ link applied from n8n, then pulled) ────────────
+
+	/**
+	 * Arrange a managed file by landing one in the tag's mapped folder
+	 * (create-on-land), so the file's mode follows that mapping (set in the
+	 * Background) and its workflow carries the mapping tag. Captures the workflow
+	 * id + mapping tag for the n8n-side override steps below.
+	 *
+	 * @Given a managed :mode workflow file for a workflow tagged :tag
+	 */
+	public function aManagedWorkflowFileForAWorkflowTagged(string $mode, string $tag): void {
+		$this->aManagedWorkflowFileInTheFolder($mode, $tag);
+		$this->overrideWorkflowId = $this->lastWorkflowId ?? '';
+		$this->overrideMappingTag = $tag;
+		Assert::assertNotSame('', $this->overrideWorkflowId, 'arrange: the managed file was not stamped with an n8n id');
+	}
+
+	/**
+	 * The link variant: arrange a sync file, apply the n8n override, and pull so it
+	 * re-modes into the target (link) — reaching "a managed link file whose workflow
+	 * carries the override" without needing a separate link mapping.
+	 *
+	 * @Given a managed :mode workflow file for a workflow tagged :tag and :reserved
+	 */
+	public function aManagedWorkflowFileForAWorkflowTaggedAndReserved(string $mode, string $tag, string $reserved): void {
+		$this->aManagedWorkflowFileInTheFolder('sync', $tag);
+		$this->overrideWorkflowId = $this->lastWorkflowId ?? '';
+		$this->overrideMappingTag = $tag;
+		Assert::assertNotSame('', $this->overrideWorkflowId, 'arrange: the managed file was not stamped with an n8n id');
+		$this->applyN8nOverride($reserved);
+		$this->runMappingSync('pull', $tag);
+		Assert::assertSame(
+			$this->wireMode($mode),
+			$this->davReadMetadata($this->currentFilePath, self::META_MODE),
+			"arrange: the file did not reach $mode mode after the override pull",
+		);
+	}
+
+	/** @When I add :reserved to that workflow in n8n */
+	public function iAddToThatWorkflowInN8n(string $reserved): void {
+		$this->applyN8nOverride($reserved);
+	}
+
+	/** @When I change that workflow's override tag to :reserved in n8n */
+	public function iChangeThatWorkflowsOverrideTagTo(string $reserved): void {
+		$this->applyN8nOverride($reserved);
+	}
+
+	/**
+	 * Set the workflow's n8n tags to exactly {mapping tag, $reserved} — keeping the
+	 * mapping tag so the workflow still belongs to the mapping, and replacing any
+	 * prior override so "change the override" and "add an override" share one path.
+	 */
+	private function applyN8nOverride(string $reserved): void {
+		Assert::assertNotSame('', $this->overrideWorkflowId, 'no workflow captured for the override');
+		$mappingTagId = $this->ensureN8nTag($this->overrideMappingTag);
+		$reservedId = $this->ensureN8nTag($reserved);
+		$this->setN8nWorkflowTags($this->overrideWorkflowId, [$mappingTagId, $reservedId]);
 	}
 
 	// ── Then ────────────────────────────────────────────────────────────────────
@@ -90,6 +154,11 @@ trait ModeChangeSteps {
 		$wf = json_decode((string)$this->davGet($this->currentFilePath), true);
 		Assert::assertIsArray($wf, 'file is not JSON after pull');
 		Assert::assertArrayHasKey('nodes', $wf, 'the full workflow JSON was not pulled into the file');
+	}
+
+	/** @Then the full workflow JSON is now in the file */
+	public function theFullWorkflowJsonIsNowInTheFile(): void {
+		$this->theFullWorkflowJsonIsPulledIn();
 	}
 
 	/**

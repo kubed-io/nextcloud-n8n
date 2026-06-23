@@ -45,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Integration `FeatureContext` split from one 1300-line class into per-concern step traits (`bootstrap/Steps/`) + transport/setup traits (`bootstrap/Support/`); behaviour-identical, dry-run clean.
 - Integration suite now proves the `ignored` mode end-to-end — the mode-aware openers (Open in n8n hidden, text editor the default) and the read-only `n8n_mode` DAV value for an ignored file.
 - Unit + live integration coverage for **nested folder mappings** — `MappingService::resolveForPath` nearest-enclosing resolution (deepest mapped folder wins; siblings sharing a name prefix are not swallowed) and the `mapping-membership.feature` scenarios proving membership over WebDAV.
+- Live `mode-change.feature` coverage for the remaining sync ⇄ link transitions — the `link → sync` retag from Nextcloud, and both n8n-side overrides (tag a workflow `n8n:sync` / `n8n:link` in n8n, pull, and the existing file re-modes in place) — all preserving the `n8n_id`.
 
 ## [0.1.2] - 2026-06-22
 
