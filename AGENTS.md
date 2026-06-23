@@ -34,8 +34,12 @@ For the user-facing "what does it do?" → [README.md](README.md).
      and locked architectural decisions. **§15 is the authoritative current-state
      record — read it first.**
    - [Chapter_2_Pretty_Package.md](saga/Chapter_2_Pretty_Package.md) — packaging,
-     testing, CI, security work. Tracks remaining work to a clean release.
-   - [Chapter_3_Showtime.md](saga/Chapter_3_Showtime.md) — Nextcloud app store
+     testing, CI, security work. Tracks the devops to the marker where the integration
+     suite runs green in the pipeline.
+   - [Chapter_3_An_Audition.md](saga/Chapter_3_An_Audition.md) — the second round of
+     coding the safety net made safe: the mode-model + motion refactor and edge-case
+     features. **§14 is the current feature backlog/ledger.**
+   - [Chapter_4_Showtime.md](saga/Chapter_4_Showtime.md) — Nextcloud app store
      submission. Mostly future work.
 
 If the task is about **how a thing works**, the README + the saga chapter are

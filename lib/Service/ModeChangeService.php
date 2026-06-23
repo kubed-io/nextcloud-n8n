@@ -46,13 +46,23 @@ final class ModeChangeService {
 	}
 
 	/**
-	 * Transition $node to $target ∈ {sync, link}. No-op (safe to call repeatedly)
-	 * when the file isn't managed, $target isn't sync/link, or the file is already
-	 * in $target — in the already-there case the ownership tag is still re-asserted so
-	 * a stray duplicate mode tag is resolved to exactly one.
+	 * Transition $node to $target ∈ {sync, link, ignored}. No-op (safe to call
+	 * repeatedly) when the file isn't managed, $target isn't a known mode, or the
+	 * file is already in $target — in the already-there case the ownership tag is
+	 * still re-asserted (for sync/link) so a stray duplicate mode tag resolves to one.
+	 *
+	 * `ignored` is the exclude case (saga §14.8): the workflow is **archived** in n8n,
+	 * the file's mode flips to `ignored` but its body, id, and folder location are all
+	 * kept, and the sync/link ownership pills are stripped (an ignored file carries the
+	 * user's hand-set `n8n:ignore` marker, not an auto-managed pill). Subsequent
+	 * pulls/pushes skip it ({@see SyncService}).
 	 */
 	public function changeTo(File $node, string $target): void {
-		if ($target !== Mapping::MODE_SYNC && $target !== Mapping::MODE_LINK) {
+		if (
+			$target !== Mapping::MODE_SYNC
+			&& $target !== Mapping::MODE_LINK
+			&& $target !== WorkflowMetadata::MODE_IGNORED
+		) {
 			return;
 		}
 
@@ -63,9 +73,17 @@ final class ModeChangeService {
 		}
 
 		if (($meta[WorkflowMetadata::KEY_MODE] ?? '') === $target) {
-			// Already in the target mode; just re-assert the single correct tag
-			// (resolves a manually-added duplicate) and stop.
-			$this->guard->run(fn () => $this->ownershipTags->apply($node->getId(), $target));
+			// Already in the target mode. For sync/link re-assert the single correct
+			// tag (resolves a manually-added duplicate); `ignored` has no pill to
+			// re-assert, so just stop.
+			if ($target !== WorkflowMetadata::MODE_IGNORED) {
+				$this->guard->run(fn () => $this->ownershipTags->apply($node->getId(), $target));
+			}
+			return;
+		}
+
+		if ($target === WorkflowMetadata::MODE_IGNORED) {
+			$this->changeToIgnored($node, $id);
 			return;
 		}
 
@@ -95,6 +113,36 @@ final class ModeChangeService {
 			]);
 			// Stamp the target tag + strip the other (mutual exclusivity).
 			$this->ownershipTags->apply($node->getId(), $target);
+		});
+	}
+
+	/**
+	 * Flip a managed file to `ignored`: archive the workflow in n8n, stamp
+	 * `n8n_mode = ignored`, and strip the sync/link pills — keeping the file's body,
+	 * id, and location untouched. The full JSON is left in place so the file is still
+	 * readable/editable and a later un-ignore can restore it. The archive call is the
+	 * only side effect that can fail; if it does, the file is left as-is.
+	 */
+	private function changeToIgnored(File $node, string $id): void {
+		try {
+			$this->n8n->archiveWorkflow($id);
+		} catch (N8nApiException $e) {
+			$this->logger->warning('n8n_sync ignore: could not archive workflow; leaving file as-is', [
+				'app' => Application::APP_ID,
+				'fileId' => $node->getId(),
+				'workflowId' => $id,
+				'exception' => $e,
+			]);
+			return;
+		}
+
+		$this->guard->run(function () use ($node): void {
+			$this->metadata->write($node->getId(), [
+				WorkflowMetadata::KEY_MODE => WorkflowMetadata::MODE_IGNORED,
+			]);
+			// `ignored` has no auto-managed pill — drop sync/link/unmapped, keep the
+			// user's n8n:ignore marker (it is not in OwnershipTags::ALL).
+			$this->ownershipTags->clear($node->getId());
 		});
 	}
 

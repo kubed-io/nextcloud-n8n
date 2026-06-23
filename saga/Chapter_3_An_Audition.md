@@ -534,10 +534,10 @@ real NC + n8n. The chapter is "done" when this ledger is all-green to Kelly's sa
 | `move` | ◑ main paths | move-out/back-in edge cases | §14.4 shipped the core |
 | `mode-change` | ◑ 2 of 6 | toggle (FE stub), link→sync, 2× n8n-override | §14.6 |
 | `delete` | ◑ core | the 7 trash/restore/abort edges | §17.7 wiring exists; assertions pending |
-| `reserved-tags` | ☐ none | all 7 | needs the pull-side override + **`ignored`** mode |
-| `open-with` | ☐ none | all 4 | needs the file-action openers + default-click-by-mode |
-| `file-type` | ☐ none | all 5 | mimetype/icon mostly work; DAV read-only + queryable unproven |
-| `mapping-membership` | ☐ none | all 3 | nearest-enclosing-mapping resolution |
+| `reserved-tags` | ☐ none | all 7 | needs the pull-side override + **`ignored`** mode (Copilot, §14.8) |
+| `open-with` | ◑ sync+unmapped | `link` (Vitest-covered), `ignored` (Copilot) | §14.8/§14.9 — openers follow mode |
+| `file-type` | ◑ mimetype+PROPFIND+read-only | REPORT-query, `link`/`ignored` mode rows | §14.9 — code existed; now proven over DAV |
+| `mapping-membership` | ☐ none | all 3 | nearest-enclosing-mapping resolution **NOT built** (§14.9) |
 
 **Two watch-outs carried forward from §14.6** (deferred, not bugs — they bite only when the modes
 below land): `pruneStale`/`collectManaged` must skip `n8n_mode === ignored`, and `pushOne` must
@@ -600,3 +600,80 @@ reconcile/pull territory (the pull is what must honour overrides and skip ignore
 also retires the two deferred watch-outs. `open-with` is pure presentation keyed off the mode
 metadata that already exists, continuous with Claude's mode-change front-end work, and touches no
 backend pull code — maximal independence for a clean double-feature PR.
+
+**Assignment A status — CLAUDE → ready for Copilot to commit + wire (no git on my side).**
+Files written + validated as far as the Claude side allows (Vitest + eslint + vite build local;
+`php -l` in the pod; **no behat/psalm per Kelly — CI verifies the integration suite**):
+- `src/files-helpers.js` — three new pure helpers: `getN8nMode(node)` (reads the `n8n_mode` DAV
+  attr in all three shapes, wire `reference`→`link`, '' when absent), `canOpenInN8n(mode)`
+  (false only for `unmapped`/`ignored`; permissive on the first-load race), `defaultOpener(mode)`.
+- `src/files.js` — "Open in n8n" `enabled` now gated on `canOpenInN8n(getN8nMode(node))` (hidden
+  for unmapped/ignored); "Edit as text" renamed to **"Open with text editor"** and made
+  `DefaultType.DEFAULT` at `order -49` so n8n (`-50`) wins for sync/link but the text editor
+  becomes the default click when "Open in n8n" is disabled. The opener set follows the MODE.
+- `tests/js/files-helpers.test.js` — +12 Vitest cases (27 total green). This is the **real**
+  verifier of the opener decision logic for every mode incl. `link` (Behat can't click).
+- `tests/integration/bootstrap/Steps/OpenWithSteps.php` (new) — asserts the server-observable
+  backing the FE reads: the `n8n_mode` DAV value, the live-vs-archived workflow in n8n, and
+  raw-JSON readability over DAV. Owns a **distinct** `a managed workflow file in :mode mode` step
+  (RenameSteps already owns `a managed :mode workflow file` and only makes sync/link). The
+  `ignored` arrange branch is an honest `throw` stub until Copilot's slice lands.
+- `features/open-with.feature` — whole-file `@todo` removed; **sync + unmapped live**;
+  `link` rows `@todo` by design (Vitest is their verifier — integration "clicking" is an illusion);
+  `ignored` rows `@todo` until Copilot's `ignored` mode lands (then flip in this same PR).
+
+**Copilot, please:**
+1. `tests/integration/bootstrap/FeatureContext.php` — add the import + `use OpenWithSteps;`.
+2. `CHANGELOG.md` `[Unreleased]` — one line, e.g.
+   *"File openers now follow the workflow mode: Open in n8n for sync/link, text editor for
+   unmapped/ignored (and Open in n8n hidden there)."*
+3. **No `Application.php` change** — the `nc:metadata-n8n_mode` DAV property is already registered
+   (from the §14.6 mode-change work) and there's no new listener.
+4. Commit my files crediting Claude (the rebuilt `dist/n8n_sync-files.js` rides along if `dist` is
+   tracked; CI rebuilds regardless).
+5. When your `ignored` mode lands: flip the three `ignored` rows in `open-with.feature` and fill in
+   the `OpenWithSteps::arrangeManagedFile` `ignored` branch (assign `n8n:ignore` to an in-folder
+   file, then reconcile) — small follow-up, same PR.
+
+### 14.9 Spec-vs-code audit (2026-06-23) + Claude's next pickup: `file-type`
+
+A pass over the whole backlog — README "desired state" vs the `features/*.feature` `@todo` ledger
+vs what the code actually does — surfaced a few things sharper than the ledger had them. Recorded
+here so they're not relearned; most we **come back to later**, one Claude is **picking up now**.
+
+**New / sharpened findings (the discrepancies worth keeping):**
+- **Nested mappings are NOT implemented** (README "the nearest enclosing mapping wins"). The
+  resolver `MappingService::resolveForPath` matches only the **single top-level segment after
+  `files/`** (`preg_match('#/files/([^/]+)#')`) — a mapping on a sub-folder like `Flows/sub` can
+  never win. `mapping-membership.feature` is rightly whole-`@todo`; the README overclaims. Real
+  build work, not just a test gap. **Come back to.**
+- **The "Toggle n8n mode" context-menu action is a stub** (README sells it as the "one-click easy
+  path"). `src/files.js` just shows a toast pointing at the Tags sidebar; the real re-mode only
+  happens via a hand-set tag. Doc-vs-code overstatement; the `mode-change.feature` toggle scenario
+  is correctly `@todo`. **Come back to** (and it's squarely Claude's front-end lane).
+- **Merge-on-collision (move-in) is documented as shipped** (README) but is `@todo` + a TODO in
+  `MotionService::moveIn` (no metadata-by-id lookup yet). Matches §14.4; flagged as a doc lie.
+- **`ignored` mode + reserved tags read as shipped** in the README (Modes table, §Ignored,
+  §Reserved tags) but aren't built — `OwnershipTags` even says so in a comment. **In flight now
+  (Copilot, §14.8 B).** Not new, but the README presenting them as done is worth noting.
+- **Correction to the ledger framing:** delete's *abort-if-n8n-unreachable* (README) **is** coded —
+  `DeleteToN8nListener` throws `AbortedEventException` on failure. Only the *scenario* is `@todo`
+  (unasserted), so it's "implemented but unproven," not a gap.
+- **`file-type` read-only + indexed metadata:** the code is actually all there —
+  `WorkflowMetadata` registers the four `nc:metadata-*` props `EDIT_FORBIDDEN`, with `n8n_mode` +
+  `n8n_mapping` indexed. It was just never *proven* over DAV. → that's the pickup.
+
+**Claude → PICKING UP `file-type` on this same PR** (disjoint from Copilot's reserved-tags/`ignored`
+pull work — this is pure DAV-metadata surface, no `lib/` change). Copilot is heads-down on its own
+feature; this is the independent second slice.
+- *New file (Claude's own):* `tests/integration/bootstrap/Steps/FileTypeSteps.php` — PROPFIND of
+  the custom mimetype, PROPFIND exposing the four `nc:metadata-*` props, the per-mode `n8n_mode`
+  DAV value, and a PROPPATCH-rejected (read-only) assertion. Reuses `OpenWithSteps::arrangeManagedFile`.
+- *Flip live in `features/file-type.feature`:* mimetype/icon, PROPFIND-exposes-metadata, the
+  `sync`+`unmapped` mode-value rows, and read-only PROPPATCH. **Left `@todo`:** the `link`+`ignored`
+  mode rows (link integration is uncertain like §14.8; `ignored` is Copilot's) and the **REPORT
+  search** scenario (the DAV-search plumbing for `nc:metadata-*` is unproven against the pod — flip
+  once CI/manual confirms it).
+- *Hand off to Copilot for commit:* the `use FileTypeSteps;` line in `FeatureContext`, and a
+  `[Unreleased]` CHANGELOG line. No `Application.php` change (no new listener; mimetype is already
+  registered by the `RegisterMimetype` migration).

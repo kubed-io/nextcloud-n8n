@@ -162,4 +162,53 @@ final class ModeChangeServiceTest extends TestCase {
 
 		$this->service->changeTo($node, 'link');
 	}
+
+	// ── ignored mode (saga §14.8 reserved-tags) ──────────────────────────────────
+
+	public function testChangeToIgnoredArchivesAndKeepsTheFile(): void {
+		$node = $this->createMock(File::class);
+		$node->method('getId')->willReturn(7);
+		$node->expects(self::never())->method('putContent'); // body kept as-is
+		$this->expectRead(['n8n_id' => 'w1', 'n8n_mode' => 'sync']);
+
+		// The workflow is archived in n8n; its content is NOT fetched/rewritten.
+		$this->n8n->expects(self::once())->method('archiveWorkflow')->with('w1');
+		$this->n8n->expects(self::never())->method('getWorkflow');
+
+		// Mode flips to ignored; the sync/link pills are cleared (no ignored pill).
+		$this->metadata->expects(self::once())->method('write')->with(7, self::callback(
+			fn (array $v) => ($v['n8n_mode'] ?? null) === WorkflowMetadata::MODE_IGNORED
+		));
+		$this->tags->expects(self::never())->method('apply');
+		$this->tags->expects(self::once())->method('clear')->with(7);
+
+		$this->service->changeTo($node, WorkflowMetadata::MODE_IGNORED);
+	}
+
+	public function testAlreadyIgnoredIsANoOp(): void {
+		$node = $this->createMock(File::class);
+		$node->method('getId')->willReturn(7);
+		$this->expectRead(['n8n_id' => 'w1', 'n8n_mode' => 'ignored']);
+
+		// Nothing to do — no archive, no write, no tag churn.
+		$this->n8n->expects(self::never())->method('archiveWorkflow');
+		$this->metadata->expects(self::never())->method('write');
+		$this->tags->expects(self::never())->method('apply');
+		$this->tags->expects(self::never())->method('clear');
+
+		$this->service->changeTo($node, WorkflowMetadata::MODE_IGNORED);
+	}
+
+	public function testIgnoreArchiveFailureLeavesFileUntouched(): void {
+		$node = $this->createMock(File::class);
+		$node->method('getId')->willReturn(7);
+		$node->expects(self::never())->method('putContent');
+		$this->expectRead(['n8n_id' => 'w1', 'n8n_mode' => 'sync']);
+
+		$this->n8n->method('archiveWorkflow')->willThrowException(new N8nApiException('boom', 500));
+		$this->metadata->expects(self::never())->method('write');
+		$this->tags->expects(self::never())->method('clear');
+
+		$this->service->changeTo($node, WorkflowMetadata::MODE_IGNORED);
+	}
 }

@@ -81,7 +81,7 @@ the repo:
 - **n8n webhook bearer token** — same handling as the API key.
 - **GitHub App private key** — used by the release workflow to bypass branch protection
   on the version-bump commit. Stored as the `GH_APP_KEY` repo secret. Never echoed.
-- **Future Nextcloud app store signing key** — when Chapter 3 lands, the signing key
+- **Future Nextcloud app store signing key** — when Chapter 4 lands, the signing key
   for app-store releases will be a repo secret. The corresponding `.csr` / `.crt` files
   may be committed; the `.key` never is.
 

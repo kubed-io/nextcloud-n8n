@@ -12,9 +12,14 @@
 # (Whether editing+saving pushes to n8n follows the file's mode — see
 # create-workflow.feature / rename.feature / the bidirectional sync, not here.)
 #
-# @todo until the file action + context menu land (saga Chapter 2 §14). CI skips @todo.
+# Behat can't click the Files-app JS, so the integration steps assert the
+# server-observable backing the front-end keys off (the n8n_mode DAV value + the
+# live/archived workflow state + raw-JSON readability); the opener DECISION logic
+# itself is unit-tested in tests/js/files-helpers.test.js. Live for sync + unmapped
+# (saga §14.8 A). The `link` rows stay @todo (their decision logic is covered by the
+# JS unit tests) and the `ignored` rows wait on Copilot's reserved-tags / ignored
+# slice (§14.8 B) — both flip in this same PR once ready. CI skips @todo.
 
-@todo
 Feature: Opening a workflow file (Open in n8n / Open with text editor)
   As a Nextcloud user
   I want the right openers for a workflow file, defaulting to the right one for its mode
@@ -25,44 +30,62 @@ Feature: Opening a workflow file (Open in n8n / Open with text editor)
 
   # ── Open in n8n ───────────────────────────────────────────────────────────────
 
-  Scenario: Open in n8n opens the live workflow (sync / link)
-    Given a managed "sync" workflow file with a live workflow in n8n
+  Scenario: Open in n8n opens the live workflow (sync)
+    Given a managed workflow file in "sync" mode with a live workflow in n8n
     When I choose "Open in n8n" from its context menu
     Then n8n opens at that workflow (not a download, not the text editor)
 
-  Scenario Outline: Open in n8n is hidden when there is no live workflow
-    Given a managed "<mode>" workflow file
+  Scenario: Open in n8n is hidden when there is no live workflow (unmapped)
+    Given a managed workflow file in "unmapped" mode
     Then "Open in n8n" is hidden from its context menu
 
-    Examples:
-      | mode     |
-      | unmapped |
-      | ignored  |
+  @todo
+  Scenario: Open in n8n is hidden when there is no live workflow (ignored)
+    Given a managed workflow file in "ignored" mode
+    Then "Open in n8n" is hidden from its context menu
 
   # ── Open with text editor ──────────────────────────────────────────────────────
 
   Scenario Outline: Open with text editor is available on every workflow file
-    Given a managed "<mode>" workflow file
+    Given a managed workflow file in "<mode>" mode
     When I choose "Open with text editor" from its context menu
     Then the file's raw JSON opens in the text editor
 
     Examples:
       | mode     |
       | sync     |
-      | link     |
       | unmapped |
-      | ignored  |
+
+  @todo
+  Scenario Outline: Open with text editor — modes pending other slices
+    Given a managed workflow file in "<mode>" mode
+    When I choose "Open with text editor" from its context menu
+    Then the file's raw JSON opens in the text editor
+
+    Examples:
+      | mode    |
+      | link    |
+      | ignored |
 
   # ── Default click action follows the mode ───────────────────────────────────────
 
   Scenario Outline: The default click opens the right thing for the mode
-    Given a managed "<mode>" workflow file
+    Given a managed workflow file in "<mode>" mode
     When I click the file in the Files app
     Then it opens with "<opener>" by default
 
     Examples:
       | mode     | opener      |
       | sync     | n8n         |
-      | link     | n8n         |
       | unmapped | text editor |
-      | ignored  | text editor |
+
+  @todo
+  Scenario Outline: The default click — modes pending other slices
+    Given a managed workflow file in "<mode>" mode
+    When I click the file in the Files app
+    Then it opens with "<opener>" by default
+
+    Examples:
+      | mode    | opener      |
+      | link    | n8n         |
+      | ignored | text editor |

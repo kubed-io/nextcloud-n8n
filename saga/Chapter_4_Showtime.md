@@ -1,27 +1,27 @@
-# Chapter 3 — Showtime
+# Chapter 4 — Showtime
 
-> **Prerequisite:** Chapter 2 (Pretty Package) is functionally complete *to Kelly's
-> satisfaction* — the app does everything it should, the safe-refactor work (Ch2 §14) has
+> **Prerequisite:** Chapter 3 (An Audition) is functionally complete *to Kelly's
+> satisfaction* — the app does everything it should, the safe-refactor work (Ch3 §14) has
 > covered the edge cases, and a clean, signed, versioned release tarball comes out of the
 > pipeline. There is no fixed checklist for "done"; it's done when it's ready for the market.
 
-The app works. It packages. Chapter 2 was about *function* — making it do the right thing and
-making it safe to change. Chapter 3 is about *presence* — getting it onto
+The app works. It packages. Chapters 2–3 were about *function* — making it do the right thing and
+making it safe to change. Chapter 4 is about *presence* — getting it onto
 [apps.nextcloud.com](https://apps.nextcloud.com), the official Nextcloud app store, so anyone
 can install it with one click.
 
 But there's a hinge between the two, and it deserves to be named: **branding.** The moment the
 app is functionally ready for the market, the work pivots from *what it does* to *what it is* —
-its name, its face, its story. That pivot starts on the tail end of Chapter 2 and is the first
-thing we do in Chapter 3. A good transition makes a good story.
+its name, its face, its story. That pivot starts on the tail end of Chapter 3 and is the first
+thing we do in Chapter 4. A good transition makes a good story.
 
 ---
 
-## 3.1 Branding — from a functional app to a product
+## 4.1 Branding — from a functional app to a product
 
 This is the transition. It begins the instant Kelly decides the app is **fully functional and
-usable for the market** (the close of the Chapter 2 refactor work) and carries us into the
-store submission below. Everything mechanical in §3.2+ *consumes the assets this phase
+usable for the market** (the close of the Chapter 3 refactor work) and carries us into the
+store submission below. Everything mechanical in §4.2+ *consumes the assets this phase
 produces* — the description, the screenshots, the icon, the name. Brand first; submit second.
 
 Deliverables (☐):
@@ -45,15 +45,15 @@ Deliverables (☐):
 
 **Gate:** none of this should start while the model is still in flux — branding a moving target
 wastes the work. It begins when Kelly calls the function done. (It's fine for the very tail of
-Chapter 2 to bleed into early branding — that overlap *is* the transition.)
+Chapter 3 to bleed into early branding — that overlap *is* the transition.)
 
 The outputs here flow straight into the store mechanics: **description + summary + screenshots →
-`info.xml` (§3.2 Step 1) and store registration (§3.2 Step 3)**, and the **icon** ships in the
+`info.xml` (§4.2 Step 1) and store registration (§4.2 Step 3)**, and the **icon** ships in the
 tarball.
 
 ---
 
-## 3.2 One-time setup (do once, never again)
+## 4.2 One-time setup (do once, never again)
 
 ### Step 1 — Fix `appinfo/info.xml`
 
@@ -73,7 +73,7 @@ The store requires at minimum: `id`, `name`, `summary`, `description` (real Engl
 `dependencies/nextcloud` with both
 `min-version` and `max-version`.
 
-> The `summary`, `description`, and `screenshot` values are **branding outputs** (§3.1) — this
+> The `summary`, `description`, and `screenshot` values are **branding outputs** (§4.1) — this
 > step just drops the finished assets into `info.xml`. Don't write store copy here; write it in
 > the branding phase and paste it in.
 
@@ -113,7 +113,7 @@ This is a one-time claim that proves you hold the private key for the app id `n8
 
 ---
 
-## 3.3 Per-release: sign and upload
+## 4.3 Per-release: sign and upload
 
 Every release needs two things beyond what Chapter 2's pipeline already produces:
 
@@ -171,7 +171,7 @@ GitHub release asset URL works.
 
 ---
 
-## 3.4 App store rules checklist
+## 4.4 App store rules checklist
 
 Things that must be true or the app will be rejected / removed:
 
@@ -186,7 +186,7 @@ Things that must be true or the app will be rejected / removed:
 
 ---
 
-## 3.5 What the publish pipeline needs added (Chapter 2 → Chapter 3 delta)
+## 4.5 What the publish pipeline needs added (Chapter 2 → Chapter 4 delta)
 
 The Chapter 2 pipeline produces a tarball. To go to the store, it needs:
 
@@ -202,12 +202,12 @@ The Chapter 2 pipeline produces a tarball. To go to the store, it needs:
    Requires a store API token as a GitHub secret.
 
 3. **`info.xml` fixes** — the schema validation happens server-side on upload; failures
-   return a clear error. Fix the fields in §3.2 (with the copy/screenshots from §3.1 branding)
+   return a clear error. Fix the fields in §4.2 (with the copy/screenshots from §4.1 branding)
    before the first upload attempt.
 
 ---
 
-## 3.6 Sequence (order matters)
+## 4.6 Sequence (order matters)
 
 ```
 Fix info.xml  ──┐

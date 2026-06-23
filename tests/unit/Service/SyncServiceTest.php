@@ -15,6 +15,7 @@ use OCA\N8nSync\Service\MappingService;
 use OCA\N8nSync\Service\N8nClient;
 use OCA\N8nSync\Service\OwnershipTags;
 use OCA\N8nSync\Service\PushService;
+use OCA\N8nSync\Service\ReservedTagResolver;
 use OCA\N8nSync\Service\StorageService;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\SyncService;
@@ -79,6 +80,7 @@ final class SyncServiceTest extends TestCase {
 			$this->createStub(IJobList::class),
 			$this->createStub(SyncStatusService::class),
 			$this->createStub(IAppConfig::class),
+			new ReservedTagResolver(),
 			new NullLogger(),
 		);
 	}
@@ -191,5 +193,117 @@ final class SyncServiceTest extends TestCase {
 		self::assertSame(1, $res['processed']);
 		self::assertSame(1, $res['succeeded']);
 		self::assertSame(1, $res['pruned']);
+	}
+
+	// ── reserved-tag overrides + ignored mode (saga §14.8) ───────────────────────
+
+	public function testPullAppliesLinkOverrideOnASyncMapping(): void {
+		// A sync mapping, but the one workflow carries n8n:link → it is written as a
+		// link pointer (reference schema), not the full sync JSON.
+		$folder = $this->createMock(Folder::class);
+		$folder->method('getDirectoryListing')->willReturn([]);
+		$folder->method('nodeExists')->willReturn(false);
+
+		$newFile = $this->createStub(File::class);
+		$newFile->method('getId')->willReturn(99);
+
+		$captured = null;
+		$folder->expects(self::once())->method('newFile')
+			->willReturnCallback(function (string $name, string $body) use (&$captured, $newFile): File {
+				$captured = $body;
+				return $newFile;
+			});
+
+		$this->storage->method('isAvailable')->willReturn(true);
+		$this->storage->method('ensureFolder')->willReturn($folder);
+
+		$this->n8n->method('listWorkflows')->willReturn([
+			'data' => [['id' => 'wf-1', 'name' => 'Flow', 'versionId' => 'v1', 'tags' => [['id' => 't', 'name' => OwnershipTags::TAG_LINK]]]],
+			'nextCursor' => null,
+		]);
+
+		$res = $this->service->pullOne($this->mapping(Mapping::MODE_SYNC));
+
+		self::assertSame(1, $res['succeeded']);
+		self::assertNotNull($captured);
+		self::assertStringContainsString('n8n.reference/v1', (string)$captured);
+	}
+
+	public function testPullResolvesIgnoreTagSoWorkflowIsNotPulled(): void {
+		// An n8n:ignore workflow is never written — no file is created for it.
+		$folder = $this->createMock(Folder::class);
+		$folder->method('getDirectoryListing')->willReturn([]);
+		$folder->expects(self::never())->method('newFile');
+
+		$this->storage->method('isAvailable')->willReturn(true);
+		$this->storage->method('ensureFolder')->willReturn($folder);
+
+		$this->n8n->method('listWorkflows')->willReturn([
+			'data' => [['id' => 'wf-x', 'name' => 'X', 'tags' => [['id' => 'i', 'name' => OwnershipTags::TAG_IGNORE]]]],
+			'nextCursor' => null,
+		]);
+
+		$res = $this->service->pullOne($this->mapping(Mapping::MODE_SYNC));
+
+		self::assertSame(1, $res['processed']);
+		self::assertSame(0, $res['succeeded']);
+		self::assertSame(0, $res['pruned']);
+	}
+
+	public function testPushOneSkipsAPerFileLinkOverrideInASyncMapping(): void {
+		$syncFile = $this->file(1, 'A.n8n.json');
+		$linkOverride = $this->file(2, 'B.n8n.json'); // a link file inside a sync mapping
+
+		$folder = $this->createStub(Folder::class);
+		$folder->method('getDirectoryListing')->willReturn([$syncFile, $linkOverride]);
+
+		$this->storage->method('isAvailable')->willReturn(true);
+		$this->storage->method('findFolder')->willReturn($folder);
+
+		$this->metadata->method('read')->willReturnCallback(static function (int $fileId): ?array {
+			return match ($fileId) {
+				1 => [WorkflowMetadata::KEY_ID => 'wf-1', WorkflowMetadata::KEY_MODE => Mapping::MODE_SYNC],
+				2 => [WorkflowMetadata::KEY_ID => 'wf-2', WorkflowMetadata::KEY_MODE => Mapping::MODE_LINK],
+				default => null,
+			};
+		});
+		$this->push->method('push')->willReturn(true);
+
+		$res = $this->service->pushOne($this->mapping(Mapping::MODE_SYNC));
+
+		// Only the sync file is a push candidate; the link override is skipped.
+		self::assertSame(1, $res['processed']);
+		self::assertSame(1, $res['succeeded']);
+	}
+
+	public function testPruneSkipsAnIgnoredFile(): void {
+		// An ignored file stays in the folder; even though its (archived) workflow is
+		// not returned under the tag, prune must NOT delete it.
+		$ignored = $this->createMock(File::class);
+		$ignored->method('getId')->willReturn(20);
+		$ignored->method('getName')->willReturn('Ign.n8n.json');
+		$ignored->expects(self::never())->method('delete');
+
+		$folder = $this->createStub(Folder::class);
+		$folder->method('getDirectoryListing')->willReturn([$ignored]);
+
+		$this->storage->method('isAvailable')->willReturn(true);
+		$this->storage->method('ensureFolder')->willReturn($folder);
+
+		$this->metadata->method('read')->willReturnCallback(static function (int $fileId): ?array {
+			return match ($fileId) {
+				20 => [
+					WorkflowMetadata::KEY_ID => 'wf-ign',
+					WorkflowMetadata::KEY_MODE => WorkflowMetadata::MODE_IGNORED,
+					WorkflowMetadata::KEY_MAPPING => 'map-alpha',
+				],
+				default => null,
+			};
+		});
+		$this->n8n->method('listWorkflows')->willReturn(['data' => [], 'nextCursor' => null]);
+
+		$res = $this->service->pullOne($this->mapping(Mapping::MODE_SYNC, 'map-alpha'));
+
+		self::assertSame(0, $res['pruned']);
 	}
 }

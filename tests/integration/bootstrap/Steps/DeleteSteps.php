@@ -27,7 +27,7 @@ trait DeleteSteps {
 
 	/**
 	 * A plain .n8n.json with no n8n metadata — "untracked", distinct from the
-	 * "unmapped" mode (saga Chapter 2 §14) which keeps its id + an archived workflow.
+	 * "unmapped" mode (saga Chapter 3 §14) which keeps its id + an archived workflow.
 	 *
 	 * @Given an untracked :ext file
 	 */
