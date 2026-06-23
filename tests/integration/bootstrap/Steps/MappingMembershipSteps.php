@@ -153,7 +153,12 @@ trait MappingMembershipSteps {
 			'use_team_folder' => false,
 		];
 		$res = $this->occ('n8n_sync:add-mapping ' . escapeshellarg(json_encode($data, JSON_THROW_ON_ERROR)));
-		Assert::assertSame(0, $res['exit'], "adding mapping for $tag failed:\n{$res['output']}");
+		// RuntimeException, not Assert: a failing PHPUnit assertion under Behat +
+		// PHPUnit 12 throws the opaque Registry::get() TypeError that masks the real
+		// message (see WebDavTrait::assertStatus). A plain throw shows exit + output.
+		if ($res['exit'] !== 0) {
+			throw new \RuntimeException("add-mapping for $tag failed (exit {$res['exit']}):\n{$res['output']}");
+		}
 		$this->membershipMappingIds[$tag] = $id;
 	}
 
