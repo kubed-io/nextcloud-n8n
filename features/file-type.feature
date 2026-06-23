@@ -42,18 +42,18 @@ Feature: n8n workflow is a first-class file type
       | mode     | dav value |
       | sync     | sync      |
       | unmapped | unmapped  |
+      | ignored  | ignored   |
 
   # link stores as "reference" (the literal "link" is is_callable() → crashes core
-  # PROPFIND); ignored is Copilot's slice. link integration is uncertain like §14.8.
+  # PROPFIND); link integration is uncertain (no create-on-land path), like §14.8.
   @todo
-  Scenario Outline: The mode property carries the descriptive value (pending slices)
+  Scenario Outline: The mode property carries the descriptive value (link)
     Given a managed workflow file in "<mode>" mode
     Then its "nc:metadata-n8n_mode" property is "<dav value>"
 
     Examples:
-      | mode     | dav value |
-      | link     | reference |
-      | ignored  | ignored   |
+      | mode | dav value |
+      | link | reference |
 
   Scenario: The metadata is read-only over DAV
     Given a managed workflow file
