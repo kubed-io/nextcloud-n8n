@@ -850,3 +850,34 @@ load-bearing step asserts to `RuntimeException` project-wide.
 
 **Housekeeping:** Claude removed his throwaway `mm-test1234` mapping from the pod; the live instance
 is tidy for Kelly to try out. The saga is markdown-only — fold it into PR #33 (don't open a new PR).
+
+#### 14.13 RESOLVED — Copilot took the watch (the missing Background) (2026-06-23)
+
+Picked up exactly where §14.12 left off. The leading hypothesis was right, and the **root cause is
+now fully pinned**, not just patched:
+
+- **Why it threw at all:** features run alphabetically, so **`lifecycle.feature` runs immediately
+  before `mapping-membership.feature`** — and its last scenario, *"Disabling the app"*, leaves
+  `n8n_sync` **disabled**. With no `Background` to re-enable it, `occ n8n_sync:add-mapping` is an
+  **unregistered command** (the app owns it), so occ exits 1. That's the uncaught, empty-stdout
+  exit-1 §14.12 saw — not a bug in `add-mapping` or `Mapping::fromArray` at all. Scenario 2 passed
+  only because it never calls `add-mapping`.
+- **Why the bare app-enable isn't enough either:** scenarios 1 & 3 then **land a file in the mapped
+  folder**, firing `CreateInN8nListener`, which needs the live n8n connection to register the
+  workflow and stamp the `n8n_mapping` the Then asserts. So the correct precondition is the **full**
+  `Given the app is connected to n8n` (enable + URL + REST API + key), exactly like
+  `create-workflow` / `copy` / `move`.
+- **Fix:** added that `Background` to `mapping-membership.feature` (with a comment explaining the
+  two-fold need). One-line, mirrors every other behavioural feature.
+
+**Live-pod oracle confirmed my code is sound.** On `nextcloud-dbb454476-dvxwz` (cloud ns, 0.1.2,
+branch code) I reproduced the *new* risk — a **nested `team_folder`** (`nextcloud-outer/nextcloud-inner`)
+add-mapping → **exit 0, "Added mapping"**; `normaliseFolder` preserves the nested path as intended.
+Cleaned up after myself: removed the `mm-probe-inner` probe by id; Kelly's two real mappings
+(`nextcloud:tasking`, `nextcloud:admintest`) are **untouched**. The connection config on the pod was
+never altered, so Kelly's instance is exactly as he left it.
+
+**Kept** Claude's `RuntimeException` unmask in `addMembershipMapping` — it's a setup step (not a
+behavioural assert), and the better diagnostics are worth keeping for the next masked-error footgun.
+Next: push to PR #33, watch CI go 54/54. If green, the §14.7 ledger is all-green and the audition
+(Chapter 3) is done.

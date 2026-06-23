@@ -12,6 +12,13 @@ Feature: Mapping membership is resolved by folder
   I want mappings to be per-folder metadata
   So that membership is predictable and folders can nest
 
+  # Same precondition as every other behavioural feature: the scenarios add a
+  # mapping (needs the app enabled) and land a file in it, which fires the
+  # create-on-land listener that registers the workflow in n8n and stamps the
+  # n8n_mapping we assert on — so we need the full connection, not just enablement.
+  Background:
+    Given the app is connected to n8n
+
   Scenario: A file's mapping is the folder it lives in
     Given a folder mapped to the n8n tag "nextcloud:demo"
     When a managed workflow file lives in that folder
