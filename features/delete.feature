@@ -12,7 +12,8 @@ Feature: Deleting a workflow file
   So that removing a file never silently desyncs the two systems
 
   Background:
-    Given the app is installed and enabled
+    Given the app is connected to n8n
+    And a folder mapped as "sync" to the n8n tag "nextcloud:alpha"
 
   Scenario: Trashing a sync-mode file archives the workflow
     Given a managed "sync" workflow file
