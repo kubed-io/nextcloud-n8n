@@ -29,9 +29,10 @@
 # So they are 100% optional: the mapping default does everything on its own; the
 # n8n-side reserved tags are just the escape hatch.
 #
-# @todo until reserved-tag handling is wired + asserted (saga Chapter 2 §14). CI skips @todo.
+# Pull-time resolution (override + never-pulled ignore) and the in-folder `ignored`
+# mode are live (saga §14.8 B). The un-tag RESTORE (removing n8n:ignore returns the
+# file to the mapping default) needs a tag-removal listener — still @todo.
 
-@todo
 Feature: Reserved n8n tags override the mapping default per workflow
   As an n8n admin
   I want to override the mode of, or exclude, individual workflows with reserved tags
@@ -71,7 +72,13 @@ Feature: Reserved n8n tags override the mapping default per workflow
     And the file stays in the mapped folder and keeps its "n8n_id"
     And the workflow is archived in n8n
     And subsequent pulls/pushes for "team:flows" skip it
-    And removing "n8n:ignore" returns it to the mapping's default mode
+
+  @todo
+  Scenario: Removing n8n:ignore returns the file to the mapping's default mode
+    Given a managed "sync" workflow file in the "team:flows" folder
+    And I tag it "n8n:ignore"
+    When I remove the "n8n:ignore" tag
+    Then the file's mode becomes "sync"
 
   Scenario: A mapping tag needs no "nextcloud:" prefix
     Given a folder mapped as "sync" to the n8n tag "myfoobarflows"

@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Move a synced workflow file *out* of its mapped folder and it becomes **unmapped** — Nextcloud keeps the full JSON while the workflow is archived in n8n; move it back into any mapping and the same workflow is restored (unarchived), not re-created. Moving a `link` out is refused (it's only a pointer).
 - Copying a workflow file always makes a **brand-new instance** — the copy never inherits the original's `n8n_id`; its metadata and ownership tag are stripped, and a copy that lands in a mapped folder is registered as a fresh workflow in n8n (a copy outside any mapping stays a plain file).
 - Workflow files now offer mode-aware openers — **Open in n8n** (shown only when a live workflow exists, i.e. `sync`/`link`) and **Open with text editor** (always available); a plain click defaults to n8n for `sync`/`link` and to the text editor otherwise.
+- Optional, per-workflow **reserved n8n tags** read at pull time — `n8n:sync` / `n8n:link` override a mapping's default mode for one workflow, and `n8n:ignore` excludes one (never pulled). Hand-tagging a managed file `n8n:ignore` in Nextcloud gives it the new **`ignored`** mode: the file stays put and keeps its id while the workflow is archived in n8n and every sync skips it. The app only ever reads these tags off workflows — it never writes them.
 
 ### Changed
 

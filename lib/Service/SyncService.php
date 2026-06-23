@@ -54,6 +54,7 @@ final class SyncService {
 		private IJobList $jobList,
 		private SyncStatusService $status,
 		private IAppConfig $config,
+		private ReservedTagResolver $reservedTags,
 		private LoggerInterface $logger,
 	) {
 	}
@@ -215,9 +216,17 @@ final class SyncService {
 
 			foreach ($this->iterateWorkflows($mapping->n8nTag) as $workflow) {
 				$processed++;
+				// Reserved tags on the workflow (n8n side) can override the mapping
+				// default per workflow, or exclude it entirely (saga §14.8). An
+				// excluded (n8n:ignore) workflow is never pulled — no file, and it
+				// is left out of $seenIds so prune does not depend on it.
+				$effectiveMode = $this->reservedTags->resolve($workflow, $mapping->mode);
+				if ($effectiveMode === null) {
+					continue;
+				}
 				$seenIds[(string)$workflow['id']] = true;
 				try {
-					$this->writeWorkflow($targetFolder, $mapping, $workflow, $existingById, $nameCounts);
+					$this->writeWorkflow($targetFolder, $mapping, $workflow, $effectiveMode, $existingById, $nameCounts);
 					$succeeded++;
 				} catch (\Throwable $e) {
 					$failed++;
@@ -331,6 +340,14 @@ final class SyncService {
 			if (!is_string($id) || $id === '') {
 				continue;
 			}
+			// Push only files that are themselves `sync`. A per-workflow override
+			// (a `link` file inside a sync mapping) or an `ignored` file must not be
+			// pushed even though the mapping is sync (saga §14.8). A legacy file with
+			// no recorded mode is treated as sync for backward compatibility.
+			$fileMode = $meta[WorkflowMetadata::KEY_MODE] ?? null;
+			if ($fileMode !== null && $fileMode !== Mapping::MODE_SYNC) {
+				continue;
+			}
 			$processed++;
 			try {
 				if ($this->push->push($node)) {
@@ -421,6 +438,12 @@ final class SyncService {
 			if (!is_string($id) || $id === '') {
 				continue;
 			}
+			// An `ignored` file stays put — it's excluded from sync on purpose
+			// (saga §14.8). Never index it, so prune can't delete it just because
+			// its (archived) workflow no longer carries the mapping tag.
+			if (($meta[WorkflowMetadata::KEY_MODE] ?? null) === WorkflowMetadata::MODE_IGNORED) {
+				continue;
+			}
 			$owner = $meta[WorkflowMetadata::KEY_MAPPING] ?? null;
 			if (is_string($owner) && $owner !== '' && $owner !== $mapping->id) {
 				continue; // owned by a different mapping sharing/nesting this subtree
@@ -431,9 +454,12 @@ final class SyncService {
 
 	/**
 	 * Reconcile a single workflow into $folder (update-in-place by id, else fresh
-	 * write with collision suffix). Metadata + ownership tag follow the body.
+	 * write with collision suffix). Metadata + ownership tag follow the body. The
+	 * mode written is the per-workflow EFFECTIVE mode (a reserved-tag override may
+	 * differ from the mapping default — saga §14.8), not $mapping->mode.
 	 *
 	 * @param array<string,mixed> $workflow
+	 * @param string $effectiveMode Mapping::MODE_SYNC|MODE_LINK for this workflow
 	 * @param array<string,\OCP\Files\Node> $existingById
 	 * @param array<string,int> $nameCounts
 	 */
@@ -441,6 +467,7 @@ final class SyncService {
 		Folder $folder,
 		Mapping $mapping,
 		array $workflow,
+		string $effectiveMode,
 		array $existingById,
 		array &$nameCounts,
 	): void {
@@ -448,7 +475,7 @@ final class SyncService {
 		$displayName = (string)($workflow['name'] ?? $id);
 		$versionId = (string)($workflow['versionId'] ?? '');
 
-		$body = $mapping->mode === Mapping::MODE_LINK
+		$body = $effectiveMode === Mapping::MODE_LINK
 			? $this->encodeReference($workflow)
 			: $this->encodeSync($workflow);
 
@@ -472,12 +499,12 @@ final class SyncService {
 			$existing->putContent($body);
 			$this->metadata->write($existing->getId(), [
 				WorkflowMetadata::KEY_ID => $id,
-				WorkflowMetadata::KEY_MODE => $mapping->mode,
+				WorkflowMetadata::KEY_MODE => $effectiveMode,
 				WorkflowMetadata::KEY_VERSION_ID => $versionId,
 				WorkflowMetadata::KEY_SYNCED_HASH => sha1($body),
 				WorkflowMetadata::KEY_MAPPING => $mapping->id,
 			]);
-			$this->tags->apply($existing->getId(), $mapping->mode);
+			$this->tags->apply($existing->getId(), $effectiveMode);
 			return;
 		}
 
@@ -498,12 +525,12 @@ final class SyncService {
 		$file = $folder->newFile($candidate, $body);
 		$this->metadata->write($file->getId(), [
 			WorkflowMetadata::KEY_ID => $id,
-			WorkflowMetadata::KEY_MODE => $mapping->mode,
+			WorkflowMetadata::KEY_MODE => $effectiveMode,
 			WorkflowMetadata::KEY_VERSION_ID => $versionId,
 			WorkflowMetadata::KEY_SYNCED_HASH => sha1($body),
 			WorkflowMetadata::KEY_MAPPING => $mapping->id,
 		]);
-		$this->tags->apply($file->getId(), $mapping->mode);
+		$this->tags->apply($file->getId(), $effectiveMode);
 	}
 
 	/**

@@ -25,9 +25,11 @@ use Psr\Log\LoggerInterface;
  *   n8n:unmapped  — a sync file ejected from its mapping (moved out); the JSON is
  *                   kept, the workflow archived in n8n, restorable on move-back-in.
  *
- * (saga Ch2 §14: `n8n:backup` was dropped along with backup mode — it migrates to
+ * (saga §14: `n8n:backup` was dropped along with backup mode — it migrates to
  * `n8n:sync`. The old `n8n:reference` tag was renamed to `n8n:link`. Both are
- * stripped as legacy on re-tag. `n8n:ignored` is saga §14 Phase 2, not yet produced.)
+ * stripped as legacy on re-tag. `ignored` mode carries no auto-managed pill — the
+ * file keeps the user's hand-set `n8n:ignore` marker instead, which is why that tag
+ * is NOT in {@see ALL} and is never stripped by {@see apply()}/{@see clear()}.)
  *
  * On the Nextcloud side these tags are **authoritative**: the app keeps exactly one
  * on each managed file, matching the file's mode metadata. (The same `n8n:sync` /
@@ -41,6 +43,16 @@ final class OwnershipTags {
 	public const TAG_SYNC = 'n8n:sync';
 	public const TAG_LINK = 'n8n:link';
 	public const TAG_UNMAPPED = 'n8n:unmapped';
+
+	/**
+	 * The user-set, n8n-side override/exclude markers (saga §14.8 `reserved-tags`).
+	 * Unlike the pills above, the app NEVER writes these onto its files automatically —
+	 * a user adds them by hand to override a mapping default per workflow. `n8n:ignore`
+	 * is the one that also has a Nextcloud-side effect (it drives `ignored` mode), so it
+	 * is recognised by {@see \OCA\N8nSync\Listener\ModeTagListener}; it is deliberately
+	 * kept OUT of {@see ALL} so it is never stripped as a competing assignment.
+	 */
+	public const TAG_IGNORE = 'n8n:ignore';
 
 	/** All tags this app currently manages — used to scrub competing assignments. */
 	public const ALL = [self::TAG_SYNC, self::TAG_LINK, self::TAG_UNMAPPED];

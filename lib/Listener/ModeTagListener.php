@@ -15,6 +15,7 @@ use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\ModeChangeService;
 use OCA\N8nSync\Service\OwnershipTags;
 use OCA\N8nSync\Service\SyncGuard;
+use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
 use OCP\Files\File;
@@ -34,6 +35,10 @@ use Psr\Log\LoggerInterface;
  * the assigned tag's mode. Because `changeTo()` stamps the target tag and strips the
  * other (via {@see OwnershipTags::apply()}), "the just-added tag wins" + mutual
  * exclusivity both fall out for free.
+ *
+ * Assigning `n8n:ignore` routes the same way with target `ignored` (saga §14.8): the
+ * workflow is archived in n8n and the file flips to `ignored` mode, keeping its body,
+ * id, and location — sync then skips it.
  *
  * Loop safety: `changeTo()` does its tag re-assert inside the {@see SyncGuard}, so the
  * `TagAssignedEvent` that re-fires lands here with {@see SyncGuard::active()} true and we
@@ -70,6 +75,8 @@ final class ModeTagListener implements IEventListener {
 				$target = Mapping::MODE_LINK;
 			} elseif ($name === OwnershipTags::TAG_SYNC) {
 				$target = Mapping::MODE_SYNC;
+			} elseif ($name === OwnershipTags::TAG_IGNORE) {
+				$target = WorkflowMetadata::MODE_IGNORED;
 			}
 		}
 		if ($target === null) {
