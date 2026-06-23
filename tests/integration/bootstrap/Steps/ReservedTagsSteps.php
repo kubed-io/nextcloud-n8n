@@ -180,7 +180,7 @@ trait ReservedTagsSteps {
 		$id = $exists ? $this->davReadMetadata($this->currentFilePath, self::META_ID) : '(file gone)';
 		if (!$exists || $mode !== 'ignored' || $id !== $this->lastWorkflowId) {
 			throw new \RuntimeException(sprintf(
-				"a later sync did not leave the ignored file alone: exists=%s mode=%s (want ignored) id=%s (want %s) path=%s",
+				'a later sync did not leave the ignored file alone: exists=%s mode=%s (want ignored) id=%s (want %s) path=%s',
 				$exists ? 'yes' : 'NO',
 				(string)$mode,
 				(string)$id,

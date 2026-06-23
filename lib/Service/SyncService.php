@@ -210,12 +210,21 @@ final class SyncService {
 			$succeeded = 0;
 			$failed = 0;
 
-			$existingById = $this->indexByN8nId($targetFolder, $mapping);
+			$ignoredIds = [];
+			$existingById = $this->indexByN8nId($targetFolder, $mapping, $ignoredIds);
 			$nameCounts = [];
 			$seenIds = [];
 
 			foreach ($this->iterateWorkflows($mapping->n8nTag) as $workflow) {
 				$processed++;
+				// A file locally set to `ignored` (n8n:ignore on the NC side) is left
+				// strictly alone — skip re-pulling it. Its workflow is archived in n8n
+				// but still carries the mapping tag, so without this it would be
+				// written as a NEW collision-suffixed sync file and the next push would
+				// fail trying to update the archived workflow (saga §14.8 ignored mode).
+				if (isset($ignoredIds[(string)$workflow['id']])) {
+					continue;
+				}
 				// Reserved tags on the workflow (n8n side) can override the mapping
 				// default per workflow, or exclude it entirely (saga §14.8). An
 				// excluded (n8n:ignore) workflow is never pulled — no file, and it
@@ -414,17 +423,22 @@ final class SyncService {
 	 *
 	 * @return array<string,\OCP\Files\Node>
 	 */
-	private function indexByN8nId(Folder $root, Mapping $mapping): array {
+	private function indexByN8nId(Folder $root, Mapping $mapping, array &$ignoredIds): array {
 		$index = [];
-		$this->collectManaged($root, $mapping, $index);
+		$this->collectManaged($root, $mapping, $index, $ignoredIds);
 		return $index;
 	}
 
-	/** @param array<string,\OCP\Files\Node> $index */
-	private function collectManaged(Folder $folder, Mapping $mapping, array &$index): void {
+	/**
+	 * @param array<string,\OCP\Files\Node> $index
+	 * @param array<string,true> $ignoredIds Receives the n8n ids of `ignored` files
+	 *   (kept OUT of $index so prune leaves them, but surfaced so the pull can skip
+	 *   re-pulling them — see pullOne).
+	 */
+	private function collectManaged(Folder $folder, Mapping $mapping, array &$index, array &$ignoredIds): void {
 		foreach ($folder->getDirectoryListing() as $node) {
 			if ($node instanceof Folder) {
-				$this->collectManaged($node, $mapping, $index);
+				$this->collectManaged($node, $mapping, $index, $ignoredIds);
 				continue;
 			}
 			if (!$node instanceof \OCP\Files\File || !str_ends_with($node->getName(), FilenameCodec::EXT)) {
@@ -440,8 +454,10 @@ final class SyncService {
 			}
 			// An `ignored` file stays put — it's excluded from sync on purpose
 			// (saga §14.8). Never index it, so prune can't delete it just because
-			// its (archived) workflow no longer carries the mapping tag.
+			// its (archived) workflow no longer carries the mapping tag; surface its
+			// id so the pull skips re-pulling the archived workflow as a duplicate.
 			if (($meta[WorkflowMetadata::KEY_MODE] ?? null) === WorkflowMetadata::MODE_IGNORED) {
+				$ignoredIds[$id] = true;
 				continue;
 			}
 			$owner = $meta[WorkflowMetadata::KEY_MAPPING] ?? null;
