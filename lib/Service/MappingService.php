@@ -133,24 +133,45 @@ final class MappingService {
 	}
 
 	/**
-	 * Given a Nextcloud node path, return the mapping whose Team Folder is the
-	 * mounted top-level folder, or null. NC node paths look like
-	 * `/<uid>/files/<teamFolder>/...`; we match on the segment after `files/`.
+	 * Given a Nextcloud node path, return the mapping whose folder **encloses**
+	 * the node, or null. NC node paths look like `/<uid>/files/<folder…>/<file>`;
+	 * we compare the part after `files/` against each mapping's `teamFolder`.
 	 *
-	 * Used by the writeback listener (Phase 4) to decide if a saved file belongs
-	 * to a mapping. Kept in the service so the bulk-sync reconciler can reuse it.
+	 * Mappings are metadata on a folder, so they nest: a folder can be mapped
+	 * **inside** an already-mapped folder. When more than one mapping encloses
+	 * the node the **nearest enclosing** one wins — i.e. the deepest folder path.
+	 * Because every enclosing folder is a path-prefix of the node, the longest
+	 * matching `teamFolder` is unambiguously the deepest, so we keep the longest.
+	 *
+	 * Used by the create / move / copy listeners to decide which mapping (if any)
+	 * a file belongs to. Kept in the service so the bulk-sync reconciler reuses it.
 	 */
 	public function resolveForPath(string $ncPath): ?Mapping {
-		if (!preg_match('#/files/([^/]+)#', $ncPath, $m)) {
+		if (!preg_match('#/files/(.+)$#', $ncPath, $m)) {
 			return null;
 		}
-		$folder = $m[1];
+		// Everything under the user's files root, e.g. "outer/inner/wf.n8n.json"
+		// (a file) or "outer/inner" (the folder itself). Leading/trailing slashes
+		// are stripped so the prefix comparison is on clean segments.
+		$relative = trim($m[1], '/');
+		$best = null;
+		$bestLen = -1;
 		foreach ($this->list() as $mapping) {
-			if ($mapping->teamFolder === $folder) {
-				return $mapping;
+			$folder = trim($mapping->teamFolder, '/');
+			if ($folder === '') {
+				continue;
+			}
+			// The node belongs to $folder iff it IS that folder or lives anywhere
+			// beneath it. The trailing slash pins the match to a segment boundary
+			// so "outer" never swallows a sibling like "outerwear".
+			$encloses = $relative === $folder
+				|| str_starts_with($relative, $folder . '/');
+			if ($encloses && strlen($folder) > $bestLen) {
+				$bestLen = strlen($folder);
+				$best = $mapping;
 			}
 		}
-		return null;
+		return $best;
 	}
 
 	/**

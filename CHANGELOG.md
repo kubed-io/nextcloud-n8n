@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Workflow files now offer mode-aware openers — **Open in n8n** (shown only when a live workflow exists, i.e. `sync`/`link`) and **Open with text editor** (always available); a plain click defaults to n8n for `sync`/`link` and to the text editor otherwise.
 - Optional, per-workflow **reserved n8n tags** read at pull time — `n8n:sync` / `n8n:link` override a mapping's default mode for one workflow, and `n8n:ignore` excludes one (never pulled). Hand-tagging a managed file `n8n:ignore` in Nextcloud gives it the new **`ignored`** mode: the file stays put and keeps its id while the workflow is archived in n8n and every sync skips it. The app only ever reads these tags off workflows — it never writes them.
 - Workflow files are a **first-class file type** over WebDAV — they carry the custom `application/n8n+json` mimetype (and the n8n icon), and a desktop client's PROPFIND sees the four `nc:metadata-*` properties (`n8n_id`, `n8n_mode`, `n8n_mapping`, `n8n_managed`). Those properties are **read-only** (a PROPPATCH against them is rejected — the sync engine owns them), and `n8n_mode` carries the descriptive value (e.g. `sync`, `unmapped`).
+- Folder mappings **nest** — a mapping on a subfolder of an already-mapped folder takes precedence for files inside it (the nearest-enclosing mapping wins), so a workflow's membership is always the closest mapped folder above it.
 
 ### Changed
 

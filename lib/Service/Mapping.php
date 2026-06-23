@@ -156,11 +156,17 @@ final class Mapping implements JsonSerializable {
 	}
 
 	/**
-	 * Team Folder mount point — a plain name, not a path. Strip surrounding
-	 * slashes (legacy `nc_path` values looked like "/n8n") and whitespace.
+	 * Team Folder mount point — usually a plain name (`flows`), but a mapping may
+	 * also sit on a **nested** folder (`flows/archived`) since mappings are
+	 * per-folder metadata and the resolver picks the nearest enclosing one. Strip
+	 * surrounding slashes (legacy `nc_path` values looked like "/n8n"), collapse
+	 * any duplicate separators, and drop whitespace so the stored value is a clean
+	 * relative path the resolver can prefix-match.
 	 */
 	private static function normaliseFolder(string $value): string {
-		return trim(trim($value), '/');
+		$v = trim($value);
+		$v = preg_replace('#/+#', '/', $v) ?? $v;
+		return trim($v, '/');
 	}
 
 	/**

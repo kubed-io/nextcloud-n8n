@@ -92,6 +92,13 @@ final class MappingTest extends TestCase {
 		Mapping::fromArray(['n8n_tag' => 't', 'team_folder' => '', 'mode' => 'sync']);
 	}
 
+	public function testNestedFolderPathIsPreserved(): void {
+		// Mappings nest, so a team_folder may be a multi-segment path — the
+		// resolver prefix-matches it. Surrounding/duplicate slashes are cleaned.
+		$m = Mapping::fromArray(['n8n_tag' => 't', 'team_folder' => '/outer//inner/', 'mode' => 'sync']);
+		self::assertSame('outer/inner', $m->teamFolder);
+	}
+
 	public function testRoundTripThroughToArray(): void {
 		$m = Mapping::fromArray(['n8n_tag' => 't', 'team_folder' => 'f', 'mode' => 'link', 'use_team_folder' => false]);
 		$again = Mapping::fromArray($m->toArray());
