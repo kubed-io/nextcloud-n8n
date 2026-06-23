@@ -937,6 +937,7 @@ New step glue in `ModeChangeSteps.php` (properties `overrideWorkflowId` / `overr
 plus `aManagedWorkflowFileForAWorkflowTagged[AndReserved]`, `iAddToThatWorkflowInN8n`,
 `iChangeThatWorkflowsOverrideTagTo`, private `applyN8nOverride`) all **delegate** to existing
 composed helpers (MoveSteps create-on-land, ReconcileSteps tag/sync, ReservedTagsSteps pull). No
-duplicate step text, no property collisions, `get_errors` clean. Pushed for CI to prove (no PHP
-locally; integration is CI-only).
+duplicate step text, no property collisions, `get_errors` clean. **Landed PR #34** — all 10 checks
+green, including Integration Tests (stable33) at 4m53s, which is the suite that actually exercises
+the three flipped scenarios (no PHP locally; integration is CI-only).
 
