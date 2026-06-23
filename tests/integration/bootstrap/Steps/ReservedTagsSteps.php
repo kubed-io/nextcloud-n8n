@@ -32,6 +32,18 @@ trait ReservedTagsSteps {
 
 	// ── Given (seed workflows in n8n) ─────────────────────────────────────────
 
+	/**
+	 * Bare form: a workflow carrying only the mapping tag (no reserved override).
+	 * Same seeding as the explicit "with no reserved tag" phrasing — the shorter
+	 * wording is used where the scenario is about the mapping default itself
+	 * (e.g. the no-`nextcloud:`-prefix case).
+	 *
+	 * @Given n8n has a workflow tagged :tag
+	 */
+	public function n8nHasAWorkflowTagged(string $tag): void {
+		$this->n8nHasAWorkflowTaggedWithNoReservedTag($tag);
+	}
+
 	/** @Given n8n has a workflow tagged :tag with no reserved tag */
 	public function n8nHasAWorkflowTaggedWithNoReservedTag(string $tag): void {
 		$tagId = $this->ensureN8nTag($tag);
@@ -150,7 +162,13 @@ trait ReservedTagsSteps {
 		Assert::assertTrue((bool)($wf['isArchived'] ?? false), 'the workflow was not archived in n8n');
 	}
 
-	/** @Then subsequent pulls/pushes for :tag skip it */
+	/**
+	 * Regex form (not turnip): a literal "/" in a turnip step is read as
+	 * word-alternation (pulls|pushes), so it never matches the literal
+	 * "pulls/pushes" in the Gherkin. The regex annotation matches it verbatim.
+	 *
+	 * @Then /^subsequent pulls\/pushes for "([^"]+)" skip it$/
+	 */
 	public function subsequentSyncsSkipIt(string $tag): void {
 		$this->runMappingSync('pull', $tag);
 		$this->runMappingSync('push', $tag);
