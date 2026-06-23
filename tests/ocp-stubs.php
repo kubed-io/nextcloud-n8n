@@ -50,9 +50,10 @@ namespace OCP\AppFramework\Bootstrap {
 }
 
 namespace OCP\Files {
-	// `File` (and its parent `Node`) are mocked in motion/listener tests; PHPUnit
-	// needs the interfaces to exist to generate the double. Declaration-only — the
-	// real server provides the full surface; here we name just what the tests call.
+	// `File`/`Folder` (and their parent `Node`) are mocked in motion/listener/sync
+	// tests; PHPUnit needs the interfaces to exist to generate the double.
+	// Declaration-only — the real server provides the full surface; here we name
+	// just what the tests call.
 	if (!interface_exists(Node::class, false)) {
 		interface Node {
 			public function getId(): int;
@@ -60,11 +61,55 @@ namespace OCP\Files {
 			public function getName(): string;
 
 			public function getPath(): string;
+
+			public function getParent(): Folder;
+
+			public function delete(): void;
+
+			public function move(string $targetPath): Node;
 		}
 	}
 	if (!interface_exists(File::class, false)) {
 		interface File extends Node {
 			public function getContent(): string;
+
+			public function putContent($data): void;
+		}
+	}
+	if (!interface_exists(Folder::class, false)) {
+		interface Folder extends Node {
+			/** @return list<Node> */
+			public function getDirectoryListing(): array;
+
+			public function nodeExists(string $path): bool;
+
+			public function newFile(string $path, $content = null): File;
+		}
+	}
+	if (!interface_exists(IMimeTypeLoader::class, false)) {
+		interface IMimeTypeLoader {
+			public function getId(string $mimetype): int;
+
+			public function updateFilecache(string $ext, int $mimetypeId): int;
+		}
+	}
+}
+
+namespace OCP\BackgroundJob {
+	// Passed to SyncService for the async dispatch path; the sync-path tests never
+	// enqueue, so declaration-only is enough to satisfy the type.
+	if (!interface_exists(IJobList::class, false)) {
+		interface IJobList {
+			public function add($job, $argument = null): void;
+		}
+	}
+}
+
+namespace OCP {
+	// SyncService/MappingService read config via getValueString; declaration-only.
+	if (!interface_exists(IAppConfig::class, false)) {
+		interface IAppConfig {
+			public function getValueString(string $app, string $key, string $default = '', bool $lazy = false, bool $sensitive = false): string;
 		}
 	}
 }

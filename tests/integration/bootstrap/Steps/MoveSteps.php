@@ -114,7 +114,11 @@ trait MoveSteps {
 
 	/** @Then the file's mode becomes :mode */
 	public function theFilesModeBecomes(string $mode): void {
-		Assert::assertSame($mode, $this->davReadMetadata($this->currentFilePath, self::META_MODE), "file mode did not become $mode");
+		// n8n_mode is exposed over DAV in its WIRE form — link is stored as
+		// "reference" (the literal "link" crashes core PROPFIND). sync/unmapped
+		// are identical in both forms, so only link needs translating.
+		$wire = $mode === 'link' ? 'reference' : $mode;
+		Assert::assertSame($wire, $this->davReadMetadata($this->currentFilePath, self::META_MODE), "file mode did not become $mode");
 	}
 
 	/** @Then the file's mode becomes :mode in the :tag mapping */

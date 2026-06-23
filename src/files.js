@@ -32,6 +32,8 @@ const APP_ID = 'n8n_sync'
 // (writes to the shared _nc_files_scope.v4_0 store core's PROPFIND reads). `nc`
 // is a default namespace, so the bare prefixed name is enough.
 registerDavProperty('nc:metadata-n8n_id')
+// Also ride the mode on the listing so the toggle action knows sync vs link.
+registerDavProperty('nc:metadata-n8n_mode')
 
 // Base URL of the n8n instance (server-rendered initial state). Empty until the
 // admin sets it — we hide the action in that case.
@@ -187,6 +189,35 @@ registerFileAction({
     return (await openInText(context.nodes[0])) ? null : false
   },
   order: -49, // right below "Open in n8n"
+})
+
+// ── "Toggle n8n mode" (sync ⇄ link) ────────────────────────────────────────
+// Flipping the file's n8n:sync / n8n:link system tag is what re-modes the file:
+// the server-side ModeTagListener → ModeChangeService does the body rewrite +
+// metadata + exclusivity (saga Ch2 §14.2b mode-change.feature). This front-end
+// action is the one-click convenience for that.
+//
+// TODO(saga §14.2b): assign the opposite system tag here (resolve/create the
+// n8n:sync / n8n:link tag id, then PUT
+// /remote.php/dav/systemtags-relations/files/<fileId>/<tagId>). Until that lands,
+// the toggle points users at the built-in Tags sidebar, which fires the same
+// TagAssignedEvent the listener already handles — so the mechanism works today;
+// only the one-click shortcut is stubbed.
+registerFileAction({
+  id: 'n8n_sync.toggle-mode',
+  displayName: () => t(APP_ID, 'Toggle n8n mode (sync/link)'),
+  iconSvgInline: () => `
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+  <path d="M12 6V3L8 7l4 4V8c2.76 0 5 2.24 5 5h2c0-3.87-3.13-7-7-7zm0 12c-2.76 0-5-2.24-5-5H5c0 3.87 3.13 7 7 7v3l4-4-4-4v3z"/>
+</svg>`,
+  enabled: isN8nFile,
+  async exec() {
+    window.OC?.Notification?.showTemporary?.(
+      t(APP_ID, 'To switch between Sync and Link, set the n8n:sync or n8n:link tag in the Tags sidebar.'),
+    )
+    return null
+  },
+  order: -48, // right below "Edit as text"
 })
 
 // ── "New → n8n workflow" ───────────────────────────────────────────────────

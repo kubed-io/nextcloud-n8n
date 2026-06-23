@@ -19,9 +19,9 @@
 # The workflow identity (`n8n_id`) is preserved across the change — same workflow,
 # just presented differently in Nextcloud.
 #
-# @todo until mode-change handling is wired + asserted (saga Chapter 2 §14). CI skips @todo.
+# @todo on the scenarios still being wired (toggle action, link→sync, n8n override).
+# CI skips @todo. The two live scenarios below exercise the retag → re-mode path.
 
-@todo
 Feature: Changing a managed file between sync and link
   As a user
   I want to flip a workflow file between sync and link by retagging it
@@ -31,6 +31,7 @@ Feature: Changing a managed file between sync and link
     Given the app is connected to n8n
     And a folder mapped as "sync" to the n8n tag "team:flows"
 
+  @todo
   Scenario: Toggle mode from the Files context menu
     Given a managed "sync" workflow file in the "team:flows" folder
     When I choose "Toggle n8n mode" from the file's context menu
@@ -53,6 +54,7 @@ Feature: Changing a managed file between sync and link
     And saving the file no longer pushes to n8n
     And the workflow's "n8n_id" is unchanged
 
+  @todo
   Scenario: Link → sync from Nextcloud (retag the file)
     Given a managed "link" workflow file in the "team:flows" folder
     When I change its system tag from "n8n:link" to "n8n:sync"
@@ -61,6 +63,7 @@ Feature: Changing a managed file between sync and link
     And saving the file now pushes to n8n
     And the workflow's "n8n_id" is unchanged
 
+  @todo
   Scenario: Sync → link from n8n (override tag, then pull)
     Given a managed "sync" workflow file for a workflow tagged "team:flows"
     When I add "n8n:link" to that workflow in n8n
@@ -68,6 +71,7 @@ Feature: Changing a managed file between sync and link
     Then the file's mode becomes "link"
     And the workflow's "n8n_id" is unchanged
 
+  @todo
   Scenario: Link → sync from n8n (override tag, then pull)
     Given a managed "link" workflow file for a workflow tagged "team:flows" and "n8n:link"
     When I change that workflow's override tag to "n8n:sync" in n8n
