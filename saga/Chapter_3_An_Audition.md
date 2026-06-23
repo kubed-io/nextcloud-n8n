@@ -531,12 +531,12 @@ real NC + n8n. The chapter is "done" when this ledger is all-green to Kelly's sa
 | `rename` | ✅ all | — | three-way name sync |
 | `copy` | ✅ all | — | always a new instance (§14.5) |
 | `reconcile` | ✅ all | — | manual per-mapping pull/push + prune (§14.6) |
-| `move` | ◑ main paths | move-out/back-in edge cases | §14.4 shipped the core |
-| `mode-change` | ◑ 2 of 6 | toggle (FE stub), link→sync, 2× n8n-override | §14.6 |
-| `delete` | ◑ core | the 7 trash/restore/abort edges | §17.7 wiring exists; assertions pending |
-| `reserved-tags` | ☐ none | all 7 | needs the pull-side override + **`ignored`** mode (Copilot, §14.8) |
-| `open-with` | ◑ sync+unmapped | `link` (Vitest-covered), `ignored` (Copilot) | §14.8/§14.9 — openers follow mode |
-| `file-type` | ◑ mimetype+PROPFIND+read-only | REPORT-query, `link`/`ignored` mode rows | §14.9 — code existed; now proven over DAV |
+| `move` | ◑ 6 of 9 | hard-deleted restore-fallback, merge-on-collision, brand-new move-in create | §14.4 shipped the core |
+| `mode-change` | ◑ 2 of 6 | toggle (FE stub), link→sync retag, 2× n8n-override | §14.6 |
+| `delete` | ◑ 4 of 9 | purge-sync, unmapped trash/purge/restore, abort-if-unreachable | wiring exists; assertions pending |
+| `reserved-tags` | ✅ 7 of 8 | "remove n8n:ignore → default" (un-ignore listener unbuilt) | §14.6/§14.10 — landed PR #32 |
+| `open-with` | ◑ sync+unmapped | `link` (Vitest-covered), 3× `ignored` (now flippable) | §14.8/§14.10 — openers follow mode |
+| `file-type` | ◑ 4 of 6 | REPORT-query, `link`/`ignored` mode rows (ignored now flippable) | §14.9 — proven over DAV |
 | `mapping-membership` | ☐ none | all 3 | nearest-enclosing-mapping resolution **NOT built** (§14.9) |
 
 **Two watch-outs carried forward from §14.6** (deferred, not bugs — they bite only when the modes
@@ -677,3 +677,63 @@ feature; this is the independent second slice.
 - *Hand off to Copilot for commit:* the `use FileTypeSteps;` line in `FeatureContext`, and a
   `[Unreleased]` CHANGELOG line. No `Application.php` change (no new listener; mimetype is already
   registered by the `RegisterMimetype` migration).
+
+#### 14.10 Double feature #2 — LANDED & GREEN (PR #32, 2026-06-23)
+
+> **Three slices, one PR, all checks green.** `reserved-tags` + `ignored` mode (Copilot),
+> `open-with` (Claude), and `file-type` (Claude) all landed on PR #32
+> (`feat/reserved-tags-and-open-with`). After Copilot went heads-down, **Claude took over git +
+> CI** and drove the branch to a fully green board (Integration 47/47, Psalm, PHP/JS quality,
+> unit, build, PR Tasks). PR is a draft pending Kelly's review.
+
+**The drive to green (what CI caught that the pod couldn't):**
+- **Two trait method-name collisions** (`aManagedWorkflowFile`, `theWorkflowIsArchivedInN8n`) — two
+  Step traits each redeclared a method another trait owned. A fatal PHP trait collision, *independent
+  of the Behat step text* (which differed). Renamed the methods; annotations unchanged.
+- **Two undefined reserved-tags steps** — the bare `n8n has a workflow tagged :tag` was never
+  defined, and `subsequent pulls/pushes for :tag skip it` used a turnip annotation whose literal
+  `/` is read as **word-alternation** (`pulls|pushes`) so it never matched the literal slash. Fixed
+  the latter with a regex annotation (same class as the §14.4 parens lesson).
+- **The real bug — `ignored` files re-pulled into duplicates.** An `ignored` file is excluded from
+  `indexByN8nId` (so prune leaves it), but the pull still received its archived workflow from
+  `iterateWorkflows` (it keeps the mapping tag) and, not finding it in the index, wrote a NEW
+  collision-suffixed `sync` copy (`Mover (1).n8n.json`); the next push then failed with *"Cannot
+  update an archived workflow."* Fix: surface ignored ids out of `collectManaged`/`indexByN8nId`
+  and **skip them in the pull loop** — a locally-ignored file is now left strictly alone.
+  (`pushOne` already skipped non-sync files, so the original was never the problem.) This retires
+  the deferred §14.6 watch-out properly.
+
+**Lessons (don't relearn):**
+- **PHP trait collisions are by METHOD NAME, not step text.** Two `*Steps` traits with a same-named
+  method fatal-error `FeatureContext` even when their `@Given/@When/@Then` patterns differ. When
+  adding a step whose phrasing echoes an existing one, give the method a unique name.
+- **A literal `/` in a turnip step annotation = word-alternation.** `pulls/pushes` matches `pulls`
+  OR `pushes`, never the literal `pulls/pushes`. Use a regex annotation (escape the slash) or
+  reword — same fix family as parenthesised steps (§14.4).
+- **PHPUnit 12 masks Behat assertion failures.** A failing `PHPUnit\Assert` under Behat throws an
+  opaque `Registry::get(): … null returned` TypeError that *replaces* the real message (the footgun
+  `WebDavTrait::assertStatus` already documents). When a step fails inscrutably, convert its asserts
+  to a plain `RuntimeException` that prints the observed state — that one change surfaced the entire
+  root cause above. Worth doing project-wide for the load-bearing step assertions.
+- **`php-cs-fixer` runs PHP-version-sensitive + `phpdoc_align`:** keep `@param` descriptions single
+  line (wrapped descriptions get re-aligned), and single-quote format strings with no interpolation.
+
+**Where Chapter 3 stands now — past the hump, not yet the finish.** The core lifecycle is whole and
+every mode now *exists* (`sync`/`link`/`unmapped`/`ignored`). **19 `@todo` scenarios remain**, in
+three buckets:
+1. **Flip-now (modes already exist) — cheap, mostly Claude's front-end lane:** `open-with` 3×
+   `ignored` rows + `file-type` `ignored` mode-value row (wire `arrangeManagedFile('ignored')` =
+   put a file, tag `n8n:ignore`). The 2× `mode-change` **n8n-override** scenarios may also be
+   flippable now that the reserved-tag resolver exists.
+2. **Targeted builds:** the `mode-change` **toggle** Files action (currently a stub), the
+   `reserved-tags` **un-ignore** listener (remove `n8n:ignore` → back to default), and some
+   `delete` edges (purge-sync, unmapped trash/purge/restore — `unmapped` exists now so these are
+   close; abort-if-unreachable is already coded, just needs its assertion).
+3. **Genuine remaining feature work:** `mapping-membership` **nearest-enclosing nested mappings**
+   (NOT built — `resolveForPath` matches only the top-level segment, §14.9) and the `move`
+   **merge-on-collision** + restore-fallback + brand-new-move-in edges.
+
+Next sensible double feature: **Claude flips the ignored/override `@todo`s** (open-with + file-type
++ mode-change overrides — pure flips, his lane) while **Copilot builds nested mappings** (the one
+real backend gap). That clears the cheap wins and the largest unbuilt feature in one pass, leaving
+only the `move`/`delete` edges and the toggle/un-ignore niceties before the ledger is all-green.
