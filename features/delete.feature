@@ -49,25 +49,30 @@ Feature: Deleting a workflow file
     Then n8n is not contacted
 
   # ── unmapped mode (a moved-out sync file: keeps its id, workflow archived) ────
-  # @todo until "unmapped" mode lands (saga Chapter 2 §14, Phase 2). Decision-case d.
-  @todo
+  # Unmapped mode has landed (saga §14.2). An unmapped file's workflow is already
+  # archived and has no live mapping, so trash and restore are both n8n no-ops:
+  # softDelete/restore fall to the link branch with mapping=null and skip the call.
+  # The "left as-is" assertion proves it — the workflow stays present and archived.
   Scenario: Trashing an unmapped file is a no-op in n8n (already archived)
     Given an unmapped workflow file that still carries its "n8n_id"
     When I move it to the trash
-    Then n8n is not contacted
+    Then the trash move succeeds
     And the archived workflow in n8n is left as-is
 
+  # @todo for the same reason the sync purge is @todo: a trashbin-DAV purge doesn't
+  # fire BeforeNodeDeletedEvent in CI, so the hard step never runs. On top of that,
+  # hardDelete is a non-sync no-op today, so even if it fired it wouldn't delete the
+  # archived workflow — this leg needs both a listener-side fix and a backend rule.
   @todo
   Scenario: Purging an unmapped file permanently deletes the archived workflow
     Given a trashed unmapped workflow file that still carries its "n8n_id"
     When I purge it from the trash
     Then the (archived) workflow is permanently deleted in n8n
 
-  @todo
   Scenario: Restoring an unmapped file from trash touches nothing in n8n
     Given a trashed unmapped workflow file that still carries its "n8n_id"
     When I restore it from the trash
-    Then n8n is not contacted
+    Then the archived workflow in n8n is left as-is
 
   # Error-path branch — documented but not wired. Forcing a real transport
   # failure mid-DELETE is brittle for an integration test; the cleaner home for

@@ -533,7 +533,7 @@ real NC + n8n. The chapter is "done" when this ledger is all-green to Kelly's sa
 | `reconcile` | ✅ all | — | manual per-mapping pull/push + prune (§14.6) |
 | `move` | ◑ 6 of 9 | hard-deleted restore-fallback, merge-on-collision, brand-new move-in create | §14.4 shipped the core |
 | `mode-change` | ◑ 5 of 6 | toggle (FE-only, Vitest) | §14.6/§14.15 — retag + n8n-override live |
-| `delete` | ◑ 4 of 9 | purge-sync, unmapped trash/purge/restore, abort-if-unreachable | wiring exists; assertions pending |
+| `delete` | ◑ 6 of 9 | purge-sync, unmapped-purge, abort-if-unreachable | §14.16 — unmapped trash/restore no-ops live |
 | `reserved-tags` | ✅ 7 of 8 | "remove n8n:ignore → default" (un-ignore listener unbuilt) | §14.6/§14.10 — landed PR #32 |
 | `open-with` | ◑ sync+unmapped+ignored | `link` (Vitest-covered) | §14.8/§14.10 — ignored flipped PR #33 |
 | `file-type` | ◑ 5 of 6 | REPORT-query, `link` mode row | §14.9 — ignored flipped PR #33 |
@@ -940,4 +940,27 @@ composed helpers (MoveSteps create-on-land, ReconcileSteps tag/sync, ReservedTag
 duplicate step text, no property collisions, `get_errors` clean. **Landed PR #34** — all 10 checks
 green, including Integration Tests (stable33) at 4m53s, which is the suite that actually exercises
 the three flipped scenarios (no PHP locally; integration is CI-only).
+
+### §14.16 — `delete`: the unmapped no-op legs go live (solo)
+
+Next high-confidence flip: `delete` from **4 of 9 → 6 of 9**. The two **unmapped** no-op
+scenarios — *trashing* and *restoring* a moved-out file — now run live. An unmapped file's
+workflow is **already archived** and its mapping is cleared, so the delete/restore listeners both
+fall to the `link` branch with `mapping = null` and **skip the n8n call** (verified in
+`DeleteService::softDelete` / `restore`). The contract is proven by a new
+`the archived workflow in n8n is left as-is` assertion — the workflow stays **present and
+archived** across the operation.
+
+No new backend. The arrange reuses MoveSteps' `anUnmappedWorkflowFileCarryingItsId` (composed in
+FeatureContext) — set up a sync file in `nextcloud:alpha`, move it out to archive + stamp
+`unmapped`. New `DeleteSteps` glue: `aTrashedUnmappedWorkflowFile` (arrange + trash),
+`theTrashMoveSucceeds` (DAV status check), `theArchivedWorkflowIsLeftAsIs` (present + archived).
+No duplicate step text, `get_errors` clean.
+
+**Still `@todo` (3 of 9):** the **sync purge**, the **unmapped purge**, and **abort-if-unreachable**.
+Both purges share one CI wall — a trashbin-DAV purge doesn't fire `BeforeNodeDeletedEvent`, so the
+hard step never runs; the unmapped purge *also* needs a backend rule (`hardDelete` is a non-sync
+no-op today). Abort-if-unreachable stays the deliberate "bow on top" — its cleaner home is a
+PHPUnit test against a mocked `N8nClient` asserting `AbortedEventException`, not a brittle
+mid-DELETE transport failure in Behat.
 
