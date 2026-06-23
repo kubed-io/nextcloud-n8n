@@ -24,7 +24,7 @@ import { registerDavProperty, getDefaultPropfind, getClient, getRootPath, result
 import { loadState } from '@nextcloud/initial-state'
 import { translate as t } from '@nextcloud/l10n'
 import { emit } from '@nextcloud/event-bus'
-import { getN8nId, buildUrl, isN8nFile } from './files-helpers.js'
+import { getN8nId, buildUrl, isN8nFile, getN8nMode, canOpenInN8n } from './files-helpers.js'
 
 const APP_ID = 'n8n_sync'
 
@@ -158,7 +158,11 @@ registerFileAction({
   <rect x="9" y="11" width="6" height="2"/>
 </svg>`,
 
-  enabled: isN8nFile,
+  // Offered for sync/link (a live workflow to open); HIDDEN for unmapped/ignored
+  // (archived in n8n — nothing live to jump to). The opener set follows the file's
+  // MODE, not its type (open-with.feature / saga §14.1). enabled() also keeps it
+  // off plain JSON via isN8nFile.
+  enabled: (context) => isN8nFile(context) && canOpenInN8n(getN8nMode(context?.nodes?.[0])),
 
   async exec(context) {
     const url = await resolveUrl(context?.nodes?.[0])
@@ -167,15 +171,20 @@ registerFileAction({
     return true
   },
 
-  // Default click opens n8n; enabled() gates it so plain JSON keeps Text-editor.
+  // Default click for sync/link; for unmapped/ignored this action is disabled, so
+  // the lower-priority "Open with text editor" default wins instead (see below).
   default: DefaultType.DEFAULT,
-  order: -50, // above other JSON claimers (Text ~0)
+  order: -50, // above other JSON claimers (Text ~0) and above the text opener
 })
 
-// Secondary (right-click menu) action: edit the raw JSON in the Text editor.
+// "Open with text editor" — edit the raw JSON. ALWAYS available on any workflow
+// file, and the DEFAULT click for unmapped/ignored (no live workflow to open).
+// It is also marked DEFAULT, but at a *lower* priority (order -49) than "Open in
+// n8n" (-50): for sync/link both are enabled and n8n wins; for unmapped/ignored
+// "Open in n8n" is disabled, so this becomes the default click. (open-with.feature)
 registerFileAction({
   id: 'n8n_sync.edit',
-  displayName: () => t(APP_ID, 'Edit as text'),
+  displayName: () => t(APP_ID, 'Open with text editor'),
   iconSvgInline: () => `
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
   <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
@@ -188,7 +197,8 @@ registerFileAction({
     // null = silent (the modal is the feedback); false = error toast on failure.
     return (await openInText(context.nodes[0])) ? null : false
   },
-  order: -49, // right below "Open in n8n"
+  default: DefaultType.DEFAULT,
+  order: -49, // below "Open in n8n"; the fallback default for unmapped/ignored
 })
 
 // ── "Toggle n8n mode" (sync ⇄ link) ────────────────────────────────────────
@@ -267,4 +277,4 @@ addNewFileMenuEntry({
   },
 })
 
-console.info('[n8n_sync] files integration loaded — actions: open in n8n + edit as text; New: n8n workflow')
+console.info('[n8n_sync] files integration loaded — actions: open in n8n (sync/link) + open with text editor; New: n8n workflow')

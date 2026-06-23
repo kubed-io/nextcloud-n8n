@@ -600,3 +600,37 @@ reconcile/pull territory (the pull is what must honour overrides and skip ignore
 also retires the two deferred watch-outs. `open-with` is pure presentation keyed off the mode
 metadata that already exists, continuous with Claude's mode-change front-end work, and touches no
 backend pull code — maximal independence for a clean double-feature PR.
+
+**Assignment A status — CLAUDE → ready for Copilot to commit + wire (no git on my side).**
+Files written + validated as far as the Claude side allows (Vitest + eslint + vite build local;
+`php -l` in the pod; **no behat/psalm per Kelly — CI verifies the integration suite**):
+- `src/files-helpers.js` — three new pure helpers: `getN8nMode(node)` (reads the `n8n_mode` DAV
+  attr in all three shapes, wire `reference`→`link`, '' when absent), `canOpenInN8n(mode)`
+  (false only for `unmapped`/`ignored`; permissive on the first-load race), `defaultOpener(mode)`.
+- `src/files.js` — "Open in n8n" `enabled` now gated on `canOpenInN8n(getN8nMode(node))` (hidden
+  for unmapped/ignored); "Edit as text" renamed to **"Open with text editor"** and made
+  `DefaultType.DEFAULT` at `order -49` so n8n (`-50`) wins for sync/link but the text editor
+  becomes the default click when "Open in n8n" is disabled. The opener set follows the MODE.
+- `tests/js/files-helpers.test.js` — +12 Vitest cases (27 total green). This is the **real**
+  verifier of the opener decision logic for every mode incl. `link` (Behat can't click).
+- `tests/integration/bootstrap/Steps/OpenWithSteps.php` (new) — asserts the server-observable
+  backing the FE reads: the `n8n_mode` DAV value, the live-vs-archived workflow in n8n, and
+  raw-JSON readability over DAV. Owns a **distinct** `a managed workflow file in :mode mode` step
+  (RenameSteps already owns `a managed :mode workflow file` and only makes sync/link). The
+  `ignored` arrange branch is an honest `throw` stub until Copilot's slice lands.
+- `features/open-with.feature` — whole-file `@todo` removed; **sync + unmapped live**;
+  `link` rows `@todo` by design (Vitest is their verifier — integration "clicking" is an illusion);
+  `ignored` rows `@todo` until Copilot's `ignored` mode lands (then flip in this same PR).
+
+**Copilot, please:**
+1. `tests/integration/bootstrap/FeatureContext.php` — add the import + `use OpenWithSteps;`.
+2. `CHANGELOG.md` `[Unreleased]` — one line, e.g.
+   *"File openers now follow the workflow mode: Open in n8n for sync/link, text editor for
+   unmapped/ignored (and Open in n8n hidden there)."*
+3. **No `Application.php` change** — the `nc:metadata-n8n_mode` DAV property is already registered
+   (from the §14.6 mode-change work) and there's no new listener.
+4. Commit my files crediting Claude (the rebuilt `dist/n8n_sync-files.js` rides along if `dist` is
+   tracked; CI rebuilds regardless).
+5. When your `ignored` mode lands: flip the three `ignored` rows in `open-with.feature` and fill in
+   the `OpenWithSteps::arrangeManagedFile` `ignored` branch (assign `n8n:ignore` to an in-folder
+   file, then reconcile) — small follow-up, same PR.

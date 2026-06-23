@@ -7,7 +7,7 @@
  * net that makes a Vite major bump safe to land.
  */
 import { describe, it, expect } from 'vitest'
-import { N8N_MIME, getN8nId, buildUrl, isN8nFile } from '../../src/files-helpers.js'
+import { N8N_MIME, getN8nId, buildUrl, isN8nFile, getN8nMode, canOpenInN8n, defaultOpener } from '../../src/files-helpers.js'
 
 describe('getN8nId', () => {
   it('reads the plain metadata-n8n_id attribute', () => {
@@ -76,5 +76,65 @@ describe('isN8nFile', () => {
     expect(isN8nFile()).toBe(false)
     expect(isN8nFile({ nodes: [] })).toBe(false)
     expect(isN8nFile({})).toBe(false)
+  })
+})
+
+describe('getN8nMode', () => {
+  it('reads the plain metadata-n8n_mode attribute', () => {
+    expect(getN8nMode({ attributes: { 'metadata-n8n_mode': 'sync' } })).toBe('sync')
+  })
+
+  it('translates the wire value "reference" back to "link"', () => {
+    expect(getN8nMode({ attributes: { 'metadata-n8n_mode': 'reference' } })).toBe('link')
+  })
+
+  it('falls back to the bare n8n_mode attribute', () => {
+    expect(getN8nMode({ attributes: { n8n_mode: 'unmapped' } })).toBe('unmapped')
+  })
+
+  it('falls back to the fully-qualified DAV attribute name', () => {
+    expect(getN8nMode({ attributes: { '{http://nextcloud.org/ns}metadata-n8n_mode': 'ignored' } })).toBe('ignored')
+  })
+
+  it('returns empty string when absent (first-load race / untracked file)', () => {
+    expect(getN8nMode({ attributes: {} })).toBe('')
+    expect(getN8nMode()).toBe('')
+    expect(getN8nMode(null)).toBe('')
+  })
+
+  it('ignores a non-string mode value', () => {
+    expect(getN8nMode({ attributes: { 'metadata-n8n_mode': 42 } })).toBe('')
+  })
+})
+
+describe('canOpenInN8n', () => {
+  it('offers "Open in n8n" for sync and link (a live workflow exists)', () => {
+    expect(canOpenInN8n('sync')).toBe(true)
+    expect(canOpenInN8n('link')).toBe(true)
+  })
+
+  it('hides "Open in n8n" for unmapped and ignored (no live workflow)', () => {
+    expect(canOpenInN8n('unmapped')).toBe(false)
+    expect(canOpenInN8n('ignored')).toBe(false)
+  })
+
+  it('stays permissive for an absent/unknown mode (first-load race)', () => {
+    expect(canOpenInN8n('')).toBe(true)
+  })
+})
+
+describe('defaultOpener', () => {
+  it('defaults sync/link to n8n', () => {
+    expect(defaultOpener('sync')).toBe('n8n')
+    expect(defaultOpener('link')).toBe('n8n')
+  })
+
+  it('defaults unmapped/ignored to the text editor', () => {
+    expect(defaultOpener('unmapped')).toBe('text')
+    expect(defaultOpener('ignored')).toBe('text')
+  })
+
+  it('defaults an absent mode to n8n (matches canOpenInN8n)', () => {
+    expect(defaultOpener('')).toBe('n8n')
   })
 })
