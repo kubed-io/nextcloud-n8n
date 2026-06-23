@@ -170,7 +170,12 @@ trait ReconcileSteps {
 	/** Run `occ n8n_sync:sync <direction> --mapping=<tag>` and assert it succeeded. */
 	private function runMappingSync(string $direction, string $tag): void {
 		$res = $this->occ('n8n_sync:sync ' . escapeshellarg($direction) . ' --mapping=' . escapeshellarg($tag));
-		Assert::assertSame(0, $res['exit'], "sync $direction for $tag failed:\n{$res['output']}");
+		// RuntimeException, not Assert: a failing PHPUnit assertion under Behat +
+		// PHPUnit 12 throws the opaque Registry::get() TypeError that masks the real
+		// message (see WebDavTrait::assertStatus). A plain throw shows exit + output.
+		if ($res['exit'] !== 0) {
+			throw new \RuntimeException("sync $direction for $tag failed (exit {$res['exit']}):\n{$res['output']}");
+		}
 	}
 
 	// ── helpers: n8n REST seeding/inspection ──────────────────────────────────

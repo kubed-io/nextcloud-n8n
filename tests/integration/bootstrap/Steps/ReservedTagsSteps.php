@@ -172,9 +172,22 @@ trait ReservedTagsSteps {
 	public function subsequentSyncsSkipIt(string $tag): void {
 		$this->runMappingSync('pull', $tag);
 		$this->runMappingSync('push', $tag);
-		Assert::assertTrue($this->davExists($this->currentFilePath), 'a later sync removed the ignored file');
-		Assert::assertSame('ignored', $this->davReadMetadata($this->currentFilePath, self::META_MODE), 'a later sync changed the ignored mode');
-		Assert::assertSame($this->lastWorkflowId, $this->davReadMetadata($this->currentFilePath, self::META_ID), 'a later sync changed the ignored file id');
+		// Plain throw, not PHPUnit Assert: under Behat + PHPUnit 12 a failing assert
+		// throws the opaque Registry::get() TypeError that masks the real message
+		// (see WebDavTrait::assertStatus). Gather the observed state and report it.
+		$exists = $this->davExists($this->currentFilePath);
+		$mode = $exists ? $this->davReadMetadata($this->currentFilePath, self::META_MODE) : '(file gone)';
+		$id = $exists ? $this->davReadMetadata($this->currentFilePath, self::META_ID) : '(file gone)';
+		if (!$exists || $mode !== 'ignored' || $id !== $this->lastWorkflowId) {
+			throw new \RuntimeException(sprintf(
+				"a later sync did not leave the ignored file alone: exists=%s mode=%s (want ignored) id=%s (want %s) path=%s",
+				$exists ? 'yes' : 'NO',
+				(string)$mode,
+				(string)$id,
+				(string)$this->lastWorkflowId,
+				$this->currentFilePath,
+			));
+		}
 	}
 
 	// ── helpers ────────────────────────────────────────────────────────────────
