@@ -43,12 +43,12 @@ trait OpenWithSteps {
 	 *
 	 * @Given a managed workflow file in :mode mode
 	 */
-	public function aManagedWorkflowFile(string $mode): void {
+	public function aManagedWorkflowFileInMode(string $mode): void {
 		$this->arrangeManagedFile($mode);
 	}
 
 	/** @Given a managed workflow file in :mode mode with a live workflow in n8n */
-	public function aManagedWorkflowFileWithLiveWorkflow(string $mode): void {
+	public function aManagedWorkflowFileInModeWithLiveWorkflow(string $mode): void {
 		$this->arrangeManagedFile($mode);
 		$id = $this->davReadMetadata($this->currentFilePath, self::META_ID);
 		Assert::assertNotNull($id, 'precondition: file has no n8n_id');

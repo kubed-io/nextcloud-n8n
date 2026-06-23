@@ -143,7 +143,7 @@ trait ReservedTagsSteps {
 	}
 
 	/** @Then the workflow is archived in n8n */
-	public function theWorkflowIsArchivedInN8n(): void {
+	public function theIgnoredWorkflowIsArchivedInN8n(): void {
 		Assert::assertNotNull($this->lastWorkflowId, 'no workflow id recorded for the ignored file');
 		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
 		Assert::assertIsArray($wf, "workflow {$this->lastWorkflowId} is gone from n8n");
