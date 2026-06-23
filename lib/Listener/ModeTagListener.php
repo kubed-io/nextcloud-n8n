@@ -20,6 +20,7 @@ use OCP\EventDispatcher\IEventListener;
 use OCP\Files\File;
 use OCP\Files\IRootFolder;
 use OCP\IUserSession;
+use OCP\SystemTag\ISystemTagManager;
 use OCP\SystemTag\TagAssignedEvent;
 use Psr\Log\LoggerInterface;
 
@@ -45,6 +46,7 @@ final class ModeTagListener implements IEventListener {
 		private ModeChangeService $modeChange,
 		private IRootFolder $rootFolder,
 		private IUserSession $userSession,
+		private ISystemTagManager $tagManager,
 		private SyncGuard $guard,
 		private LoggerInterface $logger,
 	) {
@@ -60,8 +62,9 @@ final class ModeTagListener implements IEventListener {
 		}
 
 		// Which of our mode tags was assigned? (Ignore any non-n8n tag change.)
+		// TagAssignedEvent::getTags() yields tag *ids*; resolve them to names.
 		$target = null;
-		foreach ($event->getTags() as $tag) {
+		foreach ($this->tagManager->getTagsByIds($event->getTags()) as $tag) {
 			$name = $tag->getName();
 			if ($name === OwnershipTags::TAG_LINK) {
 				$target = Mapping::MODE_LINK;

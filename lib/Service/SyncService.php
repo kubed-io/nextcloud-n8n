@@ -188,14 +188,14 @@ final class SyncService {
 				'app' => Application::APP_ID,
 				'teamFolder' => $mapping->teamFolder,
 			]);
-			return ['processed' => 0, 'succeeded' => 0, 'failed' => 0];
+			return ['processed' => 0, 'succeeded' => 0, 'failed' => 0, 'pruned' => 0];
 		}
 		if (!$this->storage->isAvailable($mapping)) {
 			$this->logger->warning('skipping mapping: storage backend unavailable (Team Folder selected but groupfolders disabled?)', [
 				'app' => Application::APP_ID,
 				'teamFolder' => $mapping->teamFolder,
 			]);
-			return ['processed' => 0, 'succeeded' => 0, 'failed' => 0];
+			return ['processed' => 0, 'succeeded' => 0, 'failed' => 0, 'pruned' => 0];
 		}
 
 		// Guard our own writes: writeWorkflow's putContent fires NodeWrittenEvent,
