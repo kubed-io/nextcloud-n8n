@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Two manual per-mapping sync controls — **Sync from n8n** (pull the mapping's tagged workflows into its folder, updating files in place by id and pruning files whose workflow lost the tag) and **Sync to n8n** (push the mapping's `sync` files up); both ignore files outside the mapping. Also available as `occ n8n_sync:sync <pull|push> --mapping=<tag>`.
+- Flip a managed file between **sync** and **link** by retagging it `n8n:sync` / `n8n:link` — the body is rewritten to fit the new mode (link collapses to a pointer, sync pulls the full JSON down), the other mode tag is stripped so exactly one remains, and the workflow's `n8n_id` is preserved.
 - The release tarball now ships `LICENSE` (full AGPL-3.0 text), matching how the official Nextcloud apps package their releases.
 - Move a synced workflow file *out* of its mapped folder and it becomes **unmapped** — Nextcloud keeps the full JSON while the workflow is archived in n8n; move it back into any mapping and the same workflow is restored (unarchived), not re-created. Moving a `link` out is refused (it's only a pointer).
 - Copying a workflow file always makes a **brand-new instance** — the copy never inherits the original's `n8n_id`; its metadata and ownership tag are stripped, and a copy that lands in a mapped folder is registered as a fresh workflow in n8n (a copy outside any mapping stays a plain file).

@@ -40,6 +40,7 @@ Phase 0: skeleton only — installs and enables cleanly, registers nothing yet.
     <command>OCA\N8nSync\Command\AddMapping</command>
     <command>OCA\N8nSync\Command\ListMappings</command>
     <command>OCA\N8nSync\Command\RemoveMapping</command>
+    <command>OCA\N8nSync\Command\Reconcile</command>
   </commands>
   <repair-steps>
     <!--

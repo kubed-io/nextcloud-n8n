@@ -10,10 +10,7 @@
 # already holds its workflow is a MOVE-time behaviour, not a sync — see
 # move.feature. The duplicate state, one unmapped + one mapped with the same id, is
 # perfectly fine and intentional; a sync does not touch the unmapped one.)
-#
-# @todo until the manual-sync step defs land (saga Chapter 2 §14). CI skips @todo.
 
-@todo
 Feature: Manual per-mapping sync (Sync from / Sync to n8n)
   As a Nextcloud admin
   I want the per-mapping sync buttons to reconcile just that mapping

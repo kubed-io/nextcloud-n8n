@@ -18,7 +18,9 @@ use OCA\N8nSync\Tests\Integration\Steps\CopySteps;
 use OCA\N8nSync\Tests\Integration\Steps\CreateSteps;
 use OCA\N8nSync\Tests\Integration\Steps\DeleteSteps;
 use OCA\N8nSync\Tests\Integration\Steps\MappingSteps;
+use OCA\N8nSync\Tests\Integration\Steps\ModeChangeSteps;
 use OCA\N8nSync\Tests\Integration\Steps\MoveSteps;
+use OCA\N8nSync\Tests\Integration\Steps\ReconcileSteps;
 use OCA\N8nSync\Tests\Integration\Steps\RenameSteps;
 use OCA\N8nSync\Tests\Integration\Support\N8nApiTrait;
 use OCA\N8nSync\Tests\Integration\Support\OccTrait;
@@ -69,6 +71,8 @@ final class FeatureContext implements Context {
 	use DeleteSteps;
 	use MoveSteps;
 	use CopySteps;
+	use ModeChangeSteps;
+	use ReconcileSteps;
 
 	private const APP_ID = 'n8n_sync';
 

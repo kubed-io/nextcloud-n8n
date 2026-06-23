@@ -88,6 +88,16 @@ final class SyncService {
 	 */
 	public function runInline(string $direction, ?string $mappingId): array {
 		if ($direction === SyncStatusService::DIR_PUSH) {
+			if ($mappingId !== null && $mappingId !== '') {
+				$mapping = $this->mappings->getById($mappingId);
+				if ($mapping === null) {
+					throw new \OutOfBoundsException('Mapping not found');
+				}
+				$res = $this->pushOne($mapping);
+				$res['status'] = ($res['failed'] ?? 0) === 0 ? 'ok' : 'error';
+				$res['message'] = $res['message'] ?? null;
+				return $res;
+			}
 			return $this->pushAll();
 		}
 		if ($mappingId !== null && $mappingId !== '') {
@@ -161,7 +171,14 @@ final class SyncService {
 	/**
 	 * Pull a single mapping into its Team Folder.
 	 *
-	 * @return array{processed:int, succeeded:int, failed:int}
+	 * Reconciling, not merely additive: workflows still carrying the tag are
+	 * written/updated in place (matched by `n8n_id`), and any managed file that
+	 * belongs to this mapping but whose workflow no longer carries the tag is
+	 * **pruned** (the manual "Sync from n8n" contract, saga §14.6). The prune
+	 * deletes only the local mirror — the workflow in n8n merely lost this tag —
+	 * so it runs inside the SyncGuard this method already holds.
+	 *
+	 * @return array{processed:int, succeeded:int, failed:int, pruned:int}
 	 */
 	public function pullOne(Mapping $mapping): array {
 		if ($mapping->ncGroups === []) {
@@ -194,9 +211,11 @@ final class SyncService {
 
 			$existingById = $this->indexByN8nId($targetFolder, $mapping);
 			$nameCounts = [];
+			$seenIds = [];
 
 			foreach ($this->iterateWorkflows($mapping->n8nTag) as $workflow) {
 				$processed++;
+				$seenIds[(string)$workflow['id']] = true;
 				try {
 					$this->writeWorkflow($targetFolder, $mapping, $workflow, $existingById, $nameCounts);
 					$succeeded++;
@@ -211,17 +230,49 @@ final class SyncService {
 				}
 			}
 
+			$pruned = $this->pruneStale($existingById, $seenIds, $mapping);
+
 			$this->fixupFilecacheMimetype();
-			return ['processed' => $processed, 'succeeded' => $succeeded, 'failed' => $failed];
+			return ['processed' => $processed, 'succeeded' => $succeeded, 'failed' => $failed, 'pruned' => $pruned];
 		} finally {
 			$this->guard->leave();
 		}
 	}
 
 	/**
-	 * Bulk push: send every `sync · two-way` file under each mapping back to n8n
-	 * (NC treated as source of truth). Used by the "Sync now → n8n" button.
-	 * reference/backup mappings are skipped — they never push.
+	 * Delete managed files that belong to $mapping but whose workflow was not seen
+	 * in this pull (it lost the mapping's tag). The workflow is left alone in n8n —
+	 * only the local mirror is removed — and the caller already holds the SyncGuard
+	 * so the delete does not mirror back. Returns the number of files pruned.
+	 *
+	 * @param array<string,\OCP\Files\Node> $existingById managed files for this mapping, keyed by n8n id
+	 * @param array<string,bool> $seenIds ids that still carry the tag (written this pull)
+	 */
+	private function pruneStale(array $existingById, array $seenIds, Mapping $mapping): int {
+		$pruned = 0;
+		foreach ($existingById as $id => $node) {
+			if (isset($seenIds[$id])) {
+				continue;
+			}
+			try {
+				$node->delete();
+				$pruned++;
+			} catch (\Throwable $e) {
+				$this->logger->warning('prune stale file failed', [
+					'app' => Application::APP_ID,
+					'workflowId' => $id,
+					'teamFolder' => $mapping->teamFolder,
+					'exception' => $e,
+				]);
+			}
+		}
+		return $pruned;
+	}
+
+	/**
+	 * Bulk push: send every `sync` file under each mapping back to n8n (NC treated
+	 * as source of truth). Used by the "Sync now → n8n" button. Delegates per
+	 * mapping to {@see pushOne}; `link` mappings never push.
 	 *
 	 * @return array{processed:int, succeeded:int, failed:int, status:string, message:?string}
 	 */
@@ -231,41 +282,12 @@ final class SyncService {
 		$failed = 0;
 		$errors = [];
 		foreach ($this->mappings->list() as $mapping) {
-			if ($mapping->mode !== Mapping::MODE_SYNC) {
-				continue;
-			}
-			if (!$this->storage->isAvailable($mapping)) {
-				continue;
-			}
-			$folder = $this->storage->findFolder($mapping);
-			if ($folder === null) {
-				continue;
-			}
-			foreach ($folder->getDirectoryListing() as $node) {
-				if (!$node instanceof \OCP\Files\File || !str_ends_with($node->getName(), FilenameCodec::EXT)) {
-					continue;
-				}
-				$meta = $this->metadata->read($node->getId());
-				$id = $meta[WorkflowMetadata::KEY_ID] ?? null;
-				if (!is_string($id) || $id === '') {
-					continue;
-				}
-				$processed++;
-				try {
-					if ($this->push->push($node)) {
-						$succeeded++;
-					}
-				} catch (\Throwable $e) {
-					// Carry n8n's own message through to the admin button so a
-					// bad workflow is fixable without digging in the logs.
-					$failed++;
-					$errors[] = $node->getName() . ': ' . $e->getMessage();
-					$this->logger->warning('n8n_sync bulk push failed', [
-						'app' => Application::APP_ID,
-						'file' => $node->getName(),
-						'exception' => $e,
-					]);
-				}
+			$res = $this->pushOne($mapping);
+			$processed += $res['processed'];
+			$succeeded += $res['succeeded'];
+			$failed += $res['failed'];
+			if (is_string($res['message'] ?? null) && $res['message'] !== '') {
+				$errors[] = $res['message'];
 			}
 		}
 		return [
@@ -273,6 +295,64 @@ final class SyncService {
 			'succeeded' => $succeeded,
 			'failed' => $failed,
 			'status' => $failed === 0 ? 'ok' : 'error',
+			'message' => $errors === [] ? null : implode('; ', $errors),
+		];
+	}
+
+	/**
+	 * Push a single mapping's `sync` files up to n8n (the per-mapping "Sync to
+	 * n8n" control, saga §14.6). Files outside this mapping's folder — including
+	 * every `unmapped` file — are never seen, so they are never pushed. A `link`
+	 * mapping is a no-op (a pointer has nothing to push).
+	 *
+	 * @return array{processed:int, succeeded:int, failed:int, message:?string}
+	 */
+	public function pushOne(Mapping $mapping): array {
+		if ($mapping->mode !== Mapping::MODE_SYNC) {
+			return ['processed' => 0, 'succeeded' => 0, 'failed' => 0, 'message' => null];
+		}
+		if (!$this->storage->isAvailable($mapping)) {
+			return ['processed' => 0, 'succeeded' => 0, 'failed' => 0, 'message' => null];
+		}
+		$folder = $this->storage->findFolder($mapping);
+		if ($folder === null) {
+			return ['processed' => 0, 'succeeded' => 0, 'failed' => 0, 'message' => null];
+		}
+		$processed = 0;
+		$succeeded = 0;
+		$failed = 0;
+		$errors = [];
+		foreach ($folder->getDirectoryListing() as $node) {
+			if (!$node instanceof \OCP\Files\File || !str_ends_with($node->getName(), FilenameCodec::EXT)) {
+				continue;
+			}
+			$meta = $this->metadata->read($node->getId());
+			$id = $meta[WorkflowMetadata::KEY_ID] ?? null;
+			if (!is_string($id) || $id === '') {
+				continue;
+			}
+			$processed++;
+			try {
+				if ($this->push->push($node)) {
+					$succeeded++;
+				}
+			} catch (\Throwable $e) {
+				// Carry n8n's own message through to the admin button so a
+				// bad workflow is fixable without digging in the logs.
+				$failed++;
+				$errors[] = $node->getName() . ': ' . $e->getMessage();
+				$this->logger->warning('n8n_sync push failed', [
+					'app' => Application::APP_ID,
+					'file' => $node->getName(),
+					'teamFolder' => $mapping->teamFolder,
+					'exception' => $e,
+				]);
+			}
+		}
+		return [
+			'processed' => $processed,
+			'succeeded' => $succeeded,
+			'failed' => $failed,
 			'message' => $errors === [] ? null : implode('; ', $errors),
 		];
 	}

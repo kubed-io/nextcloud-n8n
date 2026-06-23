@@ -17,6 +17,7 @@ use OCA\N8nSync\Listener\CreateInN8nListener;
 use OCA\N8nSync\Listener\DeleteToN8nListener;
 use OCA\N8nSync\Listener\LoadFilesScriptListener;
 use OCA\N8nSync\Listener\MimeRestampListener;
+use OCA\N8nSync\Listener\ModeTagListener;
 use OCA\N8nSync\Listener\MotionListener;
 use OCA\N8nSync\Listener\MoveGuardListener;
 use OCA\N8nSync\Listener\NameSyncListener;
@@ -37,6 +38,7 @@ use OCP\Files\Events\Node\BeforeNodeRenamedEvent;
 use OCP\Files\Events\Node\NodeCopiedEvent;
 use OCP\Files\Events\Node\NodeRenamedEvent;
 use OCP\Files\Events\Node\NodeWrittenEvent;
+use OCP\SystemTag\TagAssignedEvent;
 
 /**
  * App bootstrap. Phase 0 is an intentionally empty skeleton: it must install,
@@ -124,6 +126,13 @@ final class Application extends App implements IBootstrap {
 		// icon goes missing until the next save re-stamps. Closes that gap with
 		// a cheap global UPDATE keyed on the extension.
 		$context->registerEventListener(NodeRenamedEvent::class, MimeRestampListener::class);
+
+		// Mode re-mode by retag: assigning n8n:sync / n8n:link to a managed file is a
+		// request to change its mode (sync ⇄ link). The listener routes to
+		// ModeChangeService, which rewrites the body, re-stamps the mode, and enforces
+		// one-mode-tag exclusivity. Our own apply() re-assigns tags under SyncGuard, so
+		// the listener bails when the guard is active (no recursion).
+		$context->registerEventListener(TagAssignedEvent::class, ModeTagListener::class);
 
 		// Files-app frontend: load the file-action bundle (icon + "Open in n8n"
 		// default click) on every page that fires LoadAdditionalScriptsEvent.
