@@ -26,6 +26,17 @@ trait DeleteSteps {
 	}
 
 	/**
+	 * A trashed *unmapped* file: arrange the unmapped move-out (MoveSteps, composed
+	 * here) so the workflow is archived + the file carries its id, then trash it.
+	 *
+	 * @Given a trashed unmapped workflow file that still carries its :key
+	 */
+	public function aTrashedUnmappedWorkflowFile(string $key): void {
+		$this->anUnmappedWorkflowFileCarryingItsId($key);
+		$this->davDelete($this->currentFilePath); // → trashbin (soft step)
+	}
+
+	/**
 	 * A plain .n8n.json with no n8n metadata — "untracked", distinct from the
 	 * "unmapped" mode (saga Chapter 3 §14) which keeps its id + an archived workflow.
 	 *
@@ -86,6 +97,24 @@ trait DeleteSteps {
 		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
 		Assert::assertIsArray($wf, "workflow {$this->lastWorkflowId} is gone");
 		Assert::assertFalse((bool)($wf['isArchived'] ?? false), 'workflow is still archived in n8n');
+	}
+
+	/** @Then the trash move succeeds */
+	public function theTrashMoveSucceeds(): void {
+		Assert::assertContains($this->lastDeleteStatus, [204, 200], 'the trash move did not succeed');
+	}
+
+	/**
+	 * An unmapped op (trash / restore of a moved-out file) must not touch n8n:
+	 * the workflow stays present and stays archived. Reuses lastWorkflowId set by
+	 * the unmapped arrange.
+	 *
+	 * @Then the archived workflow in n8n is left as-is
+	 */
+	public function theArchivedWorkflowIsLeftAsIs(): void {
+		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
+		Assert::assertIsArray($wf, "workflow {$this->lastWorkflowId} is gone — an unmapped no-op must leave it present");
+		Assert::assertTrue((bool)($wf['isArchived'] ?? false), 'the archived workflow changed — an unmapped op must leave it as-is');
 	}
 
 	/** @Then the mapping tag is stripped from the workflow in n8n */
