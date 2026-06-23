@@ -35,6 +35,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Folder mappings collapse to a single mode — `sync` or `link` (the `backup` mode and the separate `writeback` setting are gone; `sync` is the former two-way). Existing mappings auto-migrate the first time they're read.
 - README + feature specs rewritten to the target model: modes are `sync` / `link` / `unmapped` (no `backup`, no `writeback`), with the move (same-workflow / restore), copy (always-new), and reconcile/prune lifecycle. Spec-only; behaviour change tracked in saga Chapter 3.
+- The Files context-menu **Toggle n8n mode** action now flips a file `sync` ⇄ `link` in one click (it assigns the opposite `n8n:sync` / `n8n:link` tag and the listener re-modes it), instead of pointing at the Tags sidebar; shown only for `sync`/`link` files.
 
 ### Tests
 

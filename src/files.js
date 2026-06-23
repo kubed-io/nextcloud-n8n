@@ -24,7 +24,8 @@ import { registerDavProperty, getDefaultPropfind, getClient, getRootPath, result
 import { loadState } from '@nextcloud/initial-state'
 import { translate as t } from '@nextcloud/l10n'
 import { emit } from '@nextcloud/event-bus'
-import { getN8nId, buildUrl, isN8nFile, getN8nMode, canOpenInN8n } from './files-helpers.js'
+import { generateRemoteUrl } from '@nextcloud/router'
+import { getN8nId, buildUrl, isN8nFile, getN8nMode, canOpenInN8n, toggleTargetTag } from './files-helpers.js'
 
 const APP_ID = 'n8n_sync'
 
@@ -205,14 +206,52 @@ registerFileAction({
 // Flipping the file's n8n:sync / n8n:link system tag is what re-modes the file:
 // the server-side ModeTagListener → ModeChangeService does the body rewrite +
 // metadata + exclusivity (saga Ch2 §14.2b mode-change.feature). This front-end
-// action is the one-click convenience for that.
-//
-// TODO(saga §14.2b): assign the opposite system tag here (resolve/create the
-// n8n:sync / n8n:link tag id, then PUT
-// /remote.php/dav/systemtags-relations/files/<fileId>/<tagId>). Until that lands,
-// the toggle points users at the built-in Tags sidebar, which fires the same
-// TagAssignedEvent the listener already handles — so the mechanism works today;
-// only the one-click shortcut is stubbed.
+// action is the one-click shortcut: it assigns the OPPOSITE mode tag, and the
+// listener takes it from there.
+
+// Resolve a system tag id by name (display-name match), creating it if missing.
+// Mirrors the systemtags DAV dance the integration suite uses (ModeChangeSteps).
+async function resolveOrCreateSystemTag(davBase, name) {
+  const headers = { requesttoken: window.OC?.requestToken ?? '', 'Content-Type': 'application/xml' }
+  const propfind = await fetch(`${davBase}/systemtags/`, {
+    method: 'PROPFIND',
+    headers: { ...headers, Depth: '1' },
+    body: '<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">'
+      + '<d:prop><oc:id/><oc:display-name/></d:prop></d:propfind>',
+  })
+  if (propfind.ok || propfind.status === 207) {
+    const doc = new DOMParser().parseFromString(await propfind.text(), 'application/xml')
+    for (const resp of doc.getElementsByTagNameNS('DAV:', 'response')) {
+      const dn = resp.getElementsByTagNameNS('http://owncloud.org/ns', 'display-name')[0]?.textContent
+      const id = resp.getElementsByTagNameNS('http://owncloud.org/ns', 'id')[0]?.textContent
+      if (dn === name && id) return id
+    }
+  }
+  // Not found → create it; the new id comes back in the Content-Location header.
+  const create = await fetch(`${davBase}/systemtags/`, {
+    method: 'POST',
+    headers: { requesttoken: window.OC?.requestToken ?? '', 'Content-Type': 'application/json' },
+    body: JSON.stringify({ name, userVisible: true, userAssignable: true }),
+  })
+  const loc = create.headers.get('Content-Location') || ''
+  return loc.replace(/\/+$/, '').split('/').pop() || ''
+}
+
+// Assign a system tag (by name) to a file id over the systemtags-relations DAV
+// endpoint. Returns true on success (or 409 = already assigned).
+async function assignModeTag(node, tagName) {
+  const fileId = node?.fileid
+  if (!fileId || !tagName) return false
+  const davBase = generateRemoteUrl('dav').replace(/\/+$/, '')
+  const tagId = await resolveOrCreateSystemTag(davBase, tagName)
+  if (!tagId) return false
+  const res = await fetch(`${davBase}/systemtags-relations/files/${fileId}/${tagId}`, {
+    method: 'PUT',
+    headers: { requesttoken: window.OC?.requestToken ?? '' },
+  })
+  return res.ok || res.status === 409
+}
+
 registerFileAction({
   id: 'n8n_sync.toggle-mode',
   displayName: () => t(APP_ID, 'Toggle n8n mode (sync/link)'),
@@ -220,14 +259,28 @@ registerFileAction({
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
   <path d="M12 6V3L8 7l4 4V8c2.76 0 5 2.24 5 5h2c0-3.87-3.13-7-7-7zm0 12c-2.76 0-5-2.24-5-5H5c0 3.87 3.13 7 7 7v3l4-4-4-4v3z"/>
 </svg>`,
-  enabled: isN8nFile,
-  async exec() {
-    window.OC?.Notification?.showTemporary?.(
-      t(APP_ID, 'To switch between Sync and Link, set the n8n:sync or n8n:link tag in the Tags sidebar.'),
-    )
-    return null
+  // Only sync/link can be toggled (unmapped/ignored have no live workflow). Reuse
+  // canOpenInN8n — true for sync/link, false for unmapped/ignored — gated on a file.
+  enabled: (context) => isN8nFile(context) && canOpenInN8n(getN8nMode(context?.nodes?.[0])),
+  async exec(context) {
+    const node = context?.nodes?.[0]
+    const target = toggleTargetTag(getN8nMode(node))
+    if (!target) return null
+    try {
+      const ok = await assignModeTag(node, target)
+      if (!ok) throw new Error('tag assignment failed')
+      const to = target === 'n8n:link' ? t(APP_ID, 'Link') : t(APP_ID, 'Sync')
+      window.OC?.Notification?.showTemporary?.(t(APP_ID, 'Switched to {mode} mode', { mode: to }))
+      return null
+    } catch (e) {
+      console.error('[n8n_sync] toggle mode failed', e)
+      window.OC?.Notification?.showTemporary?.(
+        t(APP_ID, 'Could not switch mode — set the n8n:sync or n8n:link tag in the Tags sidebar instead.'),
+      )
+      return false
+    }
   },
-  order: -48, // right below "Edit as text"
+  order: -48, // right below "Open with text editor"
 })
 
 // ── "New → n8n workflow" ───────────────────────────────────────────────────
