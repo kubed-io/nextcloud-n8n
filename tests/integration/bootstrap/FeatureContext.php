@@ -17,6 +17,7 @@ use OCA\N8nSync\Tests\Integration\Steps\AppLifecycleSteps;
 use OCA\N8nSync\Tests\Integration\Steps\CopySteps;
 use OCA\N8nSync\Tests\Integration\Steps\CreateSteps;
 use OCA\N8nSync\Tests\Integration\Steps\DeleteSteps;
+use OCA\N8nSync\Tests\Integration\Steps\FileTypeSteps;
 use OCA\N8nSync\Tests\Integration\Steps\MappingSteps;
 use OCA\N8nSync\Tests\Integration\Steps\ModeChangeSteps;
 use OCA\N8nSync\Tests\Integration\Steps\MoveSteps;
@@ -77,6 +78,7 @@ final class FeatureContext implements Context {
 	use ModeChangeSteps;
 	use ReconcileSteps;
 	use ReservedTagsSteps;
+	use FileTypeSteps;
 
 	private const APP_ID = 'n8n_sync';
 
