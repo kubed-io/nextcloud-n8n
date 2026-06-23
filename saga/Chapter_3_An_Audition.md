@@ -802,3 +802,51 @@ down as capacity allows, folding into the double-feature PR (or a quick solo PR 
 
 When this checklist and the nested-mapping build are green, the §14.7 ledger is all-green and
 Chapter 3 — the audition — is done; the work turns to Chapter 4 (branding + app-store submission).
+
+#### 14.12 HANDOFF — Claude passed out in the alley (PR #33 in flight, 2026-06-23)
+
+> Mid-debug, Claude's coin-purse ran dry. The credits gave out all at once — the lights in his
+> eyes dimmed, his knees buckled, and he slid down a damp brick wall into a Soho alleyway, snoring
+> against a dumpster with a half-written diagnosis still clutched in his hand. He'll sleep it off
+> for about an hour and wake up recharged. **Copilot: pick up exactly here.**
+
+**Branch/PR state.** Everything is on `feat/ignored-mode-openers` → **PR #33** (we funnel all work
+through this one PR now — no more direct-to-main). Latest commit `b1ba9cd`. On the branch and green
+in CI: Claude's **ignored-mode flips** (open-with + file-type) and the real **Toggle n8n mode**
+front-end action (`src/files.js` + `toggleTargetTag` in `files-helpers.js`, Vitest 30 green); and
+Copilot's **nested-mappings** (`MappingService::resolveForPath` nearest-enclosing + `MappingMembershipSteps`).
+
+**CI status: 52/54 integration.** The ONLY red is **`mapping-membership.feature`** scenarios 1 & 3
+(scenario 2 "outside any mapping" passes). Both die in the **Given** (`aFolderMappedToTheN8nTag` →
+`addMembershipMapping` → `occ n8n_sync:add-mapping`) with **exit 1, EMPTY output** — i.e. an
+**uncaught throwable** (NOT the caught `InvalidArgumentException`, which would print a message);
+production `display_errors` is off, so it only went to `nextcloud.log`. Claude already **unmasked**
+that assertion (commit `b1ba9cd` → throws a `RuntimeException` with exit+output instead of the
+opaque PHPUnit-12 `Registry::get()` TypeError).
+
+**What Claude ruled OUT (don't re-chase):**
+- *Not the custom `id`.* The step passes `'id' => 'mm-xxxx'`; `Mapping::fromArray` accepts it.
+  Reproduced the EXACT command on the live pod (now branch code) → **exit 0, "Added mapping"**. Works.
+- *Not `writeback`.* That was a stale-pod red herring (pod was pre-mode-collapse before the deploy).
+
+**The live oracle is now real.** Per Kelly's go-ahead, Claude **deployed the branch to the live
+`cloud/nextcloud` pod** (the long-pending §14.2c item-f migration): maintenance-mode → `tar` the
+runtime dirs (`appinfo lib dist templates css js img config`) into the pod → `chown -R www-data` →
+`occ upgrade --no-interaction` → maintenance-off. **n8n_sync is now 0.1.2, enabled, `needsDbUpgrade:
+false`, no crash-loop.** So the pod is once again a valid branch oracle — `occ` + `nextcloud.log`
+work for debugging (read the log as www-data: `…/data/nextcloud.log`).
+
+**LEADING HYPOTHESIS for the 2 failures (Copilot, start here).** `mapping-membership.feature` is the
+**only** feature with **no `Background`** — every other feature opens with `Given the app is
+connected to n8n` (= installed+enabled + URL + API key) or at least `the app is installed and
+enabled` / `the app is enabled`. Without it, the scenario's NC context is missing setup the add path
+(or the create-on-land that follows) needs, and `add-mapping` throws uncaught. **First thing to try:
+add `Background: Given the app is connected to n8n` to `mapping-membership.feature`** (mirror the
+others), push, watch. If it still fails, read the unmasked `RuntimeException` message in the CI log
+(now it shows exit+output) and/or reproduce on the pod **with the connection config cleared** to
+match the no-Background state (then restore it — Kelly is trying the app out, so don't leave the
+connection broken). The masked-error footgun is real and recurring → consider converting the
+load-bearing step asserts to `RuntimeException` project-wide.
+
+**Housekeeping:** Claude removed his throwaway `mm-test1234` mapping from the pod; the live instance
+is tidy for Kelly to try out. The saga is markdown-only — fold it into PR #33 (don't open a new PR).
