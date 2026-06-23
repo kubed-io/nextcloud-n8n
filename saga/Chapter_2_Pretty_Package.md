@@ -796,7 +796,7 @@ eligibility. Now fully formalized:
 - SPDX `AGPL-3.0-or-later` already declared in `package.json`, `composer.json`, and source
   `SPDX-License-Identifier` headers.
 - `info.xml` uses **`<licence>agpl</licence>`** — confirmed: the official apps use this short
-  form, NOT the SPDX string (see Chapter 3 §3.2). Also fixed the `bugs` URL and added
+  form, NOT the SPDX string (see Chapter 4 §4.2). Also fixed the `bugs` URL and added
   `<repository>` while here.
 
 ### 10. CI workflows — two flows: Tests vs Quality ✅ (implemented)
@@ -1055,7 +1055,7 @@ A few items that naturally belong in this chapter:
     for the same full-license-text file; our `LICENSE` already is the canonical AGPL-3.0 text.
 - **`info.xml` cleanup** — ✅ `bugs` URL fixed + `<repository>` added; `<licence>agpl</licence>`
   confirmed correct (the official apps use the short form, not SPDX). Still pending for the
-  store: real `description` copy + at least one `screenshot` (Chapter 3 §3.1).
+  store: real `description` copy + at least one `screenshot` (Chapter 4 §4.1).
 - **`.gitignore` audit** — `dist/` and `node_modules/` are already gitignored; verify nothing
   sensitive (keys, `.env`) could accidentally slip in as the repo matures.
 - **Secrets hygiene** — the GitHub App private key and (eventually) the NC app signing key
@@ -1079,8 +1079,10 @@ Chapter 2 is complete when:
    ✅, Dependabot version updates ✅; Dependabot alerts/security updates, secret scanning
    + push protection, dependency review still ☐ (§13 table)
 
-There is no fixed "done" line here — this chapter closes when Kelly judges the app fully
-functional and usable for the market (the §14 refactor + edge cases covered to his
-satisfaction). The moment he does, the work turns from *function* to *identity*: **branding**
-(Chapter 3 §3.1) is the transition, and it's fine for it to start on the tail end of this
-chapter. After branding, Chapter 3's store submission is just execution.
+There is no fixed "done" line here — this chapter closes at the **marker where the integration
+suite runs green in the pipeline** (epic 5), the hinge where the story turns from *"we have all
+the devops and workflows"* to *"now we can actually code."* From there the work moves on to the
+feature/refactor round in **[Chapter 3 — An Audition](./Chapter_3_An_Audition.md)** (the §14
+mode/motion refactor + edge cases), and only once Kelly judges *that* market-ready does the work
+turn from *function* to *identity*: **branding** (Chapter 4 §4.1) is the transition into
+[Chapter 4 — Showtime](./Chapter_4_Showtime.md), whose store submission is just execution.

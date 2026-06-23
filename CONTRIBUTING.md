@@ -24,7 +24,7 @@ itself is the authoritative detail.
 | [CONTRIBUTING.md](CONTRIBUTING.md) | This file — process, conventions, dev loop. |
 | [SECURITY.md](SECURITY.md) | How to report vulnerabilities. Read before filing a "security" issue publicly. |
 | [AGENTS.md](AGENTS.md) | Cold-start orientation for AI coding agents. |
-| [saga/](saga/) | Long-form design narrative across chapters. Chapter 1 = how the app was built; Chapter 2 = packaging it for the world; Chapter 3 = app store submission. **The "why" behind the code.** |
+| [saga/](saga/) | Long-form design narrative across chapters. Chapter 1 = how the app was built; Chapter 2 = packaging it for the world; Chapter 3 = the audition (the mode/motion refactor + edge-case features); Chapter 4 = app store submission. **The "why" behind the code.** |
 | [appinfo/](appinfo/) | Nextcloud app metadata (`info.xml`, routes). The store validates against this. |
 | [lib/](lib/) | PHP backend (`OCA\N8nSync`): controllers, services, listeners, migrations, background jobs. |
 | [src/](src/) | JS frontend source (Files row icon + "Open in n8n" action). Built by Vite into `dist/`. |
@@ -382,7 +382,7 @@ Manual, intentional, not on every merge.
    GitHub Release with `n8n_sync-<version>.tar.gz` attached.
 
 The release tarball is the artifact eventually consumed by the Nextcloud app store
-(see [saga/Chapter_3_Showtime.md](saga/Chapter_3_Showtime.md)).
+(see [saga/Chapter_4_Showtime.md](saga/Chapter_4_Showtime.md)).
 
 ---
 
@@ -398,7 +398,7 @@ If you've found a vulnerability, **do not open a public issue.** Follow
 - **"How does this app work?"** → [README.md](README.md)
 - **"Why was it built this way?"** → [saga/Chapter_1_The_Vibe.md](saga/Chapter_1_The_Vibe.md)
 - **"What's the roadmap to a clean release?"** → [saga/Chapter_2_Pretty_Package.md](saga/Chapter_2_Pretty_Package.md)
-- **"How does it get on the app store?"** → [saga/Chapter_3_Showtime.md](saga/Chapter_3_Showtime.md)
+- **"How does it get on the app store?"** → [saga/Chapter_4_Showtime.md](saga/Chapter_4_Showtime.md)
 - **"I'm an AI agent — where do I start?"** → [AGENTS.md](AGENTS.md)
 
 Thanks for contributing. Be kind in reviews, validate on a real instance, and write a
