@@ -101,6 +101,8 @@ trait ReconcileSteps {
 			'Sync to n8n' => 'push',
 			default => throw new \InvalidArgumentException("unknown sync button '$button'"),
 		};
+		// Remember the tag so argless Thens (update-in-place, prune) can find the folder.
+		$this->currentTag = $tag;
 		$this->runMappingSync($direction, $tag);
 	}
 
@@ -136,7 +138,7 @@ trait ReconcileSteps {
 		Assert::assertArrayNotHasKey($victimId, $byId, "workflow $victimId lost its tag but its file was not pruned");
 	}
 
-	/** @Then the unmapped file is left untouched (it is outside the mapping's scope) */
+	/** @Then /^the unmapped file is left untouched \(it is outside the mapping's scope\)$/ */
 	public function theUnmappedFileIsLeftUntouched(): void {
 		Assert::assertNotSame('', $this->reconcileUnmappedPath, 'no unmapped file was planted');
 		Assert::assertTrue($this->davExists($this->reconcileUnmappedPath), 'the unmapped file was removed by a mapping-scoped sync');
@@ -155,7 +157,7 @@ trait ReconcileSteps {
 		}
 	}
 
-	/** @Then the unmapped file is not pushed (it is outside the mapping's scope) */
+	/** @Then /^the unmapped file is not pushed \(it is outside the mapping's scope\)$/ */
 	public function theUnmappedFileIsNotPushed(): void {
 		// It carries no n8n_id, so there is nothing in n8n to mirror; it must also
 		// be left exactly as planted (a push never reaches outside the mapping).
