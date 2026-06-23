@@ -532,12 +532,12 @@ real NC + n8n. The chapter is "done" when this ledger is all-green to Kelly's sa
 | `copy` | ✅ all | — | always a new instance (§14.5) |
 | `reconcile` | ✅ all | — | manual per-mapping pull/push + prune (§14.6) |
 | `move` | ◑ 6 of 9 | hard-deleted restore-fallback, merge-on-collision, brand-new move-in create | §14.4 shipped the core |
-| `mode-change` | ◑ 2 of 6 | toggle (FE stub), link→sync retag, 2× n8n-override | §14.6 |
+| `mode-change` | ◑ 3 of 6 | link→sync retag, 2× n8n-override | §14.6; real toggle landed PR #33 |
 | `delete` | ◑ 4 of 9 | purge-sync, unmapped trash/purge/restore, abort-if-unreachable | wiring exists; assertions pending |
 | `reserved-tags` | ✅ 7 of 8 | "remove n8n:ignore → default" (un-ignore listener unbuilt) | §14.6/§14.10 — landed PR #32 |
-| `open-with` | ◑ sync+unmapped | `link` (Vitest-covered), 3× `ignored` (now flippable) | §14.8/§14.10 — openers follow mode |
-| `file-type` | ◑ 4 of 6 | REPORT-query, `link`/`ignored` mode rows (ignored now flippable) | §14.9 — proven over DAV |
-| `mapping-membership` | ☐ none | all 3 | nearest-enclosing-mapping resolution **NOT built** (§14.9) |
+| `open-with` | ◑ sync+unmapped+ignored | `link` (Vitest-covered) | §14.8/§14.10 — ignored flipped PR #33 |
+| `file-type` | ◑ 5 of 6 | REPORT-query, `link` mode row | §14.9 — ignored flipped PR #33 |
+| `mapping-membership` | ✅ all 3 | — | nearest-enclosing nested resolution — **landed PR #33** (§14.13) |
 
 **Two watch-outs carried forward from §14.6** (deferred, not bugs — they bite only when the modes
 below land): `pruneStale`/`collectManaged` must skip `n8n_mode === ignored`, and `pushOne` must
@@ -881,3 +881,35 @@ never altered, so Kelly's instance is exactly as he left it.
 behavioural assert), and the better diagnostics are worth keeping for the next masked-error footgun.
 Next: push to PR #33, watch CI go 54/54. If green, the §14.7 ledger is all-green and the audition
 (Chapter 3) is done.
+
+#### 14.14 STATUS — PR #33 green; what's actually left (2026-06-23)
+
+**PR #33 is green — all 54 integration scenarios pass** (plus PHP/JS unit, Psalm, both Quality jobs,
+PR Tasks). Landed on the branch this round: Claude's **ignored-mode flips** (open-with + file-type)
+and the real one-click **Toggle n8n mode** Files action; Copilot's **nested mappings**
+(`MappingService::resolveForPath` nearest-enclosing + `mapping-membership.feature` live).
+
+**Correction to §14.13's closing line:** the ledger is **NOT** all-green yet — the *one genuinely
+unbuilt feature* (`mapping-membership`) is now done, but the §14.11 **little-wins checklist still has
+a tail of un-flipped scenarios**. So the audition isn't quite over. Honest remaining inventory,
+straight off the refreshed §14.7 ledger:
+
+- **`mode-change`** (3 of 6) — `link→sync` retag (NC side); the 2× *n8n-override* scenarios
+  (`sync→link` / `link→sync` from n8n). The reserved-tag resolver already re-modes at pull time, so
+  these are likely **flippable** with fixture wiring, not new code.
+- **`delete`** (4 of 9) — `unmapped` trash/purge/restore (3); purge-a-sync = permanent delete;
+  abort-if-n8n-unreachable (already **coded** in `DeleteToN8nListener`, just needs its assertion).
+- **`move`** (6 of 9) — hard-deleted restore-fallback, merge-on-collision (also retires a README
+  doc-vs-code lie), brand-new move-in create. Real backend motion.
+- **`reserved-tags`** (7 of 8) — the lone `@todo`: removing `n8n:ignore` returns the file to the
+  mapping default. Needs a small **tag-removal listener** (`TagUnassignedEvent`), not yet built.
+- **Left `@todo` on purpose** (don't count these against "done"): `open-with`/`file-type` **`link`**
+  rows (no create-on-land path for link; covered by `tests/js/files-helpers.test.js` instead) and
+  `file-type`'s **REPORT-by-indexed-mode** DAV-search query (the `nc:metadata-*` search plumbing is
+  unproven against the pod — flip only if/when genuinely wired).
+
+**Net:** every *feature* now has its core live; what remains is **edge-case scenario flips** (mostly
+fixture wiring on already-shipped code) plus **two genuinely small backend builds** — the
+un-ignore `TagUnassignedEvent` listener and the `move` merge-on-collision path. When those are
+green the §14.7 ledger is all-green and Chapter 3 (the audition) closes; Chapter 4 is branding +
+app-store submission.

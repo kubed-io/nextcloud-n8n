@@ -44,6 +44,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unit tests for the copy lifecycle (`CopyService`: strip-then-create in a mapping, strip-only outside one) and live `copy.feature` scenarios over WebDAV.
 - Integration `FeatureContext` split from one 1300-line class into per-concern step traits (`bootstrap/Steps/`) + transport/setup traits (`bootstrap/Support/`); behaviour-identical, dry-run clean.
 - Integration suite now proves the `ignored` mode end-to-end — the mode-aware openers (Open in n8n hidden, text editor the default) and the read-only `n8n_mode` DAV value for an ignored file.
+- Unit + live integration coverage for **nested folder mappings** — `MappingService::resolveForPath` nearest-enclosing resolution (deepest mapped folder wins; siblings sharing a name prefix are not swallowed) and the `mapping-membership.feature` scenarios proving membership over WebDAV.
 
 ## [0.1.2] - 2026-06-22
 
