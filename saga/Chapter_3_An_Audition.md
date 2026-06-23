@@ -532,7 +532,7 @@ real NC + n8n. The chapter is "done" when this ledger is all-green to Kelly's sa
 | `copy` | ✅ all | — | always a new instance (§14.5) |
 | `reconcile` | ✅ all | — | manual per-mapping pull/push + prune (§14.6) |
 | `move` | ◑ 6 of 9 | hard-deleted restore-fallback, merge-on-collision, brand-new move-in create | §14.4 shipped the core |
-| `mode-change` | ◑ 3 of 6 | link→sync retag, 2× n8n-override | §14.6; real toggle landed PR #33 |
+| `mode-change` | ◑ 5 of 6 | toggle (FE-only, Vitest) | §14.6/§14.15 — retag + n8n-override live |
 | `delete` | ◑ 4 of 9 | purge-sync, unmapped trash/purge/restore, abort-if-unreachable | wiring exists; assertions pending |
 | `reserved-tags` | ✅ 7 of 8 | "remove n8n:ignore → default" (un-ignore listener unbuilt) | §14.6/§14.10 — landed PR #32 |
 | `open-with` | ◑ sync+unmapped+ignored | `link` (Vitest-covered) | §14.8/§14.10 — ignored flipped PR #33 |
@@ -913,3 +913,30 @@ fixture wiring on already-shipped code) plus **two genuinely small backend build
 un-ignore `TagUnassignedEvent` listener and the `move` merge-on-collision path. When those are
 green the §14.7 ledger is all-green and Chapter 3 (the audition) closes; Chapter 4 is branding +
 app-store submission.
+
+### §14.15 — Flipping the `mode-change` edge cases live (solo, Claude asleep)
+
+With Claude out of commission, Copilot took the wheel (git included) and went after the
+highest-confidence remaining flips: `mode-change` dropped from **3 of 6 → 5 of 6**. Only the
+Files context-menu **Toggle** stays `@todo` — it's a browser action with no Behat surface,
+already covered by `tests/js/files-helpers.test.js` (Vitest).
+
+Three scenarios went live, all on **already-shipped** code (no new backend):
+
+- **Link → sync from Nextcloud (retag).** Background gained a `link` mapping (`team:links`); the
+  scenario now arranges a real link file there and retags it `n8n:sync`. The existing
+  `ChangeMode` listener + `ModeChangeService::changeTo` rewrite the body (pointer → full JSON),
+  strip the other mode tag, and preserve `n8n_id`.
+- **Sync → link / Link → sync from n8n (override tag, then pull).** New steps tag a workflow
+  `n8n:sync` / `n8n:link` **in n8n**, then pull the mapping; `SyncService::writeWorkflow` finds the
+  existing file by id and **re-modes it in place** (filename is stable — `Mover` → `Mover.n8n.json`
+  either way — so no rename invalidates `currentFilePath`). Assertions use the `wireMode` helper
+  (link is stored/exposed as `reference` over DAV).
+
+New step glue in `ModeChangeSteps.php` (properties `overrideWorkflowId` / `overrideMappingTag`,
+plus `aManagedWorkflowFileForAWorkflowTagged[AndReserved]`, `iAddToThatWorkflowInN8n`,
+`iChangeThatWorkflowsOverrideTagTo`, private `applyN8nOverride`) all **delegate** to existing
+composed helpers (MoveSteps create-on-land, ReconcileSteps tag/sync, ReservedTagsSteps pull). No
+duplicate step text, no property collisions, `get_errors` clean. Pushed for CI to prove (no PHP
+locally; integration is CI-only).
+
