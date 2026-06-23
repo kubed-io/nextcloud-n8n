@@ -737,3 +737,68 @@ Next sensible double feature: **Claude flips the ignored/override `@todo`s** (op
 + mode-change overrides — pure flips, his lane) while **Copilot builds nested mappings** (the one
 real backend gap). That clears the cheap wins and the largest unbuilt feature in one pass, leaving
 only the `move`/`delete` edges and the toggle/un-ignore niceties before the ledger is all-green.
+
+#### 14.11 Run to the finish — Copilot builds nested mappings, Claude clears the little wins
+
+The ignored-mode flips landed on **PR #33** (open-with + file-type ignored rows live). What's left
+splits cleanly into **one real backend build (Copilot)** and **a tail of small flips/niceties
+(Claude)**. Same playbook: two agents, Copilot owns git + the shared files, Claude writes its own
+files and hands off `use …Steps;` / `Application.php` / `CHANGELOG` edits.
+
+##### COPILOT — `mapping-membership`: nearest-enclosing nested mappings (`mapping-membership.feature`)
+
+The one genuinely unbuilt feature, and squarely backend. **Today `MappingService::resolveForPath`
+matches only the single top-level segment after `/files/`** (`preg_match('#/files/([^/]+)#')`), so a
+mapping on a *sub*-folder can never win — nested mappings are documented (README) but not real.
+
+- *The gap:* resolution must walk the **full** NC path and pick the mapping whose folder is the
+  **longest matching path prefix** (nearest enclosing), not just the mounted top-level name. This
+  likely means mappings need to match on a **path**, not a bare folder name — check whether
+  `add-mapping` / `Mapping::teamFolder` can express a sub-path, and whether Team Folders vs
+  admin-subfolders change the resolution (Team Folders mount at top level; nested mappings are
+  admin sub-folders).
+- *Consistency:* `indexByN8nId`/`collectManaged` already filter by each file's own `n8n_mapping`
+  for overlapping subtrees (§14.4) — make the resolver and that ownership filter agree so a file in
+  `inner` is never pulled/pruned by `outer`.
+- *Spec (3 scenarios, whole-`@todo`):* file-in-folder → that mapping; file outside any mapping →
+  none (`untracked` if no id, `unmapped` if it carries one); nested → **inner wins**.
+- *New files (Copilot's own):* the resolver change in `MappingService`, a unit test, and a
+  `tests/integration/bootstrap/Steps/MappingMembershipSteps.php` trait. Flip
+  `mapping-membership.feature` live.
+- *Watch-out:* this is **not** a pure flip — it's the one item that needs design (path matching +
+  how a sub-folder mapping is even declared). Treat per §14.3: land the nearest-enclosing main path,
+  stub anything fragile with a labelled `// TODO` + keep its scenario `@todo`.
+
+##### CLAUDE — the little wins (a checklist, roughly in order of cheapness)
+
+Each is a flip or a small, isolated build; none touches the pull-resolution work above. Knock them
+down as capacity allows, folding into the double-feature PR (or a quick solo PR for the markdown/test-only ones).
+
+- [ ] **`mode-change` — 2× n8n-override scenarios** (`sync→link` / `link→sync` *from n8n*, override
+  tag applied then pulled). The reserved-tag resolver now applies overrides at pull time; `writeWorkflow`
+  re-modes an *existing* file to the effective mode — so these are likely **flippable now**. Wire the
+  fixture (seed workflow, add `n8n:sync`/`n8n:link` n8n-tag, pull) and assert the file re-modes.
+- [ ] **`mode-change` — `link→sync` retag (NC side)** — needs a link-file precondition (assign
+  `n8n:link` first), then retag to `n8n:sync`; assert the full JSON is pulled back down.
+- [ ] **`delete` — `unmapped` trash / purge / restore (3)** — `unmapped` exists now; arrange via a
+  sync-file move-out (the §14.4 path), then trash/purge/restore and assert the n8n side (no-op /
+  permanent-delete / no-op respectively).
+- [ ] **`delete` — abort if n8n unreachable** — already **coded** (`DeleteToN8nListener` throws
+  `AbortedEventException`); just needs its assertion (point the app at a dead n8n, attempt a delete,
+  assert the file stays). The "bow on top."
+- [ ] **`delete` — purge a sync file permanently deletes the workflow** — flip + assert the workflow
+  is gone (not archived) in n8n.
+- [ ] **`mode-change` — the Files **toggle** action** — replace the `src/files.js` stub with the real
+  one-click toggle (resolve/create the opposite `n8n:sync`/`n8n:link` system tag, PUT the relation);
+  retires the README doc-vs-code overstatement. Front-end, Claude's lane.
+- [ ] **`reserved-tags` — un-ignore listener** — removing `n8n:ignore` returns the file to the
+  mapping default (the one remaining `reserved-tags` `@todo`). Small backend listener on tag-removal.
+- [ ] **`move` edges — merge-on-collision, hard-deleted restore-fallback, brand-new move-in** —
+  backend motion (either agent); merge-on-collision also retires a README doc-vs-code lie (§14.9).
+- [ ] **Leave `@todo` on purpose:** the `open-with`/`file-type` **`link`** rows (no create-on-land
+  path; covered by `tests/js/files-helpers.test.js`) and `file-type`'s **REPORT-by-indexed-mode**
+  query (DAV-search plumbing for `nc:metadata-*` unproven against the pod) — flip only if/when those
+  are genuinely wired.
+
+When this checklist and the nested-mapping build are green, the §14.7 ledger is all-green and
+Chapter 3 — the audition — is done; the work turns to Chapter 4 (branding + app-store submission).
