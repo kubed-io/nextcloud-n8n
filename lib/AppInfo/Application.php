@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\N8nSync\AppInfo;
 
+use OCA\DAV\Events\SabrePluginAddEvent;
 use OCA\Files\Event\LoadAdditionalScriptsEvent;
 use OCA\Files_Trashbin\Events\NodeRestoredEvent;
 use OCA\N8nSync\BackgroundJob\ScheduledPullJob;
@@ -22,6 +23,7 @@ use OCA\N8nSync\Listener\MotionListener;
 use OCA\N8nSync\Listener\MoveGuardListener;
 use OCA\N8nSync\Listener\NameSyncListener;
 use OCA\N8nSync\Listener\NodeWrittenListener;
+use OCA\N8nSync\Listener\RegisterDavPluginsListener;
 use OCA\N8nSync\Listener\RestoreFromTrashListener;
 use OCA\N8nSync\Notification\Notifier;
 use OCA\N8nSync\Service\WorkflowMetadata;
@@ -78,6 +80,16 @@ final class Application extends App implements IBootstrap {
 
 		// Writeback wiring: push saved two-way files to every enabled channel.
 		$context->registerEventListener(NodeWrittenEvent::class, NodeWrittenListener::class);
+
+		// §14.2c link is read-only on disk: a link file is only a pointer to a workflow
+		// in n8n, so overwriting its bytes (WebDAV PUT, desktop client, curl) is refused
+		// *before* the write lands. RegisterDavPluginsListener attaches LinkWriteGuardPlugin,
+		// which throws Sabre Forbidden (→ 403) from `beforeWriteContent`. This is the only
+		// reliable choke point: core's BeforeNodeWrittenEvent is emitted from File::put()
+		// *only on the non-part-file branch*, so a normal PUT (which uploads via a .part
+		// file) slips past it. Our own pull / sync↔link re-mode writes use the View/Node
+		// API, not Sabre, so they never reach the plugin.
+		$context->registerEventListener(SabrePluginAddEvent::class, RegisterDavPluginsListener::class);
 
 		// §17.2 create-on-land: a `.n8n.json` without `n8n_id` appearing in a
 		// mapped folder (created via the New menu, saved by the Text editor,

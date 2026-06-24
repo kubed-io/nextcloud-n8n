@@ -7,7 +7,7 @@
  * net that makes a Vite major bump safe to land.
  */
 import { describe, it, expect } from 'vitest'
-import { N8N_MIME, getN8nId, buildUrl, isN8nFile, getN8nMode, canOpenInN8n, defaultOpener, toggleTargetTag } from '../../src/files-helpers.js'
+import { N8N_MIME, getN8nId, buildUrl, isN8nFile, getN8nMode, canOpenInN8n, canEditAsText, defaultOpener, toggleTargetTag } from '../../src/files-helpers.js'
 
 describe('getN8nId', () => {
   it('reads the plain metadata-n8n_id attribute', () => {
@@ -120,6 +120,22 @@ describe('canOpenInN8n', () => {
 
   it('stays permissive for an absent/unknown mode (first-load race)', () => {
     expect(canOpenInN8n('')).toBe(true)
+  })
+})
+
+describe('canEditAsText', () => {
+  it('offers the text editor for every mode that holds the full JSON', () => {
+    expect(canEditAsText('sync')).toBe(true)
+    expect(canEditAsText('unmapped')).toBe(true)
+    expect(canEditAsText('ignored')).toBe(true)
+  })
+
+  it('hides the text editor for link (a pointer — nothing to edit)', () => {
+    expect(canEditAsText('link')).toBe(false)
+  })
+
+  it('stays permissive for an absent/unknown mode (first-load race)', () => {
+    expect(canEditAsText('')).toBe(true)
   })
 })
 

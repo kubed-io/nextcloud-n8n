@@ -25,7 +25,7 @@ import { loadState } from '@nextcloud/initial-state'
 import { translate as t } from '@nextcloud/l10n'
 import { emit } from '@nextcloud/event-bus'
 import { generateRemoteUrl } from '@nextcloud/router'
-import { getN8nId, buildUrl, isN8nFile, getN8nMode, canOpenInN8n, toggleTargetTag } from './files-helpers.js'
+import { getN8nId, buildUrl, isN8nFile, getN8nMode, canOpenInN8n, canEditAsText, toggleTargetTag } from './files-helpers.js'
 
 const APP_ID = 'n8n_sync'
 
@@ -178,11 +178,16 @@ registerFileAction({
   order: -50, // above other JSON claimers (Text ~0) and above the text opener
 })
 
-// "Open with text editor" — edit the raw JSON. ALWAYS available on any workflow
-// file, and the DEFAULT click for unmapped/ignored (no live workflow to open).
+// "Open with text editor" — edit the raw JSON. Offered for every mode that holds
+// the full workflow on disk (sync / unmapped / ignored), and the DEFAULT click for
+// unmapped/ignored (no live workflow to open). HIDDEN for `link`: a link is only a
+// pointer, so there is nothing to edit and any change would break it — making
+// "sync" the mode you flip to in order to edit the JSON (see the toggle action),
+// which is the user-visible sync-vs-link difference.
 // It is also marked DEFAULT, but at a *lower* priority (order -49) than "Open in
-// n8n" (-50): for sync/link both are enabled and n8n wins; for unmapped/ignored
-// "Open in n8n" is disabled, so this becomes the default click. (open-with.feature)
+// n8n" (-50): for sync both are enabled and n8n wins; for unmapped/ignored
+// "Open in n8n" is disabled, so this becomes the default click; for link this
+// action is disabled and n8n is the only opener. (open-with.feature)
 registerFileAction({
   id: 'n8n_sync.edit',
   displayName: () => t(APP_ID, 'Open with text editor'),
@@ -190,10 +195,11 @@ registerFileAction({
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
   <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
 </svg>`,
-  // Don't gate on window.OCA.Text here — it can be defined a touch later than
-  // our row render. Always offer it for n8n files; openInText() handles the
-  // (unlikely) case where Text's API isn't available.
-  enabled: isN8nFile,
+  // Offered for any n8n file that holds editable JSON (sync/unmapped/ignored, and
+  // the permissive loading case); hidden for `link` (a pointer — nothing to edit).
+  // Don't gate on window.OCA.Text here — it can be defined a touch later than our
+  // row render; openInText() handles the (unlikely) case where Text's API isn't ready.
+  enabled: (context) => isN8nFile(context) && canEditAsText(getN8nMode(context?.nodes?.[0])),
   async exec(context) {
     // null = silent (the modal is the feedback); false = error toast on failure.
     return (await openInText(context.nodes[0])) ? null : false
@@ -259,9 +265,14 @@ registerFileAction({
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
   <path d="M12 6V3L8 7l4 4V8c2.76 0 5 2.24 5 5h2c0-3.87-3.13-7-7-7zm0 12c-2.76 0-5-2.24-5-5H5c0 3.87 3.13 7 7 7v3l4-4-4-4v3z"/>
 </svg>`,
-  // Only sync/link can be toggled (unmapped/ignored have no live workflow). Reuse
-  // canOpenInN8n — true for sync/link, false for unmapped/ignored — gated on a file.
-  enabled: (context) => isN8nFile(context) && canOpenInN8n(getN8nMode(context?.nodes?.[0])),
+  // Only sync ⇄ link can be toggled. Gate on toggleTargetTag, which is non-empty
+  // ONLY for an explicit sync/link mode — unmapped, ignored, AND the absent/loading
+  // mode all yield '' and hide the action. (An unmapped file is full-content sync
+  // ejected from its mapping; flipping it to "link" would collapse its body to a
+  // pointer at an archived workflow — silent data loss — so the toggle must never
+  // appear on it. The permissive canOpenInN8n is right for "Open in n8n" but wrong
+  // here, where an unknown mode must fail closed.)
+  enabled: (context) => isN8nFile(context) && toggleTargetTag(getN8nMode(context?.nodes?.[0])) !== '',
   async exec(context) {
     const node = context?.nodes?.[0]
     const target = toggleTargetTag(getN8nMode(node))
@@ -269,6 +280,17 @@ registerFileAction({
     try {
       const ok = await assignModeTag(node, target)
       if (!ok) throw new Error('tag assignment failed')
+      // Optimistically reflect the new mode on the in-memory node so the row's
+      // actions (Open in n8n / Open with text editor / this toggle) re-evaluate
+      // immediately — otherwise the cached node keeps its old `metadata-n8n_mode`
+      // and "Open with text editor" lingers on a fresh link until a full reload.
+      // We write the WIRE value (`reference` for link) to match what a real
+      // PROPFIND returns; getN8nMode() normalizes it back to `link`. The server
+      // re-mode (ModeTagListener → ModeChangeService) then converges the rest.
+      if (node?.attributes) {
+        node.attributes['metadata-n8n_mode'] = target === 'n8n:link' ? 'reference' : 'sync'
+        emit('files:node:updated', node)
+      }
       const to = target === 'n8n:link' ? t(APP_ID, 'Link') : t(APP_ID, 'Sync')
       window.OC?.Notification?.showTemporary?.(t(APP_ID, 'Switched to {mode} mode', { mode: to }))
       return null

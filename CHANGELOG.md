@@ -39,6 +39,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - README + feature specs rewritten to the target model: modes are `sync` / `link` / `unmapped` (no `backup`, no `writeback`), with the move (same-workflow / restore), copy (always-new), and reconcile/prune lifecycle. Spec-only; behaviour change tracked in saga Chapter 3.
 - The Files context-menu **Toggle n8n mode** action now flips a file `sync` ⇄ `link` in one click (it assigns the opposite `n8n:sync` / `n8n:link` tag and the listener re-modes it), instead of pointing at the Tags sidebar; shown only for `sync`/`link` files.
 
+### Fixed
+
+- A **link** workflow file is now read-only on disk — editing its bytes from a WebDAV client, the desktop client, or `curl` is refused with a native 403 (a link is only a pointer to a workflow in n8n; there is nothing to edit, and a write would just corrupt the pointer). The block is logged and surfaced as a notification explaining how to switch the file to sync. The Files context-menu **Open with text editor** is likewise hidden for links — it now appears only on files that hold the full JSON (`sync` / `unmapped` / `ignored`), making “switch to sync to edit” the clear sync-vs-link distinction.
+- An **unmapped** workflow can no longer be turned into a `link` — there is no link outside a mapping. The Toggle n8n mode action is hidden for unmapped (and ignored, or still-loading) files instead of leaking on via a permissive default, and hand-setting `n8n:sync` / `n8n:link` on an unmapped file is refused server-side: the full JSON is kept and the `n8n:unmapped` pill is re-asserted, closing a path that would have collapsed the body to a pointer at an archived workflow (silent data loss). Move the file back into a mapping to revive it.
+- Toggling a file's mode now updates its row immediately — the **Toggle n8n mode** action stamps the new `n8n_mode` on the in-memory file so the openers (e.g. **Open with text editor**, hidden for links) re-evaluate at once, instead of lingering with the old mode until a full page reload from another folder.
+
 ### Tests
 
 - Unit tests for the mode model: `Mapping` legacy-shape migration, `OwnershipTags::tagFor`, and the `DeleteService` sync/link rule table; integration suite updated to the single-mode mappings.
@@ -52,6 +58,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Live `move.feature` coverage for the two **move-in mint** paths — moving a brand-new untracked `.n8n.json` into a mapping **creates** the workflow (create-on-land on the move event), and moving an unmapped file back in when its workflow was **hard-deleted** in n8n falls back to creating it fresh. (Merge-on-collision stays the lone `@todo` — it needs a metadata-by-id lookup.)
 - Unit (`ModeChangeService::unignore`) + live `reserved-tags.feature` coverage for **un-ignore** — removing `n8n:ignore` unarchives the workflow and re-modes the file to its mapping default (or `sync` outside any mapping); no-ops on a non-ignored file and leaves the file untouched if the unarchive fails.
 - Unit (`MotionService::moveIn` sibling-by-id scan) + live `move.feature` coverage for a **move-in duplicate** — a same-name duplicate move is refused by Nextcloud (Overwrite:F → 412), and a differently-named one is minted as a brand-new workflow (copy semantics) while the existing synced file is left untouched; a sibling carrying a *different* id still takes the normal unarchive path. This closes the last `move.feature` `@todo`.
+- Unit (`ModeChangeService`) coverage for the **unmapped link-guard** — re-moding an unmapped file to `sync` or `link` is refused (no body rewrite, no n8n call, no metadata write) and re-asserts the `n8n:unmapped` pill instead.
+- Unit (`LinkWriteGuardPlugin`) + helper (`canEditAsText`) coverage for the **link read-only guard** — a WebDAV overwrite of a link file throws Sabre `Forbidden` (→ 403) and notifies, while sync/unmapped/ignored/unmanaged files stay writable; the text editor is offered for every mode except `link`. (The guard is a Sabre `beforeWriteContent` plugin, not a `BeforeNodeWrittenEvent` listener — core only emits that pre-write event on the non-part-file branch of `File::put()`, so a normal PUT slips past it.)
 
 ## [0.1.2] - 2026-06-22
 

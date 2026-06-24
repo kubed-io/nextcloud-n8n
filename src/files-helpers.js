@@ -101,6 +101,22 @@ export function defaultOpener(mode) {
 }
 
 /**
+ * Should "Open with text editor" be offered for a file in this mode? Every mode
+ * holds the full workflow JSON on disk EXCEPT `link`, which is only a small pointer
+ * (id/name/url) — there is nothing meaningful to edit, and any change would just
+ * break the pointer. So `sync`, `unmapped`, `ignored` (and the permissive absent
+ * case, matching {@see canOpenInN8n}) → shown; `link` → hidden. This is the mirror
+ * of {@see canOpenInN8n}'s intent and what makes "open as text" the user-visible
+ * difference between a `sync` file (editable JSON) and a `link` (open in n8n only).
+ *
+ * @param {string} mode
+ * @return {boolean}
+ */
+export function canEditAsText(mode) {
+  return mode !== 'link'
+}
+
+/**
  * The system tag to ADD to flip a managed file's mode. Toggling is `sync` ⇄ `link`
  * only: `sync` → `n8n:link`, `link` → `n8n:sync`. Any other value (`unmapped`,
  * `ignored`, or an absent mode) has no meaningful sync↔link toggle and returns ''

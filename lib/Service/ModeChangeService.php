@@ -73,6 +73,27 @@ final class ModeChangeService {
 			return; // not a managed workflow file — nothing to re-mode
 		}
 
+		// An UNMAPPED file (ejected from its mapping: full JSON kept on disk, workflow
+		// archived in n8n) must never be re-moded to sync/link by a stray tag. There is
+		// no link outside a mapping — flipping it to `link` would collapse the full body
+		// to a pointer aimed at an archived workflow, a silent data loss into a broken-link
+		// limbo. The `n8n:unmapped` pill is authoritative: re-assert it (which strips the
+		// manually-added n8n:sync/n8n:link) and leave the body untouched. Moving the file
+		// back INTO a mapping is the only supported way to revive it (MotionService::moveIn).
+		if (
+			($meta[WorkflowMetadata::KEY_MODE] ?? '') === WorkflowMetadata::MODE_UNMAPPED
+			&& ($target === Mapping::MODE_SYNC || $target === Mapping::MODE_LINK)
+		) {
+			$this->logger->info('n8n_sync mode-change: refused a sync/link re-mode of an unmapped file; kept it unmapped', [
+				'app' => Application::APP_ID,
+				'fileId' => $node->getId(),
+				'workflowId' => $id,
+				'requested' => $target,
+			]);
+			$this->guard->run(fn () => $this->ownershipTags->apply($node->getId(), WorkflowMetadata::MODE_UNMAPPED));
+			return;
+		}
+
 		if (($meta[WorkflowMetadata::KEY_MODE] ?? '') === $target) {
 			// Already in the target mode. For sync/link re-assert the single correct
 			// tag (resolves a manually-added duplicate); `ignored` has no pill to
