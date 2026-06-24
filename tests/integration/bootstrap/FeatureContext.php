@@ -140,6 +140,8 @@ final class FeatureContext implements Context {
 	private int $lastMoveStatus = 0;
 	/** Whether the workflow under test is expected to be archived in n8n right now. */
 	private bool $expectedArchived = false;
+	/** A workflow id deliberately hard-deleted mid-scenario (for the create-fallback move-in). */
+	private string $deletedWorkflowId = '';
 	/** The copy made by a copy step, and the workflow id (if any) it was registered as. */
 	private string $copyFilePath = '';
 	private ?string $copyWorkflowId = null;

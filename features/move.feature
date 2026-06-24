@@ -13,9 +13,9 @@
 # unmapped move-in → restore, within-mapping moves, link move-out refusal, and
 # unmapped relocation are wired (MoveGuardListener + MotionListener +
 # MotionService) and asserted here over WebDAV (MOVE) + the n8n REST API. The
-# harder edges — hard-deleted restore-fallback, merge-on-collision, brand-new
-# move-in create, and decision-cases a–d — stay @todo until their harness/design
-# lands.
+# hard-deleted restore-fallback and brand-new move-in create are now live too;
+# the lone remaining edge is merge-on-collision (an unmapped copy moved in over an
+# already-synced file with the same id), which still needs a metadata-by-id lookup.
 
 Feature: Moving a workflow file is the same workflow leaving and returning
   As a Nextcloud user
@@ -62,7 +62,9 @@ Feature: Moving a workflow file is the same workflow leaving and returning
     And the file's mode becomes "sync" in the "nextcloud:beta" mapping
     And the "n8n_id" is unchanged
 
-  @todo
+  # Restore-fallback: the unmapped file kept its id, but the workflow was hard-
+  # deleted in n8n in the meantime. moveIn catches the unarchive 404 and recreates
+  # from the file we still hold (a fresh id), then re-stamps sync in the target.
   Scenario: Restoring when the n8n workflow was hard-deleted falls back to create
     Given an unmapped workflow file that still carries its "n8n_id"
     And that workflow no longer exists in n8n (it was permanently deleted)
@@ -87,7 +89,9 @@ Feature: Moving a workflow file is the same workflow leaving and returning
     And the original synced file remains unchanged
     And nothing is restored or duplicated in n8n
 
-  @todo
+  # Move-in create: an untracked file (no id) dragged into a mapping is create-on-
+  # land — CreateInN8nListener fires on the NodeRenamedEvent (NC doesn't fire
+  # NodeWrittenEvent for a move) and mints the workflow, stamping sync + the mapping.
   Scenario: Moving a brand-new workflow file into a mapping creates it
     Given a ".n8n.json" file that was never tracked in n8n
     When I move the file into the "nextcloud:alpha" folder

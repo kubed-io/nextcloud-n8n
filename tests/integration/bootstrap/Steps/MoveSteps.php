@@ -92,6 +92,61 @@ trait MoveSteps {
 		$this->davMove($this->currentFilePath, $dest);
 		$this->currentFilePath = $dest;
 		$this->expectedArchived = false; // move-in restores (unarchives) the workflow
+		// A move-in can MINT a workflow: create-on-land for an untracked file, or the
+		// create-fallback when the old id was hard-deleted in n8n. Re-capture whatever
+		// id the file now carries so "a matching workflow is created" + teardown see it.
+		// For a plain unarchive the id is unchanged, so this is a harmless re-read.
+		$id = $this->davReadMetadataId($this->currentFilePath);
+		if ($id !== null && $id !== '') {
+			$this->lastWorkflowId = $id;
+			if (!in_array($id, $this->createdWorkflowIds, true)) {
+				$this->createdWorkflowIds[] = $id;
+			}
+		}
+	}
+
+	/**
+	 * A plain `.n8n.json` that was never tracked (no n8n id) sitting outside any
+	 * mapping — delegates to the untracked-file arrange (DeleteSteps, composed here).
+	 *
+	 * @Given a :ext file that was never tracked in n8n
+	 */
+	public function aFileThatWasNeverTrackedInN8n(string $ext): void {
+		$this->anUntrackedFile($ext);
+	}
+
+	/**
+	 * Hard-delete the workflow under test in n8n so the next unarchive 404s and the
+	 * move-in falls back to create. Remembers the deleted id for the "is new" check.
+	 *
+	 * @Given that workflow no longer exists in n8n (it was permanently deleted)
+	 */
+	public function thatWorkflowNoLongerExistsInN8n(): void {
+		Assert::assertNotNull($this->lastWorkflowId, 'no workflow id to delete');
+		$this->deletedWorkflowId = $this->lastWorkflowId;
+		$this->n8nDeleteWorkflow($this->lastWorkflowId);
+		Assert::assertNull(
+			$this->n8nGetWorkflow($this->lastWorkflowId),
+			'precondition: the workflow still exists in n8n after the delete',
+		);
+	}
+
+	/**
+	 * After a create-fallback move-in, the file carries a FRESH id (not the deleted
+	 * one) and that workflow exists live in n8n.
+	 *
+	 * @Then a new workflow is created in n8n from the file
+	 */
+	public function aNewWorkflowIsCreatedFromTheFile(): void {
+		$newId = $this->davReadMetadataId($this->currentFilePath);
+		Assert::assertNotNull($newId, 'the file has no n8n_id after the move-in');
+		Assert::assertNotSame('', $newId, 'the file has an empty n8n_id after the move-in');
+		Assert::assertNotSame(
+			$this->deletedWorkflowId,
+			$newId,
+			'a new workflow was NOT created — the file still carries the old (deleted) id',
+		);
+		Assert::assertIsArray($this->n8nGetWorkflow($newId), "the new workflow $newId does not exist in n8n");
 	}
 
 	/** @When I try to move the file to a folder that is not mapped */

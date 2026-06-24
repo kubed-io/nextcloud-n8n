@@ -42,4 +42,14 @@ trait N8nApiTrait {
 		$decoded = json_decode((string)$res->getBody(), true);
 		return is_array($decoded) ? $decoded : null;
 	}
+
+	/** Hard-delete an n8n workflow by id. 204/200 = gone; 404 = already gone. */
+	private function n8nDeleteWorkflow(string $id): void {
+		$res = $this->n8nClient()->request('DELETE', 'workflows/' . rawurlencode($id));
+		Assert::assertContains(
+			$res->getStatusCode(),
+			[200, 204, 404],
+			"DELETE n8n workflow $id failed: " . (string)$res->getBody(),
+		);
+	}
 }

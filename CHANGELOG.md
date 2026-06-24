@@ -47,6 +47,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Unit + live integration coverage for **nested folder mappings** — `MappingService::resolveForPath` nearest-enclosing resolution (deepest mapped folder wins; siblings sharing a name prefix are not swallowed) and the `mapping-membership.feature` scenarios proving membership over WebDAV.
 - Live `mode-change.feature` coverage for the remaining sync ⇄ link transitions — the `link → sync` retag from Nextcloud, and both n8n-side overrides (tag a workflow `n8n:sync` / `n8n:link` in n8n, pull, and the existing file re-modes in place) — all preserving the `n8n_id`.
 - Live `delete.feature` coverage for the **unmapped** no-op legs — trashing or restoring a moved-out file (mapping cleared, workflow already archived) leaves n8n untouched: the workflow stays present and archived. (Purge stays deferred — a trashbin-DAV purge doesn't fire the delete event in CI.)
+- Live `move.feature` coverage for the two **move-in mint** paths — moving a brand-new untracked `.n8n.json` into a mapping **creates** the workflow (create-on-land on the move event), and moving an unmapped file back in when its workflow was **hard-deleted** in n8n falls back to creating it fresh. (Merge-on-collision stays the lone `@todo` — it needs a metadata-by-id lookup.)
 
 ## [0.1.2] - 2026-06-22
 
