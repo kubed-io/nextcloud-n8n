@@ -41,7 +41,7 @@ end of this chapter (§14.7).
 
 ---
 
-### 14. The mode-model & motion refactor ☐ (the payoff)
+### 14. The mode-model & motion refactor ◑ (the payoff — core done, §14.21 leftovers parked)
 
 This is what all the testing + devops was *for*: a safety net thick enough to refactor the
 core data model and finally build the deferred file-motion lifecycle without fear. Two linked
@@ -50,9 +50,12 @@ descriptive `mode`; **(2)** build the **motion** lifecycle (move-out / move-back
 merge) that Chapter 1 left as a "planned end state." The specs (`features/*.feature` + the
 README) were written first, as the end-state requirements; the code follows under this item.
 
-> **Status (2026-06-22):** specs authored (PR #27) — every feature file + the README describe
-> the target as if shipped, new behaviour `@todo` so the live suite stays green. Code is
-> Phase 1 (model collapse + migration) then Phase 2 (motion).
+> **Status (2026-06-24):** the payoff is **essentially landed**. Phase 1 (model collapse +
+> migration) and Phase 2 (motion: move/copy/reconcile/mode-change/reserved-tags/membership) are
+> live and green on real NC + n8n. The move-in duplicate — the last real backend build — closed
+> the merge question by *deciding well* (§14.19–§14.20). Only the parked understudies of §14.21
+> remain, each deferred for a stated reason. Chapter 3's load-bearing work is done.
+
 
 #### 14.1 The model — one `mode`, four values
 
@@ -531,7 +534,7 @@ real NC + n8n. The chapter is "done" when this ledger is all-green to Kelly's sa
 | `rename` | ✅ all | — | three-way name sync |
 | `copy` | ✅ all | — | always a new instance (§14.5) |
 | `reconcile` | ✅ all | — | manual per-mapping pull/push + prune (§14.6) |
-| `move` | ◑ 8 of 9 | merge-on-collision (needs id-lookup) | §14.17 — hard-deleted fallback + brand-new move-in create live |
+| `move` | ✅ all 9 | — | §14.19 — move-in duplicate: same-name refused (native NC), diff-name mints a new instance |
 | `mode-change` | ◑ 5 of 6 | toggle (FE-only, Vitest) | §14.6/§14.15 — retag + n8n-override live |
 | `delete` | ◑ 6 of 9 | purge-sync, unmapped-purge, abort-if-unreachable | §14.16 — unmapped trash/restore no-ops live |
 | `reserved-tags` | ✅ all 8 | — | §14.18 — un-ignore listener landed (un-tag restore live) |
@@ -543,6 +546,12 @@ real NC + n8n. The chapter is "done" when this ledger is all-green to Kelly's sa
 below land): `pruneStale`/`collectManaged` must skip `n8n_mode === ignored`, and `pushOne` must
 gate each file on its **own** `mode === sync` (not the mapping's) once per-workflow overrides exist.
 Both are cleared by the next double feature.
+
+> **Ledger epilogue (2026-06-24):** every load-bearing row is green. The remaining `◑` rows are the
+> **parked understudies of §14.21** — each left in the wings for a stated reason (test-harness wall,
+> covered at the Vitest/PHPUnit layer, or speculative plumbing with no dependent), none touching the
+> core sync promise. The audition's critical work is **done**; see §14.20 for how the last scene was
+> won and §14.21 for what we are deliberately leaving be.
 
 #### 14.8 Next double feature — reserved-tags / `ignored` mode (Copilot) + open-with (Claude)
 
@@ -1021,4 +1030,147 @@ step text.
 **This is the first of the two real backend builds** that close the audition. The other is `move`
 merge-on-collision (the metadata-by-id lookup in `MotionService::moveIn`). Everything else left on
 the ledger is intentionally-deferred (CI walls / Vitest-covered / unproven plumbing).
+
+### §14.19 — `move`: the move-in duplicate, the last backend build (solo)
+
+`move` is now **✅ all 9** — the final `@todo`, and the one that genuinely needed thinking before
+coding. The scenario: a file carrying workflow W's `n8n_id` is moved into a mapping where W is
+**already synced** (a sibling file already holds W). The first instinct — "a MOVE never duplicates,
+so the incoming is redundant; delete it and keep the existing file, feels like a merge" — was both
+*unimplementable* and *wrong UX*, and CI proved the first half loudly.
+
+**What CI taught us.** The delete-the-incoming build threw `LockedException` on `$node->delete()`:
+the incoming file is **locked by its own in-flight MOVE** while we're inside its `NodeRenamedEvent`.
+Any mutation of the incoming's bytes during that event (delete *or* `putContent`) fails. So the
+"grab the synced copy's content and write it into the incoming" merge was never possible either.
+
+**What the research taught us.** Nextcloud has no server-side auto-merge to mimic. RFC 4918 §9.9.4:
+a MOVE onto an existing path with `Overwrite: F` (what NC's web UI and our harness both send) is
+refused with **412**; the desktop client's only conflict tool is keeping both as `(conflicted
+copy …)`. Native NC, faced with this, would simply **refuse**. A silent delete is *worse* than
+native — it destroys a user file on a name clash, which NC never does.
+
+**The decomposition that fell out** (Kelly's three rules):
+
+1. **Same name → refused.** Needs *zero* backend code: NC rejects the MOVE with 412 at the Sabre
+   layer before `BeforeNodeRenamedEvent` ever fires. We just pin the contract with a scenario.
+2. **Different name, same id → mint a new instance.** This is **copy semantics** (§14.5): someone
+   already restored W here, so the incoming is a *copy*, not the same workflow relocating.
+   `MotionService::moveIn` sees a sibling already carrying the id and hands the file to
+   `CreateService::createForFile`, which strips the carried id and POSTs a fresh workflow. The
+   existing file + its live W are untouched. `createForFile` is **metadata-only on the file**
+   (no blob write) — already proven lock-safe because rule 3's 404-fallback calls it inside the
+   same move event and is green.
+3. **No workflow with that id → restore, else create.** Already shipped — the existing
+   unarchive → 404 → `createForFile` path in `moveIn`.
+
+So the entire build collapsed to **one branch** in `moveIn`: `if (findSyncedSibling()) {
+createForFile(); return; }` before the restore path — no deletes, no locks fought, no n8n writes
+beyond the create the user asked for. `findSyncedSibling` (a flat scan of the landing folder for a
+*different* file carrying the same id) is the one piece that survived from the first attempt; only
+the action on a hit changed (delete → mint).
+
+Coverage: **2 unit tests** (`moveIn` mints a new instance when a sibling shares the id —
+`createForFile` once, no unarchive/delete/stamp; a sibling with a *different* id still unarchives)
+plus two live `move.feature` scenarios — same-name refused (412), diff-name mints a brand-new live
+workflow while the original is unchanged. The genesis arrange (move-out → `n8nUnarchiveWorkflow` →
+pull alpha to mint a real same-id pair) and the `n8nUnarchiveWorkflow` REST helper stay. `@todo`
+gone, `get_errors` clean, no duplicate step text. Also retires the README doc-vs-code lie ("merge"
+was documented as shipped while still `@todo`) — reframed as the native-rules behaviour above.
+
+With this, every ledger row is **✅** except the deliberately-deferred items (delete purge legs behind
+the trashbin-DAV CI wall, mode-change toggle + open-with/file-type `link` rows covered by Vitest,
+file-type REPORT-query plumbing). The audition's real backend work is done — and the last one was
+closed by *deciding well*, not by over-engineering a merge.
+
+---
+
+### §14.20 — The bullet we dodged (a tale to close the audition)
+
+> *Cue the swelling score. The audition is nearly won. Every scene has played green under the
+> lights, and only one understudy remains backstage, twitching: the move-in duplicate.*
+
+Picture the stage. The crew has been at this for an entire chapter — Copilot and Claude trading
+shifts like a buddy-cop duo, Behat the pickle-bannered warrior heckling from the front row, Kelly in
+the director's chair. Scene after scene has landed. The ledger is almost all green. And then, for
+the final number, the script calls for something that *sounds* heroic: **the Merge**.
+
+The plan was cinematic. Two files, born of the same workflow `W`, meet in the same folder. Our hero
+swaggers in, declares *"a MOVE is never a duplicate,"* deletes the redundant copy with a flourish,
+and rides off as the surviving file basks in its singular glory. It read like a triumphant final
+act. We even shot it — committed the code, opened the PR, queued the cameras.
+
+**Then the safety net twitched.** Behat — the audience the whole devops was built to convince —
+threw a chair. `LockedException`. The very file our hero meant to delete was **pinned to the stage
+by its own entrance**: inside the move's `NodeRenamedEvent`, the incoming node is locked by the move
+that's still happening. You cannot delete the thing while it's mid-stride. The grand gesture was
+*physically impossible*, and the net caught it before a single real user lost a byte.
+
+So the crew did the unglamorous, heroic thing: **they stopped and asked what the building already
+knew.** They went to the source of truth — RFC 4918, and Nextcloud's own conflict manners — and
+found the humbling answer. Nextcloud, faced with two files colliding, doesn't perform a daring
+merge. It just **says no** (a polite `412` for a same-name clash) or **keeps both**. Our "fancy
+merge" wasn't heroic at all; it was the one character in the movie who'd *destroy a user's file on a
+name clash* and call it bravery. The bullet we dodged was **our own gun**.
+
+The rescue came not from Copilot or Claude but from **the director**. Kelly cut through it with the
+three lines that should have been the script all along:
+
+1. **Same name → ban the move.** (Nextcloud already does this. Zero code. The hero's best move was
+   to step aside and let the stagehands work.)
+2. **Different name, same id → it's a copy.** Strip the borrowed identity, mint a brand-new
+   workflow. (We already had this machine — `createForFile` — built two scenes ago for exactly this
+   shape, and it's lock-safe because it only ever touches *metadata*, never the pinned bytes.)
+3. **No such workflow anymore → restore, or create if it's truly gone.** (Already shipped.)
+
+The whole white-knuckle finale collapsed into **one honest `if`**. No deletes. No fighting the
+lock. No silent casualties. The villain — over-engineering dressed up as a feature — was defeated
+not with a bigger weapon but by *deciding well*. Roll credits.
+
+**The lessons, carved into the set so no one rebuilds the same trap:**
+
+- **The net is the point.** The integration suite didn't just *catch* the bug — it caught a bug we
+  couldn't have reasoned our way out of, because the lock only exists at runtime on real NC. This is
+  the entire thesis of Chapters 2→3: *testing is what makes the jump survivable.* It paid out in
+  full on the last scene.
+- **Inside a file's own move/rename event, the node is LOCKED.** You may write its **metadata**
+  (Files-Metadata props, ownership tags, mimecache) but you may **not** touch its **bytes** —
+  `->delete()` and `->putContent()` both throw `LockedException`. Build consequences as
+  metadata-only, or defer the byte-work to a later beat.
+- **Mimic the platform before inventing UX.** Nextcloud refuses same-name collisions (`Overwrite: F`
+  → `412`) *before our event ever fires*, and never auto-merges. "Do what the host app does" turned
+  a dangerous custom feature into zero code.
+- **A silent delete is never a merge.** If a design destroys a user file to "resolve" a conflict, it
+  is worse than doing nothing. Refuse, or keep both — like the platform.
+- **Decompose, then notice most of it already exists.** Kelly's three rules needed *one* new branch;
+  rules 1 and 3 were already in the building. The best last-mile features are mostly *recognition*,
+  not construction.
+
+---
+
+### §14.21 — The little bits left on the cutting-room floor
+
+The audition is, for all the parts that matter, **won**. Every load-bearing scene — the mode model,
+create, rename, copy, reconcile, move (all nine), mapping membership, reserved tags — is live and
+green on real Nextcloud + n8n. What remains is a short list of understudies we are **choosing** to
+leave in the wings, each for a reason that makes leaving them the *correct* call right now, not a
+loose end. These are safe to set down while the spotlight moves to Chapter 4.
+
+| Left on stage | Why it's fine to leave it (for now) |
+|---|---|
+| **`delete` — purge-sync & unmapped-purge** (2 scenarios) | A trashbin/DAV **purge** doesn't fire `BeforeNodeDeletedEvent` the way our listener needs in the CI harness — it's a *test-harness wall*, not missing behaviour. The code path is exercised via the trash/restore no-ops (§14.16); proving the final purge needs either a different event hook or a live-pod test. Low risk, high plumbing cost. |
+| **`delete` — abort-if-n8n-unreachable** (1 scenario) | The behaviour **is coded** (`DeleteToN8nListener` throws `AbortedEventException` on failure); only the *scenario* is unproven. It's a far better fit for a focused **PHPUnit** test than a full Behat dance with a severed n8n. Cheap to do later, nothing blocked by it. |
+| **`mode-change` — the one-click Toggle** | This is a **front-end** action (`src/files.js`) and is already **Vitest-covered** on the JS side. The backend re-mode it ultimately calls is live and proven (§14.15). The remaining `@todo` is a UI affordance, not a sync rule. |
+| **`open-with` / `file-type` — the `link` rows** | The `link`-mode opener and file-type entries are **Vitest-covered** in the front-end suite. The backend mode is real; what's `@todo` is the UI surface, which the JS tests already guard. |
+| **`file-type` — the REPORT-query row** | A DAV `REPORT` search over our custom properties is **unproven plumbing** — it may need indexing work we haven't justified yet. No current feature depends on it; it's a "nice to have" discovery path, not a lifecycle guarantee. |
+
+**Why we can walk away with our heads high:** none of these touch the **core promise** of the app —
+that a workflow's life in Nextcloud and its life in n8n stay honestly in sync through create, rename,
+move, copy, mode changes, and reconcile. Every one of *those* is green. The leftovers are either
+(a) blocked by a test-harness quirk rather than a code gap, (b) already covered at a different layer
+(Vitest/PHPUnit), or (c) a speculative convenience with no dependent. They are line-items for a calm
+afternoon, not blockers for the show.
+
+> *The audition is over. The understudies can wait in the wings. The crew straightens its collar,
+> the lights come up on a clean ledger, and the marquee for Chapter 4 — Showtime — flickers on.*
 

@@ -12,6 +12,7 @@ namespace OCA\N8nSync\Service;
 use OCA\N8nSync\AppInfo\Application;
 use OCA\N8nSync\Exception\N8nApiException;
 use OCP\Files\File;
+use OCP\Files\Folder;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -87,6 +88,23 @@ final class MotionService {
 	 * @throws N8nApiException on a non-404 n8n failure
 	 */
 	public function moveIn(File $node, string $id, Mapping $tgtMapping): void {
+		// Collision (saga §14.19): a sibling in the landing folder already tracks this
+		// workflow — someone has already restored it here. The incoming file is a
+		// DUPLICATE, not the same workflow relocating, so mint it as a brand-new instance
+		// (copy semantics, §14.5): createForFile strips the carried id and creates a fresh
+		// workflow, leaving the existing file and its live workflow untouched. (A same-NAME
+		// duplicate never reaches here — Nextcloud refuses that move with a 412 before the
+		// rename event fires; only a differently-named duplicate lands.)
+		if ($this->findSyncedSibling($node, $id) !== null) {
+			$this->logger->info('n8n_sync motion: move-in duplicate of an already-synced workflow; minting a new instance', [
+				'app' => Application::APP_ID,
+				'workflowId' => $id,
+				'fileId' => $node->getId(),
+			]);
+			$this->createService->createForFile($node, $tgtMapping);
+			return;
+		}
+
 		try {
 			$this->n8n->unarchiveWorkflow($id);
 		} catch (N8nApiException $e) {
@@ -110,5 +128,32 @@ final class MotionService {
 			]);
 			$this->ownershipTags->apply($node->getId(), Mapping::MODE_SYNC);
 		});
+	}
+
+	/**
+	 * Look in the landing folder for a *different* managed workflow file that already
+	 * carries the same `n8n_id` as the incoming one — i.e. the workflow is already
+	 * synced here. Pull writes workflow files flat into the mapping root, so a
+	 * duplicate (if any) sits beside the incoming file; a sibling scan is enough.
+	 * Returns the existing synced file, or null when there is no duplicate.
+	 */
+	private function findSyncedSibling(File $node, string $id): ?File {
+		$parent = $node->getParent();
+		if (!$parent instanceof Folder) {
+			return null;
+		}
+		foreach ($parent->getDirectoryListing() as $sibling) {
+			if (!$sibling instanceof File || $sibling->getId() === $node->getId()) {
+				continue; // skip non-files and the incoming file itself
+			}
+			if (!str_ends_with($sibling->getName(), FilenameCodec::EXT)) {
+				continue; // only managed workflow files can be a duplicate
+			}
+			$meta = $this->metadata->read($sibling->getId());
+			if ($meta !== null && ($meta[WorkflowMetadata::KEY_ID] ?? null) === $id) {
+				return $sibling;
+			}
+		}
+		return null;
 	}
 }

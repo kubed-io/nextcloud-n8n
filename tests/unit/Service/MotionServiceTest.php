@@ -18,6 +18,7 @@ use OCA\N8nSync\Service\OwnershipTags;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\Files\File;
+use OCP\Files\Folder;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -70,6 +71,30 @@ final class MotionServiceTest extends TestCase {
 
 	private function mapping(string $id = 'map-beta'): Mapping {
 		return Mapping::fromArray(['id' => $id, 'n8n_tag' => 'team:beta', 'team_folder' => 'beta', 'mode' => 'sync']);
+	}
+
+	/**
+	 * An incoming move-in file (fileId $incomingId) whose landing folder also holds a
+	 * single managed sibling (fileId $siblingFileId) carrying workflow $siblingWorkflowId.
+	 * Wires `getParent()->getDirectoryListing()` and the sibling's metadata read.
+	 */
+	private function fileWithSibling(int $incomingId, int $siblingFileId, string $siblingWorkflowId): File {
+		$sibling = $this->createStub(File::class);
+		$sibling->method('getId')->willReturn($siblingFileId);
+		$sibling->method('getName')->willReturn('Mover.n8n.json');
+
+		$folder = $this->createStub(Folder::class);
+		$folder->method('getDirectoryListing')->willReturn([$sibling]);
+
+		$node = $this->createMock(File::class);
+		$node->method('getId')->willReturn($incomingId);
+		$node->method('getName')->willReturn('Mover-incoming.n8n.json');
+		$node->method('getParent')->willReturn($folder);
+
+		$this->metadata->method('read')->with($siblingFileId)->willReturn([
+			WorkflowMetadata::KEY_ID => $siblingWorkflowId,
+		]);
+		return $node;
 	}
 
 	// ── moveOut ──────────────────────────────────────────────────────────────────
@@ -147,5 +172,39 @@ final class MotionServiceTest extends TestCase {
 
 		$this->expectException(N8nApiException::class);
 		$this->service->moveIn($this->file(9), 'wf1', $this->mapping());
+	}
+
+	// ── moveIn: duplicate-on-collision (saga §14.19) ──────────────────────────────
+
+	public function testMoveInMintsNewInstanceWhenADuplicateIsAlreadySyncedHere(): void {
+		// A sibling in the landing folder already tracks wf1 → the incoming is a
+		// duplicate. Mint it as a brand-new instance (createForFile strips the carried
+		// id) and leave the existing file + its live workflow untouched: no unarchive,
+		// no re-stamp here (createForFile owns its own stamp), no delete.
+		$node = $this->fileWithSibling(9, 99, 'wf1');
+		$node->expects(self::never())->method('delete');
+		$this->createService->expects(self::once())->method('createForFile')
+			->with(self::identicalTo($node), self::isInstanceOf(Mapping::class));
+		$this->n8n->expects(self::never())->method('unarchiveWorkflow');
+		$this->metadata->expects(self::never())->method('write');
+		$this->tags->expects(self::never())->method('apply');
+
+		$this->service->moveIn($node, 'wf1', $this->mapping('map-beta'));
+	}
+
+	public function testMoveInIgnoresSiblingsWithADifferentIdAndUnarchives(): void {
+		// The only sibling carries a DIFFERENT workflow → not a duplicate; the normal
+		// unarchive + stamp path runs and no new instance is minted.
+		$node = $this->fileWithSibling(9, 99, 'other-wf');
+		$node->expects(self::never())->method('delete');
+		$this->n8n->expects(self::once())->method('unarchiveWorkflow')->with('wf1');
+		$this->createService->expects(self::never())->method('createForFile');
+		$this->metadata->expects(self::once())->method('write')->with(9, [
+			WorkflowMetadata::KEY_MODE => Mapping::MODE_SYNC,
+			WorkflowMetadata::KEY_MAPPING => 'map-beta',
+		]);
+		$this->tags->expects(self::once())->method('apply')->with(9, Mapping::MODE_SYNC);
+
+		$this->service->moveIn($node, 'wf1', $this->mapping('map-beta'));
 	}
 }

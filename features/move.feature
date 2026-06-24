@@ -72,22 +72,29 @@ Feature: Moving a workflow file is the same workflow leaving and returning
     Then a new workflow is created in n8n from the file
     And the file's mode becomes "sync" in the "nextcloud:beta" mapping
 
-  # Merge UX: the unmapped + mapped duplicate (same id) is a fine, intentional
-  # state — e.g. an admin restored the workflow in n8n and it synced back into the
-  # mapping while the unmapped copy still existed. Moving the unmapped copy back in
-  # then collides with the already-synced file; n8n (the synced copy) is the source
-  # of truth, so the incoming copy is simply deleted. Feels like a merge.
-  # @todo: needs a metadata-by-id lookup to find the existing synced file
-  #   (MotionService::moveIn carries a TODO stub for it).
-  @todo
-  Scenario: Moving an unmapped file in when a synced copy already exists merges (deletes the incoming)
+  # Move-in duplicate (saga §14.19). A file carrying an id is moved into a mapping
+  # where that workflow is ALREADY synced — e.g. an admin restored it in n8n and it
+  # synced back into the folder while an unmapped copy still existed. This is not the
+  # same file relocating; it's a duplicate. Nextcloud's own rules lead the behaviour:
+  #   • same name → the move is refused (WebDAV Overwrite:F → 412), exactly like any
+  #                 NC same-name move. The existing synced file is the source of truth.
+  #   • diff name → the incoming is minted as a BRAND-NEW workflow (copy semantics,
+  #                 §14.5): MotionService::moveIn sees a sibling already carrying the
+  #                 id and hands the file to CreateService, which strips the carried id
+  #                 and creates a fresh workflow — the existing file is left untouched.
+  Scenario: Moving a duplicate in under the same name is refused (the workflow is already synced here)
     Given a managed "sync" workflow file in the "nextcloud:alpha" folder
-    And an unmapped copy of that same workflow (same "n8n_id") outside any mapping
-    When I move the unmapped copy into the "nextcloud:alpha" folder
-    Then the app sees the existing synced file with the same "n8n_id"
-    And the incoming unmapped copy is deleted from Nextcloud
-    And the original synced file remains unchanged
-    And nothing is restored or duplicated in n8n
+    And an unmapped copy of that same workflow with the same "n8n_id" outside any mapping
+    When I try to move the unmapped copy into the "nextcloud:alpha" folder under the same name
+    Then the move is refused with a message
+    And the original synced file is unchanged
+
+  Scenario: Moving a duplicate in under a different name mints a brand-new workflow
+    Given a managed "sync" workflow file in the "nextcloud:alpha" folder
+    And an unmapped copy of that same workflow with the same "n8n_id" outside any mapping
+    When I move the unmapped copy into the "nextcloud:alpha" folder under a different name
+    Then the moved-in file becomes a brand-new workflow in n8n
+    And the original synced file is unchanged
 
   # Move-in create: an untracked file (no id) dragged into a mapping is create-on-
   # land — CreateInN8nListener fires on the NodeRenamedEvent (NC doesn't fire

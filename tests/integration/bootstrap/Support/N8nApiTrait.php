@@ -52,4 +52,14 @@ trait N8nApiTrait {
 			"DELETE n8n workflow $id failed: " . (string)$res->getBody(),
 		);
 	}
+
+	/** Bring an archived workflow back to life (POST /workflows/{id}/unarchive). */
+	private function n8nUnarchiveWorkflow(string $id): void {
+		$res = $this->n8nClient()->request('POST', 'workflows/' . rawurlencode($id) . '/unarchive');
+		Assert::assertContains(
+			$res->getStatusCode(),
+			[200, 204],
+			"unarchive n8n workflow $id failed: " . (string)$res->getBody(),
+		);
+	}
 }
