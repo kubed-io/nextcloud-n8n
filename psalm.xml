@@ -28,6 +28,16 @@
 	<extraFiles>
 		<directory name="vendor/nextcloud/ocp" />
 	</extraFiles>
+	<!--
+		Resolve symbols the app references from Sabre/DAV and the bundled `dav` app
+		(Sabre\DAV\ServerPlugin/Server/INode/Exception\Forbidden,
+		OCA\DAV\Connector\Sabre\File, OCA\DAV\Events\SabrePluginAddEvent). None ship
+		in nextcloud/ocp; these declaration-only stubs let Psalm see the real types
+		(the same file backs the unit suite — see tests/external-stubs.php).
+	-->
+	<stubs>
+		<file name="tests/external-stubs.php" />
+	</stubs>
 	<issueHandlers>
 		<!--
 			These reference classes that exist at runtime in a real Nextcloud but
