@@ -80,8 +80,8 @@ trait ReservedTagsSteps {
 	}
 
 	/**
-	 * Remove a system tag from the current file (used only by the @todo restore
-	 * scenario — the un-ignore listener is not built yet, saga §14.8).
+	 * Remove a system tag from the current file. Removing `n8n:ignore` un-ignores the
+	 * file (TagUnassignedEvent → ModeChangeService::unignore, saga §14.8/§14.18).
 	 *
 	 * @When I remove the :reserved tag
 	 */

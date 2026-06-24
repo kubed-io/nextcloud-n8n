@@ -30,8 +30,9 @@
 # n8n-side reserved tags are just the escape hatch.
 #
 # Pull-time resolution (override + never-pulled ignore) and the in-folder `ignored`
-# mode are live (saga §14.8 B). The un-tag RESTORE (removing n8n:ignore returns the
-# file to the mapping default) needs a tag-removal listener — still @todo.
+# mode are live (saga §14.8 B). The un-tag RESTORE — removing n8n:ignore unarchives the
+# workflow and returns the file to the mapping default — is now live too (saga §14.18),
+# driven by a TagUnassignedEvent listener.
 
 Feature: Reserved n8n tags override the mapping default per workflow
   As an n8n admin
@@ -73,7 +74,6 @@ Feature: Reserved n8n tags override the mapping default per workflow
     And the workflow is archived in n8n
     And subsequent pulls/pushes for "team:flows" skip it
 
-  @todo
   Scenario: Removing n8n:ignore returns the file to the mapping's default mode
     Given a managed "sync" workflow file in the "team:flows" folder
     And I tag it "n8n:ignore"

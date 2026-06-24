@@ -23,6 +23,7 @@ use OCP\Files\IRootFolder;
 use OCP\IUserSession;
 use OCP\SystemTag\ISystemTagManager;
 use OCP\SystemTag\TagAssignedEvent;
+use OCP\SystemTag\TagUnassignedEvent;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -38,13 +39,15 @@ use Psr\Log\LoggerInterface;
  *
  * Assigning `n8n:ignore` routes the same way with target `ignored` (saga §14.8): the
  * workflow is archived in n8n and the file flips to `ignored` mode, keeping its body,
- * id, and location — sync then skips it.
+ * id, and location — sync then skips it. **Removing** `n8n:ignore` is the inverse — a
+ * {@see TagUnassignedEvent} routes to {@see ModeChangeService::unignore()}, which
+ * unarchives the workflow and returns the file to its mapping's default mode.
  *
- * Loop safety: `changeTo()` does its tag re-assert inside the {@see SyncGuard}, so the
- * `TagAssignedEvent` that re-fires lands here with {@see SyncGuard::active()} true and we
- * bail — no recursion.
+ * Loop safety: `changeTo()`/`unignore()` do their tag re-asserts inside the
+ * {@see SyncGuard}, so the tag event that re-fires lands here with
+ * {@see SyncGuard::active()} true and we bail — no recursion.
  *
- * @implements IEventListener<TagAssignedEvent>
+ * @implements IEventListener<TagAssignedEvent|TagUnassignedEvent>
  */
 final class ModeTagListener implements IEventListener {
 	public function __construct(
@@ -59,17 +62,46 @@ final class ModeTagListener implements IEventListener {
 
 	#[\Override]
 	public function handle(Event $event): void {
-		if (!$event instanceof TagAssignedEvent || $event->getObjectType() !== 'files') {
+		if (!$event instanceof TagAssignedEvent && !$event instanceof TagUnassignedEvent) {
 			return;
 		}
-		if ($this->guard->active()) {
-			return; // our own apply() re-assigns tags — don't re-enter
+		if ($event->getObjectType() !== 'files' || $this->guard->active()) {
+			return; // our own apply()/changeTo() re-touch tags — don't re-enter
 		}
 
-		// Which of our mode tags was assigned? (Ignore any non-n8n tag change.)
-		// TagAssignedEvent::getTags() yields tag *ids*; resolve them to names.
+		if ($event instanceof TagAssignedEvent) {
+			// Which of our mode tags was assigned? (Ignore any non-n8n tag change.)
+			$target = $this->modeForAssignedTags($event->getTags());
+			if ($target === null) {
+				return;
+			}
+			$this->forEachWorkflowFile(
+				$event->getObjectIds(),
+				fn (File $node) => $this->modeChange->changeTo($node, $target),
+			);
+			return;
+		}
+
+		// TagUnassignedEvent: only removing `n8n:ignore` matters — it returns the file
+		// to its mapping's default mode.
+		if (!$this->tagsIncludeIgnore($event->getTags())) {
+			return;
+		}
+		$this->forEachWorkflowFile(
+			$event->getObjectIds(),
+			fn (File $node) => $this->modeChange->unignore($node),
+		);
+	}
+
+	/**
+	 * Map a set of just-assigned tag ids to the mode they request, or null if none of
+	 * them is one of ours. `TagAssignedEvent::getTags()` yields tag *ids*; resolve to names.
+	 *
+	 * @param array<int|string> $tagIds
+	 */
+	private function modeForAssignedTags(array $tagIds): ?string {
 		$target = null;
-		foreach ($this->tagManager->getTagsByIds($event->getTags()) as $tag) {
+		foreach ($this->tagManager->getTagsByIds($tagIds) as $tag) {
 			$name = $tag->getName();
 			if ($name === OwnershipTags::TAG_LINK) {
 				$target = Mapping::MODE_LINK;
@@ -79,17 +111,39 @@ final class ModeTagListener implements IEventListener {
 				$target = WorkflowMetadata::MODE_IGNORED;
 			}
 		}
-		if ($target === null) {
-			return;
-		}
+		return $target;
+	}
 
+	/**
+	 * True when `n8n:ignore` is among the unassigned tag ids.
+	 *
+	 * @param array<int|string> $tagIds
+	 */
+	private function tagsIncludeIgnore(array $tagIds): bool {
+		foreach ($this->tagManager->getTagsByIds($tagIds) as $tag) {
+			if ($tag->getName() === OwnershipTags::TAG_IGNORE) {
+				return true;
+			}
+		}
+		return false;
+	}
+
+	/**
+	 * Resolve each tagged object id to a managed `*.n8n.json` file (for the acting user)
+	 * and run $action against it. Non-files, non-managed files, and unresolvable ids are
+	 * skipped; an unattributable tag change (no acting user) is a no-op.
+	 *
+	 * @param array<int|string> $objectIds
+	 * @param callable(File): void $action
+	 */
+	private function forEachWorkflowFile(array $objectIds, callable $action): void {
 		$uid = $this->userSession->getUser()?->getUID() ?? '';
 		if ($uid === '') {
 			return; // tag change with no acting user — nothing to resolve against
 		}
 		$userFolder = $this->rootFolder->getUserFolder($uid);
 
-		foreach ($event->getObjectIds() as $objectId) {
+		foreach ($objectIds as $objectId) {
 			try {
 				$node = $userFolder->getById((int)$objectId)[0] ?? null;
 			} catch (\Throwable $e) {
@@ -103,7 +157,7 @@ final class ModeTagListener implements IEventListener {
 			if (!$node instanceof File || !str_ends_with($node->getName(), FilenameCodec::EXT)) {
 				continue;
 			}
-			$this->modeChange->changeTo($node, $target);
+			$action($node);
 		}
 	}
 }

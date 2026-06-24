@@ -10,6 +10,8 @@ declare(strict_types=1);
 namespace OCA\N8nSync\Tests\Unit\Service;
 
 use OCA\N8nSync\Exception\N8nApiException;
+use OCA\N8nSync\Service\Mapping;
+use OCA\N8nSync\Service\MappingService;
 use OCA\N8nSync\Service\ModeChangeService;
 use OCA\N8nSync\Service\N8nClient;
 use OCA\N8nSync\Service\OwnershipTags;
@@ -36,12 +38,14 @@ final class ModeChangeServiceTest extends TestCase {
 	private N8nClient $n8n;
 	private WorkflowMetadata $metadata;
 	private OwnershipTags $tags;
+	private MappingService $mappings;
 	private ModeChangeService $service;
 
 	protected function setUp(): void {
 		$this->n8n = $this->createMock(N8nClient::class);
 		$this->metadata = $this->createMock(WorkflowMetadata::class);
 		$this->tags = $this->createMock(OwnershipTags::class);
+		$this->mappings = $this->createMock(MappingService::class);
 
 		$guard = $this->createStub(SyncGuard::class);
 		$guard->method('run')->willReturnCallback(fn (callable $fn) => $fn());
@@ -54,6 +58,7 @@ final class ModeChangeServiceTest extends TestCase {
 			$this->metadata,
 			$this->tags,
 			$guard,
+			$this->mappings,
 			$config,
 			new NullLogger(),
 		);
@@ -210,5 +215,74 @@ final class ModeChangeServiceTest extends TestCase {
 		$this->tags->expects(self::never())->method('clear');
 
 		$this->service->changeTo($node, WorkflowMetadata::MODE_IGNORED);
+	}
+
+	// ── un-ignore (saga §14.18 — TagUnassignedEvent restore) ─────────────────────
+
+	public function testUnignoreUnarchivesAndRestoresToMappingDefault(): void {
+		$node = $this->createMock(File::class);
+		$node->method('getId')->willReturn(7);
+		$node->method('getPath')->willReturn('/admin/files/links/My Flow.n8n.json');
+		$this->expectRead(['n8n_id' => 'w1', 'n8n_mode' => 'ignored']);
+
+		// The workflow is unarchived, then re-moded to the mapping's default (link).
+		$this->n8n->expects(self::once())->method('unarchiveWorkflow')->with('w1');
+		$this->mappings->method('resolveForPath')->willReturn(
+			new Mapping('m1', 'team:links', 'links', ['admin'], Mapping::MODE_LINK, false),
+		);
+		$this->n8n->expects(self::once())->method('getWorkflow')->with('w1')->willReturn([
+			'id' => 'w1', 'name' => 'My Flow', 'versionId' => 'v9', 'nodes' => [['x' => 1]], 'connections' => [],
+		]);
+		$node->expects(self::once())->method('putContent');
+		$this->metadata->expects(self::once())->method('write')->with(7, self::callback(
+			fn (array $v) => ($v['n8n_mode'] ?? null) === 'link'
+		));
+		$this->tags->expects(self::once())->method('apply')->with(7, 'link');
+
+		$this->service->unignore($node);
+	}
+
+	public function testUnignoreFallsBackToSyncWhenNoMapping(): void {
+		$node = $this->createMock(File::class);
+		$node->method('getId')->willReturn(7);
+		$node->method('getPath')->willReturn('/admin/files/loose/My Flow.n8n.json');
+		$this->expectRead(['n8n_id' => 'w1', 'n8n_mode' => 'ignored']);
+
+		$this->n8n->expects(self::once())->method('unarchiveWorkflow')->with('w1');
+		$this->mappings->method('resolveForPath')->willReturn(null); // outside any mapping
+		$this->n8n->expects(self::once())->method('getWorkflow')->with('w1')->willReturn([
+			'id' => 'w1', 'name' => 'My Flow', 'versionId' => 'v9', 'nodes' => [], 'connections' => [],
+		]);
+		$this->metadata->expects(self::once())->method('write')->with(7, self::callback(
+			fn (array $v) => ($v['n8n_mode'] ?? null) === 'sync'
+		));
+		$this->tags->expects(self::once())->method('apply')->with(7, 'sync');
+
+		$this->service->unignore($node);
+	}
+
+	public function testUnignoreOnNonIgnoredFileIsNoOp(): void {
+		$node = $this->createMock(File::class);
+		$node->method('getId')->willReturn(7);
+		$this->expectRead(['n8n_id' => 'w1', 'n8n_mode' => 'sync']); // not ignored
+
+		$this->n8n->expects(self::never())->method('unarchiveWorkflow');
+		$this->metadata->expects(self::never())->method('write');
+		$this->tags->expects(self::never())->method('apply');
+
+		$this->service->unignore($node);
+	}
+
+	public function testUnignoreUnarchiveFailureLeavesFileUntouched(): void {
+		$node = $this->createMock(File::class);
+		$node->method('getId')->willReturn(7);
+		$this->expectRead(['n8n_id' => 'w1', 'n8n_mode' => 'ignored']);
+
+		$this->n8n->method('unarchiveWorkflow')->willThrowException(new N8nApiException('boom', 500));
+		$this->n8n->expects(self::never())->method('getWorkflow');
+		$this->metadata->expects(self::never())->method('write');
+		$this->tags->expects(self::never())->method('apply');
+
+		$this->service->unignore($node);
 	}
 }
