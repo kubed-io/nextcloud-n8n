@@ -24,6 +24,7 @@ declare(strict_types=1);
 namespace Sabre\DAV {
 	if (!interface_exists(INode::class, false)) {
 		interface INode {
+			public function getName(): string;
 		}
 	}
 	if (!class_exists(Server::class, false)) {
