@@ -119,7 +119,7 @@ trait MoveSteps {
 	 * Hard-delete the workflow under test in n8n so the next unarchive 404s and the
 	 * move-in falls back to create. Remembers the deleted id for the "is new" check.
 	 *
-	 * @Given that workflow no longer exists in n8n (it was permanently deleted)
+	 * @Given that workflow no longer exists in n8n
 	 */
 	public function thatWorkflowNoLongerExistsInN8n(): void {
 		Assert::assertNotNull($this->lastWorkflowId, 'no workflow id to delete');

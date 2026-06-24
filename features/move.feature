@@ -67,7 +67,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
   # from the file we still hold (a fresh id), then re-stamps sync in the target.
   Scenario: Restoring when the n8n workflow was hard-deleted falls back to create
     Given an unmapped workflow file that still carries its "n8n_id"
-    And that workflow no longer exists in n8n (it was permanently deleted)
+    And that workflow no longer exists in n8n
     When I move the file into the "nextcloud:beta" folder
     Then a new workflow is created in n8n from the file
     And the file's mode becomes "sync" in the "nextcloud:beta" mapping
