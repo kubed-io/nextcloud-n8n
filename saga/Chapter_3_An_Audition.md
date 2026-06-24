@@ -531,7 +531,7 @@ real NC + n8n. The chapter is "done" when this ledger is all-green to Kelly's sa
 | `rename` | ✅ all | — | three-way name sync |
 | `copy` | ✅ all | — | always a new instance (§14.5) |
 | `reconcile` | ✅ all | — | manual per-mapping pull/push + prune (§14.6) |
-| `move` | ◑ 6 of 9 | hard-deleted restore-fallback, merge-on-collision, brand-new move-in create | §14.4 shipped the core |
+| `move` | ◑ 8 of 9 | merge-on-collision (needs id-lookup) | §14.17 — hard-deleted fallback + brand-new move-in create live |
 | `mode-change` | ◑ 5 of 6 | toggle (FE-only, Vitest) | §14.6/§14.15 — retag + n8n-override live |
 | `delete` | ◑ 6 of 9 | purge-sync, unmapped-purge, abort-if-unreachable | §14.16 — unmapped trash/restore no-ops live |
 | `reserved-tags` | ✅ 7 of 8 | "remove n8n:ignore → default" (un-ignore listener unbuilt) | §14.6/§14.10 — landed PR #32 |
@@ -963,4 +963,30 @@ hard step never runs; the unmapped purge *also* needs a backend rule (`hardDelet
 no-op today). Abort-if-unreachable stays the deliberate "bow on top" — its cleaner home is a
 PHPUnit test against a mocked `N8nClient` asserting `AbortedEventException`, not a brittle
 mid-DELETE transport failure in Behat.
+
+### §14.17 — `move`: the two move-in *mint* paths go live (solo)
+
+`move` from **6 of 9 → 8 of 9**. Both flips were **already backed by code** — the assertion never
+ran because the harness didn't capture the freshly-minted id:
+
+- **Brand-new move-in create.** An untracked `.n8n.json` (no id, outside any mapping) dragged into a
+  mapping is **create-on-land** — `CreateInN8nListener` fires on the `NodeRenamedEvent` (NC does
+  *not* fire `NodeWrittenEvent` for a move) and mints the workflow, stamping `sync` + the mapping.
+- **Hard-deleted restore-fallback.** An unmapped file kept its id, but the workflow was
+  hard-deleted in n8n meanwhile. `MotionService::moveIn` catches the unarchive **404** and
+  `createService->createForFile(...)` recreates it with a **fresh** id.
+
+The one harness change that unlocked both: the shared `@When I move the file into the :tag folder`
+step now **re-captures the file's stamped id after the move** (a move-in can mint a workflow; for a
+plain unarchive the id is unchanged, so it's a harmless re-read) and adds it to the teardown list.
+New glue: `aFileThatWasNeverTrackedInN8n` (delegates to DeleteSteps' untracked-file arrange),
+`thatWorkflowNoLongerExistsInN8n` (hard-deletes via a new `n8nDeleteWorkflow` helper, remembers the
+deleted id), `aNewWorkflowIsCreatedFromTheFile` (asserts the post-move id is fresh + live). No
+duplicate step text, `get_errors` clean.
+
+**Lone remaining `@todo` (1 of 9): merge-on-collision** — an unmapped copy moved in *over* an
+already-synced file with the same id. n8n (the synced copy) is source of truth, so the incoming
+copy should be deleted (feels like a merge). Needs a real backend build: a **metadata-by-id lookup**
+in `MotionService::moveIn` to find the existing synced file before deciding to restore. That's the
+genuine code remaining on `move`.
 
