@@ -531,7 +531,7 @@ real NC + n8n. The chapter is "done" when this ledger is all-green to Kelly's sa
 | `rename` | ✅ all | — | three-way name sync |
 | `copy` | ✅ all | — | always a new instance (§14.5) |
 | `reconcile` | ✅ all | — | manual per-mapping pull/push + prune (§14.6) |
-| `move` | ◑ 8 of 9 | merge-on-collision (needs id-lookup) | §14.17 — hard-deleted fallback + brand-new move-in create live |
+| `move` | ✅ all 9 | — | §14.19 — merge-on-collision (sibling-by-id) closes the last `@todo` |
 | `mode-change` | ◑ 5 of 6 | toggle (FE-only, Vitest) | §14.6/§14.15 — retag + n8n-override live |
 | `delete` | ◑ 6 of 9 | purge-sync, unmapped-purge, abort-if-unreachable | §14.16 — unmapped trash/restore no-ops live |
 | `reserved-tags` | ✅ all 8 | — | §14.18 — un-ignore listener landed (un-tag restore live) |
@@ -1021,4 +1021,43 @@ step text.
 **This is the first of the two real backend builds** that close the audition. The other is `move`
 merge-on-collision (the metadata-by-id lookup in `MotionService::moveIn`). Everything else left on
 the ledger is intentionally-deferred (CI walls / Vitest-covered / unproven plumbing).
+
+### §14.19 — `move`: merge-on-collision, the last backend build (solo)
+
+`move` is now **✅ all 9** — the final `@todo` (and the last genuine code on the whole ledger). The
+scenario: an *unmapped* file carrying workflow W's `n8n_id` is moved into a mapping where W is
+**already synced**. A MOVE is never a duplicate, so the incoming file is a redundant copy — n8n (the
+existing synced file) is the source of truth, so the incoming copy is deleted. Feels like a merge.
+
+The build, again kept small:
+
+- **`MotionService::moveIn`** now opens with a `findSyncedSibling($node, $id)` scan: walk the
+  landing folder's `getDirectoryListing()` for a *different* managed `*.n8n.json` whose metadata
+  carries the same `n8n_id`. On a hit, **delete the incoming file under the `SyncGuard`** (so
+  `DeleteToN8nListener` bails — nothing is archived or touched in n8n) and return *before* the
+  unarchive/restore path. No sibling → the existing unarchive-or-create-fallback logic runs
+  unchanged. A flat sibling scan is enough because pull writes workflow files flat into the mapping
+  root, so any duplicate sits right beside the incoming file. No constructor change (reuses
+  `metadata` + `guard` + `logger`); the `FilenameCodec::EXT` guard is the same one the listeners use.
+
+The hard part was the **test arrange**, not the code. Two real files must share one `n8n_id`, but a
+MOVE relocates the single file (never duplicates) and a COPY strips the id. The genesis: create the
+sync file in `nextcloud:alpha` → move it **out** (archives W, stamps `unmapped`) → `unarchive` W via
+a new `n8nUnarchiveWorkflow` REST helper → **pull alpha**, which writes a *fresh* synced file into
+the folder from n8n. Net: the synced copy (id W) lives in alpha and the unmapped original (also id W)
+waits outside. One wrinkle: both derive from W, so both want the name `Mover.n8n.json` — and the
+harness's MOVE uses `Overwrite: F`, so a same-name move would be **refused** (412). The merge is
+keyed on the *id*, not the name, so the incoming is moved in under a fresh name
+(`Mover-incoming.n8n.json`) — the realistic post-rename case — and the sibling-by-id scan still fires.
+
+Coverage: **2 new unit tests** (`MotionService::moveIn` deletes the incoming when a sibling shares
+the id and touches nothing in n8n; a sibling with a *different* id still takes the normal unarchive
+path) plus the live `move.feature` scenario flipped off `@todo`. New integration glue in `MoveSteps`
+(the genesis arrange, the fresh-name move-in, and the four assertions) + `n8nUnarchiveWorkflow` in
+`N8nApiTrait`. `get_errors` clean, no duplicate step text. This also retires the README
+doc-vs-code lie (merge was documented as shipped while still `@todo`).
+
+With this, every ledger row is **✅** except the deliberately-deferred items (delete purge legs behind
+the trashbin-DAV CI wall, mode-change toggle + open-with/file-type `link` rows covered by Vitest,
+file-type REPORT-query plumbing). The audition's real backend work is done.
 

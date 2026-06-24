@@ -149,6 +149,114 @@ trait MoveSteps {
 		Assert::assertIsArray($this->n8nGetWorkflow($newId), "the new workflow $newId does not exist in n8n");
 	}
 
+	/**
+	 * Genesis for the merge-on-collision case (saga §14.19): a SECOND file carrying
+	 * the SAME workflow id as the managed sync file already in alpha, but sitting
+	 * OUTSIDE any mapping. A MOVE never duplicates, so we move the synced file OUT
+	 * (archiving the workflow), then unarchive it in n8n and PULL alpha — which
+	 * re-creates the synced file in place from n8n. Net: the synced copy lives in
+	 * alpha (id W) and the original, now unmapped, copy waits outside (also id W).
+	 *
+	 * @Given an unmapped copy of that same workflow with the same :key outside any mapping
+	 */
+	public function anUnmappedCopyOfThatSameWorkflow(string $key): void {
+		Assert::assertNotNull($this->lastWorkflowId, 'no workflow id from the managed sync file');
+		$this->collisionWorkflowId = $this->lastWorkflowId;
+
+		// Move the synced file OUT → it becomes the unmapped copy (id preserved, workflow archived).
+		$this->iMoveTheFileToAnUnmappedFolder();
+		Assert::assertSame(
+			'unmapped',
+			$this->davReadMetadata($this->currentFilePath, self::META_MODE),
+			'setup: the moved-out copy is not unmapped',
+		);
+		$this->collisionIncomingPath = $this->currentFilePath;
+
+		// Bring the workflow back to life and pull alpha so a fresh SYNCED file is written
+		// into the mapping from n8n — the "existing synced copy" the move-in must defer to.
+		$this->n8nUnarchiveWorkflow($this->collisionWorkflowId);
+		$this->runMappingSync('pull', 'nextcloud:alpha');
+
+		$this->collisionSyncedPath = $this->folderNameForTag('nextcloud:alpha') . '/Mover.n8n.json';
+		Assert::assertSame(
+			$this->collisionWorkflowId,
+			$this->davReadMetadataId($this->collisionSyncedPath),
+			'setup: the pulled synced file does not carry the shared workflow id',
+		);
+		Assert::assertSame(
+			'sync',
+			$this->davReadMetadata($this->collisionSyncedPath, self::META_MODE),
+			'setup: the pulled file is not in sync mode',
+		);
+
+		// The incoming copy (still unmapped, outside alpha) is what the scenario moves in next.
+		$this->currentFilePath = $this->collisionIncomingPath;
+		$this->lastWorkflowId = $this->collisionWorkflowId;
+	}
+
+	/**
+	 * Move the unmapped copy INTO the mapping under a FRESH name (a user resolving
+	 * the name clash; the test's MOVE uses Overwrite:F, so a same-name move would be
+	 * refused). The id-based merge in MotionService::moveIn should then spot the
+	 * already-synced sibling and delete this incoming copy — see saga §14.19.
+	 *
+	 * @When I move the unmapped copy into the :tag folder
+	 */
+	public function iMoveTheUnmappedCopyIntoTheFolder(string $tag): void {
+		$dest = $this->folderNameForTag($tag) . '/Mover-incoming.n8n.json';
+		$this->davMove($this->currentFilePath, $dest);
+		$this->currentFilePath = $dest;
+	}
+
+	/** @Then the app sees the existing synced file with the same :key */
+	public function theAppSeesTheExistingSyncedFile(string $key): void {
+		Assert::assertTrue(
+			$this->davExists($this->collisionSyncedPath),
+			'the existing synced file is gone',
+		);
+		Assert::assertSame(
+			$this->collisionWorkflowId,
+			$this->davReadMetadataId($this->collisionSyncedPath),
+			'the existing synced file no longer carries the shared workflow id',
+		);
+	}
+
+	/** @Then the incoming unmapped copy is deleted from Nextcloud */
+	public function theIncomingUnmappedCopyIsDeleted(): void {
+		Assert::assertFalse(
+			$this->davExists($this->currentFilePath),
+			'the incoming copy still exists — it was not deleted on the merge',
+		);
+	}
+
+	/** @Then the original synced file remains unchanged */
+	public function theOriginalSyncedFileRemainsUnchanged(): void {
+		Assert::assertSame(
+			'sync',
+			$this->davReadMetadata($this->collisionSyncedPath, self::META_MODE),
+			'the existing synced file changed mode',
+		);
+		Assert::assertSame(
+			$this->collisionWorkflowId,
+			$this->davReadMetadataId($this->collisionSyncedPath),
+			'the existing synced file changed its workflow id',
+		);
+	}
+
+	/** @Then nothing is restored or duplicated in n8n */
+	public function nothingIsRestoredOrDuplicatedInN8n(): void {
+		Assert::assertIsArray(
+			$this->n8nGetWorkflow($this->collisionWorkflowId),
+			'the shared workflow vanished from n8n',
+		);
+		// The surviving synced file still points at the SAME id — no fresh workflow minted.
+		Assert::assertSame(
+			$this->collisionWorkflowId,
+			$this->davReadMetadataId($this->collisionSyncedPath),
+			'a duplicate workflow id appeared on the synced file',
+		);
+	}
+
 	/** @When I try to move the file to a folder that is not mapped */
 	public function iTryToMoveTheFileToAnUnmappedFolder(): void {
 		$folder = 'unmapped-' . bin2hex(random_bytes(3));

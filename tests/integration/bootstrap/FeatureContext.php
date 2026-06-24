@@ -142,6 +142,10 @@ final class FeatureContext implements Context {
 	private bool $expectedArchived = false;
 	/** A workflow id deliberately hard-deleted mid-scenario (for the create-fallback move-in). */
 	private string $deletedWorkflowId = '';
+	/** Merge-on-collision (§14.19): the shared workflow id, the existing synced copy, and the incoming copy. */
+	private string $collisionWorkflowId = '';
+	private string $collisionSyncedPath = '';
+	private string $collisionIncomingPath = '';
 	/** The copy made by a copy step, and the workflow id (if any) it was registered as. */
 	private string $copyFilePath = '';
 	private ?string $copyWorkflowId = null;

@@ -77,12 +77,12 @@ Feature: Moving a workflow file is the same workflow leaving and returning
   # mapping while the unmapped copy still existed. Moving the unmapped copy back in
   # then collides with the already-synced file; n8n (the synced copy) is the source
   # of truth, so the incoming copy is simply deleted. Feels like a merge.
-  # @todo: needs a metadata-by-id lookup to find the existing synced file
-  #   (MotionService::moveIn carries a TODO stub for it).
-  @todo
+  # MotionService::moveIn scans the landing folder for a sibling carrying the same
+  # n8n_id; on a hit it deletes the incoming copy under the SyncGuard (so n8n is
+  # untouched) and leaves the existing synced file as the single source of truth.
   Scenario: Moving an unmapped file in when a synced copy already exists merges (deletes the incoming)
     Given a managed "sync" workflow file in the "nextcloud:alpha" folder
-    And an unmapped copy of that same workflow (same "n8n_id") outside any mapping
+    And an unmapped copy of that same workflow with the same "n8n_id" outside any mapping
     When I move the unmapped copy into the "nextcloud:alpha" folder
     Then the app sees the existing synced file with the same "n8n_id"
     And the incoming unmapped copy is deleted from Nextcloud
