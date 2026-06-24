@@ -155,27 +155,19 @@ Tags are visible as coloured pills in the Files app. They are **mutually exclusi
 
 📋 spec: [`features/file-type.feature`](features/file-type.feature)
 
-### Changing a workflow's mode (sync ⇄ link)
+### Sync vs link is set by the folder mapping
 
-You can flip a managed file between **sync** and **link** at any time — the workflow's identity (`n8n_id`) is preserved, only how Nextcloud holds it changes (sync→link collapses to the pointer; link→sync pulls the full JSON back down). Three ways to do it:
+A file's mode (**sync** or **link**) comes from its **folder mapping** — that's the single source of truth, and it applies to every workflow the mapping pulls. There is no per-file or per-workflow sync/link override: to change how a folder's workflows are held, change the mapping's mode. (`sync` keeps the full JSON and pushes edits back; `link` keeps just a pointer that opens n8n.)
 
-- **Context menu** — a one-click "Toggle n8n mode" action on the file (the easy path).
-- **Retag in Nextcloud** — change the file's `n8n:sync`/`n8n:link` tag by hand. Add the second by mistake and the app resolves it — the just-added tag wins and the other is stripped (one tag only, always).
-- **From n8n** — see reserved tags below.
+### Reserved tag — optional per-workflow exclude (n8n side)
 
-📋 spec: [`features/mode-change.feature`](features/mode-change.feature)
-
-### Reserved tags — optional per-workflow control (n8n side)
-
-A mapping binds **one** n8n tag to a folder + a default mode — and that tag can be **any name**; the `nextcloud:` prefix in these docs is just a convention, not a requirement (`team:flows`, `myfoobarflows`, anything works). On top of the mapping default, three reserved tags let you control a **single** workflow from n8n:
+A mapping binds **one** n8n tag to a folder + a mode — and that tag can be **any name**; the `nextcloud:` prefix in these docs is just a convention, not a requirement (`team:flows`, `myfoobarflows`, anything works). The mapping's mode is authoritative for every workflow it pulls. The only reserved tag the app honours lets you exclude a **single** workflow from n8n:
 
 | Reserved n8n tag | Effect on that one workflow |
 |---|---|
-| `n8n:sync` | Pull it as **sync**, whatever the mapping default is |
-| `n8n:link` | Pull it as a **link**, whatever the mapping default is |
 | `n8n:ignore` | **Skip** it entirely, even though it carries the mapped tag |
 
-These are the *same* `n8n:sync`/`n8n:link` vocabulary as the file tags above — one mode language, two sides with opposite authority: in **Nextcloud** the app owns the tag (automatic); in **n8n** the tags are **optional and hand-set by you** — the app only *reads* them as overrides and **never writes them onto your n8n workflows**. They're 100% optional: the mapping default does everything on its own.
+`n8n:ignore` is **optional and hand-set by you** — the app only *reads* it and **never writes it onto your n8n workflows**. Add it to leave a workflow out; remove it to bring the file back to its mapping's mode. The Nextcloud-side `n8n:sync`/`n8n:link` pills are just the automatic mode mirror described above, not an override switch.
 
 📋 spec: [`features/reserved-tags.feature`](features/reserved-tags.feature)
 
@@ -238,7 +230,7 @@ A mapping binds an n8n workflow tag to a Nextcloud folder and defines who can se
 
 | Field | Description |
 |---|---|
-| **n8n Tag** | The n8n tag whose workflows sync into this folder. **Any name** — the `nextcloud:` prefix is just a convention, not required. Must be unique across all mappings — one folder per tag. Cannot contain commas. Avoid the reserved `n8n:sync`/`n8n:link`/`n8n:ignore` (those are per-workflow overrides, see [Reserved tags](#reserved-tags--optional-per-workflow-control-n8n-side)). |
+| **n8n Tag** | The n8n tag whose workflows sync into this folder. **Any name** — the `nextcloud:` prefix is just a convention, not required. Must be unique across all mappings — one folder per tag. Cannot contain commas. Avoid the reserved `n8n:sync`/`n8n:link`/`n8n:ignore` (`n8n:ignore` is the per-workflow exclude, see [Reserved tag](#reserved-tag--optional-per-workflow-exclude-n8n-side); `n8n:sync`/`n8n:link` are the app's own file pills). |
 | **Folder** | The Nextcloud mount point where workflows appear. Backed by either a Team Folder (ownerless, requires the groupfolders app) or an admin-owned shared folder. |
 | **Groups** | The Nextcloud groups who can access the folder. At least one group is required for anyone to see the folder. |
 | **Mode** | `sync` or `link` — see [Modes](#modes) above. (`unmapped` is a *file* state produced by moving a sync file out of a mapping; it is never something you configure on a mapping.) |

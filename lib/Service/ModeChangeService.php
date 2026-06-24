@@ -16,22 +16,18 @@ use OCP\IAppConfig;
 use Psr\Log\LoggerInterface;
 
 /**
- * Re-mode a managed workflow file between **sync** and **link** (saga Ch2 §14.2b
- * `mode-change.feature`). The workflow identity (`n8n_id`) is preserved — only how
- * Nextcloud holds it changes:
+ * Rebuilds a managed workflow file's body to match a target mode, preserving the
+ * workflow identity (`n8n_id`). The mapping's mode (`sync` / `link`) is authoritative —
+ * there is no per-file sync↔link override — so this engine is driven only by the
+ * **ignore / un-ignore** lifecycle (saga §14.8), never a user toggle:
  *
- *   sync → link : the file content collapses to the small pointer (id/name/URL);
- *                 it stops pushing. No data loss — n8n still holds the full workflow.
- *   link → sync : the full workflow JSON is pulled down into the file; two-way resumes.
+ *   assign   n8n:ignore → {@see changeTo()} target `ignored`: archive the workflow in
+ *            n8n, flip the file to `ignored`, keep its body/id/location, drop the pills.
+ *   unassign n8n:ignore → {@see unignore()}: unarchive the workflow, then re-mode the
+ *            file back to its **mapping's** mode via {@see changeTo()} — which is where
+ *            the sync (full JSON) / link (pointer) body rebuild still happens.
  *
- * **Mutual exclusivity** is the other half: a managed file carries exactly one of
- * `n8n:sync` / `n8n:link`. {@see OwnershipTags::apply()} stamps the target tag and
- * strips the other, so "the just-added tag wins" falls out for free — adding
- * `n8n:link` to a sync file routes here with target=link, which strips `n8n:sync`.
- *
- * Triggered by {@see \OCA\N8nSync\Listener\ModeTagListener} (a system-tag change, the
- * Files context-menu toggle, or — Phase 2 — an n8n-side override tag on pull). All
- * the writes (content + metadata + tags) run inside the {@see SyncGuard} so the
+ * All writes (content + metadata + tags) run inside the {@see SyncGuard} so the
  * implicit re-writes don't echo back into the tag listener or the writeback push.
  */
 final class ModeChangeService {
@@ -49,14 +45,18 @@ final class ModeChangeService {
 	/**
 	 * Transition $node to $target ∈ {sync, link, ignored}. No-op (safe to call
 	 * repeatedly) when the file isn't managed, $target isn't a known mode, or the
-	 * file is already in $target — in the already-there case the ownership tag is
-	 * still re-asserted (for sync/link) so a stray duplicate mode tag resolves to one.
+	 * file is already in $target.
 	 *
 	 * `ignored` is the exclude case (saga §14.8): the workflow is **archived** in n8n,
 	 * the file's mode flips to `ignored` but its body, id, and folder location are all
 	 * kept, and the sync/link ownership pills are stripped (an ignored file carries the
 	 * user's hand-set `n8n:ignore` marker, not an auto-managed pill). Subsequent
 	 * pulls/pushes skip it ({@see SyncService}).
+	 *
+	 * The sync/link targets are reached only from {@see unignore()} restoring a file to
+	 * its **mapping's** mode — there is no user-facing sync↔link toggle. The unmapped
+	 * guard below is a defensive backstop against ever collapsing an unmapped file's
+	 * full body into a broken-link pointer.
 	 */
 	public function changeTo(File $node, string $target): void {
 		if (

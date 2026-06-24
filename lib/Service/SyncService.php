@@ -225,10 +225,10 @@ final class SyncService {
 				if (isset($ignoredIds[(string)$workflow['id']])) {
 					continue;
 				}
-				// Reserved tags on the workflow (n8n side) can override the mapping
-				// default per workflow, or exclude it entirely (saga §14.8). An
-				// excluded (n8n:ignore) workflow is never pulled — no file, and it
-				// is left out of $seenIds so prune does not depend on it.
+				// The workflow takes the mapping's mode, unless it carries `n8n:ignore`,
+				// which excludes it entirely (saga §14.8). An excluded workflow is never
+				// pulled — no file, and it is left out of $seenIds so prune does not
+				// depend on it. (resolve() returns the mapping mode, or null = ignore.)
 				$effectiveMode = $this->reservedTags->resolve($workflow, $mapping->mode);
 				if ($effectiveMode === null) {
 					continue;
@@ -349,10 +349,10 @@ final class SyncService {
 			if (!is_string($id) || $id === '') {
 				continue;
 			}
-			// Push only files that are themselves `sync`. A per-workflow override
-			// (a `link` file inside a sync mapping) or an `ignored` file must not be
-			// pushed even though the mapping is sync (saga §14.8). A legacy file with
-			// no recorded mode is treated as sync for backward compatibility.
+			// Push only files that are themselves `sync`. A `link` or `ignored` file
+			// must not be pushed even though the mapping might be sync (saga §14.8). A
+			// legacy file with no recorded mode is treated as sync for backward
+			// compatibility.
 			$fileMode = $meta[WorkflowMetadata::KEY_MODE] ?? null;
 			if ($fileMode !== null && $fileMode !== Mapping::MODE_SYNC) {
 				continue;
@@ -472,8 +472,8 @@ final class SyncService {
 	/**
 	 * Reconcile a single workflow into $folder (update-in-place by id, else fresh
 	 * write with collision suffix). Metadata + ownership tag follow the body. The
-	 * mode written is the per-workflow EFFECTIVE mode (a reserved-tag override may
-	 * differ from the mapping default — saga §14.8), not $mapping->mode.
+	 * mode written is the mapping's mode (or `null`/skip for an n8n:ignore'd
+	 * workflow — saga §14.8), resolved by the caller into $effectiveMode.
 	 *
 	 * @param array<string,mixed> $workflow
 	 * @param string $effectiveMode Mapping::MODE_SYNC|MODE_LINK for this workflow

@@ -115,20 +115,3 @@ export function defaultOpener(mode) {
 export function canEditAsText(mode) {
   return mode !== 'link'
 }
-
-/**
- * The system tag to ADD to flip a managed file's mode. Toggling is `sync` ⇄ `link`
- * only: `sync` → `n8n:link`, `link` → `n8n:sync`. Any other value (`unmapped`,
- * `ignored`, or an absent mode) has no meaningful sync↔link toggle and returns ''
- * — the caller hides the action in that case. Assigning the returned tag fires
- * `TagAssignedEvent` → ModeTagListener → ModeChangeService, which does the actual
- * re-mode (body rewrite + one-mode-tag exclusivity), so the front-end only assigns.
- *
- * @param {string} mode
- * @return {'n8n:sync'|'n8n:link'|''}
- */
-export function toggleTargetTag(mode) {
-  if (mode === 'sync') return 'n8n:link'
-  if (mode === 'link') return 'n8n:sync'
-  return ''
-}
