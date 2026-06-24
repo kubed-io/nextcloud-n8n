@@ -174,15 +174,18 @@ final class MotionServiceTest extends TestCase {
 		$this->service->moveIn($this->file(9), 'wf1', $this->mapping());
 	}
 
-	// ── moveIn: merge-on-collision (saga §14.19) ──────────────────────────────────
+	// ── moveIn: duplicate-on-collision (saga §14.19) ──────────────────────────────
 
-	public function testMoveInDeletesIncomingWhenAnExistingSyncedCopyShares(): void {
-		// A sibling in the landing folder already carries wf1 → the incoming is a
-		// redundant copy. Delete it (under the guard) and touch nothing in n8n.
+	public function testMoveInMintsNewInstanceWhenADuplicateIsAlreadySyncedHere(): void {
+		// A sibling in the landing folder already tracks wf1 → the incoming is a
+		// duplicate. Mint it as a brand-new instance (createForFile strips the carried
+		// id) and leave the existing file + its live workflow untouched: no unarchive,
+		// no re-stamp here (createForFile owns its own stamp), no delete.
 		$node = $this->fileWithSibling(9, 99, 'wf1');
-		$node->expects(self::once())->method('delete');
+		$node->expects(self::never())->method('delete');
+		$this->createService->expects(self::once())->method('createForFile')
+			->with(self::identicalTo($node), self::isInstanceOf(Mapping::class));
 		$this->n8n->expects(self::never())->method('unarchiveWorkflow');
-		$this->createService->expects(self::never())->method('createForFile');
 		$this->metadata->expects(self::never())->method('write');
 		$this->tags->expects(self::never())->method('apply');
 
@@ -190,8 +193,8 @@ final class MotionServiceTest extends TestCase {
 	}
 
 	public function testMoveInIgnoresSiblingsWithADifferentIdAndUnarchives(): void {
-		// The only sibling carries a DIFFERENT workflow → not a collision; the normal
-		// unarchive + stamp path runs and the incoming file is NOT deleted.
+		// The only sibling carries a DIFFERENT workflow → not a duplicate; the normal
+		// unarchive + stamp path runs and no new instance is minted.
 		$node = $this->fileWithSibling(9, 99, 'other-wf');
 		$node->expects(self::never())->method('delete');
 		$this->n8n->expects(self::once())->method('unarchiveWorkflow')->with('wf1');

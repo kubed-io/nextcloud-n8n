@@ -88,23 +88,20 @@ final class MotionService {
 	 * @throws N8nApiException on a non-404 n8n failure
 	 */
 	public function moveIn(File $node, string $id, Mapping $tgtMapping): void {
-		// Merge-on-collision (saga §14.19): the SAME workflow is already synced in this
-		// mapping (a sibling file carries this id). A MOVE never duplicates, so the
-		// incoming file is a redundant copy of an already-tracked workflow. Delete it —
-		// under the guard so DeleteToN8nListener bails and nothing is touched in n8n —
-		// and leave the existing synced file as the single source of truth. No unarchive,
-		// no re-stamp: nothing is restored or duplicated.
-		$sibling = $this->findSyncedSibling($node, $id);
-		if ($sibling !== null) {
-			$this->logger->info('n8n_sync motion: move-in collided with an existing synced copy; deleting the incoming file', [
+		// Collision (saga §14.19): a sibling in the landing folder already tracks this
+		// workflow — someone has already restored it here. The incoming file is a
+		// DUPLICATE, not the same workflow relocating, so mint it as a brand-new instance
+		// (copy semantics, §14.5): createForFile strips the carried id and creates a fresh
+		// workflow, leaving the existing file and its live workflow untouched. (A same-NAME
+		// duplicate never reaches here — Nextcloud refuses that move with a 412 before the
+		// rename event fires; only a differently-named duplicate lands.)
+		if ($this->findSyncedSibling($node, $id) !== null) {
+			$this->logger->info('n8n_sync motion: move-in duplicate of an already-synced workflow; minting a new instance', [
 				'app' => Application::APP_ID,
 				'workflowId' => $id,
-				'incomingFileId' => $node->getId(),
-				'existingFileId' => $sibling->getId(),
+				'fileId' => $node->getId(),
 			]);
-			$this->guard->run(static function () use ($node): void {
-				$node->delete();
-			});
+			$this->createService->createForFile($node, $tgtMapping);
 			return;
 		}
 
@@ -138,7 +135,7 @@ final class MotionService {
 	 * carries the same `n8n_id` as the incoming one — i.e. the workflow is already
 	 * synced here. Pull writes workflow files flat into the mapping root, so a
 	 * duplicate (if any) sits beside the incoming file; a sibling scan is enough.
-	 * Returns the existing synced file, or null when there is no collision.
+	 * Returns the existing synced file, or null when there is no duplicate.
 	 */
 	private function findSyncedSibling(File $node, string $id): ?File {
 		$parent = $node->getParent();

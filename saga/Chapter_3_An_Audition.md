@@ -531,7 +531,7 @@ real NC + n8n. The chapter is "done" when this ledger is all-green to Kelly's sa
 | `rename` | ✅ all | — | three-way name sync |
 | `copy` | ✅ all | — | always a new instance (§14.5) |
 | `reconcile` | ✅ all | — | manual per-mapping pull/push + prune (§14.6) |
-| `move` | ✅ all 9 | — | §14.19 — merge-on-collision (sibling-by-id) closes the last `@todo` |
+| `move` | ✅ all 9 | — | §14.19 — move-in duplicate: same-name refused (native NC), diff-name mints a new instance |
 | `mode-change` | ◑ 5 of 6 | toggle (FE-only, Vitest) | §14.6/§14.15 — retag + n8n-override live |
 | `delete` | ◑ 6 of 9 | purge-sync, unmapped-purge, abort-if-unreachable | §14.16 — unmapped trash/restore no-ops live |
 | `reserved-tags` | ✅ all 8 | — | §14.18 — un-ignore listener landed (un-tag restore live) |
@@ -1022,42 +1022,55 @@ step text.
 merge-on-collision (the metadata-by-id lookup in `MotionService::moveIn`). Everything else left on
 the ledger is intentionally-deferred (CI walls / Vitest-covered / unproven plumbing).
 
-### §14.19 — `move`: merge-on-collision, the last backend build (solo)
+### §14.19 — `move`: the move-in duplicate, the last backend build (solo)
 
-`move` is now **✅ all 9** — the final `@todo` (and the last genuine code on the whole ledger). The
-scenario: an *unmapped* file carrying workflow W's `n8n_id` is moved into a mapping where W is
-**already synced**. A MOVE is never a duplicate, so the incoming file is a redundant copy — n8n (the
-existing synced file) is the source of truth, so the incoming copy is deleted. Feels like a merge.
+`move` is now **✅ all 9** — the final `@todo`, and the one that genuinely needed thinking before
+coding. The scenario: a file carrying workflow W's `n8n_id` is moved into a mapping where W is
+**already synced** (a sibling file already holds W). The first instinct — "a MOVE never duplicates,
+so the incoming is redundant; delete it and keep the existing file, feels like a merge" — was both
+*unimplementable* and *wrong UX*, and CI proved the first half loudly.
 
-The build, again kept small:
+**What CI taught us.** The delete-the-incoming build threw `LockedException` on `$node->delete()`:
+the incoming file is **locked by its own in-flight MOVE** while we're inside its `NodeRenamedEvent`.
+Any mutation of the incoming's bytes during that event (delete *or* `putContent`) fails. So the
+"grab the synced copy's content and write it into the incoming" merge was never possible either.
 
-- **`MotionService::moveIn`** now opens with a `findSyncedSibling($node, $id)` scan: walk the
-  landing folder's `getDirectoryListing()` for a *different* managed `*.n8n.json` whose metadata
-  carries the same `n8n_id`. On a hit, **delete the incoming file under the `SyncGuard`** (so
-  `DeleteToN8nListener` bails — nothing is archived or touched in n8n) and return *before* the
-  unarchive/restore path. No sibling → the existing unarchive-or-create-fallback logic runs
-  unchanged. A flat sibling scan is enough because pull writes workflow files flat into the mapping
-  root, so any duplicate sits right beside the incoming file. No constructor change (reuses
-  `metadata` + `guard` + `logger`); the `FilenameCodec::EXT` guard is the same one the listeners use.
+**What the research taught us.** Nextcloud has no server-side auto-merge to mimic. RFC 4918 §9.9.4:
+a MOVE onto an existing path with `Overwrite: F` (what NC's web UI and our harness both send) is
+refused with **412**; the desktop client's only conflict tool is keeping both as `(conflicted
+copy …)`. Native NC, faced with this, would simply **refuse**. A silent delete is *worse* than
+native — it destroys a user file on a name clash, which NC never does.
 
-The hard part was the **test arrange**, not the code. Two real files must share one `n8n_id`, but a
-MOVE relocates the single file (never duplicates) and a COPY strips the id. The genesis: create the
-sync file in `nextcloud:alpha` → move it **out** (archives W, stamps `unmapped`) → `unarchive` W via
-a new `n8nUnarchiveWorkflow` REST helper → **pull alpha**, which writes a *fresh* synced file into
-the folder from n8n. Net: the synced copy (id W) lives in alpha and the unmapped original (also id W)
-waits outside. One wrinkle: both derive from W, so both want the name `Mover.n8n.json` — and the
-harness's MOVE uses `Overwrite: F`, so a same-name move would be **refused** (412). The merge is
-keyed on the *id*, not the name, so the incoming is moved in under a fresh name
-(`Mover-incoming.n8n.json`) — the realistic post-rename case — and the sibling-by-id scan still fires.
+**The decomposition that fell out** (Kelly's three rules):
 
-Coverage: **2 new unit tests** (`MotionService::moveIn` deletes the incoming when a sibling shares
-the id and touches nothing in n8n; a sibling with a *different* id still takes the normal unarchive
-path) plus the live `move.feature` scenario flipped off `@todo`. New integration glue in `MoveSteps`
-(the genesis arrange, the fresh-name move-in, and the four assertions) + `n8nUnarchiveWorkflow` in
-`N8nApiTrait`. `get_errors` clean, no duplicate step text. This also retires the README
-doc-vs-code lie (merge was documented as shipped while still `@todo`).
+1. **Same name → refused.** Needs *zero* backend code: NC rejects the MOVE with 412 at the Sabre
+   layer before `BeforeNodeRenamedEvent` ever fires. We just pin the contract with a scenario.
+2. **Different name, same id → mint a new instance.** This is **copy semantics** (§14.5): someone
+   already restored W here, so the incoming is a *copy*, not the same workflow relocating.
+   `MotionService::moveIn` sees a sibling already carrying the id and hands the file to
+   `CreateService::createForFile`, which strips the carried id and POSTs a fresh workflow. The
+   existing file + its live W are untouched. `createForFile` is **metadata-only on the file**
+   (no blob write) — already proven lock-safe because rule 3's 404-fallback calls it inside the
+   same move event and is green.
+3. **No workflow with that id → restore, else create.** Already shipped — the existing
+   unarchive → 404 → `createForFile` path in `moveIn`.
+
+So the entire build collapsed to **one branch** in `moveIn`: `if (findSyncedSibling()) {
+createForFile(); return; }` before the restore path — no deletes, no locks fought, no n8n writes
+beyond the create the user asked for. `findSyncedSibling` (a flat scan of the landing folder for a
+*different* file carrying the same id) is the one piece that survived from the first attempt; only
+the action on a hit changed (delete → mint).
+
+Coverage: **2 unit tests** (`moveIn` mints a new instance when a sibling shares the id —
+`createForFile` once, no unarchive/delete/stamp; a sibling with a *different* id still unarchives)
+plus two live `move.feature` scenarios — same-name refused (412), diff-name mints a brand-new live
+workflow while the original is unchanged. The genesis arrange (move-out → `n8nUnarchiveWorkflow` →
+pull alpha to mint a real same-id pair) and the `n8nUnarchiveWorkflow` REST helper stay. `@todo`
+gone, `get_errors` clean, no duplicate step text. Also retires the README doc-vs-code lie ("merge"
+was documented as shipped while still `@todo`) — reframed as the native-rules behaviour above.
 
 With this, every ledger row is **✅** except the deliberately-deferred items (delete purge legs behind
 the trashbin-DAV CI wall, mode-change toggle + open-with/file-type `link` rows covered by Vitest,
-file-type REPORT-query plumbing). The audition's real backend work is done.
+file-type REPORT-query plumbing). The audition's real backend work is done — and the last one was
+closed by *deciding well*, not by over-engineering a merge.
 
