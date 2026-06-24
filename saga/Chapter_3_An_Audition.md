@@ -534,7 +534,7 @@ real NC + n8n. The chapter is "done" when this ledger is all-green to Kelly's sa
 | `move` | ◑ 8 of 9 | merge-on-collision (needs id-lookup) | §14.17 — hard-deleted fallback + brand-new move-in create live |
 | `mode-change` | ◑ 5 of 6 | toggle (FE-only, Vitest) | §14.6/§14.15 — retag + n8n-override live |
 | `delete` | ◑ 6 of 9 | purge-sync, unmapped-purge, abort-if-unreachable | §14.16 — unmapped trash/restore no-ops live |
-| `reserved-tags` | ✅ 7 of 8 | "remove n8n:ignore → default" (un-ignore listener unbuilt) | §14.6/§14.10 — landed PR #32 |
+| `reserved-tags` | ✅ all 8 | — | §14.18 — un-ignore listener landed (un-tag restore live) |
 | `open-with` | ◑ sync+unmapped+ignored | `link` (Vitest-covered) | §14.8/§14.10 — ignored flipped PR #33 |
 | `file-type` | ◑ 5 of 6 | REPORT-query, `link` mode row | §14.9 — ignored flipped PR #33 |
 | `mapping-membership` | ✅ all 3 | — | nearest-enclosing nested resolution — **landed PR #33** (§14.13) |
@@ -989,4 +989,36 @@ already-synced file with the same id. n8n (the synced copy) is source of truth, 
 copy should be deleted (feels like a merge). Needs a real backend build: a **metadata-by-id lookup**
 in `MotionService::moveIn` to find the existing synced file before deciding to restore. That's the
 genuine code remaining on `move`.
+
+### §14.18 — `reserved-tags`: the un-ignore listener (first real backend build of the run)
+
+`reserved-tags` is now **✅ all 8** — the lone `@todo` (removing `n8n:ignore` returns the file to
+its mapping default) needed a genuine backend piece, not just a fixture flip. This is the inverse of
+the ignore path (saga §14.8): hand-tagging `n8n:ignore` archives the workflow + flips the file to
+`ignored`; **removing** it should unarchive + restore the file to its mapping's default mode.
+
+The build, kept deliberately small by mirroring what already exists:
+
+- **`ModeChangeService::unignore(File $node)`** — no-op unless the file is managed *and* currently
+  `ignored`; otherwise it **unarchives** the workflow (mirror of `changeToIgnored`'s archive; a 404
+  means it was hard-deleted while ignored → leave the file as-is) and delegates to the existing
+  `changeTo($node, $default)` to rebuild the body + re-stamp the pill. The default is the file's
+  resolved mapping mode (`MappingService::resolveForPath`), falling back to `sync` when the file is
+  in no mapping (its full JSON is already on disk, so two-way just resumes). One new constructor dep,
+  `MappingService` (config-only, no DI cycle).
+- **`ModeTagListener`** now also handles **`TagUnassignedEvent`** (same listener — a tag *change* is
+  its whole job). Refactored the file-resolution boilerplate into a `forEachWorkflowFile()` helper
+  shared by both branches: assign routes to `changeTo`, the unassign of `n8n:ignore` routes to
+  `unignore`. Loop-safe via the existing `SyncGuard` (our own re-tag under the guard bails on re-entry).
+- Registered `TagUnassignedEvent → ModeTagListener` in `Application.php`.
+
+Coverage: **4 new unit tests** on `ModeChangeService::unignore` (unarchive + restore to the mapping
+default; fall back to `sync` with no mapping; no-op on a non-ignored file; unarchive-failure leaves
+the file untouched) — the existing `ModeChangeServiceTest` constructor was updated for the new dep —
+plus the live `reserved-tags.feature` scenario flipped off `@todo`. `get_errors` clean, no duplicate
+step text.
+
+**This is the first of the two real backend builds** that close the audition. The other is `move`
+merge-on-collision (the metadata-by-id lookup in `MotionService::moveIn`). Everything else left on
+the ledger is intentionally-deferred (CI walls / Vitest-covered / unproven plumbing).
 

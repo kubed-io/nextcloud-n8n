@@ -39,6 +39,7 @@ use OCP\Files\Events\Node\NodeCopiedEvent;
 use OCP\Files\Events\Node\NodeRenamedEvent;
 use OCP\Files\Events\Node\NodeWrittenEvent;
 use OCP\SystemTag\TagAssignedEvent;
+use OCP\SystemTag\TagUnassignedEvent;
 
 /**
  * App bootstrap. Phase 0 is an intentionally empty skeleton: it must install,
@@ -133,6 +134,9 @@ final class Application extends App implements IBootstrap {
 		// one-mode-tag exclusivity. Our own apply() re-assigns tags under SyncGuard, so
 		// the listener bails when the guard is active (no recursion).
 		$context->registerEventListener(TagAssignedEvent::class, ModeTagListener::class);
+		// Removing n8n:ignore is the inverse: unarchive the workflow and return the file
+		// to its mapping's default mode (saga §14.8). Same listener, TagUnassignedEvent.
+		$context->registerEventListener(TagUnassignedEvent::class, ModeTagListener::class);
 
 		// Files-app frontend: load the file-action bundle (icon + "Open in n8n"
 		// default click) on every page that fires LoadAdditionalScriptsEvent.

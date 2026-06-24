@@ -40,6 +40,7 @@ final class ModeChangeService {
 		private WorkflowMetadata $metadata,
 		private OwnershipTags $ownershipTags,
 		private SyncGuard $guard,
+		private MappingService $mappings,
 		private IAppConfig $config,
 		private LoggerInterface $logger,
 	) {
@@ -114,6 +115,49 @@ final class ModeChangeService {
 			// Stamp the target tag + strip the other (mutual exclusivity).
 			$this->ownershipTags->apply($node->getId(), $target);
 		});
+	}
+
+	/**
+	 * Un-ignore a managed file: the user removed the `n8n:ignore` marker, so the file
+	 * returns to its mapping's default mode (saga §14.8). The mirror of
+	 * {@see changeToIgnored} — the workflow is **unarchived** in n8n, then the file is
+	 * re-moded to the mapping default (sync or link) by {@see changeTo()}, which rebuilds
+	 * the body and re-stamps the ownership pill.
+	 *
+	 * No-op when the file isn't managed or isn't currently `ignored` (so a stray unassign
+	 * of another file, or a double-remove, does nothing). A file in no resolvable mapping
+	 * falls back to `sync` — its full JSON is already on disk, so two-way simply resumes.
+	 */
+	public function unignore(File $node): void {
+		$meta = $this->metadata->read($node->getId());
+		$id = is_array($meta) ? ($meta[WorkflowMetadata::KEY_ID] ?? null) : null;
+		if (!is_string($id) || $id === '') {
+			return; // not a managed workflow file — nothing to un-ignore
+		}
+		if (($meta[WorkflowMetadata::KEY_MODE] ?? '') !== WorkflowMetadata::MODE_IGNORED) {
+			return; // only an actually-ignored file un-ignores
+		}
+
+		// Unarchive the workflow (mirror of the ignore archive). A 404 means it was
+		// hard-deleted while ignored — there is nothing to unarchive; changeTo() then
+		// finds it gone and leaves the file as-is, which is the best we can do.
+		try {
+			$this->n8n->unarchiveWorkflow($id);
+		} catch (N8nApiException $e) {
+			if ($e->httpStatus !== 404) {
+				$this->logger->warning('n8n_sync un-ignore: could not unarchive workflow; leaving file as-is', [
+					'app' => Application::APP_ID,
+					'fileId' => $node->getId(),
+					'workflowId' => $id,
+					'exception' => $e,
+				]);
+				return;
+			}
+		}
+
+		$mapping = $this->mappings->resolveForPath($node->getPath());
+		$default = $mapping?->mode ?? Mapping::MODE_SYNC;
+		$this->changeTo($node, $default);
 	}
 
 	/**
