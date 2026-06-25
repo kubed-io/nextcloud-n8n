@@ -239,7 +239,7 @@ final class MappingService {
 			JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES,
 		);
 		$this->config->setValueString(Application::APP_ID, 'mappings', $json);
-		// Keep the request cache in step with what we just stored.
-		$this->cache = array_values($mappings);
+		// Keep the request cache in step with what we just stored ($mappings is a list).
+		$this->cache = $mappings;
 	}
 }
