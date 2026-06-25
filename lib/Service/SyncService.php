@@ -39,9 +39,6 @@ use Psr\Log\LoggerInterface;
  * filename for fresh writes.
  */
 final class SyncService {
-	/** Hard page cap so one click is bounded (n8n maxes at 250/page). */
-	private const MAX_PAGES = 20;
-
 	public function __construct(
 		private MappingService $mappings,
 		private N8nClient $n8n,
@@ -215,7 +212,7 @@ final class SyncService {
 			$nameCounts = [];
 			$seenIds = [];
 
-			foreach ($this->iterateWorkflows($mapping->n8nTag) as $workflow) {
+			foreach ($this->n8n->eachWorkflow([$mapping->n8nTag]) as $workflow) {
 				$processed++;
 				// A file locally set to `ignored` (n8n:ignore on the NC side) is left
 				// strictly alone — skip re-pulling it. Its workflow is archived in n8n
@@ -379,36 +376,6 @@ final class SyncService {
 			'failed' => $failed,
 			'message' => $errors === [] ? null : implode('; ', $errors),
 		];
-	}
-
-	/**
-	 * Generator over every workflow carrying $tag, paginating until n8n stops
-	 * returning a `nextCursor`. MAX_PAGES guards a buggy self-referential cursor.
-	 *
-	 * @return iterable<int,array<string,mixed>>
-	 */
-	private function iterateWorkflows(string $tag): iterable {
-		$cursor = null;
-		for ($page = 0; $page < self::MAX_PAGES; $page++) {
-			$batch = $this->n8n->listWorkflows(250, $cursor, [$tag]);
-			$rows = $batch['data'] ?? [];
-			if (!is_array($rows)) {
-				return;
-			}
-			foreach ($rows as $row) {
-				if (is_array($row) && isset($row['id'])) {
-					yield $row;
-				}
-			}
-			$cursor = $batch['nextCursor'] ?? null;
-			if (!is_string($cursor) || $cursor === '') {
-				return;
-			}
-		}
-		$this->logger->warning('iterateWorkflows hit MAX_PAGES guard', [
-			'app' => Application::APP_ID,
-			'tag' => $tag,
-		]);
 	}
 
 	/**

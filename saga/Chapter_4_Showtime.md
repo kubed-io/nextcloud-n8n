@@ -413,8 +413,13 @@ gloves-off *from-scratch* pass (the **Round 2** section above), bigger and risk-
   repair step — `list()` is now a pure, cached read. **In flight (PR #43, with R7).**
 - ◑ **R7** comment hygiene — the stale `Mapping` per-file-override docblock fixed; `Ch2 §14`→`Ch3 §14`
   across `lib/`. (A4/A5/A6 carryover DRY still ☐.) **In flight (PR #43).**
-- ☐ **R4** mimetype: uninstall-revert repair-step + single-row restamp (store + perf).
-- ☐ **R5** SSRF / `allow_local_address`: document in `SECURITY.md` (toggle only if the store asks).
+- ☐ **R4** mimetype: uninstall-revert repair-step + single-row restamp (store + perf). *(next; the
+  uninstall-revert needs live-pod verification — give it its own focus.)*
+- ◑ **R5** SSRF / `allow_local_address`: documented in `SECURITY.md` ("Network egress and local
+  addresses") + an N8nClient pointer. **In flight (PR #43).** (No toggle yet — opt-out only if the
+  store asks.)
+- ☐ **A4 (carryover)** — ◑ **done**: one bounded cursor-walk in `N8nClient` (`paginate` +
+  `eachWorkflow`) replaces the workflows/tags loop duplication (PR #43).
 - ☐ **R1** event coordinator — **last, incremental, behind the bigger net**, only if still worth it.
 - ☐ **B2/B4/B5** Settings naming audit, `dispatch()` rename; B5 (`link`⇄`reference`) gets a written
   *defer* decision.
