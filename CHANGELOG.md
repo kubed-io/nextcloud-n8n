@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.3] - 2026-06-25
+
 ### Added
 
 - Two manual per-mapping sync controls — **Sync from n8n** (pull the mapping's tagged workflows into its folder, updating files in place by id and pruning files whose workflow lost the tag) and **Sync to n8n** (push the mapping's `sync` files up); both ignore files outside the mapping. Also available as `occ n8n_sync:sync <pull|push> --mapping=<tag>`.
