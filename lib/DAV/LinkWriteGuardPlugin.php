@@ -12,7 +12,6 @@ namespace OCA\N8nSync\DAV;
 use OCA\DAV\Connector\Sabre\File as DavFile;
 use OCA\N8nSync\AppInfo\Application;
 use OCA\N8nSync\Service\FilenameCodec;
-use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\SyncNotifier;
 use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\IUserSession;
@@ -81,11 +80,11 @@ final class LinkWriteGuardPlugin extends ServerPlugin {
 		// link, so we must never block it — fail open on any doubt.
 		try {
 			$fileId = $node->getId();
-			$meta = $this->metadata->read($fileId);
+			$managed = $this->metadata->read($fileId);
 		} catch (\Throwable) {
 			return true;
 		}
-		if ($meta === null || ($meta[WorkflowMetadata::KEY_MODE] ?? '') !== Mapping::MODE_LINK) {
+		if (!$managed?->isLink()) {
 			return true; // not a link — sync/unmapped/ignored all hold full JSON and may be edited
 		}
 

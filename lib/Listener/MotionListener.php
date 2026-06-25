@@ -11,7 +11,6 @@ namespace OCA\N8nSync\Listener;
 
 use OCA\N8nSync\AppInfo\Application;
 use OCA\N8nSync\Service\FilenameCodec;
-use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\MappingService;
 use OCA\N8nSync\Service\MotionService;
 use OCA\N8nSync\Service\SyncGuard;
@@ -68,12 +67,11 @@ final class MotionListener implements IEventListener {
 			return;
 		}
 
-		$meta = $this->metadata->read($target->getId());
-		$id = $meta[WorkflowMetadata::KEY_ID] ?? null;
-		if (!is_string($id) || $id === '') {
+		$managed = $this->metadata->read($target->getId());
+		if (!$managed?->isManaged()) {
 			return; // untracked — CreateInN8nListener owns create-on-land
 		}
-		$mode = $meta[WorkflowMetadata::KEY_MODE] ?? '';
+		$id = $managed->workflowId;
 
 		$srcMapping = $this->mappings->resolveForPath($event->getSource()->getPath());
 		$tgtMapping = $this->mappings->resolveForPath($target->getPath());
@@ -81,7 +79,7 @@ final class MotionListener implements IEventListener {
 		// Move OUT: a sync file left its mapping for an unmapped location. (A move
 		// into a *different* mapping was already blocked by MoveGuardListener, so
 		// here a non-null source mapping + null target mapping means "ejected".)
-		if ($mode === Mapping::MODE_SYNC && $srcMapping !== null && $tgtMapping === null) {
+		if ($managed->isSync() && $srcMapping !== null && $tgtMapping === null) {
 			try {
 				$this->motion->moveOut($target, $id);
 			} catch (\Throwable $e) {
@@ -96,7 +94,7 @@ final class MotionListener implements IEventListener {
 		}
 
 		// Move IN: an unmapped file landed in a mapping → restore the same workflow.
-		if ($mode === WorkflowMetadata::MODE_UNMAPPED && $tgtMapping !== null) {
+		if ($managed->isUnmapped() && $tgtMapping !== null) {
 			try {
 				$this->motion->moveIn($target, $id, $tgtMapping);
 			} catch (\Throwable $e) {

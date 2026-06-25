@@ -60,9 +60,8 @@ final class PushService {
 		if (!$node instanceof File) {
 			return false;
 		}
-		$meta = $this->metadata->read($node->getId());
-		$id = $meta[WorkflowMetadata::KEY_ID] ?? null;
-		if (!is_string($id) || $id === '') {
+		$managed = $this->metadata->read($node->getId());
+		if (!$managed?->isManaged()) {
 			// No n8n id yet → a brand-new hand-made file. Creating it in n8n is
 			// a future step (UC-6); skip for now.
 			$this->logger->info('n8n_sync writeback: file has no n8n_id; new-workflow create not implemented', [
@@ -71,6 +70,7 @@ final class PushService {
 			]);
 			return false;
 		}
+		$id = $managed->workflowId;
 
 		$apiOn = $this->appConfig->getValueBool(Application::APP_ID, 'api_enabled', true);
 		$webhookOn = $this->appConfig->getValueBool(Application::APP_ID, 'webhook_enabled', false);

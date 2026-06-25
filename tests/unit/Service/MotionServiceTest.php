@@ -11,6 +11,7 @@ namespace OCA\N8nSync\Tests\Unit\Service;
 
 use OCA\N8nSync\Exception\N8nApiException;
 use OCA\N8nSync\Service\CreateService;
+use OCA\N8nSync\Service\ManagedFile;
 use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\MotionService;
 use OCA\N8nSync\Service\N8nClient;
@@ -91,9 +92,9 @@ final class MotionServiceTest extends TestCase {
 		$node->method('getName')->willReturn('Mover-incoming.n8n.json');
 		$node->method('getParent')->willReturn($folder);
 
-		$this->metadata->method('read')->with($siblingFileId)->willReturn([
-			WorkflowMetadata::KEY_ID => $siblingWorkflowId,
-		]);
+		$this->metadata->method('read')->with($siblingFileId)->willReturn(
+			new ManagedFile($siblingWorkflowId, '', '', '', ''),
+		);
 		return $node;
 	}
 

@@ -77,8 +77,8 @@ final class MoveGuardListener implements IEventListener {
 
 		// Leaving its mapping for an unmapped location. Sync is allowed (it becomes
 		// unmapped + archived); link is refused (no JSON to keep on the NC side).
-		$meta = $this->metadata->read($source->getId());
-		$mode = $meta[WorkflowMetadata::KEY_MODE] ?? $srcMapping->mode;
+		$managed = $this->metadata->read($source->getId());
+		$mode = ($managed !== null && $managed->mode !== '') ? $managed->mode : $srcMapping->mode;
 		if ($mode === Mapping::MODE_LINK) {
 			throw new AbortedEventException(
 				'A linked n8n workflow can’t be moved out of its synced folder ("'

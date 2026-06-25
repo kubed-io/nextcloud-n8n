@@ -11,6 +11,7 @@ namespace OCA\N8nSync\Tests\Unit\DAV;
 
 use OCA\DAV\Connector\Sabre\File as DavFile;
 use OCA\N8nSync\DAV\LinkWriteGuardPlugin;
+use OCA\N8nSync\Service\ManagedFile;
 use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\SyncNotifier;
 use OCA\N8nSync\Service\WorkflowMetadata;
@@ -63,10 +64,13 @@ final class LinkWriteGuardPluginTest extends TestCase {
 
 	/** @param array<string,?string> $meta */
 	private function expectRead(array $meta): void {
-		$this->metadata->method('read')->willReturn($meta + [
-			'n8n_id' => 'w1', 'n8n_mode' => null, 'n8n_versionId' => null,
-			'n8n_syncedHash' => null, 'n8n_mapping' => null,
-		]);
+		$this->metadata->method('read')->willReturn(new ManagedFile(
+			(string)($meta['n8n_id'] ?? 'w1'),
+			(string)($meta['n8n_mode'] ?? ''),
+			(string)($meta['n8n_versionId'] ?? ''),
+			(string)($meta['n8n_syncedHash'] ?? ''),
+			(string)($meta['n8n_mapping'] ?? ''),
+		));
 	}
 
 	private function fire(INode $node): bool {
@@ -95,10 +99,7 @@ final class LinkWriteGuardPluginTest extends TestCase {
 
 		foreach ([WorkflowMetadata::MODE_UNMAPPED, WorkflowMetadata::MODE_IGNORED] as $mode) {
 			$metadata = $this->createMock(WorkflowMetadata::class);
-			$metadata->method('read')->willReturn([
-				'n8n_id' => 'w1', 'n8n_mode' => $mode, 'n8n_versionId' => null,
-				'n8n_syncedHash' => null, 'n8n_mapping' => null,
-			]);
+			$metadata->method('read')->willReturn(new ManagedFile('w1', $mode, '', '', ''));
 			$plugin = new LinkWriteGuardPlugin($metadata, $this->notifier, $this->userSession, new NullLogger());
 			$data = 'x';
 			$modified = false;

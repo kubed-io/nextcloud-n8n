@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace OCA\N8nSync\Tests\Unit\Service;
 
 use OCA\N8nSync\Service\FilenameCodec;
+use OCA\N8nSync\Service\ManagedFile;
 use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\MappingService;
 use OCA\N8nSync\Service\N8nClient;
@@ -104,6 +105,11 @@ final class SyncServiceTest extends TestCase {
 		return $node;
 	}
 
+	/** A {@see ManagedFile} read() stub value (the typed metadata WorkflowMetadata::read returns). */
+	private function managed(string $id = '', string $mode = '', string $mappingId = ''): ManagedFile {
+		return new ManagedFile($id, $mode, '', '', $mappingId);
+	}
+
 	// ── pushOne ────────────────────────────────────────────────────────────────
 
 	public function testPushOneSkipsLinkMapping(): void {
@@ -132,10 +138,10 @@ final class SyncServiceTest extends TestCase {
 		$this->storage->method('isAvailable')->willReturn(true);
 		$this->storage->method('findFolder')->willReturn($folder);
 
-		$this->metadata->method('read')->willReturnCallback(static function (int $fileId): ?array {
+		$this->metadata->method('read')->willReturnCallback(function (int $fileId): ?ManagedFile {
 			return match ($fileId) {
-				1 => [WorkflowMetadata::KEY_ID => 'wf-1'],
-				3 => [],            // managed-looking name but never stamped
+				1 => $this->managed('wf-1'),
+				3 => $this->managed(),  // managed-looking name but never stamped
 				default => null,
 			};
 		});
@@ -174,10 +180,10 @@ final class SyncServiceTest extends TestCase {
 		$this->storage->method('ensureFolder')->willReturn($folder);
 
 		$mapId = 'map-alpha';
-		$this->metadata->method('read')->willReturnCallback(static function (int $fileId) use ($mapId): ?array {
+		$this->metadata->method('read')->willReturnCallback(function (int $fileId) use ($mapId): ?ManagedFile {
 			return match ($fileId) {
-				10 => [WorkflowMetadata::KEY_ID => 'wf-keep', WorkflowMetadata::KEY_MAPPING => $mapId],
-				11 => [WorkflowMetadata::KEY_ID => 'wf-stale', WorkflowMetadata::KEY_MAPPING => $mapId],
+				10 => $this->managed('wf-keep', mappingId: $mapId),
+				11 => $this->managed('wf-stale', mappingId: $mapId),
 				default => null,
 			};
 		});
@@ -228,10 +234,10 @@ final class SyncServiceTest extends TestCase {
 		$this->storage->method('isAvailable')->willReturn(true);
 		$this->storage->method('findFolder')->willReturn($folder);
 
-		$this->metadata->method('read')->willReturnCallback(static function (int $fileId): ?array {
+		$this->metadata->method('read')->willReturnCallback(function (int $fileId): ?ManagedFile {
 			return match ($fileId) {
-				1 => [WorkflowMetadata::KEY_ID => 'wf-1', WorkflowMetadata::KEY_MODE => Mapping::MODE_SYNC],
-				2 => [WorkflowMetadata::KEY_ID => 'wf-2', WorkflowMetadata::KEY_MODE => Mapping::MODE_LINK],
+				1 => $this->managed('wf-1', Mapping::MODE_SYNC),
+				2 => $this->managed('wf-2', Mapping::MODE_LINK),
 				default => null,
 			};
 		});
@@ -258,13 +264,9 @@ final class SyncServiceTest extends TestCase {
 		$this->storage->method('isAvailable')->willReturn(true);
 		$this->storage->method('ensureFolder')->willReturn($folder);
 
-		$this->metadata->method('read')->willReturnCallback(static function (int $fileId): ?array {
+		$this->metadata->method('read')->willReturnCallback(function (int $fileId): ?ManagedFile {
 			return match ($fileId) {
-				20 => [
-					WorkflowMetadata::KEY_ID => 'wf-ign',
-					WorkflowMetadata::KEY_MODE => WorkflowMetadata::MODE_IGNORED,
-					WorkflowMetadata::KEY_MAPPING => 'map-alpha',
-				],
+				20 => $this->managed('wf-ign', WorkflowMetadata::MODE_IGNORED, 'map-alpha'),
 				default => null,
 			};
 		});

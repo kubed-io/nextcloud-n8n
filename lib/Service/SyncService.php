@@ -344,17 +344,15 @@ final class SyncService {
 			if (!FilenameCodec::isWorkflowFile($node)) {
 				continue;
 			}
-			$meta = $this->metadata->read($node->getId());
-			$id = $meta[WorkflowMetadata::KEY_ID] ?? null;
-			if (!is_string($id) || $id === '') {
+			$managed = $this->metadata->read($node->getId());
+			if (!$managed?->isManaged()) {
 				continue;
 			}
 			// Push only files that are themselves `sync`. A `link` or `ignored` file
 			// must not be pushed even though the mapping might be sync (saga §14.8). A
-			// legacy file with no recorded mode is treated as sync for backward
+			// legacy file with no recorded mode (empty) is treated as sync for backward
 			// compatibility.
-			$fileMode = $meta[WorkflowMetadata::KEY_MODE] ?? null;
-			if ($fileMode !== null && $fileMode !== Mapping::MODE_SYNC) {
+			if ($managed->mode !== '' && !$managed->isSync()) {
 				continue;
 			}
 			$processed++;
@@ -445,24 +443,21 @@ final class SyncService {
 			if (!FilenameCodec::isWorkflowFile($node)) {
 				continue;
 			}
-			$meta = $this->metadata->read($node->getId());
-			if ($meta === null) {
+			$managed = $this->metadata->read($node->getId());
+			if (!$managed?->isManaged()) {
 				continue;
 			}
-			$id = $meta[WorkflowMetadata::KEY_ID] ?? null;
-			if (!is_string($id) || $id === '') {
-				continue;
-			}
+			$id = $managed->workflowId;
 			// An `ignored` file stays put — it's excluded from sync on purpose
 			// (saga §14.8). Never index it, so prune can't delete it just because
 			// its (archived) workflow no longer carries the mapping tag; surface its
 			// id so the pull skips re-pulling the archived workflow as a duplicate.
-			if (($meta[WorkflowMetadata::KEY_MODE] ?? null) === WorkflowMetadata::MODE_IGNORED) {
+			if ($managed->isIgnored()) {
 				$ignoredIds[$id] = true;
 				continue;
 			}
-			$owner = $meta[WorkflowMetadata::KEY_MAPPING] ?? null;
-			if (is_string($owner) && $owner !== '' && $owner !== $mapping->id) {
+			$owner = $managed->mappingId;
+			if ($owner !== '' && $owner !== $mapping->id) {
 				continue; // owned by a different mapping sharing/nesting this subtree
 			}
 			$index[$id] = $node;
@@ -590,9 +585,8 @@ final class SyncService {
 			if (!$node instanceof \OCP\Files\File) {
 				continue;
 			}
-			$meta = $this->metadata->read($node->getId());
-			$id = $meta[WorkflowMetadata::KEY_ID] ?? null;
-			if (is_string($id) && $id !== '') {
+			$managed = $this->metadata->read($node->getId());
+			if ($managed?->isManaged()) {
 				// SyncGuard suppresses DeleteToN8nListener (§17.7). Purge cleans
 				// up the local mirror because the mapping is gone — n8n itself
 				// is untouched by definition, regardless of mode/writeback.

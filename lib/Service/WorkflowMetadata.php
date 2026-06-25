@@ -151,31 +151,28 @@ final class WorkflowMetadata {
 	}
 
 	/**
-	 * Read the managed keys for a file.
+	 * Read the managed keys for a file as a typed {@see ManagedFile}.
 	 *
-	 * Returns null if the file has no metadata record at all. Otherwise an array
-	 * with `null` entries for keys not set yet. The mode is returned in the
+	 * Returns null if the file has no metadata record at all. Otherwise a
+	 * ManagedFile whose unset keys read back as `''`. The mode is returned in the
 	 * canonical vocabulary (the stored `reference` becomes `link`).
-	 *
-	 * @return array{
-	 *     n8n_id:?string,
-	 *     n8n_mode:?string,
-	 *     n8n_versionId:?string,
-	 *     n8n_syncedHash:?string,
-	 *     n8n_mapping:?string
-	 * }|null
 	 */
-	public function read(int $fileId): ?array {
+	public function read(int $fileId): ?ManagedFile {
 		try {
 			$metadata = $this->manager->getMetadata($fileId, false);
 		} catch (FilesMetadataNotFoundException) {
 			return null;
 		}
-		$out = [];
-		foreach (self::KEYS as $key) {
-			$out[$key] = $metadata->hasKey($key) ? $this->fromWire($key, $metadata->getString($key)) : null;
-		}
-		return $out;
+		$value = fn (string $key): string => $metadata->hasKey($key)
+			? $this->fromWire($key, $metadata->getString($key))
+			: '';
+		return new ManagedFile(
+			$value(self::KEY_ID),
+			$value(self::KEY_MODE),
+			$value(self::KEY_VERSION_ID),
+			$value(self::KEY_SYNCED_HASH),
+			$value(self::KEY_MAPPING),
+		);
 	}
 
 	/**

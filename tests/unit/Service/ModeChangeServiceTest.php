@@ -10,6 +10,7 @@ declare(strict_types=1);
 namespace OCA\N8nSync\Tests\Unit\Service;
 
 use OCA\N8nSync\Exception\N8nApiException;
+use OCA\N8nSync\Service\ManagedFile;
 use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\MappingService;
 use OCA\N8nSync\Service\ModeChangeService;
@@ -71,10 +72,13 @@ final class ModeChangeServiceTest extends TestCase {
 
 	/** @param array<string,?string> $meta */
 	private function expectRead(array $meta): void {
-		$this->metadata->method('read')->willReturn($meta + [
-			'n8n_id' => null, 'n8n_mode' => null, 'n8n_versionId' => null,
-			'n8n_syncedHash' => null, 'n8n_mapping' => null,
-		]);
+		$this->metadata->method('read')->willReturn(new ManagedFile(
+			(string)($meta['n8n_id'] ?? ''),
+			(string)($meta['n8n_mode'] ?? ''),
+			(string)($meta['n8n_versionId'] ?? ''),
+			(string)($meta['n8n_syncedHash'] ?? ''),
+			(string)($meta['n8n_mapping'] ?? ''),
+		));
 	}
 
 	public function testUnmanagedFileIsNoOp(): void {

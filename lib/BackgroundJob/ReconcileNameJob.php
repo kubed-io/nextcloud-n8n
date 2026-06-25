@@ -11,7 +11,6 @@ namespace OCA\N8nSync\BackgroundJob;
 
 use OCA\N8nSync\AppInfo\Application;
 use OCA\N8nSync\Service\FilenameCodec;
-use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\PushService;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\WorkflowMetadata;
@@ -64,14 +63,14 @@ final class ReconcileNameJob extends QueuedJob {
 			if (!FilenameCodec::isWorkflowFile($node)) {
 				return;
 			}
-			$meta = $this->metadata->read($node->getId());
-			$id = is_array($meta) ? ($meta[WorkflowMetadata::KEY_ID] ?? null) : null;
-			if (!is_string($id) || $id === '') {
+			$managed = $this->metadata->read($node->getId());
+			if (!$managed?->isManaged()) {
 				return;
 			}
-			if (($meta[WorkflowMetadata::KEY_MODE] ?? '') !== Mapping::MODE_SYNC) {
+			if (!$managed->isSync()) {
 				return;
 			}
+			$id = $managed->workflowId;
 
 			$stem = FilenameCodec::parse($node->getName())['name'] ?? '';
 			$wf = json_decode($node->getContent(), false);
