@@ -50,7 +50,7 @@ the detailed backlog). They're in *causal* order — each clears the ground for 
 
 | # | Epic | Status | Detail |
 |---|---|---|---|
-| 1 | **Frozen refactor** — features-locked DRY/naming/test pass; less code, same result | ☐ | §4.1 (+ Code Review below) |
+| 1 | **Frozen refactor** — features-locked DRY/naming/test pass; less code, same result | ◑ | §4.1 (Phase A landed in PR #40; Phase B = the from-scratch pass below) |
 | 2 | **Branding** — name & tagline, icon system, store copy, screenshots, repo face | ☐ | §4.2 |
 | 3 | **Quality stamps** — README badges mapped to real CI + REUSE/license | ☐ | §4.3 |
 | 4 | **Store: info.xml** — schema-valid metadata with the branding assets dropped in | ☐ | §4.4 |
@@ -70,6 +70,10 @@ overlaps the polish work.
 > *menu* for the frozen refactor: **no behaviour changes**, features frozen, every item verifiable
 > against the existing `.feature` specs + unit suite. Ordered by value. Nothing here is a known bug
 > — the app is correct; this is about making the code as good as the product.
+>
+> **Status (PR #40):** A2 (`stampSynced`) and A3 (`isWorkflowName`/`isWorkflowFile`) are **done**;
+> B1/B3 partially (stale §15.3 comments + the writeback→Sync/AutoSync renames). The rest — and a
+> deeper, gloves-off *from-scratch* pass — is laid out in **Round 2** below.
 
 ### A. DRY — the same logic living in two places
 
@@ -181,24 +185,206 @@ locks "stale → pruned, seen → kept, ignored → never pruned and never re-pu
 
 ---
 
+## Code Review, Round 2 — the from-scratch pass (gloves off)
+
+> Round 1 (above) was *"protect what's there, dedupe the obvious."* Round 2 asks a harder question,
+> the one Kelly posed: **if none of this were written yet and I designed it today, what would be
+> different — and where is the *significant* win for security, performance, or maintainability?**
+> This is deliberately less protective. But "gloves off" is not "rampage": each item below is sized
+> and risk-rated, and the rule from Round 1 still holds — **the integration net comes first, and a
+> `.feature` edit means it stopped being a refactor.** Some of these are bigger than a frozen
+> refactor and are flagged as **design decisions for Kelly**, not silent rewrites.
+
+The single biggest observation from reading the whole tree: **the app is a pile of thin event
+listeners that each independently re-derive the same context.** On one save of a sync file,
+`NodeWrittenEvent` fans out to **three** listeners (`NodeWrittenListener`, `CreateInN8nListener`,
+`NameSyncListener`); a rename fans `NodeRenamedEvent` to **four** (`+ MotionListener`,
+`MimeRestampListener`). Every one of them, on every event, repeats the same preamble: *guard-check →
+is-it-a-`.n8n.json`-File → read Files-Metadata → pull `id`/`mode` out of an `array<string,mixed>` →
+maybe `resolveForPath`.* That preamble is the real duplication — bigger than any single A-item — and
+it drives most of what follows.
+
+### R1 — One coordinator per file event *(maintainability; the headline)*
+
+**Today:** 3 listeners on write, 4 on rename, each doing its own metadata read (so up to **3 reads +
+2 `getContent()` per save**), its own guard check, its own mapping resolve, in *registration order*
+with the cross-listener ordering dependencies (create-on-land must precede push; name-sync interplays
+with both) left **implicit**.
+
+**From scratch:** one `FileEventRouter` per event that runs the cheap gate once, builds a
+`ManagedFileContext` **once** (node + typed metadata + resolved source/target mapping + content hash),
+and dispatches to ordered handlers (`create-on-land → name-sync → push`). The handlers become pure
+functions of a context object instead of seven classes each re-reading the world.
+
+- **Win:** one readable place for *"what happens when a workflow file is saved/renamed"*; one
+  metadata read instead of three; explicit, testable ordering.
+- **Risk: HIGH.** This is the most delicate code in the app — §15.1 is a monument to how many NC
+  gotchas live here (the part-file branch, `LockedException` during rename forcing the
+  `ReconcileNameJob` deferral, the mime re-stamp timing). The current design's *one virtue* is that
+  each listener is independently, defensively safe. Collapsing them trades that for clarity.
+- **Recommendation:** **worth it, but incremental and behind the net.** Don't big-bang it. First land
+  R2 (the context object) and let the listeners *consume* it while staying separate; only then
+  consider merging the dispatch. If the integration suite isn't materially expanded first (C1–C3 plus
+  new name-sync/push coverage), **don't start.**
+
+### R2 — A `ManagedFile` value object to kill the `array<string,mixed>` dance *(maintainability; do this first)*
+
+`$meta = $this->metadata->read($id); $wfId = $meta[KEY_ID] ?? null; if (!is_string($wfId) || $wfId
+=== '') return; if (($meta[KEY_MODE] ?? '') !== MODE_SYNC) return;` — this exact shape appears in
+**~10 places** (`NodeWrittenListener`, `NameSyncListener`, `MotionListener`, `ModeChangeService`,
+`ModeTagListener`, `DeleteToN8nListener`, `SyncService`, …).
+
+→ `WorkflowMetadata::read()` returns a typed `ManagedFile` (or `null`): `->workflowId`, `->mode`,
+`->mappingId`, `->syncedHash`, `->isManaged()`, `->isSync()`, `->isUnmapped()`. The ten guard-ladders
+collapse to `$mf = $this->metadata->read($id); if (!$mf?->isManaged()) return;`.
+
+- **Win:** deletes the most-repeated boilerplate in the codebase, gives Psalm real types instead of
+  `array{...}|null`, and is the natural building block for R1.
+- **Risk: LOW–MEDIUM** (touches many files but each change is mechanical and unit-coverable).
+- **Recommendation:** **the first move of Phase B.** It pays for itself immediately and de-risks R1.
+
+### R3 — Unify *all* workflow-body shaping in one codec *(maintainability + correctness; high value)*
+
+This is Round-1 **A1** plus a second duplication I missed then: `encodeReference()` and `encodeSync()`
+are **copied verbatim** between `SyncService` and `ModeChangeService` (the latter's docblock even
+says *"Mirrors `SyncService::encodeReference` — replicated here so the re-mode engine owns no
+dependency on the bulk reconciler"*). So workflow-body shaping lives in **four** places across two
+axes: *create/update* bodies (CreateService/PushService) and *reference/sync* bodies
+(SyncService/ModeChangeService).
+
+→ One `N8nWorkflowBody` codec owns every shape: `toCreateBody`, `toUpdateBody`, `encodeReference`,
+`encodeSync` — the whole n8n-schema contract (the writable-field whitelist, the 8-key settings
+allowlist, the `[]→{}` coercion, the pointer payload) in one unit-tested class.
+
+- **Win:** the external, *moving* n8n contract changes in exactly one file; trivially testable
+  (closes C2). Highest-value DRY left.
+- **Risk: LOW** (pure functions, guarded by new unit tests).
+
+### R4 — The mimetype hack: isolate, scope, and make uninstall reversible *(security/store + performance)*
+
+`RegisterMimetype` writes into the **Nextcloud core tree** — `core/img/filetypes/n8n.svg`,
+`core/js/mimetypelist.js`, and `config/mimetype*.json` — and three separate sites
+(`SyncService`, `CreateService`, `NodeWrittenListener`) fire `updateFilecache('n8n.json', …)`, the
+last on **every single save** as an instance-wide UPDATE keyed on the name pattern.
+
+Three distinct problems, three from-scratch fixes:
+
+1. **Clean uninstall is a store rule (§4.7) and we don't honour it.** Disabling the app leaves our
+   bytes in `core/` and the rewritten `mimetypelist.js`. → Add an **uninstall repair-step** that
+   reverts the core/config writes. Until then the store-compliance box is unchecked.
+2. **Per-save instance-wide UPDATE is a performance smell.** `restampMimetype()` runs on every
+   `.n8n.json` `NodeWrittenEvent` as a pattern UPDATE across the whole `oc_filecache`. → Scope it to
+   the **single file's id**, or drop the per-save restamp entirely and rely on the rename
+   (`MimeRestampListener`) + pull (`fixupFilecacheMimetype`) paths.
+3. **The duplication is a symptom.** The `'n8n.json'` literal and the restamp call live in 3–4
+   places. → One `WorkflowMimetype` service owns the constant and the (now single-row) restamp.
+4. **The root cause is the compound `.n8n.json` extension** — NC's detector only inspects the last
+   segment, which is why all of this exists. **Design decision for Kelly:** keep `.n8n.json` (most
+   readable, costs the hack) vs. a single-segment scheme. Probably keep — but name it, don't inherit it.
+
+- **Win:** ticks a real store-rejection box (uninstall), removes a hot-path full-table UPDATE, and
+  contains the one piece of the app that reaches outside its own sandbox.
+- **Risk: MEDIUM** (the uninstall revert needs live-pod verification; the restamp scoping is testable).
+
+### R5 — `allow_local_address => true` everywhere: name the SSRF trade-off *(security)*
+
+Every n8n call and webhook sets `'nextcloud' => ['allow_local_address' => true]`. For a **homelab**
+this is *correct and necessary* — the n8n URL is an in-cluster address. But for a **public app-store
+app**, this is a textbook SSRF lever: an admin (or anyone who can set the n8n URL) can point the
+server at `169.254.169.254`, `localhost:6379`, or any internal service, and the app will dutifully
+connect. Nextcloud blocks local addresses **by default** precisely for this reason; we opt out
+globally and silently.
+
+- **From scratch:** keep the capability (the target user *needs* it) but make it a **deliberate,
+  documented, ideally opt-out-able** decision — a setting (`allow_local_n8n`, default on for the
+  homelab story) and an honest paragraph in `SECURITY.md`. A store security audit (§4.7) *will* look
+  at this; better to have the rationale written down than to explain it reactively.
+- **Risk: LOW** to document; **MEDIUM** if we make it a real toggle (a wrong default breaks every
+  in-cluster install). **Recommendation:** document now; toggle only if the store asks.
+
+### R6 — Stop re-reading + re-migrating the mapping list on every call *(performance + maintainability)*
+
+`MappingService::list()` reads AppConfig, JSON-decodes, **runs legacy migration**, and *re-persists*
+on every invocation — and `getById()`/`resolveForPath()` each call `list()`. A single file event with
+several listeners calling `resolveForPath` decodes and migration-scans the whole list multiple times
+per request.
+
+- **From scratch:** (a) **request-scoped memoization** of the parsed list; (b) move the
+  legacy-shape migration **out of the read path** into a proper one-shot `Migration` repair-step, so
+  `list()` is a pure read and migration runs once at upgrade — not opportunistically on every page
+  load that happens to read mappings.
+- **Win:** removes redundant decode/migrate work from the hot path; makes `list()` side-effect-free
+  (a read that sometimes *writes* is a latent surprise).
+- **Risk: LOW.**
+
+### R7 — Round-1 carryover + new comment/citation hygiene
+
+Still open from Round 1, plus what Round 2 surfaced:
+
+- **A4** (paginate helper), **A5** (JSON-flag constant — note there are *two* sets: pretty for file
+  bodies, compact for wire bodies), **A6** (`SyncResult` typed object), **B2** (Settings-class naming
+  audit), **B4** (`dispatch()` collision), **B5** (the `link`⇄`reference` synonym tax — still
+  *defer*, it's a metadata migration).
+- **A3 had a miss:** `NodeWrittenListener:67` still hardcodes `str_ends_with(…, '.n8n.json')` instead
+  of `FilenameCodec::isWorkflowFile` — the literal, not `EXT`, so the sweep skipped it. Trivial fix.
+- **More stale docblocks (continue B1):** `Mapping.php` still says *"Per-workflow tags in n8n can
+  override the mode at the file level"* — that override was **killed in §15.3**; only `n8n:ignore`
+  (exclude) remains. And the `saga Ch2 §14` citations in `lib/` docblocks (`Mapping`,
+  `MappingService`, `ModeChangeService`) should read **Ch3 §14**, matching the feature-file fix.
+
+### Suggested sequencing for Phase B
+
+```
+net first ──▶ R2 (ManagedFile)  ──▶ R3 (N8nWorkflowBody)  ──▶ R6 (mapping memo + migration step)
+   │              │ low risk            │ low risk               │ low risk
+   │              └──────────────┬──────┴────────────────────────┘
+   │                             ▼
+   │                    R7 (carryover DRY + comment hygiene)   ← cheap, do alongside
+   │
+   └──▶ R4 (mimetype: uninstall + scope)  ──▶  R5 (SSRF doc)  ──▶  R1 (event coordinator)
+            MEDIUM, store-relevant            LOW, security        HIGH risk, last & incremental
+```
+
+R2/R3/R6/R7 are the safe, high-value core of Phase B — *do these*. R4/R5 are **security/store**
+wins worth their weight before the submission epics. R1 is the prize for maintainability but the
+sharpest knife — it goes **last, incrementally, behind a materially bigger integration net**, and
+only if the earlier rounds haven't already made the listeners pleasant enough to leave alone.
+
+---
+
 ## §4.1 — Epic 1: The frozen-feature refactor
 
 **Goal:** the same verifiable behaviour, less code, better names, more tests. Features are *frozen*
 — this is the "now that we can see the finished product, make it beautiful" pass the encore earned us.
 
-Plan of action (order matters — net the behaviour before you touch it):
+Two phases: **Phase A** is the safe, obvious dedupe (mostly landed in PR #40); **Phase B** is the
+gloves-off *from-scratch* pass (the **Round 2** section above), bigger and risk-tiered.
 
-- ☐ **Net first.** Land C1–C3 (the new unit tests) on their own, against *current* code, all green.
-  Now the behaviour is pinned independent of structure.
-- ☐ **Extract the contract.** A1 (`N8nWorkflowBody`) + A2 (`stampSynced`) — the two highest-value
-  DRY moves, each guarded by the tests just added.
-- ☐ **Tidy the predicates & helpers.** A3 (`isWorkflowFile`), A4 (paginate), A5 (JSON flags),
-  A6 (`SyncResult`).
-- ☐ **Names & comments.** B1 (fix the stale §15.3 comments — do this even if nothing else ships),
-  B2 (Settings rename audit), B3 (writeback→push), B4 (dispatch). B5 gets a written decision, likely
-  *defer*.
-- ☐ **Prove it.** Full unit suite + `behat --dry-run` clean + a human pass on real Nextcloud. The
-  diff should *delete* lines from `lib/` and *add* lines only to `tests/`.
+**Phase A — the safe pass (✅ landed in PR #40):**
+
+- ✅ **A2** (`WorkflowMetadata::stampSynced`) — the 5-key stamp, 3 sites → 1.
+- ✅ **A3** (`FilenameCodec::isWorkflowName`/`isWorkflowFile`) — 15 open-coded guards → 1 predicate
+  (with `@psalm-assert-if-true` narrowing). *Carryover:* the `NodeWrittenListener:67` literal miss (R7).
+- ✅ **B1/B3 (partial)** — stale §15.3 comments fixed; `Writeback*` → `Sync*`/`AutoSync*`.
+- ✅ Docs: `occ n8n_sync:sync` documented; feature-spec saga citations corrected; Ch4 plan.
+
+**Phase B — the from-scratch pass (the prize; sequence from Round 2):**
+
+- ☐ **Net first.** C1–C3 (delete/create/push/reconcile unit coverage) *plus* the bigger integration
+  coverage R1 needs — land against *current* code, all green, before touching structure.
+- ☐ **R2** `ManagedFile` value object → kills the `array<string,mixed>` guard-ladder (~10 sites).
+- ☐ **R3** `N8nWorkflowBody` codec → all four body-shaping copies (A1 + the `encode*` twins) in one
+  unit-tested class.
+- ☐ **R6** mapping memoization + move migration out of the read path.
+- ☐ **R7** carryover DRY (A4/A5/A6) + comment hygiene (the `.n8n.json` literal, `Mapping` stale
+  override docblock, `Ch2 §14`→`Ch3 §14` in `lib/`).
+- ☐ **R4** mimetype: uninstall-revert repair-step + single-row restamp (store + perf).
+- ☐ **R5** SSRF / `allow_local_address`: document in `SECURITY.md` (toggle only if the store asks).
+- ☐ **R1** event coordinator — **last, incremental, behind the bigger net**, only if still worth it.
+- ☐ **B2/B4/B5** Settings naming audit, `dispatch()` rename; B5 (`link`⇄`reference`) gets a written
+  *defer* decision.
+- ☐ **Prove each step.** Unit suite grows, `behat --dry-run` clean, a human pass on real Nextcloud.
+  Net-negative `lib/`, net-positive `tests/`.
 
 Each item is a small, separately-reviewable PR (CONTRIBUTING's anatomy-of-a-change still applies,
 minus the `.feature` edit — there is none). Changelog entries are the short "refactor/types/tests"
