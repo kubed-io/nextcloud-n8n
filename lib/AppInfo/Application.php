@@ -28,9 +28,9 @@ use OCA\N8nSync\Listener\RestoreFromTrashListener;
 use OCA\N8nSync\Notification\Notifier;
 use OCA\N8nSync\Service\WorkflowMetadata;
 use OCA\N8nSync\Settings\AdminSettings;
+use OCA\N8nSync\Settings\AutoSyncSettings;
 use OCA\N8nSync\Settings\InstanceSettings;
 use OCA\N8nSync\Settings\WebhookSettings;
-use OCA\N8nSync\Settings\WritebackSettings;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
@@ -57,14 +57,15 @@ final class Application extends App implements IBootstrap {
 	#[\Override]
 	public function register(IRegistrationContext $context): void {
 		// Declarative forms shown in the n8n_sync admin section.
-		// AdminSection (sidebar entry) and AdminTest (classic "Test connection"
-		// panel) are wired through info.xml's <settings> block — the only
-		// IRegistrationContext settings hook is registerDeclarativeSettings().
+		// AdminSection (the sidebar entry) and the classic ISettings panels
+		// (MappingSettings, SyncSettings) are wired through info.xml's <settings>
+		// block — the only IRegistrationContext settings hook is
+		// registerDeclarativeSettings().
 		//
 		// Note: there is intentionally no "guard" panel. Ownership of an
 		// n8n_sync file is determined by the file itself — the `.n8n.json`
 		// extension, the `n8n_id` Files-Metadata stamp, and/or one of the
-		// `n8n:sync` / `n8n:reference` system tags. Anything carrying those
+		// `n8n:sync` / `n8n:link` system tags. Anything carrying those
 		// markers inside a mapped folder is fair game for sync; anything
 		// without them is ignored. No setting needed.
 		//
@@ -75,10 +76,10 @@ final class Application extends App implements IBootstrap {
 		// either fires, so it follows both.
 		$context->registerDeclarativeSettings(InstanceSettings::class);
 		$context->registerDeclarativeSettings(AdminSettings::class);
-		$context->registerDeclarativeSettings(WritebackSettings::class);
+		$context->registerDeclarativeSettings(AutoSyncSettings::class);
 		$context->registerDeclarativeSettings(WebhookSettings::class);
 
-		// Writeback wiring: push saved two-way files to every enabled channel.
+		// Push wiring: push saved sync-mode files to every enabled channel.
 		$context->registerEventListener(NodeWrittenEvent::class, NodeWrittenListener::class);
 
 		// §14.2c link is read-only on disk: a link file is only a pointer to a workflow
@@ -140,10 +141,10 @@ final class Application extends App implements IBootstrap {
 		// a cheap global UPDATE keyed on the extension.
 		$context->registerEventListener(NodeRenamedEvent::class, MimeRestampListener::class);
 
-		// Mode re-mode by retag: assigning n8n:sync / n8n:link to a managed file is a
-		// request to change its mode (sync ⇄ link). The listener routes to
-		// ModeChangeService, which rewrites the body, re-stamps the mode, and enforces
-		// one-mode-tag exclusivity. Our own apply() re-assigns tags under SyncGuard, so
+		// Exclude / restore by retag. The per-file sync/link toggle was removed in §15.3:
+		// the mapping's mode is the single source of truth, so only `n8n:ignore` is
+		// actionable: assigning it routes to ModeChangeService to archive the workflow
+		// and flip the file to `ignored`. Our own apply() re-touches tags under SyncGuard, so
 		// the listener bails when the guard is active (no recursion).
 		$context->registerEventListener(TagAssignedEvent::class, ModeTagListener::class);
 		// Removing n8n:ignore is the inverse: unarchive the workflow and return the file

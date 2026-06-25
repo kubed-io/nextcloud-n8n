@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Internal cleanup (no behaviour or settings change): one shared helper for the `.n8n.json` file check and one for the workflow metadata stamp, plus clearer class names (writeback → sync/push).
+- Docs: document the `occ n8n_sync:sync` command; corrected stale code comments and feature-spec references.
+
 ## [0.1.3] - 2026-06-25
 
 ### Added

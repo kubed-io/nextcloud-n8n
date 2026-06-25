@@ -17,7 +17,7 @@ use OCP\IAppConfig;
 use Psr\Log\LoggerInterface;
 
 /**
- * Writeback dispatcher (Nextcloud → n8n). On save, a managed two-way file is
+ * Push dispatcher (Nextcloud → n8n). On save, a managed sync-mode file is
  * pushed to **every enabled channel** — the two are independent and composable,
  * not an either/or:
  *

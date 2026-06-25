@@ -15,8 +15,9 @@ use OCP\Notification\IManager;
 use Psr\Log\LoggerInterface;
 
 /**
- * Raises a Nextcloud notification (bell + toast) when a writeback fails, so the
- * user who saved the file sees *what* n8n rejected and can fix the JSON. This is
+ * Raises a Nextcloud notification (bell + toast) when a push to n8n fails (or a
+ * link-mode edit is blocked), so the user who saved the file sees *what* happened
+ * and can fix the JSON. This is
  * the native channel for an async/background failure — we don't break the file
  * save itself (that would lose their edits) and we don't invent any UI.
  *
@@ -24,7 +25,7 @@ use Psr\Log\LoggerInterface;
  * ({@see cleared}) and repeated failures collapse onto one entry instead of
  * spamming the bell.
  */
-final class WritebackNotifier {
+final class SyncNotifier {
 	public function __construct(
 		private IManager $manager,
 		private ITimeFactory $timeFactory,
@@ -52,7 +53,7 @@ final class WritebackNotifier {
 			$this->manager->notify($notification);
 		} catch (\Throwable $e) {
 			// Notifications are a courtesy; never let them mask the real failure.
-			$this->logger->warning('n8n_sync: could not raise writeback-failure notification', [
+			$this->logger->warning('n8n_sync: could not raise push-failure notification', [
 				'app' => Application::APP_ID,
 				'exception' => $e,
 			]);
@@ -97,7 +98,7 @@ final class WritebackNotifier {
 				->setObject('workflow', (string)$fileId);
 			$this->manager->markProcessed($notification);
 		} catch (\Throwable $e) {
-			$this->logger->debug('n8n_sync: could not clear writeback notification', [
+			$this->logger->debug('n8n_sync: could not clear push-failure notification', [
 				'app' => Application::APP_ID,
 				'exception' => $e,
 			]);

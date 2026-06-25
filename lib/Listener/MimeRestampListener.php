@@ -56,7 +56,7 @@ final class MimeRestampListener implements IEventListener {
 		// Bail unless the post-rename name is one of ours — pre-rename name is
 		// irrelevant because the filecache row is already keyed by the new
 		// name when this event fires.
-		if (!str_ends_with($target->getName(), FilenameCodec::EXT)) {
+		if (!FilenameCodec::isWorkflowName($target->getName())) {
 			return;
 		}
 		try {

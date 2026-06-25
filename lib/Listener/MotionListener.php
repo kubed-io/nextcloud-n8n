@@ -19,7 +19,6 @@ use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
 use OCP\Files\Events\Node\NodeRenamedEvent;
-use OCP\Files\File;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -65,7 +64,7 @@ final class MotionListener implements IEventListener {
 			return;
 		}
 		$target = $event->getTarget();
-		if (!$target instanceof File || !str_ends_with($target->getName(), FilenameCodec::EXT)) {
+		if (!FilenameCodec::isWorkflowFile($target)) {
 			return;
 		}
 

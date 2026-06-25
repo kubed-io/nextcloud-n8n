@@ -129,7 +129,7 @@ final class ModeTagListener implements IEventListener {
 				]);
 				continue;
 			}
-			if (!$node instanceof File || !str_ends_with($node->getName(), FilenameCodec::EXT)) {
+			if (!FilenameCodec::isWorkflowFile($node)) {
 				continue;
 			}
 			$action($node);

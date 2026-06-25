@@ -13,8 +13,8 @@ use OCA\DAV\Connector\Sabre\File as DavFile;
 use OCA\N8nSync\AppInfo\Application;
 use OCA\N8nSync\Service\FilenameCodec;
 use OCA\N8nSync\Service\Mapping;
+use OCA\N8nSync\Service\SyncNotifier;
 use OCA\N8nSync\Service\WorkflowMetadata;
-use OCA\N8nSync\Service\WritebackNotifier;
 use OCP\IUserSession;
 use Psr\Log\LoggerInterface;
 use Sabre\DAV\Exception\Forbidden;
@@ -51,7 +51,7 @@ use Sabre\DAV\ServerPlugin;
 final class LinkWriteGuardPlugin extends ServerPlugin {
 	public function __construct(
 		private WorkflowMetadata $metadata,
-		private WritebackNotifier $notifier,
+		private SyncNotifier $notifier,
 		private IUserSession $userSession,
 		private LoggerInterface $logger,
 	) {
@@ -73,7 +73,7 @@ final class LinkWriteGuardPlugin extends ServerPlugin {
 			return true; // not a file node we care about
 		}
 		$name = $node->getName();
-		if (!str_ends_with($name, FilenameCodec::EXT)) {
+		if (!FilenameCodec::isWorkflowName($name)) {
 			return true; // only our workflow files are constrained
 		}
 

@@ -1,6 +1,6 @@
 # Deletion semantics differ by mode. Mirrors Nextcloud's two-step trash model.
 # The matrix here is the contract the delete listener must satisfy.
-# Modes (saga Chapter 2 §14): sync / link / unmapped. A file with NO n8n metadata is
+# Modes (saga Chapter 3 §14): sync / link / unmapped. A file with NO n8n metadata is
 # "untracked" (a plain document) — distinct from "unmapped" (a sync file moved out
 # of its mapping that still carries its id + an archived n8n workflow).
 # LIVE: delete/purge/restore go over WebDAV (incl. the trashbin DAV endpoint);

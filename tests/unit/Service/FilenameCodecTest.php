@@ -10,6 +10,8 @@ declare(strict_types=1);
 namespace OCA\N8nSync\Tests\Unit\Service;
 
 use OCA\N8nSync\Service\FilenameCodec;
+use OCP\Files\File;
+use OCP\Files\Folder;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\Attributes\DataProvider;
 use PHPUnit\Framework\TestCase;
@@ -113,5 +115,46 @@ final class FilenameCodecTest extends TestCase {
 		yield 'wrong extension' => ['workflow.n8n.txt'];
 		yield 'bare extension only' => ['.n8n.json'];
 		yield 'empty' => [''];
+	}
+
+	#[DataProvider('workflowNameCases')]
+	public function testIsWorkflowName(string $name, bool $expected): void {
+		self::assertSame($expected, FilenameCodec::isWorkflowName($name));
+	}
+
+	/** @return iterable<string, array{string, bool}> */
+	public static function workflowNameCases(): iterable {
+		yield 'clean shape' => ['My Workflow.n8n.json', true];
+		yield 'id-suffixed shape' => ['My Workflow.w0TtomB3I8dCHSXW.n8n.json', true];
+		yield 'collision suffix' => ['My Workflow (2).n8n.json', true];
+		yield 'bare extension' => ['.n8n.json', true]; // a name test, not a parse — the suffix alone matches
+		yield 'plain json' => ['notes.json', false];
+		yield 'wrong extension' => ['workflow.n8n.txt', false];
+		yield 'no extension' => ['workflow', false];
+		yield 'empty' => ['', false];
+	}
+
+	public function testIsWorkflowFileTrueForManagedFile(): void {
+		$file = $this->createMock(File::class);
+		$file->method('getName')->willReturn('Daily Report.n8n.json');
+		self::assertTrue(FilenameCodec::isWorkflowFile($file));
+	}
+
+	public function testIsWorkflowFileFalseForWrongExtension(): void {
+		$file = $this->createMock(File::class);
+		$file->method('getName')->willReturn('notes.json');
+		self::assertFalse(FilenameCodec::isWorkflowFile($file));
+	}
+
+	public function testIsWorkflowFileFalseForNonFileNode(): void {
+		// A Folder is a Node but not a File — the predicate rejects it even if the
+		// name happens to end in the extension (a folder named like a workflow).
+		$folder = $this->createMock(Folder::class);
+		$folder->method('getName')->willReturn('weird.n8n.json');
+		self::assertFalse(FilenameCodec::isWorkflowFile($folder));
+	}
+
+	public function testIsWorkflowFileFalseForNull(): void {
+		self::assertFalse(FilenameCodec::isWorkflowFile(null));
 	}
 }

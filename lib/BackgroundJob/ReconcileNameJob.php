@@ -17,7 +17,6 @@ use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\QueuedJob;
-use OCP\Files\File;
 use OCP\Files\IRootFolder;
 use Psr\Log\LoggerInterface;
 
@@ -62,7 +61,7 @@ final class ReconcileNameJob extends QueuedJob {
 
 		try {
 			$node = $this->rootFolder->getUserFolder($uid)->getById($fileId)[0] ?? null;
-			if (!$node instanceof File || !str_ends_with($node->getName(), FilenameCodec::EXT)) {
+			if (!FilenameCodec::isWorkflowFile($node)) {
 				return;
 			}
 			$meta = $this->metadata->read($node->getId());

@@ -225,13 +225,7 @@ final class CreateService {
 	 */
 	private function stampFile(File $node, Mapping $mapping, string $id, string $versionId, string $content): void {
 		$this->guard->run(function () use ($node, $mapping, $id, $versionId, $content): void {
-			$this->metadata->write($node->getId(), [
-				WorkflowMetadata::KEY_ID => $id,
-				WorkflowMetadata::KEY_MODE => $mapping->mode,
-				WorkflowMetadata::KEY_VERSION_ID => $versionId,
-				WorkflowMetadata::KEY_SYNCED_HASH => sha1($content),
-				WorkflowMetadata::KEY_MAPPING => $mapping->id,
-			]);
+			$this->metadata->stampSynced($node->getId(), $id, $mapping->mode, $versionId, $content, $mapping->id);
 			$this->ownershipTags->apply($node->getId(), $mapping->mode);
 			try {
 				$this->mimeLoader->updateFilecache('n8n.json', $this->mimeLoader->getId('application/n8n+json'));

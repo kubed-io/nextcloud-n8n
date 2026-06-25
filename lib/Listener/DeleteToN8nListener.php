@@ -19,7 +19,6 @@ use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
 use OCP\Exceptions\AbortedEventException;
 use OCP\Files\Events\Node\BeforeNodeDeletedEvent;
-use OCP\Files\File;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -62,7 +61,7 @@ final class DeleteToN8nListener implements IEventListener {
 			return;
 		}
 		$node = $event->getNode();
-		if (!$node instanceof File || !str_ends_with($node->getName(), FilenameCodec::EXT)) {
+		if (!FilenameCodec::isWorkflowFile($node)) {
 			return;
 		}
 

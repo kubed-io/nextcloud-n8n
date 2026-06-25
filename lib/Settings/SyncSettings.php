@@ -26,7 +26,7 @@ use OCP\Util;
  *     gated by {@see AdminTest}).
  *
  * Rendered last in the section: channels → Sync Settings → Folder mappings →
- * Sync Actions. The automatic-sync strategy lives in {@see WritebackSettings}.
+ * Sync Actions. The automatic-sync strategy lives in {@see AutoSyncSettings}.
  */
 final class SyncSettings implements IDelegatedSettings {
 	public function __construct(

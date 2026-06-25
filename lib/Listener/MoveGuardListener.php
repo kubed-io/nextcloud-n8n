@@ -17,7 +17,6 @@ use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
 use OCP\Exceptions\AbortedEventException;
 use OCP\Files\Events\Node\BeforeNodeRenamedEvent;
-use OCP\Files\File;
 
 /**
  * Gate-keeps a managed workflow file's moves *before* they happen (saga Ch2
@@ -54,7 +53,7 @@ final class MoveGuardListener implements IEventListener {
 			return;
 		}
 		$source = $event->getSource();
-		if (!$source instanceof File || !str_ends_with($source->getName(), FilenameCodec::EXT)) {
+		if (!FilenameCodec::isWorkflowFile($source)) {
 			return; // only managed workflow files are constrained
 		}
 

@@ -278,6 +278,19 @@ occ n8n_sync:list-mappings
 occ n8n_sync:remove-mapping <mapping-id>
 ```
 
+### Run a manual sync
+
+The headless equivalent of the admin panel's **Sync from n8n** / **Sync to n8n** buttons — same mapping-scoped contract.
+
+```sh
+# Pull (n8n → Nextcloud): reconcile a mapping's folder against its tag.
+# Push (NC → n8n): send the mapping's sync files up.
+# Target one mapping by its n8n tag (or mapping id); omit --mapping for all mappings.
+occ n8n_sync:sync pull --mapping=nextcloud:alpha
+occ n8n_sync:sync push --mapping=nextcloud:alpha
+occ n8n_sync:sync pull            # every mapping
+```
+
 ### Inspect workflows (smoke tests)
 
 ```sh
