@@ -378,12 +378,30 @@ One slice per PR; integration green is the gate, since these touch the load-bear
     unrelated cluster WIP under an n8n message and pushing it. Reversed with `reset --mixed` +
     `push --force-with-lease`. **Use `git -C <repo>` for every git op across sibling repos; never trust
     the ambient cwd.**
-- **PR #43 — R6 + R7.** In flight. R6: `MappingService::list()` was reading + JSON-decoding +
+- **PR #43 — R6 + R7.** Merged. R6: `MappingService::list()` was reading + JSON-decoding +
   *migrating* + sometimes **re-writing** AppConfig on *every* call, and the lifecycle listeners call
   `resolveForPath` several times per event — so one file event meant several decode+migrate passes.
   Now: a request-scoped cache, and the legacy rewrite lives in a `MigrateMappings` repair step (runs
   once on upgrade), so a read is just a read. R7: fixed the `Mapping` docblock still claiming a
-  per-file mode override (killed in §15.3) and swept `Ch2 §14`→`Ch3 §14` across `lib/`.
+  per-file mode override (killed in §15.3) and swept `Ch2 §14`→`Ch3 §14` across `lib/`. (A5 paginate +
+  R5 SSRF doc rode along.)
+- **PR #44 — Uninstall + Purge (a *feature*, not a refactor).** Surfaced by Kelly interrogating R4:
+  the "uninstall-revert" I'd filed under the frozen refactor was actually **net-new behaviour**, and
+  the *real* design work was the **data safety**, not the mimetype cleanup. The resolved model:
+  - **Uninstall** reverts only the shared *system* writes (`UnregisterMimetype`, the `<uninstall>`
+    repair step — NC does support that hook) and **orphans** the user's data. It never deletes files,
+    never clears metadata, never touches n8n. Because files keep their `n8n_id`, a reinstall + pull
+    reconciles them in place — the reconnect is *free*, thanks to the reconcile-by-id design. (Clearing
+    metadata would be the one tempting move that breaks it — duplicates on reinstall.)
+  - **Purge** is an explicit admin button (you can't prompt during a non-interactive uninstall). The
+    data-safety rule Kelly sharpened: purge deletes only what a pull can **restore** — `sync`/`link` —
+    and keeps `unmapped` (an archived standalone copy / template), `ignored`, and untracked files.
+    *"I wouldn't want to lose a template because of purge."* Runs under SyncGuard, so n8n is untouched;
+    reversible by "Sync from n8n".
+  - **Lesson:** "make uninstall clean" is two different jobs — *system* state (revert) vs *user* data
+    (never auto-delete) — and conflating them is where data gets hurt. The store rule is about the
+    former; the latter is the user's. Specs are `@todo` (the system leg needs a live app-remove the
+    CI harness can't drive); the purge *logic* (the safety crux) is unit-tested.
 
 > *The from-scratch lens keeps paying out: every round we open the floorboards we find one more copy
 > of the same plank. The point of Phase B isn't to admire the house — it's to make the next change a
