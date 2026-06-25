@@ -51,9 +51,9 @@ the detailed backlog). They're in *causal* order — each clears the ground for 
 | # | Epic | Status | Detail |
 |---|---|---|---|
 | 1 | **Frozen refactor** — features-locked DRY/naming/test pass; less code, same result | ◑ | §4.1 (Phase A landed in PR #40; Phase B = the from-scratch pass below) |
-| 2 | **Branding** — name & tagline, icon system, store copy, screenshots, repo face | ◑ | §4.2 (icon system landed in PR #45; name/copy/screenshots remain) |
-| 3 | **Quality stamps** — README badges mapped to real CI + REUSE/license | ☐ | §4.3 |
-| 4 | **Store: info.xml** — schema-valid metadata with the branding assets dropped in | ☐ | §4.4 |
+| 2 | **Branding** — name & tagline, icon system, store copy, screenshots, repo face | ◑ | §4.2 (icons PR #45; copy PR #46; **screenshots + repo face remain**) |
+| 3 | **Quality stamps** — README badges mapped to real CI + REUSE/license | ◑ | §4.3 (CI + license/NC/PHP badges landed PR #46; **REUSE remains**) |
+| 4 | **Store: info.xml** — schema-valid metadata with the branding assets dropped in | ◑ | §4.4 (copy/summary/website/category landed PR #46; **screenshot remains**) |
 | 5 | **Store: signing** — CSR → countersigned cert → app-id registration | ☐ | §4.5 |
 | 6 | **Store: pipeline** — `signature.json` + tarball signature + upload step in `publish.yml` | ☐ | §4.6–§4.7 |
 | 7 | **Finale: first store release** *(may not happen this chapter)* | ☐ | §4.8 |
@@ -61,6 +61,12 @@ the detailed backlog). They're in *causal* order — each clears the ground for 
 Epics 1–3 are entirely in our control and stand alone. Epics 4–7 are the store run; the **CSR
 countersign wait (5)** is the only external dependency in the whole chapter — start it early so it
 overlaps the polish work.
+
+> **Releasing is a solved capability (mid-Ch4 update).** The `publish.yml` pipeline (semver bump →
+> `info.xml` version sync → packaged tarball → GitHub release) has now shipped **several** releases;
+> *cutting a GitHub release is done and repeatable — we release when we want.* What's still open in
+> Epics 5–7 is specifically the **apps.nextcloud.com** track (the countersigned cert + `signature.json`
+> + store upload), which layers on top of that working pipeline rather than replacing it.
 
 ---
 
@@ -567,17 +573,29 @@ is the answer to "why were some embedded":
 
 ### 4.2.3 — Store copy, screenshots, repo face
 
-- ☐ **Description copy.** Replace the Phase-0 placeholder `<description>` with real, benefit-led copy
-  — the rewritten README intro (Modes table, Move/Copy lifecycle) is the source material. Write it for
-  a user deciding whether to install. Include the affiliation disclaimer (4.2.1).
+- ☑ **Description copy.** *(PR #46)* The Phase-0 placeholder `<description>` ("skeleton only —
+  registers nothing yet", by then flatly false) is replaced with benefit-led copy drawn from the
+  README intro — Sync/Link modes + the reconcile-by-id backup story — with the affiliation disclaimer
+  retained. `<summary>` sharpened to *"Your n8n workflows as native, editable, backed-up Nextcloud
+  files."*
 - ☐ **Screenshots (3–4 frames telling the story):** Files app showing `.n8n.json` files with the icon
   + mode pills; the admin Settings (mappings + sync); a click opening a workflow in n8n. Each ≤2 MiB,
   served over HTTPS, ≥1 required. (`info.xml` supports a `small-thumbnail` attribute per screenshot —
-  see §4.4.)
-- ☐ **Repo face.** README header/banner, GitHub social-preview image, About blurb + topics, a
-  consistent voice across README ↔ store ↔ changelog.
+  see §4.4.) **The remaining branding blocker for store upload.**
+- ◑ **Repo face.** README now carries a badge row *(PR #46)*; still open: README header/banner, GitHub
+  social-preview image, About blurb + topics. Voice is consistent across README ↔ store ↔ changelog.
 
 **Gate:** none of this starts while Epic 1 is in flight. Branding follows the freeze.
+
+#### Progress log
+
+- **PR #46 — store copy + badges.** The §4.2.3 description/summary rewrite and the §4.3 badge row
+  shipped together (one branding/marketing slice). No `<version>` bump. Now that releasing is a solved
+  capability, this was a normal merge → release-when-desired, not a special event.
+  - **Lesson — a placeholder that lies is worse than a placeholder that's blank.** The `<description>`
+    still said *"Phase 0: skeleton only — registers nothing yet"* long after the app did everything;
+    that's the first text a store visitor (or you, in the app list) reads. "Provisional" copy needs an
+    expiry in your head — when the thing ships, the copy is no longer provisional, it's *wrong*.
 
 ---
 
@@ -601,13 +619,14 @@ the `.json` files (which can't carry comments) need a `.reuse/dep5` (or `.licens
 
 **CI status badges — map each to a real workflow** (the repo already has them, so these are honest):
 
-- ☐ **Tests** → `tests.yml` · ☐ **Quality** → `quality.yml` · ☐ **Integration** → `integration.yml`
-  (`[![Tests](https://github.com/kubed-io/nextcloud-n8n/actions/workflows/tests.yml/badge.svg)](…)`).
+- ☑ **Tests** → `tests.yml` · ☑ **Quality** → `quality.yml` · ☑ **Integration** → `integration.yml`
+  *(PR #46)* — all three in the README header, linked to their workflow pages, and mirrored into the
+  `publish.yml` release-notes body so each release carries the same row.
 
 **Static, factual badges (cheap, true):**
 
-- ☐ **License** AGPL-3.0-or-later · ☐ **Nextcloud** 30–33 (mirrors `info.xml` deps) ·
-  ☐ **PHP** ≥8.1 (or whatever composer requires) · ☐ once live, the **App Store version**
+- ☑ **License** AGPL-3.0-or-later · ☑ **Nextcloud** 30–33 (mirrors `info.xml` deps) ·
+  ☑ **PHP** ≥8.1 (composer `^8.1`) *(all PR #46)* · ☐ once live, the **App Store version**
   badge (`apps.nextcloud.com` exposes one).
 
 **Optional / earn-it:**
@@ -617,6 +636,9 @@ the `.json` files (which can't carry comments) need a `.reuse/dep5` (or `.licens
 
 Rule for this epic: **a badge must reflect something real and green.** A red or perma-stale badge is
 worse than no badge. Order them in the README by trust value: REUSE/License → CI status → version.
+
+**Status:** the CI + license/NC/PHP badges landed in **PR #46**; only **REUSE** remains (the SPDX-header
+task above), plus the App Store version badge once the §4.5–4.7 store track lands.
 
 ---
 
@@ -631,24 +653,25 @@ assets from §4.2 drop straight in here):
 | `bugs` | `…/nextcloud-n8n/issues` | ✅ |
 | `repository` | present | ✅ |
 | `dependencies/nextcloud` | `min 30 / max 33` | ✅ has both bounds (store requires both). |
-| `summary` | generic placeholder | Replace with the §4.2.1 one-liner. |
-| `description` | **Phase-0 placeholder** ("skeleton only") | Replace with the §4.2.3 store copy. **Blocker for upload.** |
-| `screenshot` | **missing** | Add ≥1 HTTPS URL, ≤2 MiB. Use the `small-thumbnail` attribute for a faster grid thumb: `<screenshot small-thumbnail="…/1-small.png">…/1.png</screenshot>`. |
+| `summary` | ✅ *(PR #46)* | Sharpened to the §4.2.1 benefit one-liner. |
+| `description` | ✅ *(PR #46)* | Phase-0 placeholder replaced with the §4.2.3 store copy. **Was the upload blocker — cleared.** |
+| `screenshot` | **missing** | Add ≥1 HTTPS URL, ≤2 MiB. Use the `small-thumbnail` attribute for a faster grid thumb: `<screenshot small-thumbnail="…/1-small.png">…/1.png</screenshot>`. **Now the only `info.xml` upload blocker.** |
 
 **New due-diligence findings (not in the old draft) — optional polish the store will render:**
 
-- ☐ **`<website>`** — homepage URL, rendered on the app detail page.
+- ☑ **`<website>`** *(PR #46)* — set to the GitHub repo, rendered on the app detail page.
 - ☐ **`<discussion>`** — forum/discussion URL; if absent it defaults to the NC forum. Point it at our
   GitHub Discussions/issues if we want.
-- ☐ **`<category>`** — `integration` is valid and correct; the element *may repeat* if a second
-  category fits (e.g. `tools` or `files`). Valid set incl.: `files`, `integration`, `tools`,
-  `organization`, `security`, `multimedia`, `social`, `monitoring`, `office`, `customization`.
+- ☑ **`<category>`** *(PR #46)* — `integration` kept and `files` added (the element repeats), so the
+  app shows under both. Valid set incl.: `files`, `integration`, `tools`, `organization`, `security`,
+  `multimedia`, `social`, `monitoring`, `office`, `customization`.
 - ☐ **Localized fields** (optional) — `<name lang="…">`, `<summary lang="…">`, `<description lang="…">`
   support translations; English-only is fine to launch.
 
 Required minimum for acceptance: `id`, `name`, `summary`, real-English `description`, `version`,
 `licence` (the `agpl` short form), `author`, `bugs` (URL), and `dependencies/nextcloud` with both
-`min-version` and `max-version`. We satisfy all but `description` + `screenshot`.
+`min-version` and `max-version`. **All satisfied as of PR #46** — the only remaining store-upload gap
+is the (separately-required) `screenshot`.
 
 ---
 
