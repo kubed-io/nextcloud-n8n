@@ -126,48 +126,9 @@ final class PushService {
 		if (!$wf instanceof \stdClass) {
 			throw new \RuntimeException('file is not a JSON object');
 		}
-		$body = [];
-		foreach (['name', 'nodes', 'connections', 'settings', 'staticData'] as $k) {
-			if (isset($wf->$k)) {
-				$body[$k] = $wf->$k;
-			}
-		}
-		if ($body === []) {
-			throw new \RuntimeException('no writable workflow fields (name/nodes/connections/settings) in file');
-		}
-		// n8n's `settings` schema is `additionalProperties: false` with a fixed
-		// allowlist (see openapi/workflow.yml: WorkflowSettings). GETs sometimes
-		// return extras (e.g. `callerPolicy`, `callerIds`, persisted internal
-		// flags) that PUT then 400s with `must not have additional properties`.
-		// Strip to the documented allowlist before sending.
-		if (isset($body['settings']) && $body['settings'] instanceof \stdClass) {
-			$allowed = [
-				'saveExecutionProgress',
-				'saveManualExecutions',
-				'saveDataErrorExecution',
-				'saveDataSuccessExecution',
-				'executionTimeout',
-				'errorWorkflow',
-				'timezone',
-				'executionOrder',
-			];
-			$filtered = new \stdClass();
-			foreach ($allowed as $k) {
-				if (isset($body['settings']->$k)) {
-					$filtered->$k = $body['settings']->$k;
-				}
-			}
-			$body['settings'] = $filtered;
-		}
-		// n8n's own GET serialises an empty `connections`/`settings`/`staticData`
-		// as `[]`, but its PUT validator demands an object — so even a faithful
-		// round-trip of a trivial workflow would 400. Coerce empty arrays back to
-		// `{}` for these object-typed fields (nodes stays a list).
-		foreach (['connections', 'settings', 'staticData'] as $k) {
-			if (isset($body[$k]) && $body[$k] === []) {
-				$body[$k] = new \stdClass();
-			}
-		}
+		// {@see N8nWorkflowBody::toUpdateBody} owns the writable-field whitelist,
+		// the settings allowlist, and the `[]→{}` coercion (shared with create).
+		$body = N8nWorkflowBody::toUpdateBody($wf);
 		$resp = $this->n8n->updateWorkflow($id, $body);
 		$v = $resp['versionId'] ?? null;
 		return is_string($v) ? $v : null;

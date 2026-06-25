@@ -488,8 +488,8 @@ final class SyncService {
 		$versionId = (string)($workflow['versionId'] ?? '');
 
 		$body = $effectiveMode === Mapping::MODE_LINK
-			? $this->encodeReference($workflow)
-			: $this->encodeSync($workflow);
+			? N8nWorkflowBody::encodeReference($workflow, $this->config->getValueString(Application::APP_ID, 'n8n_url', ''))
+			: N8nWorkflowBody::encodeSync($workflow);
 
 		$existing = $existingById[$id] ?? null;
 		if ($existing instanceof \OCP\Files\File) {
@@ -533,39 +533,6 @@ final class SyncService {
 		$this->tags->apply($file->getId(), $effectiveMode);
 	}
 
-	/**
-	 * Tiny pointer body for `reference` mode, incl. the deep-link URL.
-	 *
-	 * @param array<string,mixed> $workflow
-	 */
-	private function encodeReference(array $workflow): string {
-		$id = (string)$workflow['id'];
-		$base = rtrim($this->config->getValueString(Application::APP_ID, 'n8n_url', ''), '/');
-		$tags = [];
-		foreach ($workflow['tags'] ?? [] as $t) {
-			if (is_array($t) && isset($t['name'])) {
-				$tags[] = (string)$t['name'];
-			}
-		}
-		$payload = [
-			'$schema' => 'n8n.reference/v1',
-			'id' => $id,
-			'name' => (string)($workflow['name'] ?? $id),
-			'url' => $base === '' ? null : $base . '/workflow/' . $id,
-			'tags' => $tags,
-		];
-		return json_encode($payload, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-	}
-
-	/**
-	 * Full workflow JSON for `sync` mode, verbatim so Phase 4 writeback is a
-	 * simple PUT of the file contents.
-	 *
-	 * @param array<string,mixed> $workflow
-	 */
-	private function encodeSync(array $workflow): string {
-		return json_encode($workflow, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-	}
 
 	/**
 	 * Optional purge when a mapping is removed (spec UC-4): delete only the files

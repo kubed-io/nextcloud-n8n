@@ -123,8 +123,8 @@ final class ModeChangeService {
 		}
 
 		$body = $target === Mapping::MODE_LINK
-			? $this->encodeReference($workflow)
-			: $this->encodeSync($workflow);
+			? N8nWorkflowBody::encodeReference($workflow, $this->config->getValueString(Application::APP_ID, 'n8n_url', ''))
+			: N8nWorkflowBody::encodeSync($workflow);
 
 		$this->guard->run(function () use ($node, $target, $workflow, $body): void {
 			$node->putContent($body);
@@ -209,41 +209,5 @@ final class ModeChangeService {
 			// user's n8n:ignore marker (it is not in OwnershipTags::ALL).
 			$this->ownershipTags->clear($node->getId());
 		});
-	}
-
-	/**
-	 * Pointer body for link mode (id, name, url, tags). Mirrors
-	 * {@see SyncService::encodeReference} — replicated here so the re-mode engine
-	 * owns no dependency on the bulk reconciler.
-	 *
-	 * @param array<string,mixed> $workflow
-	 */
-	private function encodeReference(array $workflow): string {
-		$id = (string)($workflow['id'] ?? '');
-		$base = rtrim($this->config->getValueString(Application::APP_ID, 'n8n_url', ''), '/');
-		$tags = [];
-		foreach ($workflow['tags'] ?? [] as $t) {
-			if (is_array($t) && isset($t['name'])) {
-				$tags[] = (string)$t['name'];
-			}
-		}
-		$payload = [
-			'$schema' => 'n8n.reference/v1',
-			'id' => $id,
-			'name' => (string)($workflow['name'] ?? $id),
-			'url' => $base === '' ? null : $base . '/workflow/' . $id,
-			'tags' => $tags,
-		];
-		return json_encode($payload, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
-	}
-
-	/**
-	 * Full workflow JSON for sync mode, verbatim (so a later writeback is a simple PUT
-	 * of the file contents). Mirrors {@see SyncService::encodeSync}.
-	 *
-	 * @param array<string,mixed> $workflow
-	 */
-	private function encodeSync(array $workflow): string {
-		return json_encode($workflow, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE);
 	}
 }
