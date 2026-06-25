@@ -189,9 +189,8 @@ final class SyncServiceTest extends TestCase {
 		});
 
 		// n8n still returns only the "keep" workflow under the tag.
-		$this->n8n->method('listWorkflows')->willReturn([
-			'data' => [['id' => 'wf-keep', 'name' => 'Keep', 'versionId' => 'v1']],
-			'nextCursor' => null,
+		$this->n8n->method('eachWorkflow')->willReturn([
+			['id' => 'wf-keep', 'name' => 'Keep', 'versionId' => 'v1'],
 		]);
 
 		$res = $this->service->pullOne($this->mapping(Mapping::MODE_SYNC, $mapId));
@@ -212,9 +211,8 @@ final class SyncServiceTest extends TestCase {
 		$this->storage->method('isAvailable')->willReturn(true);
 		$this->storage->method('ensureFolder')->willReturn($folder);
 
-		$this->n8n->method('listWorkflows')->willReturn([
-			'data' => [['id' => 'wf-x', 'name' => 'X', 'tags' => [['id' => 'i', 'name' => OwnershipTags::TAG_IGNORE]]]],
-			'nextCursor' => null,
+		$this->n8n->method('eachWorkflow')->willReturn([
+			['id' => 'wf-x', 'name' => 'X', 'tags' => [['id' => 'i', 'name' => OwnershipTags::TAG_IGNORE]]],
 		]);
 
 		$res = $this->service->pullOne($this->mapping(Mapping::MODE_SYNC));
@@ -270,7 +268,7 @@ final class SyncServiceTest extends TestCase {
 				default => null,
 			};
 		});
-		$this->n8n->method('listWorkflows')->willReturn(['data' => [], 'nextCursor' => null]);
+		$this->n8n->method('eachWorkflow')->willReturn([]);
 
 		$res = $this->service->pullOne($this->mapping(Mapping::MODE_SYNC, 'map-alpha'));
 

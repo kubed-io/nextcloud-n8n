@@ -278,9 +278,16 @@ Three distinct problems, three from-scratch fixes:
    (`MimeRestampListener`) + pull (`fixupFilecacheMimetype`) paths.
 3. **The duplication is a symptom.** The `'n8n.json'` literal and the restamp call live in 3–4
    places. → One `WorkflowMimetype` service owns the constant and the (now single-row) restamp.
-4. **The root cause is the compound `.n8n.json` extension** — NC's detector only inspects the last
-   segment, which is why all of this exists. **Design decision for Kelly:** keep `.n8n.json` (most
-   readable, costs the hack) vs. a single-segment scheme. Probably keep — but name it, don't inherit it.
+4. **The compound `.n8n.json` extension is the root cause of the mimetype work — and it is a
+   *deliberate, locked* choice, not an accident to refactor away.** NC's detector only inspects the
+   last extension segment, which is what forces the `mimetypemapping`/`mimetypealiases` registration.
+   The shape earns its keep: the file *is* real JSON (`.json`), so **outside** Nextcloud — a desktop
+   sync, a download — the OS opens it in a JSON editor with zero extra setup. The `.n8n.` segment is
+   the hook NC keys the custom mimetype / icon / file-actions off **inside** the UI. The alternatives
+   both lose: plain **`.json`** → no custom icon/actions/mimetype (it's just another JSON file); bare
+   **`.n8n`** → off-Nextcloud the OS has no handler for it and *nothing opens it*, when it should just
+   open as JSON. So R4 is "**isolate and make the hack reversible**," never "drop the extension."
+   (Locked — see AGENTS.md non-negotiables.)
 
 - **Win:** ticks a real store-rejection box (uninstall), removes a hot-path full-table UPDATE, and
   contains the one piece of the app that reaches outside its own sandbox.
@@ -361,11 +368,22 @@ One slice per PR; integration green is the gate, since these touch the load-bear
     caught it as `UndefinedVariable` before it ever ran.** When you collapse a guard ladder, grep the
     rest of the method for the variable you just stopped binding; don't trust the eyeball. Static
     analysis is the safety net for the net.
-- **PR #42 — R3 (N8nWorkflowBody).** In flight. The duplication was worse than Round 1 logged: not
+- **PR #42 — R3 (N8nWorkflowBody).** Merged. The duplication was worse than Round 1 logged: not
   two copies but **four** — `encodeReference`/`encodeSync` were *verbatim* twins in `SyncService`
   **and** `ModeChangeService`, a detail Round 1 missed and only a full re-read surfaced. The codec is
   pure + unit-tested, closing the C2 gap (`CreateService`/`PushService` body logic had zero unit
   coverage before).
+  - **Operational lesson (not a code one):** between merges the Bash shell's cwd silently snapped back
+    to `/projects/cluster`, and a bare `git commit && push` ran against the **wrong repo** — committing
+    unrelated cluster WIP under an n8n message and pushing it. Reversed with `reset --mixed` +
+    `push --force-with-lease`. **Use `git -C <repo>` for every git op across sibling repos; never trust
+    the ambient cwd.**
+- **PR #43 — R6 + R7.** In flight. R6: `MappingService::list()` was reading + JSON-decoding +
+  *migrating* + sometimes **re-writing** AppConfig on *every* call, and the lifecycle listeners call
+  `resolveForPath` several times per event — so one file event meant several decode+migrate passes.
+  Now: a request-scoped cache, and the legacy rewrite lives in a `MigrateMappings` repair step (runs
+  once on upgrade), so a read is just a read. R7: fixed the `Mapping` docblock still claiming a
+  per-file mode override (killed in §15.3) and swept `Ch2 §14`→`Ch3 §14` across `lib/`.
 
 > *The from-scratch lens keeps paying out: every round we open the floorboards we find one more copy
 > of the same plank. The point of Phase B isn't to admire the house — it's to make the next change a
@@ -398,11 +416,17 @@ gloves-off *from-scratch* pass (the **Round 2** section above), bigger and risk-
   `.n8n.json`-literal miss in `NodeWrittenListener`.
 - ◑ **R3** `N8nWorkflowBody` codec → all four body-shaping copies (A1 + the `encode*` twins) in one
   unit-tested class (`toCreateBody`/`toUpdateBody`/`encodeReference`/`encodeSync`). **In flight (PR #42).**
-- ☐ **R6** mapping memoization + move migration out of the read path.
-- ☐ **R7** remaining carryover DRY (A4/A5/A6) + comment hygiene (`Mapping` stale override docblock,
-  `Ch2 §14`→`Ch3 §14` in `lib/`).
-- ☐ **R4** mimetype: uninstall-revert repair-step + single-row restamp (store + perf).
-- ☐ **R5** SSRF / `allow_local_address`: document in `SECURITY.md` (toggle only if the store asks).
+- ◑ **R6** mapping memoization (request-scoped cache) + legacy migration moved to a `MigrateMappings`
+  repair step — `list()` is now a pure, cached read. **In flight (PR #43, with R7).**
+- ◑ **R7** comment hygiene — the stale `Mapping` per-file-override docblock fixed; `Ch2 §14`→`Ch3 §14`
+  across `lib/`. (A4/A5/A6 carryover DRY still ☐.) **In flight (PR #43).**
+- ☐ **R4** mimetype: uninstall-revert repair-step + single-row restamp (store + perf). *(next; the
+  uninstall-revert needs live-pod verification — give it its own focus.)*
+- ◑ **R5** SSRF / `allow_local_address`: documented in `SECURITY.md` ("Network egress and local
+  addresses") + an N8nClient pointer. **In flight (PR #43).** (No toggle yet — opt-out only if the
+  store asks.)
+- ☐ **A4 (carryover)** — ◑ **done**: one bounded cursor-walk in `N8nClient` (`paginate` +
+  `eachWorkflow`) replaces the workflows/tags loop duplication (PR #43).
 - ☐ **R1** event coordinator — **last, incremental, behind the bigger net**, only if still worth it.
 - ☐ **B2/B4/B5** Settings naming audit, `dispatch()` rename; B5 (`link`⇄`reference`) gets a written
   *defer* decision.

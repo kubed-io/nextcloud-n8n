@@ -21,7 +21,7 @@ use OCP\Files\Events\Node\NodeRenamedEvent;
 use Psr\Log\LoggerInterface;
 
 /**
- * Post-move half of the motion lifecycle (saga Ch2 §14.2). Runs on
+ * Post-move half of the motion lifecycle (saga Ch3 §14.2). Runs on
  * {@see NodeRenamedEvent} *after* a move {@see MoveGuardListener} let through,
  * and applies the n8n-side consequence via {@see MotionService}.
  *

@@ -45,6 +45,9 @@ use Psr\Log\LoggerInterface;
  * to stay small while the contract solidifies.
  */
 final class N8nClient {
+	/** Hard page cap so one paginated read is bounded (n8n maxes at 250/page; 250×20 ≫ realistic). */
+	private const MAX_PAGES = 20;
+
 	public function __construct(
 		private IAppConfig $config,
 		private ICrypto $crypto,
@@ -212,26 +215,61 @@ final class N8nClient {
 	 */
 	public function listTags(): array {
 		$out = [];
-		$cursor = null;
-		// MAX_PAGES guard mirrors {@see SyncService::iterateWorkflows} — bounded
-		// to keep one call cheap; 250 × 20 = 5000 tags is way past realistic.
-		for ($page = 0; $page < 20; $page++) {
-			$query = ['limit' => 250];
-			if ($cursor !== null && $cursor !== '') {
-				$query['cursor'] = $cursor;
+		foreach ($this->paginate('/api/v1/tags') as $row) {
+			if (isset($row['id'], $row['name'])) {
+				$out[] = ['id' => (string)$row['id'], 'name' => (string)$row['name']];
 			}
-			$batch = $this->decode($this->request('GET', '/api/v1/tags', $query));
+		}
+		return $out;
+	}
+
+	/**
+	 * Every workflow carrying **all** of $tags, across every page (the pull
+	 * reconciler's source). Yields the raw decoded workflow rows that carry an `id`.
+	 *
+	 * @param list<string> $tags
+	 * @return iterable<int, array<string,mixed>>
+	 */
+	public function eachWorkflow(array $tags): iterable {
+		$query = $tags === [] ? [] : ['tags' => implode(',', $tags)];
+		foreach ($this->paginate('/api/v1/workflows', $query) as $row) {
+			if (isset($row['id'])) {
+				yield $row;
+			}
+		}
+	}
+
+	/**
+	 * Walk every page of a cursor-paginated n8n list endpoint (`/workflows`,
+	 * `/tags`, …), yielding each element of `data` that decodes to an array.
+	 * Manages `limit`/`cursor`; bounded by {@see MAX_PAGES} against a buggy
+	 * self-referential cursor.
+	 *
+	 * @param array<string,mixed> $query extra query params (limit/cursor are added here)
+	 * @return iterable<int, array<string,mixed>>
+	 */
+	private function paginate(string $path, array $query = []): iterable {
+		$cursor = null;
+		for ($page = 0; $page < self::MAX_PAGES; $page++) {
+			$pageQuery = $query + ['limit' => 250];
+			if ($cursor !== null && $cursor !== '') {
+				$pageQuery['cursor'] = $cursor;
+			}
+			$batch = $this->decode($this->request('GET', $path, $pageQuery));
 			foreach (($batch['data'] ?? []) as $row) {
-				if (is_array($row) && isset($row['id'], $row['name'])) {
-					$out[] = ['id' => (string)$row['id'], 'name' => (string)$row['name']];
+				if (is_array($row)) {
+					yield $row;
 				}
 			}
 			$cursor = $batch['nextCursor'] ?? null;
 			if (!is_string($cursor) || $cursor === '') {
-				break;
+				return;
 			}
 		}
-		return $out;
+		$this->logger->warning('n8n pagination hit MAX_PAGES guard', [
+			'app' => Application::APP_ID,
+			'path' => $path,
+		]);
 	}
 
 	/**
@@ -322,7 +360,9 @@ final class N8nClient {
 	/**
 	 * Single chokepoint for every HTTP call. Reads + decrypts the API key,
 	 * applies the standard headers, and sets `allow_local_address` so the
-	 * homelab's in-cluster URLs work the same way as public ones.
+	 * homelab's in-cluster URLs work the same way as public ones. This opts out
+	 * of NC's default SSRF guard on purpose — see SECURITY.md "Network egress and
+	 * local addresses" for the trade-off (admin-trust boundary, single n8n target).
 	 *
 	 * Throws \RuntimeException with a friendly message for the cases we know
 	 * how to label (no URL, no key, decrypt fail, local-address blocked) and

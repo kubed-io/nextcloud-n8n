@@ -24,10 +24,12 @@ use JsonSerializable;
  * Folder is shared with; the plugin additionally grants itself write access via
  * a dedicated actor group ({@see TeamFolderService::ACTOR_GROUP}).
  *
- * Per-workflow tags in n8n can override the mode at the file level (saga Ch2 §14
- * reserved tags); this object only carries the folder-level default.
+ * A mapping's mode is authoritative for every workflow it pulls — there is **no**
+ * per-workflow or per-file `sync`↔`link` override (that toggle was removed in saga
+ * §15.3). The only per-workflow exception is the `n8n:ignore` exclude tag, read at
+ * pull time (saga §14.8); this object carries the folder-level mode.
  *
- * Mode model (saga Ch2 §14): a mapping's mode is exactly **`sync`** or **`link`**.
+ * Mode model (saga Ch3 §14): a mapping's mode is exactly **`sync`** or **`link`**.
  * `writeback` is gone (the old `sync + two-way` is now just `sync`); `backup`
  * (old `sync + readonly`) is dropped and migrates to `sync`; the old `reference`
  * is renamed to `link`. {@see fromArray()} reads all of those legacy shapes and
@@ -66,7 +68,7 @@ final class Mapping implements JsonSerializable {
 	 * Mapping. Throws InvalidArgumentException on any invariant violation so the
 	 * controller returns a clean 400 rather than persisting nonsense.
 	 *
-	 * Reads legacy shapes (saga Ch2 §14 migration):
+	 * Reads legacy shapes (saga Ch3 §14 migration):
 	 *  - keys `n8n_path` (tag) / `nc_path` (folder) → `n8n_tag` / `team_folder`;
 	 *  - `mode: 'reference'` → `link`;
 	 *  - `mode: 'sync'` with any (now-ignored) `writeback`, incl. the old `backup`

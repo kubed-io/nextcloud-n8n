@@ -106,10 +106,11 @@ namespace OCP\BackgroundJob {
 }
 
 namespace OCP {
-	// SyncService/MappingService read config via getValueString; declaration-only.
+	// SyncService/MappingService read + write config via get/setValueString; declaration-only.
 	if (!interface_exists(IAppConfig::class, false)) {
 		interface IAppConfig {
 			public function getValueString(string $app, string $key, string $default = '', bool $lazy = false, bool $sensitive = false): string;
+			public function setValueString(string $app, string $key, string $value, bool $lazy = false, bool $sensitive = false): bool;
 		}
 	}
 	// LinkWriteGuardPlugin resolves the acting user for its notification; both are

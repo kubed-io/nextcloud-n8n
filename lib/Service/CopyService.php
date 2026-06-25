@@ -13,7 +13,7 @@ use OCP\Files\File;
 use Psr\Log\LoggerInterface;
 
 /**
- * The copy half of the motion lifecycle (saga Ch2 §14.2 `copy.feature`). Where a
+ * The copy half of the motion lifecycle (saga Ch3 §14.2 `copy.feature`). Where a
  * MOVE is "the SAME workflow relocating" (see {@see MotionService}), a COPY is
  * ALWAYS a brand-new instance — it never inherits the original's n8n identity.
  *

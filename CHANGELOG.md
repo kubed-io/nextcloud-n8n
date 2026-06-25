@@ -24,7 +24,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Internal cleanup (no behaviour or settings change): one shared helper for the `.n8n.json` file check and one for the workflow metadata stamp, plus clearer class names (writeback → sync/push).
 - Internal: a file's n8n metadata now reads back as a typed `ManagedFile` value object, replacing the repeated array-poking guard across ~16 lifecycle sites (no behaviour change).
 - Internal: all n8n workflow body shaping (create/update request bodies + the sync/link file encodings) lives in one `N8nWorkflowBody` codec instead of four copies, so the n8n schema contract changes in one place (no behaviour change).
-- Docs: document the `occ n8n_sync:sync` command; corrected stale code comments and feature-spec references.
+- Internal: the folder-mapping list is parsed once per request, and the legacy-row rewrite moved off the read path into a proper upgrade repair step (`MigrateMappings`) — `MappingService::list()` no longer re-decodes or sometimes re-writes config on every call (no behaviour change).
+- Internal: n8n cursor pagination (workflows + tags) shares one bounded walk in `N8nClient` instead of two copies (no behaviour change).
+- Docs: document the `occ n8n_sync:sync` command; corrected stale code comments (the removed per-file mode override) and saga chapter citations.
+- Docs: SECURITY.md now documents the deliberate `allow_local_address` (SSRF) trade-off — the app opts out of Nextcloud's local-address guard so it can reach a self-hosted n8n at a private/in-cluster address (admin-trust boundary, single n8n target).
 
 ## [0.1.3] - 2026-06-25
 

@@ -52,6 +52,9 @@ Phase 0: skeleton only — installs and enables cleanly, registers nothing yet.
     </install>
     <post-migration>
       <step>OCA\N8nSync\Migration\RegisterMimetype</step>
+      <!-- Rewrites any legacy-shaped folder mappings once on upgrade. Idempotent;
+           see lib/Migration/MigrateMappings.php + MappingService::migrate(). -->
+      <step>OCA\N8nSync\Migration\MigrateMappings</step>
     </post-migration>
   </repair-steps>
 </info>

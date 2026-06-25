@@ -17,7 +17,7 @@ use Psr\Log\LoggerInterface;
 /**
  * Wraps Nextcloud's Files Metadata API for n8n workflow files.
  *
- * Keys tracked (saga Ch2 §14):
+ * Keys tracked (saga Ch3 §14):
  *
  *   n8n_id          — the workflow id from n8n. Stable across renames/moves.
  *   n8n_mode        — the file's mode: sync | link | unmapped | ignored. INDEXED.
@@ -177,7 +177,7 @@ final class WorkflowMetadata {
 
 	/**
 	 * Drop the entire managed-metadata record for a file. Used when a COPY lands
-	 * (saga Ch2 §14 `copy.feature`): a copy is ALWAYS a brand-new instance and must
+	 * (saga Ch3 §14 `copy.feature`): a copy is ALWAYS a brand-new instance and must
 	 * never inherit the original's `n8n_id` / mode / mapping, so its metadata is
 	 * wiped to a clean slate. Idempotent — safe on a file that has no record.
 	 */
