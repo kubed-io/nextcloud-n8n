@@ -16,8 +16,9 @@ use OCP\Settings\IIconSection;
 
 /**
  * Dedicated admin settings section so the form gets its own entry in the
- * sidebar instead of living under "Additional settings". Uses the built-in
- * core "workflow" category icon (no shipped asset needed).
+ * sidebar instead of living under "Additional settings". Uses our own n8n
+ * mark (the `-dark`/black variant, per NC convention — core themes it to the
+ * sidebar colour); see img/app-dark.svg.
  */
 final class AdminSection implements IIconSection {
 	public function __construct(
@@ -43,6 +44,6 @@ final class AdminSection implements IIconSection {
 
 	#[\Override]
 	public function getIcon(): string {
-		return $this->urlGenerator->imagePath('core', 'categories/workflow.svg');
+		return $this->urlGenerator->imagePath(Application::APP_ID, 'app-dark.svg');
 	}
 }
