@@ -25,6 +25,12 @@ import { loadState } from '@nextcloud/initial-state'
 import { translate as t } from '@nextcloud/l10n'
 import { emit } from '@nextcloud/event-bus'
 import { getN8nId, buildUrl, isN8nFile, getN8nMode, canOpenInN8n, canEditAsText } from './files-helpers.js'
+// Glyphs live as real SVG files under img/icons/ (the single source of truth for
+// the app's marks); Vite inlines them at build time via ?raw, so nothing is
+// hand-pasted here. The n8n-branded entries ("Open in n8n", "New → n8n workflow")
+// use the actual n8n node-graph mark; "Open with text editor" uses a pencil.
+import n8nMarkIcon from '../img/icons/n8n.svg?raw'
+import textIcon from '../img/icons/text.svg?raw'
 
 const APP_ID = 'n8n_sync'
 
@@ -152,12 +158,7 @@ async function openInText(node) {
 registerFileAction({
   id: 'n8n_sync.open',
   displayName: () => t(APP_ID, 'Open in n8n'),
-  iconSvgInline: () => `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-  <circle cx="7" cy="12" r="3"/>
-  <circle cx="17" cy="12" r="3"/>
-  <rect x="9" y="11" width="6" height="2"/>
-</svg>`,
+  iconSvgInline: () => n8nMarkIcon,
 
   // Offered for sync/link (a live workflow to open); HIDDEN for unmapped/ignored
   // (archived in n8n — nothing live to jump to). The opener set follows the file's
@@ -191,10 +192,7 @@ registerFileAction({
 registerFileAction({
   id: 'n8n_sync.edit',
   displayName: () => t(APP_ID, 'Open with text editor'),
-  iconSvgInline: () => `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-  <path d="M3 17.25V21h3.75L17.81 9.94l-3.75-3.75L3 17.25zM20.71 7.04a1 1 0 0 0 0-1.41l-2.34-2.34a1 1 0 0 0-1.41 0l-1.83 1.83 3.75 3.75 1.83-1.83z"/>
-</svg>`,
+  iconSvgInline: () => textIcon,
   // Offered for any n8n file that holds editable JSON (sync/unmapped/ignored, and
   // the permissive loading case); hidden for `link` (a pointer — nothing to edit).
   // Don't gate on window.OCA.Text here — it can be defined a touch later than our
@@ -227,12 +225,7 @@ addNewFileMenuEntry({
   displayName: t(APP_ID, 'n8n workflow'),
   category: NewMenuEntryCategory.CreateNew,
   order: 20,
-  iconSvgInline: `
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
-  <circle cx="7" cy="12" r="3"/>
-  <circle cx="17" cy="12" r="3"/>
-  <rect x="9" y="11" width="6" height="2"/>
-</svg>`,
+  iconSvgInline: n8nMarkIcon,
   async handler(context, content) {
     const names = (content || []).map((n) => n.basename)
     const name = getUniqueName(t(APP_ID, 'New workflow') + '.n8n.json', names)

@@ -1,0 +1,10 @@
+<!--
+  SPDX-FileCopyrightText: 2026 Kelly Ferrone
+  SPDX-License-Identifier: AGPL-3.0-or-later
+
+  Sync (circular arrows) action on a mapping card. currentColor (CSS tints it).
+  Injected into the mappings panel from this folder.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+  <path d="M12 6V3L8 7l4 4V8c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l1.46 1.46A6.94 6.94 0 0 0 19 13c0-3.87-3.13-7-7-7zm0 12c-2.76 0-5-2.24-5-5 0-.65.13-1.26.36-1.83L5.9 9.71A6.94 6.94 0 0 0 5 13c0 3.87 3.13 7 7 7v3l4-4-4-4z"/>
+</svg>

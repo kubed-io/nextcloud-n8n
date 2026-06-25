@@ -1,0 +1,10 @@
+<!--
+  SPDX-FileCopyrightText: 2026 Kelly Ferrone
+  SPDX-License-Identifier: AGPL-3.0-or-later
+
+  Save (checkmark) action on a mapping card. currentColor (CSS tints the button).
+  Injected into the mappings panel from this folder.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor">
+  <path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/>
+</svg>

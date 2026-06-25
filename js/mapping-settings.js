@@ -14,12 +14,24 @@
 
 	var APP_URL_BASE = '/apps/n8n_sync/mappings';
 
+	// Card glyphs (info / save / sync / delete) are read from the root element's
+	// data-icons attribute, which the server fills from img/icons/ — the same SVG
+	// folder the Files-app bundle imports. This unbundled script has no build step
+	// (see vite.config.js), so injection is how it shares the one icon source.
+	var ICONS = {};
+
 	function init() {
 		var root = document.getElementById('n8n-sync-mappings');
 		if (!root || root.dataset.bound === '1') {
 			return;
 		}
 		root.dataset.bound = '1';
+
+		try {
+			ICONS = JSON.parse(root.dataset.icons || '{}');
+		} catch {
+			ICONS = {};
+		}
 
 		var list = root.querySelector('.n8n-sync-mappings__list');
 		var addBtn = document.getElementById('n8n-sync-mappings-add');
@@ -162,7 +174,7 @@
 	function info(tip) {
 		var e = escapeHtml(tip);
 		return ' <span class="n8n-sync-info" tabindex="0" role="note" aria-label="' + e + '" data-tip="' + e + '">'
-			+ '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg></span>';
+			+ (ICONS.info || '') + '</span>';
 	}
 
 	function buildEmptyCard() {
@@ -191,11 +203,11 @@
 			+     '<div class="js-groups n8n-sync-groups">' + groupBoxes + '</div></div>'
 			+   '<div class="n8n-sync-mappings__actions">'
 			+   '<button type="button" class="button js-save" title="' + t('n8n_sync', 'Save') + '" aria-label="' + t('n8n_sync', 'Save') + '">'
-			+     '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg></button>'
+			+     (ICONS.save || '') + '</button>'
 			+   '<button type="button" class="button js-sync" title="' + t('n8n_sync', 'Sync') + '" aria-label="' + t('n8n_sync', 'Sync') + '">'
-			+     '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 6V3L8 7l4 4V8c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l1.46 1.46A6.94 6.94 0 0 0 19 13c0-3.87-3.13-7-7-7zm0 12c-2.76 0-5-2.24-5-5 0-.65.13-1.26.36-1.83L5.9 9.71A6.94 6.94 0 0 0 5 13c0 3.87 3.13 7 7 7v3l4-4-4-4z"/></svg></button>'
+			+     (ICONS.sync || '') + '</button>'
 			+   '<button type="button" class="button js-delete" title="' + t('n8n_sync', 'Delete') + '" aria-label="' + t('n8n_sync', 'Delete') + '">'
-			+     '<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg></button>'
+			+     (ICONS.delete || '') + '</button>'
 			+     '<span class="js-card-status"></span>'
 			+   '</div>'
 			+ '</div>';
