@@ -162,4 +162,46 @@ final class MappingServiceTest extends TestCase {
 		self::assertNotNull($resolved);
 		self::assertSame('inner', $resolved->id);
 	}
+
+	// ── memoisation + migration (R6) ─────────────────────────────────────────────
+
+	public function testListReadsTheConfigOnceAndCachesForTheRequest(): void {
+		$config = $this->createMock(IAppConfig::class);
+		$config->expects(self::once())  // memoised: the several list()/resolveForPath calls read once
+			->method('getValueString')
+			->willReturn('[{"id":"m1","n8n_tag":"a","team_folder":"a","mode":"sync"}]');
+
+		$service = new MappingService($config);
+		$service->list();
+		$service->resolveForPath('/admin/files/a/wf.n8n.json');
+		self::assertCount(1, $service->list());
+	}
+
+	public function testListNeverWritesEvenForLegacyRows(): void {
+		// Migration is no longer on the read path: reading legacy data parses it but
+		// must not persist anything (that's MigrateMappings' job, on upgrade).
+		$config = $this->createMock(IAppConfig::class);
+		$config->method('getValueString')->willReturn('[{"n8n_path":"a","nc_path":"a","mode":"reference"}]');
+		$config->expects(self::never())->method('setValueString');
+
+		self::assertCount(1, (new MappingService($config))->list());
+	}
+
+	public function testMigrateRewritesLegacyRowsAndReportsChange(): void {
+		$config = $this->createMock(IAppConfig::class);
+		$config->method('getValueString')->willReturn('[{"id":"m1","n8n_tag":"a","team_folder":"a","mode":"reference"}]');
+		$config->expects(self::once())
+			->method('setValueString')
+			->with(self::anything(), 'mappings', self::stringContains('"mode":"link"'));
+
+		self::assertTrue((new MappingService($config))->migrate());
+	}
+
+	public function testMigrateIsANoOpOnACleanStore(): void {
+		$config = $this->createMock(IAppConfig::class);
+		$config->method('getValueString')->willReturn('[{"id":"m1","n8n_tag":"a","team_folder":"a","mode":"sync"}]');
+		$config->expects(self::never())->method('setValueString');
+
+		self::assertFalse((new MappingService($config))->migrate());
+	}
 }

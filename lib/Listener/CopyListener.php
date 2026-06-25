@@ -20,7 +20,7 @@ use OCP\Files\File;
 use Psr\Log\LoggerInterface;
 
 /**
- * Copy half of the motion lifecycle (saga Ch2 §14.2 `copy.feature`). Runs on
+ * Copy half of the motion lifecycle (saga Ch3 §14.2 `copy.feature`). Runs on
  * {@see NodeCopiedEvent} — the event Nextcloud fires for a copy, as opposed to the
  * {@see \OCP\Files\Events\Node\NodeRenamedEvent} it fires for a move. That split at
  * the event layer is exactly what lets us treat the two oppositely: a move keeps the

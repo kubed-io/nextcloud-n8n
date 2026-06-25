@@ -16,7 +16,7 @@ use OCP\Files\Folder;
 use Psr\Log\LoggerInterface;
 
 /**
- * The motion lifecycle (saga Ch2 §14.2) — what happens when a *managed* workflow
+ * The motion lifecycle (saga Ch3 §14.2) — what happens when a *managed* workflow
  * file (one that already carries an `n8n_id`) is moved between folders. A MOVE is
  * the SAME workflow relocating, never a duplicate; the stable link is the workflow
  * id, so a move OUT then back IN is an **archive** then an **unarchive**, not a

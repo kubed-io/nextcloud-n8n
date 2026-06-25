@@ -20,10 +20,22 @@ use OCP\IAppConfig;
  * (`occ config:app:set n8n_sync mappings '[...json...]'`).
  *
  * Each mapping binds an n8n tag to a Team Folder shared with NC groups; see
- * {@see Mapping}. Legacy rows (old `n8n_path`/`nc_path` keys, `mode: 'link'`)
- * are migrated transparently on read and re-persisted once.
+ * {@see Mapping}. {@see Mapping::fromArray} still *reads* legacy rows (old
+ * `n8n_path`/`nc_path` keys, `mode: 'reference'`, a stray `writeback`) so a list
+ * is always parseable; the one-shot rewrite that re-persists them in the current
+ * shape lives in {@see migrate()}, run from the {@see \OCA\N8nSync\Migration\MigrateMappings}
+ * repair step — never on a read. The parsed list is memoised for the request, so
+ * the several listeners that call {@see resolveForPath} each event don't re-decode
+ * the config every time.
  */
 final class MappingService {
+	/**
+	 * Request-scoped cache of the parsed list (the service is a per-request singleton).
+	 *
+	 * @var list<Mapping>|null
+	 */
+	private ?array $cache = null;
+
 	public function __construct(
 		private IAppConfig $config,
 	) {
@@ -31,10 +43,42 @@ final class MappingService {
 
 	/** @return list<Mapping> */
 	public function list(): array {
-		$raw = $this->config->getValueString(Application::APP_ID, 'mappings', '[]');
-		$decoded = json_decode($raw, true);
+		if ($this->cache !== null) {
+			return $this->cache;
+		}
+		$decoded = json_decode($this->config->getValueString(Application::APP_ID, 'mappings', '[]'), true);
 		if (!is_array($decoded)) {
-			return [];
+			return $this->cache = [];
+		}
+		$result = [];
+		foreach ($decoded as $entry) {
+			if (!is_array($entry)) {
+				continue;
+			}
+			try {
+				// fromArray reads both current and legacy shapes; a malformed row is
+				// skipped rather than breaking the admin page.
+				$result[] = Mapping::fromArray($entry);
+			} catch (\InvalidArgumentException) {
+				continue;
+			}
+		}
+		return $this->cache = $result;
+	}
+
+	/**
+	 * One-shot: rewrite any legacy-shaped mapping rows into the current format and
+	 * re-persist. Returns true when anything was rewritten (so the repair step can
+	 * log it). Idempotent — a no-op on an already-clean store. This is the *only*
+	 * place a read of the mappings config may also write it.
+	 *
+	 * Legacy markers (saga Ch3 §14): the old `n8n_path`/`nc_path` keys, the old
+	 * `reference` link mode, and the removed `writeback` field.
+	 */
+	public function migrate(): bool {
+		$decoded = json_decode($this->config->getValueString(Application::APP_ID, 'mappings', '[]'), true);
+		if (!is_array($decoded)) {
+			return false;
 		}
 		$result = [];
 		$legacySeen = false;
@@ -42,32 +86,28 @@ final class MappingService {
 			if (!is_array($entry)) {
 				continue;
 			}
-			// One-shot migration markers (saga Ch2 §14): the old folder-mapping
-			// shape used `n8n_path` + `nc_path`; the old link mode was `reference`;
-			// and every old row carried a `writeback` field that no longer exists.
-			// Mapping::fromArray rewrites all of these — we just remember whether we
-			// saw any so we can re-persist the cleaned list once.
-			if (array_key_exists('n8n_path', $entry) && !array_key_exists('n8n_tag', $entry)) {
-				$legacySeen = true;
-			}
-			if (array_key_exists('nc_path', $entry) && !array_key_exists('team_folder', $entry)) {
-				$legacySeen = true;
-			}
-			if (($entry['mode'] ?? null) === 'reference' || array_key_exists('writeback', $entry)) {
+			if (self::isLegacyRow($entry)) {
 				$legacySeen = true;
 			}
 			try {
 				$result[] = Mapping::fromArray($entry);
 			} catch (\InvalidArgumentException) {
-				// Skip malformed rows rather than break the admin page — they
-				// just disappear on next save.
 				continue;
 			}
 		}
-		if ($legacySeen && $result !== []) {
-			$this->persist($result);
+		if (!$legacySeen || $result === []) {
+			return false;
 		}
-		return $result;
+		$this->persist($result);
+		return true;
+	}
+
+	/** @param array<string,mixed> $entry */
+	private static function isLegacyRow(array $entry): bool {
+		return (array_key_exists('n8n_path', $entry) && !array_key_exists('n8n_tag', $entry))
+			|| (array_key_exists('nc_path', $entry) && !array_key_exists('team_folder', $entry))
+			|| ($entry['mode'] ?? null) === 'reference'
+			|| array_key_exists('writeback', $entry);
 	}
 
 	/** Look up a single mapping by its stable id (used to resolve a file's `n8n_mapping`). */
@@ -199,5 +239,7 @@ final class MappingService {
 			JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES,
 		);
 		$this->config->setValueString(Application::APP_ID, 'mappings', $json);
+		// Keep the request cache in step with what we just stored.
+		$this->cache = array_values($mappings);
 	}
 }

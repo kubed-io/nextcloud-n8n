@@ -17,7 +17,7 @@ use Psr\Log\LoggerInterface;
  * Three-step delete/restore rule table for §17.7. Listeners delegate the
  * effective-state branching to this one place so it's trivial to audit.
  *
- * Lifecycle (saga Ch2 §14 — mode is `sync` | `link`):
+ * Lifecycle (saga Ch3 §14 — mode is `sync` | `link`):
  *   - **softDelete** — user moved the file to NC trash.
  *       sync → archive workflow (`POST /workflows/{id}/archive`).
  *       link → strip the mapping tag (additive untag).

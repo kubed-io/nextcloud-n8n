@@ -69,7 +69,7 @@ final class OwnershipTags {
 
 	/**
 	 * Pick the tag for a mode. Throws on a mode that has no file tag (`ignored` is
-	 * saga Ch2 §14 Phase 2, not yet produced; an unknown mode is a programming error).
+	 * saga Ch3 §14 Phase 2, not yet produced; an unknown mode is a programming error).
 	 */
 	public static function tagFor(string $mode): string {
 		return match ($mode) {
@@ -108,7 +108,7 @@ final class OwnershipTags {
 
 	/**
 	 * Strip every ownership tag this app manages (current + legacy) from a file.
-	 * Used when a COPY lands (saga Ch2 §14 `copy.feature`): the copy must start with
+	 * Used when a COPY lands (saga Ch3 §14 `copy.feature`): the copy must start with
 	 * no n8n identity, so it carries none of our pills. Idempotent.
 	 */
 	public function clear(int $fileId): void {
