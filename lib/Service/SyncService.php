@@ -533,7 +533,6 @@ final class SyncService {
 		$this->tags->apply($file->getId(), $effectiveMode);
 	}
 
-
 	/**
 	 * Optional purge when a mapping is removed (spec UC-4): delete only the files
 	 * this integration created — those carrying `n8n_id` metadata — in the
