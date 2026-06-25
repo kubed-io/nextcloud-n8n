@@ -70,6 +70,7 @@ final class ReconcileNameJob extends QueuedJob {
 			if (!$managed->isSync()) {
 				return;
 			}
+			$id = $managed->workflowId;
 
 			$stem = FilenameCodec::parse($node->getName())['name'] ?? '';
 			$wf = json_decode($node->getContent(), false);
