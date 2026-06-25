@@ -11,7 +11,6 @@ namespace OCA\N8nSync\Listener;
 
 use OCA\N8nSync\BackgroundJob\ReconcileNameJob;
 use OCA\N8nSync\Service\FilenameCodec;
-use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\BackgroundJob\IJobList;
@@ -63,15 +62,11 @@ final class NameSyncListener implements IEventListener {
 			return;
 		}
 
-		$meta = $this->metadata->read($node->getId());
-		if ($meta === null) {
-			return;
-		}
-		$id = $meta[WorkflowMetadata::KEY_ID] ?? null;
-		if (!is_string($id) || $id === '') {
+		$managed = $this->metadata->read($node->getId());
+		if (!$managed?->isManaged()) {
 			return; // not managed yet — create-on-land owns the first write
 		}
-		if (($meta[WorkflowMetadata::KEY_MODE] ?? '') !== Mapping::MODE_SYNC) {
+		if (!$managed->isSync()) {
 			return; // only sync pushes back + name-syncs; link is n8n-driven
 		}
 

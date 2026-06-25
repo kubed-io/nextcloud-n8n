@@ -87,9 +87,8 @@ final class CreateInN8nListener implements IEventListener {
 			return; // outside any mapping — let the user keep a "free" .n8n.json
 		}
 
-		$meta = $this->metadata->read($node->getId());
-		$existingId = $meta[WorkflowMetadata::KEY_ID] ?? null;
-		if (is_string($existingId) && $existingId !== '') {
+		$managed = $this->metadata->read($node->getId());
+		if ($managed?->isManaged()) {
 			return; // already an n8n-tracked file — writeback owns it
 		}
 

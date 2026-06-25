@@ -11,7 +11,7 @@ namespace OCA\N8nSync\Listener;
 
 use OCA\N8nSync\AppInfo\Application;
 use OCA\N8nSync\BackgroundJob\PushWorkflowJob;
-use OCA\N8nSync\Service\Mapping;
+use OCA\N8nSync\Service\FilenameCodec;
 use OCA\N8nSync\Service\PushService;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\SyncNotifier;
@@ -20,7 +20,6 @@ use OCP\BackgroundJob\IJobList;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
 use OCP\Files\Events\Node\NodeWrittenEvent;
-use OCP\Files\File;
 use OCP\Files\IMimeTypeLoader;
 use OCP\IAppConfig;
 use OCP\IUserSession;
@@ -64,7 +63,7 @@ final class NodeWrittenListener implements IEventListener {
 			return;
 		}
 		$node = $event->getNode();
-		if (!$node instanceof File || !str_ends_with($node->getName(), '.n8n.json')) {
+		if (!FilenameCodec::isWorkflowFile($node)) {
 			return;
 		}
 
@@ -86,15 +85,11 @@ final class NodeWrittenListener implements IEventListener {
 			return;
 		}
 
-		$meta = $this->metadata->read($node->getId());
-		if ($meta === null) {
-			return;
-		}
-		$id = $meta[WorkflowMetadata::KEY_ID] ?? null;
-		if (!is_string($id) || $id === '') {
+		$managed = $this->metadata->read($node->getId());
+		if (!$managed?->isManaged()) {
 			return; // not (yet) one of ours — new-file create is a future step
 		}
-		if (($meta[WorkflowMetadata::KEY_MODE] ?? '') !== Mapping::MODE_SYNC) {
+		if (!$managed->isSync()) {
 			return; // only sync pushes; link never does
 		}
 
@@ -103,7 +98,7 @@ final class NodeWrittenListener implements IEventListener {
 		} catch (\Throwable) {
 			return;
 		}
-		if (($meta[WorkflowMetadata::KEY_SYNCED_HASH] ?? null) === sha1($content)) {
+		if ($managed->syncedHash === sha1($content)) {
 			return; // unchanged since last sync (or our own write) — loop guard
 		}
 

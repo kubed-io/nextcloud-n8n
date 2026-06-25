@@ -149,8 +149,8 @@ final class MotionService {
 			if (!FilenameCodec::isWorkflowName($sibling->getName())) {
 				continue; // only managed workflow files can be a duplicate
 			}
-			$meta = $this->metadata->read($sibling->getId());
-			if ($meta !== null && ($meta[WorkflowMetadata::KEY_ID] ?? null) === $id) {
+			$managed = $this->metadata->read($sibling->getId());
+			if ($managed !== null && $managed->workflowId === $id) {
 				return $sibling;
 			}
 		}

@@ -65,19 +65,15 @@ final class DeleteToN8nListener implements IEventListener {
 			return;
 		}
 
-		$meta = $this->metadata->read($node->getId());
-		if ($meta === null) {
-			return;
-		}
-		$id = $meta[WorkflowMetadata::KEY_ID] ?? null;
-		if (!is_string($id) || $id === '') {
+		$managed = $this->metadata->read($node->getId());
+		if (!$managed?->isManaged()) {
 			// Detached file — no n8n side. Let NC do its normal delete.
 			return;
 		}
-		$mode = $meta[WorkflowMetadata::KEY_MODE] ?? '';
-		$mappingId = $meta[WorkflowMetadata::KEY_MAPPING] ?? null;
-		$mapping = is_string($mappingId) && $mappingId !== ''
-			? $this->mappings->getById($mappingId)
+		$id = $managed->workflowId;
+		$mode = $managed->mode;
+		$mapping = $managed->mappingId !== ''
+			? $this->mappings->getById($managed->mappingId)
 			: null;
 
 		$isHardStep = $this->isInTrashbin($node->getPath());

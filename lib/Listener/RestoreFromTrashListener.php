@@ -59,18 +59,14 @@ final class RestoreFromTrashListener implements IEventListener {
 			return;
 		}
 
-		$meta = $this->metadata->read($target->getId());
-		if ($meta === null) {
+		$managed = $this->metadata->read($target->getId());
+		if (!$managed?->isManaged()) {
 			return;
 		}
-		$id = $meta[WorkflowMetadata::KEY_ID] ?? null;
-		if (!is_string($id) || $id === '') {
-			return;
-		}
-		$mode = $meta[WorkflowMetadata::KEY_MODE] ?? '';
-		$mappingId = $meta[WorkflowMetadata::KEY_MAPPING] ?? null;
-		$mapping = is_string($mappingId) && $mappingId !== ''
-			? $this->mappings->getById($mappingId)
+		$id = $managed->workflowId;
+		$mode = $managed->mode;
+		$mapping = $managed->mappingId !== ''
+			? $this->mappings->getById($managed->mappingId)
 			: null;
 
 		try {

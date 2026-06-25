@@ -67,11 +67,11 @@ final class ModeChangeService {
 			return;
 		}
 
-		$meta = $this->metadata->read($node->getId());
-		$id = is_array($meta) ? ($meta[WorkflowMetadata::KEY_ID] ?? null) : null;
-		if (!is_string($id) || $id === '') {
+		$managed = $this->metadata->read($node->getId());
+		if (!$managed?->isManaged()) {
 			return; // not a managed workflow file — nothing to re-mode
 		}
+		$id = $managed->workflowId;
 
 		// An UNMAPPED file (ejected from its mapping: full JSON kept on disk, workflow
 		// archived in n8n) must never be re-moded to sync/link by a stray tag. There is
@@ -81,7 +81,7 @@ final class ModeChangeService {
 		// manually-added n8n:sync/n8n:link) and leave the body untouched. Moving the file
 		// back INTO a mapping is the only supported way to revive it (MotionService::moveIn).
 		if (
-			($meta[WorkflowMetadata::KEY_MODE] ?? '') === WorkflowMetadata::MODE_UNMAPPED
+			$managed->isUnmapped()
 			&& ($target === Mapping::MODE_SYNC || $target === Mapping::MODE_LINK)
 		) {
 			$this->logger->info('n8n_sync mode-change: refused a sync/link re-mode of an unmapped file; kept it unmapped', [
@@ -94,7 +94,7 @@ final class ModeChangeService {
 			return;
 		}
 
-		if (($meta[WorkflowMetadata::KEY_MODE] ?? '') === $target) {
+		if ($managed->mode === $target) {
 			// Already in the target mode. For sync/link re-assert the single correct
 			// tag (resolves a manually-added duplicate); `ignored` has no pill to
 			// re-assert, so just stop.
@@ -150,14 +150,14 @@ final class ModeChangeService {
 	 * falls back to `sync` — its full JSON is already on disk, so two-way simply resumes.
 	 */
 	public function unignore(File $node): void {
-		$meta = $this->metadata->read($node->getId());
-		$id = is_array($meta) ? ($meta[WorkflowMetadata::KEY_ID] ?? null) : null;
-		if (!is_string($id) || $id === '') {
+		$managed = $this->metadata->read($node->getId());
+		if (!$managed?->isManaged()) {
 			return; // not a managed workflow file — nothing to un-ignore
 		}
-		if (($meta[WorkflowMetadata::KEY_MODE] ?? '') !== WorkflowMetadata::MODE_IGNORED) {
+		if (!$managed->isIgnored()) {
 			return; // only an actually-ignored file un-ignores
 		}
+		$id = $managed->workflowId;
 
 		// Unarchive the workflow (mirror of the ignore archive). A 404 means it was
 		// hard-deleted while ignored — there is nothing to unarchive; changeTo() then
