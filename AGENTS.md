@@ -114,6 +114,12 @@ documented in the saga:
   trigger pushes. (saga §3, lessons learned)
 - **Custom mimetype `application/n8n+json`** drives the icon and the row click.
   Don't switch to extension-only detection.
+- **The file extension is the compound `.n8n.json` — locked, don't "simplify" it.**
+  The file *is* real JSON, so the `.json` tail means that **outside** Nextcloud (desktop
+  sync, download) the OS opens it in a JSON editor with no extra setup; the `.n8n.` segment
+  is the hook NC keys the custom mimetype / icon / file-actions off **inside** the UI.
+  Plain `.json` → no custom icon/actions. Bare `.n8n` → off-Nextcloud the OS has no handler
+  and nothing opens it. Both are worse; keep `.n8n.json`. (saga Ch4 R4)
 
 ---
 

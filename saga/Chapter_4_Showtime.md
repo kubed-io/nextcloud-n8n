@@ -278,9 +278,16 @@ Three distinct problems, three from-scratch fixes:
    (`MimeRestampListener`) + pull (`fixupFilecacheMimetype`) paths.
 3. **The duplication is a symptom.** The `'n8n.json'` literal and the restamp call live in 3–4
    places. → One `WorkflowMimetype` service owns the constant and the (now single-row) restamp.
-4. **The root cause is the compound `.n8n.json` extension** — NC's detector only inspects the last
-   segment, which is why all of this exists. **Design decision for Kelly:** keep `.n8n.json` (most
-   readable, costs the hack) vs. a single-segment scheme. Probably keep — but name it, don't inherit it.
+4. **The compound `.n8n.json` extension is the root cause of the mimetype work — and it is a
+   *deliberate, locked* choice, not an accident to refactor away.** NC's detector only inspects the
+   last extension segment, which is what forces the `mimetypemapping`/`mimetypealiases` registration.
+   The shape earns its keep: the file *is* real JSON (`.json`), so **outside** Nextcloud — a desktop
+   sync, a download — the OS opens it in a JSON editor with zero extra setup. The `.n8n.` segment is
+   the hook NC keys the custom mimetype / icon / file-actions off **inside** the UI. The alternatives
+   both lose: plain **`.json`** → no custom icon/actions/mimetype (it's just another JSON file); bare
+   **`.n8n`** → off-Nextcloud the OS has no handler for it and *nothing opens it*, when it should just
+   open as JSON. So R4 is "**isolate and make the hack reversible**," never "drop the extension."
+   (Locked — see AGENTS.md non-negotiables.)
 
 - **Win:** ticks a real store-rejection box (uninstall), removes a hot-path full-table UPDATE, and
   contains the one piece of the app that reaches outside its own sandbox.
