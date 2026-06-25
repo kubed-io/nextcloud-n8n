@@ -41,6 +41,7 @@ Phase 0: skeleton only — installs and enables cleanly, registers nothing yet.
     <command>OCA\N8nSync\Command\ListMappings</command>
     <command>OCA\N8nSync\Command\RemoveMapping</command>
     <command>OCA\N8nSync\Command\Reconcile</command>
+    <command>OCA\N8nSync\Command\Purge</command>
   </commands>
   <repair-steps>
     <!--
@@ -56,5 +57,12 @@ Phase 0: skeleton only — installs and enables cleanly, registers nothing yet.
            see lib/Migration/MigrateMappings.php + MappingService::migrate(). -->
       <step>OCA\N8nSync\Migration\MigrateMappings</step>
     </post-migration>
+    <uninstall>
+      <!-- Mirror image of RegisterMimetype: reverts the core-tree mimetype/icon
+           registration so removing the app leaves Nextcloud clean (store rule).
+           Touches only the system registration — never user files/metadata/n8n.
+           See lib/Migration/UnregisterMimetype.php + uninstall.feature. -->
+      <step>OCA\N8nSync\Migration\UnregisterMimetype</step>
+    </uninstall>
   </repair-steps>
 </info>

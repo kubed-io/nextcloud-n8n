@@ -67,6 +67,15 @@ $summary = static function (array $rec) use ($l): string {
 	</div>
 
 	<p class="settings-hint n8n-sync-actions__sep">
+		<?php p($l->t('Reset the Nextcloud side. Purge removes the workflow files this app created (sync & link). n8n is never touched, and unmapped/standalone files are kept — get the rest back any time with “Sync from n8n”.')); ?>
+	</p>
+
+	<div class="n8n-sync-manual__row" data-action="purge">
+		<button type="button" class="button js-purge"><?php p($l->t('Purge Nextcloud files')); ?></button>
+		<span id="n8n-sync-purge-status" class="msg"></span>
+	</div>
+
+	<p class="settings-hint n8n-sync-actions__sep">
 		<?php p($l->t('Check that Nextcloud can reach n8n — these just test the connection, nothing is synced.')); ?>
 	</p>
 

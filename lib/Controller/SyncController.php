@@ -61,6 +61,30 @@ final class SyncController extends Controller {
 	}
 
 	/**
+	 * "Purge Nextcloud files" — delete the restorable managed files (sync/link)
+	 * this app created from every mapping folder; n8n is never touched and
+	 * unmapped/ignored/untracked files are kept ({@see SyncService::purge}). Runs
+	 * inline (local-only, no n8n calls) and returns the counts for the toast.
+	 */
+	#[AuthorizedAdminSetting(settings: SyncSettings::class)]
+	public function purge(): JSONResponse {
+		try {
+			$res = $this->sync->purge();
+		} catch (\Throwable $e) {
+			$this->logger->error('n8n_sync purge failed', ['exception' => $e]);
+			return new JSONResponse([
+				'status' => 'error',
+				'message' => $e->getMessage(),
+			], Http::STATUS_INTERNAL_SERVER_ERROR);
+		}
+		return new JSONResponse([
+			'status' => 'ok',
+			'deleted' => $res['deleted'],
+			'kept' => $res['kept'],
+		], Http::STATUS_OK);
+	}
+
+	/**
 	 * Bulk manual sync is always asynchronous (§14.2): enqueue a background job
 	 * and return immediately with 'queued' so navigating away can't kill it. The
 	 * UI polls /sync/status to watch queued → running → ok|error.
