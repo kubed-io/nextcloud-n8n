@@ -4,7 +4,7 @@
 # restore, not a delete then a create. (COPY is the opposite — always a new
 # instance; see copy.feature.)
 #
-# Model (saga Chapter 2 §14): modes are sync / link / unmapped. "unmapped" is the
+# Model (saga Chapter 3 §14): modes are sync / link / unmapped. "unmapped" is the
 # state a sync file enters when moved OUT of its mapped folder: NC keeps the full
 # JSON + the workflow id + versionId, clears the mapping, and the workflow is
 # archived in n8n. Moving it back into any mapping restores (unarchives) it.
@@ -122,7 +122,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
     And its "n8n_id" and "n8n_versionId" are unchanged
     And nothing changes in n8n
 
-  # ── decision cases (saga Chapter 2 §14.2 a–d): documented, not yet designed ─────────
+  # ── decision cases (saga Chapter 3 §14.2 a–d): documented, not yet designed ─────────
   # These need a design decision before they get concrete Then-steps:
   #   a. sync moved directly mapping→mapping (different tag): re-tag in place vs
   #      eject+reattach vs block. (Currently blocked by MoveGuardListener.)

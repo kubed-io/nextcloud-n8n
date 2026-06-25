@@ -13,10 +13,11 @@ use OCP\Settings\DeclarativeSettingsTypes;
 use OCP\Settings\IDeclarativeSettingsForm;
 
 /**
- * "Sync Settings" — the automatic-sync strategy for both directions. (Class name
- * kept as WritebackSettings to preserve its declarative registration; the user-
- * facing title is "Sync Settings".) The always-available bulk buttons live in
- * their own dedicated panel ({@see SyncSettings}); this form is config only.
+ * "Sync Settings" — the automatic-sync strategy for both directions: the NC→n8n
+ * push timing and the n8n→NC scheduled pull. (User-facing title "Sync Settings";
+ * persistence is keyed by the form id `data_sync`, not the class name.) The
+ * always-available bulk buttons live in their own dedicated panel
+ * ({@see SyncSettings}); this form is config only.
  *
  * Declarative + STORAGE_TYPE_INTERNAL → values auto-persist to appconfig under
  * each field id, read elsewhere by:
@@ -29,7 +30,7 @@ use OCP\Settings\IDeclarativeSettingsForm;
  * Same id-prefix gotcha as AdminSettings — the form id must NOT be prefixed with
  * the app id.
  */
-final class WritebackSettings implements IDeclarativeSettingsForm {
+final class AutoSyncSettings implements IDeclarativeSettingsForm {
 	#[\Override]
 	public function getSchema(): array {
 		return [

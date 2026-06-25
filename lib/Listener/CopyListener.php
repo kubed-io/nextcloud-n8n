@@ -56,7 +56,7 @@ final class CopyListener implements IEventListener {
 			return;
 		}
 		$target = $event->getTarget();
-		if (!$target instanceof File || !str_ends_with($target->getName(), FilenameCodec::EXT)) {
+		if (!FilenameCodec::isWorkflowFile($target)) {
 			return;
 		}
 

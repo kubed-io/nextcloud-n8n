@@ -15,12 +15,11 @@ use OCA\N8nSync\Service\FilenameCodec;
 use OCA\N8nSync\Service\MappingService;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\WorkflowMetadata;
-use OCA\N8nSync\Service\WritebackNotifier;
+use OCA\N8nSync\Service\SyncNotifier;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
 use OCP\Files\Events\Node\NodeRenamedEvent;
 use OCP\Files\Events\Node\NodeWrittenEvent;
-use OCP\Files\File;
 use OCP\IUserSession;
 use Psr\Log\LoggerInterface;
 
@@ -67,7 +66,7 @@ final class CreateInN8nListener implements IEventListener {
 		private WorkflowMetadata $metadata,
 		private SyncGuard $guard,
 		private IUserSession $userSession,
-		private WritebackNotifier $notifier,
+		private SyncNotifier $notifier,
 		private LoggerInterface $logger,
 	) {
 	}
@@ -79,7 +78,7 @@ final class CreateInN8nListener implements IEventListener {
 		}
 
 		$node = $this->resolveNode($event);
-		if (!$node instanceof File || !str_ends_with($node->getName(), FilenameCodec::EXT)) {
+		if (!FilenameCodec::isWorkflowFile($node)) {
 			return;
 		}
 

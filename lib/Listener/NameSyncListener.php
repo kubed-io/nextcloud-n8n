@@ -19,7 +19,6 @@ use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
 use OCP\Files\Events\Node\NodeRenamedEvent;
 use OCP\Files\Events\Node\NodeWrittenEvent;
-use OCP\Files\File;
 use OCP\Files\Node;
 use OCP\IUserSession;
 
@@ -60,7 +59,7 @@ final class NameSyncListener implements IEventListener {
 			return;
 		}
 		$node = $this->resolveNode($event);
-		if (!$node instanceof File || !str_ends_with($node->getName(), FilenameCodec::EXT)) {
+		if (!FilenameCodec::isWorkflowFile($node)) {
 			return;
 		}
 

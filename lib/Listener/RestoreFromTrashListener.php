@@ -18,7 +18,6 @@ use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
-use OCP\Files\File;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -56,7 +55,7 @@ final class RestoreFromTrashListener implements IEventListener {
 			return;
 		}
 		$target = $event->getTarget();
-		if (!$target instanceof File || !str_ends_with($target->getName(), FilenameCodec::EXT)) {
+		if (!FilenameCodec::isWorkflowFile($target)) {
 			return;
 		}
 

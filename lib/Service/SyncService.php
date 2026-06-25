@@ -341,7 +341,7 @@ final class SyncService {
 		$failed = 0;
 		$errors = [];
 		foreach ($folder->getDirectoryListing() as $node) {
-			if (!$node instanceof \OCP\Files\File || !str_ends_with($node->getName(), FilenameCodec::EXT)) {
+			if (!FilenameCodec::isWorkflowFile($node)) {
 				continue;
 			}
 			$meta = $this->metadata->read($node->getId());
@@ -442,7 +442,7 @@ final class SyncService {
 				$this->collectManaged($node, $mapping, $index, $ignoredIds);
 				continue;
 			}
-			if (!$node instanceof \OCP\Files\File || !str_ends_with($node->getName(), FilenameCodec::EXT)) {
+			if (!FilenameCodec::isWorkflowFile($node)) {
 				continue;
 			}
 			$meta = $this->metadata->read($node->getId());

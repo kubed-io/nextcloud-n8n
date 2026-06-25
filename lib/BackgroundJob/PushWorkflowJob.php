@@ -11,7 +11,7 @@ namespace OCA\N8nSync\BackgroundJob;
 
 use OCA\N8nSync\AppInfo\Application;
 use OCA\N8nSync\Service\PushService;
-use OCA\N8nSync\Service\WritebackNotifier;
+use OCA\N8nSync\Service\SyncNotifier;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\QueuedJob;
 use OCP\Files\IRootFolder;
@@ -33,7 +33,7 @@ final class PushWorkflowJob extends QueuedJob {
 		ITimeFactory $time,
 		private PushService $pushService,
 		private IRootFolder $rootFolder,
-		private WritebackNotifier $notifier,
+		private SyncNotifier $notifier,
 		private LoggerInterface $logger,
 	) {
 		parent::__construct($time);

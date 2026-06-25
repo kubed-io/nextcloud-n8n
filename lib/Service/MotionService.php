@@ -146,7 +146,7 @@ final class MotionService {
 			if (!$sibling instanceof File || $sibling->getId() === $node->getId()) {
 				continue; // skip non-files and the incoming file itself
 			}
-			if (!str_ends_with($sibling->getName(), FilenameCodec::EXT)) {
+			if (!FilenameCodec::isWorkflowName($sibling->getName())) {
 				continue; // only managed workflow files can be a duplicate
 			}
 			$meta = $this->metadata->read($sibling->getId());

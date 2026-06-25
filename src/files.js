@@ -32,7 +32,8 @@ const APP_ID = 'n8n_sync'
 // (writes to the shared _nc_files_scope.v4_0 store core's PROPFIND reads). `nc`
 // is a default namespace, so the bare prefixed name is enough.
 registerDavProperty('nc:metadata-n8n_id')
-// Also ride the mode on the listing so the toggle action knows sync vs link.
+// Also ride the mode on the listing so the openers know sync vs link (it decides
+// which action — "Open in n8n" vs "Open with text editor" — is the default click).
 registerDavProperty('nc:metadata-n8n_mode')
 
 // Base URL of the n8n instance (server-rendered initial state). Empty until the
@@ -74,7 +75,7 @@ async function resolveUrl(node) {
 // editor and it reflows JSON (drops indentation, can corrupt it). For workflow
 // JSON we want a verbatim source view, so we load/save through the built-in
 // WebDAV client into a monospace textarea. Saving fires NodeWrittenEvent → the
-// normal writeback path.
+// normal push path.
 let stylesInjected = false
 function injectStyles() {
   if (stylesInjected) return
@@ -180,9 +181,9 @@ registerFileAction({
 // "Open with text editor" — edit the raw JSON. Offered for every mode that holds
 // the full workflow on disk (sync / unmapped / ignored), and the DEFAULT click for
 // unmapped/ignored (no live workflow to open). HIDDEN for `link`: a link is only a
-// pointer, so there is nothing to edit and any change would break it — making
-// "sync" the mode you flip to in order to edit the JSON (see the toggle action),
-// which is the user-visible sync-vs-link difference.
+// pointer, so there is nothing to edit and any change would break it. To edit a
+// link's workflow you change its folder mapping to sync — the mapping's mode is the
+// single source of truth, there is no per-file toggle (saga §15.3).
 // It is also marked DEFAULT, but at a *lower* priority (order -49) than "Open in
 // n8n" (-50): for sync both are enabled and n8n wins; for unmapped/ignored
 // "Open in n8n" is disabled, so this becomes the default click; for link this

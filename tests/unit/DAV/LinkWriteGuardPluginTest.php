@@ -13,7 +13,7 @@ use OCA\DAV\Connector\Sabre\File as DavFile;
 use OCA\N8nSync\DAV\LinkWriteGuardPlugin;
 use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\WorkflowMetadata;
-use OCA\N8nSync\Service\WritebackNotifier;
+use OCA\N8nSync\Service\SyncNotifier;
 use OCP\IUser;
 use OCP\IUserSession;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -33,13 +33,13 @@ use Sabre\DAV\INode;
 #[CoversClass(LinkWriteGuardPlugin::class)]
 final class LinkWriteGuardPluginTest extends TestCase {
 	private WorkflowMetadata $metadata;
-	private WritebackNotifier $notifier;
+	private SyncNotifier $notifier;
 	private IUserSession $userSession;
 	private LinkWriteGuardPlugin $plugin;
 
 	protected function setUp(): void {
 		$this->metadata = $this->createMock(WorkflowMetadata::class);
-		$this->notifier = $this->createMock(WritebackNotifier::class);
+		$this->notifier = $this->createMock(SyncNotifier::class);
 		$this->userSession = $this->createMock(IUserSession::class);
 
 		$user = $this->createStub(IUser::class);

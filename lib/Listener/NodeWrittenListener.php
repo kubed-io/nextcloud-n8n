@@ -15,7 +15,7 @@ use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\PushService;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\WorkflowMetadata;
-use OCA\N8nSync\Service\WritebackNotifier;
+use OCA\N8nSync\Service\SyncNotifier;
 use OCP\BackgroundJob\IJobList;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
@@ -52,7 +52,7 @@ final class NodeWrittenListener implements IEventListener {
 		private WorkflowMetadata $metadata,
 		private SyncGuard $guard,
 		private IUserSession $userSession,
-		private WritebackNotifier $notifier,
+		private SyncNotifier $notifier,
 		private IMimeTypeLoader $mimeLoader,
 		private LoggerInterface $logger,
 	) {

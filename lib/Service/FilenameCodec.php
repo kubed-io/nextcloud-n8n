@@ -9,6 +9,9 @@ declare(strict_types=1);
 
 namespace OCA\N8nSync\Service;
 
+use OCP\Files\File;
+use OCP\Files\Node;
+
 /**
  * Filename codec for n8n workflow files.
  *
@@ -38,6 +41,29 @@ namespace OCA\N8nSync\Service;
 final class FilenameCodec {
 	/** Trailing extension shared by both shapes. */
 	public const EXT = '.n8n.json';
+
+	/**
+	 * True when $name is a managed n8n workflow filename (ends in {@see EXT}).
+	 * Pure string test — the single source of truth for "is this one of ours?".
+	 */
+	public static function isWorkflowName(string $name): bool {
+		return str_ends_with($name, self::EXT);
+	}
+
+	/**
+	 * True when $node is a managed n8n workflow file: a {@see File} whose name
+	 * ends in {@see EXT}. The one predicate the listeners/services share instead
+	 * of open-coding `$node instanceof File && str_ends_with(...)` everywhere.
+	 *
+	 * `@psalm-assert-if-true` narrows $node to File in the caller's true branch
+	 * (and, via the negation, after a `if (!isWorkflowFile($node)) { return; }`
+	 * guard) so callers keep the flow-narrowing the inline `instanceof` gave them.
+	 *
+	 * @psalm-assert-if-true File $node
+	 */
+	public static function isWorkflowFile(?Node $node): bool {
+		return $node instanceof File && self::isWorkflowName($node->getName());
+	}
 
 	/**
 	 * What an n8n workflow id looks like in practice (verified against the
