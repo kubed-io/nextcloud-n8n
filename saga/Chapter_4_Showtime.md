@@ -400,8 +400,14 @@ One slice per PR; integration green is the gate, since these touch the load-bear
     reversible by "Sync from n8n".
   - **Lesson:** "make uninstall clean" is two different jobs — *system* state (revert) vs *user* data
     (never auto-delete) — and conflating them is where data gets hurt. The store rule is about the
-    former; the latter is the user's. Specs are `@todo` (the system leg needs a live app-remove the
-    CI harness can't drive); the purge *logic* (the safety crux) is unit-tested.
+    former; the latter is the user's.
+  - **Then Kelly asked for automated proof** ("so I don't have to purge my actual Nextcloud"): the
+    purge scenarios got **live integration tests** driven by a new `occ n8n_sync:purge` command +
+    a `PurgeSteps` trait — they prove on the real CI NC+n8n that purge deletes the synced file but
+    leaves the workflow in n8n + the mapping, **keeps an unmapped standalone file**, and that a pull
+    brings it back. The uninstall *system* leg stays `@todo` (CI can't remove+reinstall an app); the
+    reconnect-no-duplicate promise was already live in `reconcile.feature`. **Lesson: "we have a spec"
+    and "the automation verifies it" are different claims — say which one is true.**
 
 > *The from-scratch lens keeps paying out: every round we open the floorboards we find one more copy
 > of the same plank. The point of Phase B isn't to admire the house — it's to make the next change a

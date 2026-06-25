@@ -18,8 +18,12 @@
 # it), so it stays @todo; the data-orphan + reinstall-reconnect legs are provable via
 # disable/re-enable + a pull, which exercises the same metadata-keyed reconcile.
 
-# Spec-first: step definitions land once the flows are verified on a real Nextcloud
-# (the system leg needs a live app remove), so the whole feature is @todo for now.
+# Spec-first / @todo: the SYSTEM leg needs a real app-remove on a live pod (the CI
+# harness can only disable/enable, not remove+reinstall), so it stays manual. The
+# DATA promise — reinstall reconciles existing files in place by id with NO
+# duplicates — is already proven LIVE by reconcile.feature ("existing files are
+# updated in place — matched by workflow id, never duplicated"); a disable/enable
+# changes nothing about that reconcile, so re-proving it here would be redundant.
 @todo
 Feature: Uninstall reverts the system and reinstall reconnects the data
   As a Nextcloud admin

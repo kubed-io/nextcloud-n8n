@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- A **Purge Nextcloud files** admin button (in Sync Actions) that removes the `sync`/`link` workflow files this app created across every mapping — n8n is never touched, and `unmapped`/`ignored`/standalone files are kept — so a later **Sync from n8n** brings them all back.
+- A **Purge Nextcloud files** admin button (in Sync Actions, also `occ n8n_sync:purge`) that removes the `sync`/`link` workflow files this app created across every mapping — n8n is never touched, and `unmapped`/`ignored`/standalone files are kept — so a later **Sync from n8n** brings them all back.
 - Removing the app now **reverts its custom-mimetype registration** from the Nextcloud core tree (clean uninstall) while leaving your workflow files untouched, so a reinstall + sync reconnects them in place by id with no duplicates.
 
 ### Changed
