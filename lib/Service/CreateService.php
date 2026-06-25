@@ -25,11 +25,11 @@ use Psr\Log\LoggerInterface;
  *    elsewhere (re-attach side of the §17.1 eject flow);
  *  - an external WebDAV PUT lands content in a mapped folder.
  *
- * Body shape mirrors {@see PushService::pushViaApi} exactly (writable-field
- * whitelist, settings allowlist, `[]→{}` coercion) so a workflow that round-
- * trips through "create then later push" is byte-stable. Defaults match the
- * frontend's `STARTER_WORKFLOW`: empty `nodes` / `connections` / `settings`,
- * `active: false` (n8n's POST `/workflows` ignores `active` regardless).
+ * The request body is shaped by {@see N8nWorkflowBody::toCreateBody} — the one
+ * place that owns n8n's writable-field whitelist, settings allowlist, and
+ * `[]→{}` coercion (shared with {@see PushService}'s update path), so a workflow
+ * that round-trips through "create then later push" is byte-stable. Defaults match
+ * the frontend's `STARTER_WORKFLOW`: empty `nodes` / `connections` / `settings`.
  *
  * Tag handling: assignment is **additive only**. We `ensureTag` the mapping's
  * tag in n8n, then PUT the workflow's tag list **as merge** (existing tags +
@@ -40,21 +40,6 @@ use Psr\Log\LoggerInterface;
  * echo into {@see \OCA\N8nSync\Listener\NodeWrittenListener} as a writeback.
  */
 final class CreateService {
-	/**
-	 * Same allowlist as {@see PushService::pushViaApi}. n8n's `WorkflowSettings`
-	 * schema is `additionalProperties: false`, so any extras 400 the request.
-	 */
-	private const SETTINGS_ALLOWED = [
-		'saveExecutionProgress',
-		'saveManualExecutions',
-		'saveDataErrorExecution',
-		'saveDataSuccessExecution',
-		'executionTimeout',
-		'errorWorkflow',
-		'timezone',
-		'executionOrder',
-	];
-
 	public function __construct(
 		private N8nClient $n8n,
 		private WorkflowMetadata $metadata,
@@ -76,7 +61,7 @@ final class CreateService {
 		$content = $node->getContent();
 		$wf = $this->parseFileBody($content);
 
-		$body = $this->buildCreateBody($wf, $node->getName());
+		$body = N8nWorkflowBody::toCreateBody($wf, $node->getName());
 		$created = $this->n8n->createWorkflow($body);
 
 		$id = (string)($created['id'] ?? '');
@@ -115,72 +100,6 @@ final class CreateService {
 			throw new \RuntimeException('file is not valid JSON: ' . $e->getMessage(), 0, $e);
 		}
 		return $decoded instanceof \stdClass ? $decoded : new \stdClass();
-	}
-
-	/**
-	 * Build the POST `/workflows` body. Defaults match the frontend's
-	 * `STARTER_WORKFLOW`. Name authority: prefer the file's JSON `name` if
-	 * non-empty; else the parsed file stem; else "Untitled".
-	 *
-	 * @return array<string,mixed>
-	 */
-	private function buildCreateBody(\stdClass $wf, string $basename): array {
-		$body = [];
-		foreach (['name', 'nodes', 'connections', 'settings', 'staticData'] as $k) {
-			if (isset($wf->$k)) {
-				$body[$k] = $wf->$k;
-			}
-		}
-
-		// Name: the file stem usually matches user intent; the JSON name takes
-		// precedence only when explicitly set.
-		$jsonName = isset($body['name']) && is_string($body['name']) ? trim($body['name']) : '';
-		if ($jsonName === '') {
-			$body['name'] = $this->stemFromBasename($basename);
-		}
-
-		// Required-field defaults (starter shape).
-		if (!isset($body['nodes']) || !is_array($body['nodes'])) {
-			$body['nodes'] = [];
-		}
-		if (!isset($body['connections'])) {
-			$body['connections'] = new \stdClass();
-		}
-		if (!isset($body['settings'])) {
-			$body['settings'] = new \stdClass();
-		}
-
-		// Settings allowlist — drop anything n8n's strict schema would reject.
-		if ($body['settings'] instanceof \stdClass) {
-			$filtered = new \stdClass();
-			foreach (self::SETTINGS_ALLOWED as $k) {
-				if (isset($body['settings']->$k)) {
-					$filtered->$k = $body['settings']->$k;
-				}
-			}
-			$body['settings'] = $filtered;
-		}
-
-		// `[]→{}` coercion for object-typed fields. (n8n's GET sometimes returns
-		// `[]` for empty objects, which would re-encode wrongly through assoc
-		// arrays — this matches PushService::pushViaApi's safety net.)
-		foreach (['connections', 'settings', 'staticData'] as $k) {
-			if (isset($body[$k]) && $body[$k] === []) {
-				$body[$k] = new \stdClass();
-			}
-		}
-
-		return $body;
-	}
-
-	/**
-	 * Strip the `.n8n.json` extension and any trailing " (N)" collision suffix
-	 * to derive a clean name from the on-disk filename.
-	 */
-	private function stemFromBasename(string $basename): string {
-		$parsed = FilenameCodec::parse($basename);
-		$name = is_array($parsed) ? trim((string)($parsed['name'] ?? '')) : '';
-		return $name !== '' ? $name : 'Untitled';
 	}
 
 	/**
