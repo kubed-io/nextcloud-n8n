@@ -51,7 +51,7 @@ the detailed backlog). They're in *causal* order — each clears the ground for 
 | # | Epic | Status | Detail |
 |---|---|---|---|
 | 1 | **Frozen refactor** — features-locked DRY/naming/test pass; less code, same result | ◑ | §4.1 (Phase A landed in PR #40; Phase B = the from-scratch pass below) |
-| 2 | **Branding** — name & tagline, icon system, store copy, screenshots, repo face | ☐ | §4.2 |
+| 2 | **Branding** — name & tagline, icon system, store copy, screenshots, repo face | ◑ | §4.2 (icon system landed in PR #45; name/copy/screenshots remain) |
 | 3 | **Quality stamps** — README badges mapped to real CI + REUSE/license | ☐ | §4.3 |
 | 4 | **Store: info.xml** — schema-valid metadata with the branding assets dropped in | ☐ | §4.4 |
 | 5 | **Store: signing** — CSR → countersigned cert → app-id registration | ☐ | §4.5 |
@@ -508,19 +508,62 @@ Two real considerations to resolve, not just pick a favourite:
 
 ### 4.2.2 — The icon system (this is the "we sorta generated something" cleanup)
 
-Audit of what exists today, because the gap is bigger than "make a nicer icon":
+> **Landed — PR #45.** The arc that opened in Chapter 1 ("we just kinda did something to get
+> going" — a homemade two-circles glyph) closes here: the app now wears the **real n8n logo**, and
+> every hand-pasted inline SVG was collapsed into **one folder of icons** (`img/icons/`). The audit
+> below is kept for the record with the resolution inline.
 
-| Icon | Today | What's needed |
+Audit of what existed, because the gap was bigger than "make a nicer icon":
+
+| Icon | Was | Resolution (PR #45) |
 |---|---|---|
-| **App / navigation icon** (`img/app.svg`, `app-dark.svg`) | **MISSING entirely.** | The monochrome white SVG NC shows in the app list + settings sidebar + the store grid. This is *the face of the product* and it doesn't exist yet. **Highest priority.** |
-| **Filetype icon** (`img/n8n.svg`) | A homemade "two circles + connector" glyph that deliberately avoids the n8n wordmark. Functional, a bit generic. | Decide: keep the trademark-safe abstract mark, or commit to an n8n-evocative one (with the affiliation disclaimer). Make it legible at 16px in the Files row. |
-| **Mode tag pills** (`n8n:sync` / `n8n:link`) | Coloured pills, colours set by NC. | Pick an **accent colour** for the brand and make the pills + icon agree. |
-| **In-app action icons** | Inline **generic Material glyphs** hand-pasted into [`src/files.js`](../src/files.js#L154-L234) ("Open in n8n" = a generic external-link/pencil) and [`js/mapping-settings.js`](../js/mapping-settings.js#L165-L198) (info / sync / trash). | These are the "sorta generated" ones. Replace with icons that *mean* their action and match the accent. Centralize them (one icon module) instead of inline string-pasting — a small frontend DRY win that rides along. |
+| **App / navigation icon** (`img/app.svg`, `app-dark.svg`) | **MISSING entirely.** | ✅ Added. The n8n node-graph mark, monochrome, so NC themes it (black `app.svg` + white `app-dark.svg`). The product face now exists in the app list / settings sidebar / store grid. |
+| **Filetype icon** (`img/n8n.svg`) | A homemade "two circles + connector" glyph that deliberately avoided the n8n mark. | ✅ **Committed to the real mark.** Swapped for the official n8n node-graph logo in brand pink `#EA4B71`. The Ch1 "trademark-safe abstract" hesitation was resolved by *using the actual logo + an affiliation disclaimer* (nominative use). `RegisterMimetype` still copies this exact file into `core/img/filetypes/`. |
+| **Mode tag pills** (`n8n:sync` / `n8n:link`) | Coloured pills, colours set by NC. | **Deferred.** Recolouring NC system tags needs the tags API (a stateful colour field), out of scope for an icon PR. Brand accent is now documented as `#EA4B71`; align the pills in a later pass. |
+| **In-app action icons** | Inline **generic Material glyphs** hand-pasted into `src/files.js` and `js/mapping-settings.js`. | ✅ Centralized into `img/icons/` and sourced, not pasted. "Open in n8n" + "New → n8n workflow" now use the n8n mark; the rest (text/info/save/sync/delete) are folder glyphs. |
 
-- ☐ **Create `img/app.svg` (+ dark variant)** — the missing product face. Monochrome, white, square.
-- ☐ **Choose the accent colour**; apply across app icon, filetype icon, pills.
-- ☐ **Revisit `img/n8n.svg`** for 16px legibility (or commit to a new mark).
-- ☐ **Replace + centralize the inline action SVGs** so each glyph matches its verb and the brand.
+- ☑ **Create `img/app.svg` (+ dark variant)** — added; the n8n mark, monochrome.
+- ☑ **Choose the accent colour** — `#EA4B71` (the n8n brand pink; the homemade glyph already used it, so the switch was a colour-match, not a re-theme). Applied to the filetype + app marks.
+- ☑ **Revisit `img/n8n.svg`** — replaced with the real n8n logo (24×24 viewBox, legible in the Files row).
+- ☑ **Replace + centralize the inline action SVGs** — done via the `img/icons/` folder (see the externalization note below).
+- ☐ *(carryover)* **Mode-tag pill colours** — align to the accent when the tags-API colour field is worth the state.
+
+#### Externalization — "can it all be SVG, and can the embedded ones live in a folder?"
+
+Yes on both, with one honest caveat. The mechanism differs by *how each file is loaded*, and that split
+is the answer to "why were some embedded":
+
+- **`src/files.js` is Vite-bundled** → it `import`s its glyphs from `img/icons/*.svg?raw`. Vite inlines
+  them at build time. True folder-of-icons.
+- **`js/mapping-settings.js` is unbundled vanilla JS** served raw to the browser — *deliberately*, because
+  `@nextcloud/vite-config`'s preset wipes `js/` (see `vite.config.js`). No `import` is available. So the
+  template **injects** the same `img/icons/` glyphs via a `data-icons` attribute (the existing `data-groups`
+  pattern), and the script reads them from the DOM. Same folder, different delivery.
+- **Two icons genuinely can't be injected:** the **filetype** icon (NC's `GenerateMimetypeFileBuilder`
+  *scans* `core/img/filetypes/`, and `RegisterMimetype` copies our file there) and the **app** icon (NC
+  reads `img/app.svg` off disk). They stay on-disk SVG *files* — still pure SVG, no raster anywhere.
+- **Sizing lives in CSS, not the SVG files.** Pulling `width`/`height` out of the shared glyphs keeps them
+  size-agnostic (one `info.svg` serves the 14px hint and any future use); the action buttons were already
+  CSS-sized, and a `.n8n-sync-info svg { 14px }` rule was added for the hint.
+
+#### Progress log
+
+- **PR #45 — the icons arc.** Real n8n logo on the filetype + app icons; `img/icons/` as the single
+  source; `src/files.js` via `?raw`, the unbundled settings via `data-icons` injection; trademark
+  disclaimer in `info.xml`. Build + lint + 30/30 unit green. No `<version>` bump; branched off `main`
+  so the in-flight `feature-purge-uninstall` refactor is untouched.
+  - **Lesson — "due diligence" can over-cost a decision.** Ch1 filed the filetype icon under a
+    *trademark-safe abstract mark* and Ch4's audit still hedged "keep abstract or commit." The actual
+    answer was cheap: **use the real logo + a one-paragraph affiliation disclaimer** (standard nominative
+    use for a community integration). And the brand pink `#EA4B71` was *already* the colour the homemade
+    glyph used — so the "scary" branding step was a drop-in. When a decision has been deferred twice,
+    re-check whether it's actually hard or just unmade.
+  - **Lesson — "one folder of icons" doesn't mean "one mechanism."** The bundled/unbundled split forces
+    two delivery paths (Vite `?raw` vs PHP `data-*` injection), and two files can't be folder-sourced at
+    all (NC reads them off disk). The clean answer wasn't to force uniformity — it was to make `img/icons/`
+    the single *source* and let each consumer pull from it the way its loader allows. Name the caveat
+    instead of hiding it.
+
 
 ### 4.2.3 — Store copy, screenshots, repo face
 
