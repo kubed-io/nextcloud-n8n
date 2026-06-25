@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Store listing copy is now real: the `info.xml` summary and description describe the app (Sync/Link modes, reconcile-by-id backup) instead of the old "Phase 0 skeleton" placeholder, plus a `files` category and project website for the app store.
 - The README now carries status badges (Tests, Quality, Integration, License, Nextcloud, PHP) and release notes link the CI + license badges.
+- Store listing now ships screenshots (Files view, context menu, create/edit, admin mappings + actions), wired into `info.xml`.
 
 - Internal cleanup (no behaviour or settings change): one shared helper for the `.n8n.json` file check and one for the workflow metadata stamp, plus clearer class names (writeback → sync/push).
 - Internal: a file's n8n metadata now reads back as a typed `ManagedFile` value object, replacing the repeated array-poking guard across ~16 lifecycle sites (no behaviour change).

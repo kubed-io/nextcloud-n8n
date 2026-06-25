@@ -35,6 +35,12 @@ identify the service this app integrates with.
   <website>https://github.com/kubed-io/nextcloud-n8n</website>
   <bugs>https://github.com/kubed-io/nextcloud-n8n/issues</bugs>
   <repository type="git">https://github.com/kubed-io/nextcloud-n8n.git</repository>
+  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/mapped-folder.png</screenshot>
+  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/context-menu.png</screenshot>
+  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/create-workflow.png</screenshot>
+  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/edit-workflow.png</screenshot>
+  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/admin-folder-mappings.png</screenshot>
+  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/admin-actions.png</screenshot>
   <dependencies>
     <nextcloud min-version="30" max-version="33"/>
   </dependencies>
