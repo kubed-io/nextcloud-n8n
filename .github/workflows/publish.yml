@@ -148,6 +148,46 @@ jobs:
           occ app:enable n8n_sync
           ```
 
+    # Publish the release to apps.nextcloud.com. The store needs the public
+    # download URL + a signature over the tarball, made with the app's private
+    # signing key (the one whose CSR the Nextcloud team countersigned). Both the
+    # key and the store API token are secrets; until they're set this step no-ops,
+    # so a GitHub-only release keeps working.
+    #
+    # Not done here: appinfo/signature.json (the in-tarball code-integrity blob from
+    # `occ integrity:sign-app`). It is OPTIONAL for store acceptance — the store
+    # verifies the tarball signature below — and generating it faithfully needs a
+    # real Nextcloud (phpseclib), so it's a later add via occ, not a hand-rolled one.
+    - name: Publish to Nextcloud App Store
+      if: inputs.push
+      env:
+        NC_APP_SIGN_KEY: ${{ secrets.NC_APP_SIGN_KEY }}
+        NC_APP_STORE_TOKEN: ${{ secrets.NC_APP_STORE_TOKEN }}
+        TARBALL: ${{ steps.package.outputs.tarball }}
+        DOWNLOAD_URL: ${{ github.server_url }}/${{ github.repository }}/releases/download/${{ steps.bump.outputs.tag }}/n8n_sync-${{ steps.bump.outputs.version }}.tar.gz
+      run: |
+        if [[ -z "$NC_APP_SIGN_KEY" || -z "$NC_APP_STORE_TOKEN" ]]; then
+          echo "::notice::Store secrets (NC_APP_SIGN_KEY / NC_APP_STORE_TOKEN) not set — skipping apps.nextcloud.com upload. The GitHub release is still published."
+          exit 0
+        fi
+        KEY="$(mktemp)"
+        printf '%s' "$NC_APP_SIGN_KEY" > "$KEY"
+        SIGNATURE="$(openssl dgst -sha512 -sign "$KEY" "$TARBALL" | openssl base64 -A)"
+        rm -f "$KEY"
+        BODY="$(jq -n --arg d "$DOWNLOAD_URL" --arg s "$SIGNATURE" '{download:$d, signature:$s, nightly:false}')"
+        CODE="$(curl -sS -o /tmp/store-resp.json -w '%{http_code}' -X POST \
+          https://apps.nextcloud.com/api/v1/apps/releases \
+          -H "Authorization: Token $NC_APP_STORE_TOKEN" \
+          -H "Content-Type: application/json" \
+          -d "$BODY")"
+        echo "apps.nextcloud.com responded HTTP $CODE"
+        cat /tmp/store-resp.json || true
+        if [[ "$CODE" != "200" && "$CODE" != "201" ]]; then
+          echo "::error::App store upload failed (HTTP $CODE)"
+          exit 1
+        fi
+        echo "::notice::Published n8n_sync ${{ steps.bump.outputs.version }} to apps.nextcloud.com"
+
     - name: Summary
       env:
         VERSION: ${{ steps.bump.outputs.version }}

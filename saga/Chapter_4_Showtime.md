@@ -55,7 +55,7 @@ the detailed backlog). They're in *causal* order — each clears the ground for 
 | 3 | **Quality stamps** — README badges mapped to real CI + REUSE/license | ◑ | §4.3 (CI + license/NC/PHP badges landed PR #46; **REUSE remains**) |
 | 4 | **Store: info.xml** — schema-valid metadata with the branding assets dropped in | ◑ | §4.4 (copy/summary/website/category landed PR #46; **screenshot remains**) |
 | 5 | **Store: signing** — CSR → countersigned cert → app-id registration | ☐ | §4.5 |
-| 6 | **Store: pipeline** — `signature.json` + tarball signature + upload step in `publish.yml` | ☐ | §4.6–§4.7 |
+| 6 | **Store: pipeline** — tarball signature + upload step in `publish.yml` | ◑ | §4.6 (secret-gated upload landed; `signature.json` deferred — optional, needs occ) |
 | 7 | **Finale: first store release** *(may not happen this chapter)* | ☐ | §4.8 |
 
 Epics 1–3 are entirely in our control and stand alone. Epics 4–7 are the store run; the **CSR
@@ -511,6 +511,35 @@ Two real considerations to resolve, not just pick a favourite:
 - ☐ **Land a one-line `<summary>`** — what it is + who it's for. Current placeholder is fine but
   generic ("Sync n8n workflows to and from Nextcloud as files"); sharpen to a benefit
   (e.g. *"Your n8n workflows as native, editable, backed-up Nextcloud files."*).
+
+#### The audience with the king (the branding climax)
+
+On the eve of the store submission, Kelly did the thing the cautious version of this plan only
+*warned* about — he went and **asked for the name**. Not to take it, but to be *given* it: he reached
+out to the **n8n partnership team**, asked whether he could carry the `n8n` name itself, and — the
+move that turns a squatter into a steward — **offered to donate the codebase to them.** The trademark
+isn't ours; so rather than slip past the guard with a disclaimer, he knocked on the front door and
+asked the king for his blessing. *(They'll answer in a few days.)*
+
+This is the right shape of the story. The honest engineering caution was real — *claiming* `n8n` as
+the app id is a one-way, trademark-aggressive land-grab — but *asking* for it, codebase-on-the-table,
+is the opposite: it's how an unofficial integration becomes a *sanctioned* one. Two outcomes, both
+fine:
+
+- **Yes / "let's partner"** → we earn the `n8n` id legitimately (and maybe a home in their org). The
+  rename is a real chunk of work (`APP_ID`, the `/apps/n8n` routes, the `occ n8n:*` commands, config
+  keys, asset/l10n names, the deployed dir — namespace `OCA\N8nSync` can stay), but it's worth it for
+  a *blessed* name, and we do it before the CSR.
+- **No / silence** → `n8n_sync` it is, with a clear conscience. The temp signing key was made with
+  `CN=n8n_sync` precisely so the pipeline can be finished and tested *now*; the real CSR waits on the
+  name, and a no-answer simply makes the default the answer.
+
+So the signing key is a **stand-in**: generated, backed up to 1Password, never handed to Nextcloud
+until the name is locked. The plumbing gets finished against it; the cert that actually binds the id
+is the last thing we mint, once the king has spoken (or hasn't).
+
+> *Every good Showtime has a moment where the performer steps to the front of the house and asks the
+> room for something. We asked the one person whose name is on the marquee next to ours.*
 
 ### 4.2.2 — The icon system (this is the "we sorta generated something" cleanup)
 
