@@ -80,7 +80,7 @@ final class LinkWriteGuardPlugin extends ServerPlugin {
 		// Classify the file from its own metadata. Anything we can't read is NOT a
 		// link, so we must never block it — fail open on any doubt.
 		try {
-			$fileId = (int)$node->getId();
+			$fileId = $node->getId();
 			$meta = $this->metadata->read($fileId);
 		} catch (\Throwable) {
 			return true;
