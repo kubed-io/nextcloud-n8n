@@ -130,6 +130,10 @@ jobs:
         files: ${{ steps.package.outputs.tarball }}
         body: |
           [![Publish](${{ github.server_url }}/${{ github.repository }}/actions/workflows/publish.yml/badge.svg)](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
+          [![Tests](${{ github.server_url }}/${{ github.repository }}/actions/workflows/tests.yml/badge.svg)](${{ github.server_url }}/${{ github.repository }}/actions/workflows/tests.yml)
+          [![Quality](${{ github.server_url }}/${{ github.repository }}/actions/workflows/quality.yml/badge.svg)](${{ github.server_url }}/${{ github.repository }}/actions/workflows/quality.yml)
+          [![Integration](${{ github.server_url }}/${{ github.repository }}/actions/workflows/integration.yml/badge.svg)](${{ github.server_url }}/${{ github.repository }}/actions/workflows/integration.yml)
+          [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](${{ github.server_url }}/${{ github.repository }}/blob/main/LICENSE)
 
           ${{ steps.bump.outputs.release-notes }}
 

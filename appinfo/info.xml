@@ -7,12 +7,20 @@
       xsi:noNamespaceSchemaLocation="https://apps.nextcloud.com/schema/apps/info.xsd">
   <id>n8n_sync</id>
   <name>n8n Sync</name>
-  <summary>Sync n8n workflows to and from Nextcloud as files</summary>
+  <summary>Your n8n workflows as native, editable, backed-up Nextcloud files</summary>
   <description><![CDATA[
-Maps n8n workflows into Nextcloud as JSON files with a native feel — icons, deep links,
-and folder mappings. See the project plan for the full design.
+n8n Sync surfaces your n8n workflows as native Nextcloud files. Map one or more n8n
+tags to folders and every tagged workflow shows up as a `.n8n.json` file — with a
+real file icon, deep links back to n8n, and a per-folder sync mode.
 
-Phase 0: skeleton only — installs and enables cleanly, registers nothing yet.
+- **Sync** — full two-way ownership. Edit a workflow in the Files app, over WebDAV,
+  or from your desktop client and the change pushes back to n8n; a sync folder
+  doubles as a complete, restorable backup of every workflow in it.
+- **Link** — a lightweight pointer (id, name, URL) that opens the workflow in n8n.
+
+Sync is reconcile-based: re-running a pull never duplicates files, because the link
+between a file and its workflow is a stable id stored in the file's metadata — not
+the filename — so renaming, moving, and restoring never break the connection.
 
 This is a community integration and is not affiliated with, endorsed by, or sponsored
 by n8n GmbH. "n8n" and the n8n logo are trademarks of n8n GmbH, used here only to
@@ -23,6 +31,8 @@ identify the service this app integrates with.
   <author>Kelly Ferrone</author>
   <namespace>N8nSync</namespace>
   <category>integration</category>
+  <category>files</category>
+  <website>https://github.com/kubed-io/nextcloud-n8n</website>
   <bugs>https://github.com/kubed-io/nextcloud-n8n/issues</bugs>
   <repository type="git">https://github.com/kubed-io/nextcloud-n8n.git</repository>
   <dependencies>
