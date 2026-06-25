@@ -2,6 +2,13 @@
 
 A Nextcloud app that surfaces n8n workflows as native files — browse, edit, and manage your automation workflows right inside the Files app, with full bidirectional sync back to n8n.
 
+[![🧪 Tests](https://github.com/kubed-io/nextcloud-n8n/actions/workflows/tests.yml/badge.svg)](https://github.com/kubed-io/nextcloud-n8n/actions/workflows/tests.yml)
+[![🛡️ Quality](https://github.com/kubed-io/nextcloud-n8n/actions/workflows/quality.yml/badge.svg)](https://github.com/kubed-io/nextcloud-n8n/actions/workflows/quality.yml)
+[![🔗 Integration](https://github.com/kubed-io/nextcloud-n8n/actions/workflows/integration.yml/badge.svg)](https://github.com/kubed-io/nextcloud-n8n/actions/workflows/integration.yml)
+[![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
+[![Nextcloud](https://img.shields.io/badge/Nextcloud-30--33-0082c9?logo=nextcloud&logoColor=white)](https://apps.nextcloud.com)
+[![PHP](https://img.shields.io/badge/PHP-%E2%89%A58.1-777bb4?logo=php&logoColor=white)](composer.json)
+
 ---
 
 ## How It Works
