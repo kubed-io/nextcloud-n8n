@@ -59,6 +59,13 @@
 	vertical-align: middle;
 }
 
+/* The glyph ships from img/icons/info.svg without an intrinsic size, so the
+   list-row hint is sized here (the action-button glyphs are sized below). */
+.n8n-sync-info svg {
+	width: 14px;
+	height: 14px;
+}
+
 .n8n-sync-info:hover,
 .n8n-sync-info:focus-visible {
 	color: var(--color-primary-element, var(--color-primary));

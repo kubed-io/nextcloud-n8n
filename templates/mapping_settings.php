@@ -30,18 +30,39 @@ $desc = [
 	'groups' => $l->t('Which Nextcloud groups the folder is shared with. Pick at least one — otherwise no one can see it.'),
 ];
 
+// Inline an SVG glyph from img/icons/ — the single source of truth for the
+// app's icons. These are trusted, app-owned files, safe to embed verbatim; the
+// licence-comment header is stripped so only the <svg> reaches the DOM. The
+// same files feed the Files-app bundle (src/files.js, via ?raw) and the cards
+// built client-side (js/mapping-settings.js, via the data-icons attribute below).
+$icons = [];
+$icon = static function (string $name) use (&$icons): string {
+	if (!array_key_exists($name, $icons)) {
+		$path = __DIR__ . '/../img/icons/' . $name . '.svg';
+		$svg = is_file($path) ? (string)file_get_contents($path) : '';
+		$icons[$name] = trim((string)preg_replace('/^\s*<!--.*?-->\s*/s', '', $svg));
+	}
+	return $icons[$name];
+};
+
 // Renders a ⓘ info button with a hover/focus tooltip (styled in CSS).
-$info = static function (string $tip): string {
+$info = static function (string $tip) use ($icon): string {
 	$t = \OCP\Util::sanitizeHTML($tip);
 	return ' <span class="n8n-sync-info" tabindex="0" role="note" aria-label="' . $t . '" data-tip="' . $t . '">'
-		. '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor"><path d="M12 2a10 10 0 100 20 10 10 0 000-20zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"/></svg>'
+		. $icon('info')
 		. '</span>';
 };
 ?>
 <div class="section">
 <div id="n8n-sync-mappings" class="n8n-sync-mappings"
 	data-groups="<?php p(json_encode($groups)); ?>"
-	data-tf-available="<?php p($tfAvailable ? '1' : '0'); ?>">
+	data-tf-available="<?php p($tfAvailable ? '1' : '0'); ?>"
+	data-icons="<?php p(json_encode([
+		'info' => $icon('info'),
+		'save' => $icon('save'),
+		'sync' => $icon('sync'),
+		'delete' => $icon('delete'),
+	])); ?>">
 	<h3 class="n8n-sync-mappings__heading"><?php p($l->t('Folder mappings')); ?></h3>
 	<p class="settings-hint">
 		<?php p($l->t('Each mapping projects tagged n8n workflows into a shared Nextcloud folder. Hover the ⓘ on a field for details.')); ?>
@@ -102,13 +123,13 @@ $info = static function (string $tip): string {
 					</div>
 					<div class="n8n-sync-mappings__actions">
 						<button type="button" class="button js-save" title="<?php p($l->t('Save')); ?>" aria-label="<?php p($l->t('Save')); ?>">
-							<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M9 16.17 4.83 12l-1.42 1.41L9 19 21 7l-1.41-1.41z"/></svg>
+							<?php print_unescaped($icon('save')); ?>
 						</button>
 						<button type="button" class="button js-sync" title="<?php p($l->t('Sync')); ?>" aria-label="<?php p($l->t('Sync')); ?>">
-							<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M12 6V3L8 7l4 4V8c2.76 0 5 2.24 5 5 0 .65-.13 1.26-.36 1.83l1.46 1.46A6.94 6.94 0 0 0 19 13c0-3.87-3.13-7-7-7zm0 12c-2.76 0-5-2.24-5-5 0-.65.13-1.26.36-1.83L5.9 9.71A6.94 6.94 0 0 0 5 13c0 3.87 3.13 7 7 7v3l4-4-4-4z"/></svg>
+							<?php print_unescaped($icon('sync')); ?>
 						</button>
 						<button type="button" class="button js-delete" title="<?php p($l->t('Delete')); ?>" aria-label="<?php p($l->t('Delete')); ?>">
-							<svg viewBox="0 0 24 24" width="20" height="20" fill="currentColor"><path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/></svg>
+							<?php print_unescaped($icon('delete')); ?>
 						</button>
 						<span class="js-card-status"></span>
 					</div>

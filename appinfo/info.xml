@@ -13,6 +13,10 @@ Maps n8n workflows into Nextcloud as JSON files with a native feel — icons, de
 and folder mappings. See the project plan for the full design.
 
 Phase 0: skeleton only — installs and enables cleanly, registers nothing yet.
+
+This is a community integration and is not affiliated with, endorsed by, or sponsored
+by n8n GmbH. "n8n" and the n8n logo are trademarks of n8n GmbH, used here only to
+identify the service this app integrates with.
   ]]></description>
   <version>0.1.3</version>
   <licence>agpl</licence>
