@@ -181,7 +181,7 @@ final class N8nWorkflowBody {
 	 */
 	private static function stemFromBasename(string $basename): string {
 		$parsed = FilenameCodec::parse($basename);
-		$name = is_array($parsed) ? trim((string)($parsed['name'] ?? '')) : '';
+		$name = $parsed !== null ? trim($parsed['name']) : '';
 		return $name !== '' ? $name : 'Untitled';
 	}
 }
