@@ -30,4 +30,9 @@ require_once __DIR__ . '/../vendor/autoload.php';
 // OCP symbol (e.g. Application's APP_ID constant) autoload. See the file header.
 require_once __DIR__ . '/ocp-stubs.php';
 
+// Stubs for classes from other bundled apps + Sabre/DAV (LinkWriteGuardPlugin's
+// collaborators) that nextcloud/ocp doesn't ship. Loaded after ocp-stubs.php so
+// their OCP parents (e.g. EventDispatcher\Event) already exist.
+require_once __DIR__ . '/external-stubs.php';
+
 \DG\BypassFinals::enable();

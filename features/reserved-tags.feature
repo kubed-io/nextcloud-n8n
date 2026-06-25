@@ -1,64 +1,44 @@
-# Reserved n8n tags — optional, per-workflow fine-grained control.
+# Reserved n8n tag — the optional, per-workflow EXCLUDE switch.
 #
 # A mapping binds ONE n8n tag (ANY name — e.g. "team:flows", "myfoobarflows"; the
 # "nextcloud:" prefix some examples use is just a convention, NOT required) to a
-# folder + a default mode. On top of that default, a small set of reserved tags
-# lets you override or exclude a SINGLE workflow without touching the mapping:
+# folder + a mode (`sync` / `link`). That mode is AUTHORITATIVE for every workflow
+# in the mapping — there is no per-workflow sync/link override. The only reserved
+# tag the app honours is the exclude:
 #
-#   n8n:sync    — pull this one as sync,  whatever the mapping default is
-#   n8n:link    — pull this one as a link, whatever the mapping default is
 #   n8n:ignore  — exclude this one. Two facets:
 #                 • never-pulled workflow → no Nextcloud file at all;
 #                 • a file already IN a mapped folder → "ignored" mode (it stays put,
 #                   keeps its id, is archived in n8n, and the sync skips it).
 #
-# OUT OF SCOPE (documented, not built): if a workflow carries BOTH n8n:sync and
-# n8n:link, the pull resolves to sync and ignores the stray link — optionally warning
-# via a notification. (NC-side both-tags is handled in mode-change.feature.)
+# Authority is one-directional. The app NEVER writes n8n:ignore onto workflows in
+# n8n; it only READS it (if present) as a per-workflow exclude at pull time. You add
+# it yourself when you want the exception. The Nextcloud-side `n8n:sync` / `n8n:link`
+# system tags the app stamps on managed files are AUTHORITATIVE + automatic and just
+# mirror each file's mode (see the Tagging feature / file-type.feature) — they are
+# not an override mechanism.
 #
-# The mode tags are the SAME vocabulary the app already stamps on every managed
-# file in Nextcloud (`n8n:sync` / `n8n:link`): one mode language, two sides — but
-# with OPPOSITE authority:
-#   - n8n side  — OPTIONAL + hand-set. The app NEVER writes these onto workflows in
-#     n8n; it only READS them (if present) as a per-workflow override/ignore at pull
-#     time. You add them yourself when you want the exception.
-#   - Nextcloud side — AUTHORITATIVE + automatic. The app keeps each managed file's
-#     `n8n:sync` / `n8n:link` system tag correct, always matching the file's mode
-#     metadata (see the Tagging feature / file-type.feature). You don't touch these.
+# So n8n:ignore is 100% optional: the mapping does everything on its own; the
+# n8n-side ignore tag is just the escape hatch to leave one workflow out.
 #
-# So they are 100% optional: the mapping default does everything on its own; the
-# n8n-side reserved tags are just the escape hatch.
-#
-# Pull-time resolution (override + never-pulled ignore) and the in-folder `ignored`
-# mode are live (saga §14.8 B). The un-tag RESTORE — removing n8n:ignore unarchives the
-# workflow and returns the file to the mapping default — is now live too (saga §14.18),
-# driven by a TagUnassignedEvent listener.
+# The never-pulled ignore and the in-folder `ignored` mode are live (saga §14.8 B).
+# The un-tag RESTORE — removing n8n:ignore unarchives the workflow and returns the
+# file to the mapping's mode — is live too (saga §14.18), driven by a
+# TagUnassignedEvent listener.
 
-Feature: Reserved n8n tags override the mapping default per workflow
+Feature: The n8n:ignore reserved tag excludes individual workflows
   As an n8n admin
-  I want to override the mode of, or exclude, individual workflows with reserved tags
-  So that one mapping can still carry per-workflow exceptions
+  I want to exclude individual workflows with the n8n:ignore tag
+  So that one mapping can still leave specific workflows out
 
   Background:
     Given the app is connected to n8n
     And a folder mapped as "sync" to the n8n tag "team:flows"
 
-  Scenario: With no reserved tag, a workflow takes the mapping's default mode
+  Scenario: With no reserved tag, a workflow takes the mapping's mode
     Given n8n has a workflow tagged "team:flows" with no reserved tag
     When the "team:flows" mapping is pulled
-    Then that workflow's file is in "sync" mode (the mapping default)
-
-  Scenario: n8n:link overrides a sync mapping for one workflow
-    Given n8n has a workflow tagged "team:flows" and "n8n:link"
-    When the "team:flows" mapping is pulled
-    Then that workflow's file is in "link" mode
-    And sibling "team:flows" workflows without an override stay "sync"
-
-  Scenario: n8n:sync overrides a link mapping for one workflow
-    Given a folder mapped as "link" to the n8n tag "team:links"
-    And n8n has a workflow tagged "team:links" and "n8n:sync"
-    When the "team:links" mapping is pulled
-    Then that workflow's file is in "sync" mode
+    Then that workflow's file is in "sync" mode (the mapping mode)
 
   Scenario: n8n:ignore on a never-pulled workflow creates no file
     Given n8n has a workflow tagged "team:flows" and "n8n:ignore"
@@ -74,7 +54,7 @@ Feature: Reserved n8n tags override the mapping default per workflow
     And the workflow is archived in n8n
     And subsequent pulls/pushes for "team:flows" skip it
 
-  Scenario: Removing n8n:ignore returns the file to the mapping's default mode
+  Scenario: Removing n8n:ignore returns the file to the mapping's mode
     Given a managed "sync" workflow file in the "team:flows" folder
     And I tag it "n8n:ignore"
     When I remove the "n8n:ignore" tag

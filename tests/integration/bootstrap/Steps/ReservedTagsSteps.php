@@ -96,7 +96,7 @@ trait ReservedTagsSteps {
 
 	/**
 	 * @Then that workflow's file is in :mode mode
-	 * @Then /^that workflow's file is in "(?P<mode>[^"]+)" mode \(the mapping default\)$/
+	 * @Then /^that workflow's file is in "(?P<mode>[^"]+)" mode \(the mapping mode\)$/
 	 * @Then that workflow's file is created in :mode mode
 	 */
 	public function thatWorkflowsFileIsInMode(string $mode): void {

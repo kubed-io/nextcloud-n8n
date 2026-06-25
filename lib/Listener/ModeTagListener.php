@@ -11,7 +11,6 @@ namespace OCA\N8nSync\Listener;
 
 use OCA\N8nSync\AppInfo\Application;
 use OCA\N8nSync\Service\FilenameCodec;
-use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\ModeChangeService;
 use OCA\N8nSync\Service\OwnershipTags;
 use OCA\N8nSync\Service\SyncGuard;
@@ -27,25 +26,22 @@ use OCP\SystemTag\TagUnassignedEvent;
 use Psr\Log\LoggerInterface;
 
 /**
- * Turns a user's system-tag change into a sync ⇄ link re-mode (saga Ch2 §14.2b
- * `mode-change.feature`). This is the trigger; {@see ModeChangeService} is the engine.
+ * Turns a user's system-tag change into an **exclude / restore** (saga §14.8). The
+ * mapping's mode (`sync` / `link`) is authoritative — there is no per-file sync↔link
+ * override — so the only tag changes this listener acts on are `n8n:ignore`:
  *
- * When `n8n:sync` or `n8n:link` is assigned to a managed `*.n8n.json` file — whether
- * by the Files context-menu toggle (which just flips the tag), a manual tag change, or
- * adding the second tag by hand — we route to {@see ModeChangeService::changeTo()} with
- * the assigned tag's mode. Because `changeTo()` stamps the target tag and strips the
- * other (via {@see OwnershipTags::apply()}), "the just-added tag wins" + mutual
- * exclusivity both fall out for free.
+ *   assign   `n8n:ignore` → {@see ModeChangeService::changeTo()} with target `ignored`:
+ *            the workflow is archived in n8n and the file flips to `ignored` mode,
+ *            keeping its body, id, and location — sync then skips it.
+ *   unassign `n8n:ignore` → {@see ModeChangeService::unignore()}: the workflow is
+ *            unarchived and the file returns to its mapping's mode.
  *
- * Assigning `n8n:ignore` routes the same way with target `ignored` (saga §14.8): the
- * workflow is archived in n8n and the file flips to `ignored` mode, keeping its body,
- * id, and location — sync then skips it. **Removing** `n8n:ignore` is the inverse — a
- * {@see TagUnassignedEvent} routes to {@see ModeChangeService::unignore()}, which
- * unarchives the workflow and returns the file to its mapping's default mode.
+ * Assigning `n8n:sync` / `n8n:link` by hand does nothing — the mapping decides the
+ * mode, so a stray mode tag is left for the next pull to reconcile.
  *
- * Loop safety: `changeTo()`/`unignore()` do their tag re-asserts inside the
- * {@see SyncGuard}, so the tag event that re-fires lands here with
- * {@see SyncGuard::active()} true and we bail — no recursion.
+ * Loop safety: `changeTo()`/`unignore()` do their writes inside the {@see SyncGuard},
+ * so the tag/metadata events they re-fire land here with {@see SyncGuard::active()}
+ * true and we bail — no recursion.
  *
  * @implements IEventListener<TagAssignedEvent|TagUnassignedEvent>
  */
@@ -70,14 +66,13 @@ final class ModeTagListener implements IEventListener {
 		}
 
 		if ($event instanceof TagAssignedEvent) {
-			// Which of our mode tags was assigned? (Ignore any non-n8n tag change.)
-			$target = $this->modeForAssignedTags($event->getTags());
-			if ($target === null) {
+			// The mapping owns sync vs link — only `n8n:ignore` is actionable here.
+			if (!$this->tagsIncludeIgnore($event->getTags())) {
 				return;
 			}
 			$this->forEachWorkflowFile(
 				$event->getObjectIds(),
-				fn (File $node) => $this->modeChange->changeTo($node, $target),
+				fn (File $node) => $this->modeChange->changeTo($node, WorkflowMetadata::MODE_IGNORED),
 			);
 			return;
 		}
@@ -94,28 +89,8 @@ final class ModeTagListener implements IEventListener {
 	}
 
 	/**
-	 * Map a set of just-assigned tag ids to the mode they request, or null if none of
-	 * them is one of ours. `TagAssignedEvent::getTags()` yields tag *ids*; resolve to names.
-	 *
-	 * @param array<int|string> $tagIds
-	 */
-	private function modeForAssignedTags(array $tagIds): ?string {
-		$target = null;
-		foreach ($this->tagManager->getTagsByIds($tagIds) as $tag) {
-			$name = $tag->getName();
-			if ($name === OwnershipTags::TAG_LINK) {
-				$target = Mapping::MODE_LINK;
-			} elseif ($name === OwnershipTags::TAG_SYNC) {
-				$target = Mapping::MODE_SYNC;
-			} elseif ($name === OwnershipTags::TAG_IGNORE) {
-				$target = WorkflowMetadata::MODE_IGNORED;
-			}
-		}
-		return $target;
-	}
-
-	/**
-	 * True when `n8n:ignore` is among the unassigned tag ids.
+	 * True when `n8n:ignore` is among the given tag ids. `TagAssignedEvent::getTags()`
+	 * / `TagUnassignedEvent::getTags()` yield tag *ids*; resolve to names.
 	 *
 	 * @param array<int|string> $tagIds
 	 */

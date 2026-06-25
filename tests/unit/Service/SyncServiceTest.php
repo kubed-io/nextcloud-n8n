@@ -195,39 +195,7 @@ final class SyncServiceTest extends TestCase {
 		self::assertSame(1, $res['pruned']);
 	}
 
-	// ── reserved-tag overrides + ignored mode (saga §14.8) ───────────────────────
-
-	public function testPullAppliesLinkOverrideOnASyncMapping(): void {
-		// A sync mapping, but the one workflow carries n8n:link → it is written as a
-		// link pointer (reference schema), not the full sync JSON.
-		$folder = $this->createMock(Folder::class);
-		$folder->method('getDirectoryListing')->willReturn([]);
-		$folder->method('nodeExists')->willReturn(false);
-
-		$newFile = $this->createStub(File::class);
-		$newFile->method('getId')->willReturn(99);
-
-		$captured = null;
-		$folder->expects(self::once())->method('newFile')
-			->willReturnCallback(function (string $name, string $body) use (&$captured, $newFile): File {
-				$captured = $body;
-				return $newFile;
-			});
-
-		$this->storage->method('isAvailable')->willReturn(true);
-		$this->storage->method('ensureFolder')->willReturn($folder);
-
-		$this->n8n->method('listWorkflows')->willReturn([
-			'data' => [['id' => 'wf-1', 'name' => 'Flow', 'versionId' => 'v1', 'tags' => [['id' => 't', 'name' => OwnershipTags::TAG_LINK]]]],
-			'nextCursor' => null,
-		]);
-
-		$res = $this->service->pullOne($this->mapping(Mapping::MODE_SYNC));
-
-		self::assertSame(1, $res['succeeded']);
-		self::assertNotNull($captured);
-		self::assertStringContainsString('n8n.reference/v1', (string)$captured);
-	}
+	// ── reserved-tag ignore + ignored mode (saga §14.8) ─────────────────────────
 
 	public function testPullResolvesIgnoreTagSoWorkflowIsNotPulled(): void {
 		// An n8n:ignore workflow is never written — no file is created for it.
@@ -250,12 +218,12 @@ final class SyncServiceTest extends TestCase {
 		self::assertSame(0, $res['pruned']);
 	}
 
-	public function testPushOneSkipsAPerFileLinkOverrideInASyncMapping(): void {
+	public function testPushOneSkipsALinkFileInASyncMapping(): void {
 		$syncFile = $this->file(1, 'A.n8n.json');
-		$linkOverride = $this->file(2, 'B.n8n.json'); // a link file inside a sync mapping
+		$linkFile = $this->file(2, 'B.n8n.json'); // a link-mode file is never pushed
 
 		$folder = $this->createStub(Folder::class);
-		$folder->method('getDirectoryListing')->willReturn([$syncFile, $linkOverride]);
+		$folder->method('getDirectoryListing')->willReturn([$syncFile, $linkFile]);
 
 		$this->storage->method('isAvailable')->willReturn(true);
 		$this->storage->method('findFolder')->willReturn($folder);
@@ -271,7 +239,7 @@ final class SyncServiceTest extends TestCase {
 
 		$res = $this->service->pushOne($this->mapping(Mapping::MODE_SYNC));
 
-		// Only the sync file is a push candidate; the link override is skipped.
+		// Only the sync file is a push candidate; the link file is skipped.
 		self::assertSame(1, $res['processed']);
 		self::assertSame(1, $res['succeeded']);
 	}

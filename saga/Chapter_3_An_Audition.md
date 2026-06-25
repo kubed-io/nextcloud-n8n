@@ -1174,3 +1174,156 @@ afternoon, not blockers for the show.
 > *The audition is over. The understudies can wait in the wings. The crew straightens its collar,
 > the lights come up on a clean ledger, and the marquee for Chapter 4 — Showtime — flickers on.*
 
+---
+
+## §15 — The Encore (the audition we thought was over)
+
+> *The house lights were up. The crew had its coats on. And then the director sat back down in a
+> real seat — not the director's chair, a **patron's** seat — and actually used the thing. That's
+> when the encore began: not new choreography, but the notes you only hear once you're in the
+> audience instead of on the stage.*
+
+§14.21 closed Chapter 3 with a clean ledger — every load-bearing scene green on real Nextcloud +
+n8n. That was true *under test*. The encore is what happened when Kelly **used the app like a
+user** rather than asserting it like a suite, and three things surfaced that the green ledger
+hadn't caught. None of them were new features; all three were *"the spec said this was done, and in
+the building it wasn't quite."* This is the section the safety net couldn't write for us, because
+the bugs lived in the gap between *passing a test* and *holding a workflow in your hands*.
+
+### §15.1 — A `link` was read-only on paper, writable in the world (PR #39)
+
+The spec (open-with.feature / §14.21) said a `link` file is read-only — it's only a pointer to a
+workflow that lives in n8n, there's nothing on the Nextcloud side to edit. The Files UI honoured
+that: the text editor was hidden. But the moment Kelly hit the file over **WebDAV** — desktop
+client, `curl`, a raw PUT — the bytes went through. The pointer could be overwritten and silently
+corrupted. Read-only was a UI suggestion, not a rule.
+
+The first fix attempt was the obvious one: listen to core's `BeforeNodeWrittenEvent` and refuse the
+write. It tested clean and **still didn't work live.** The forensics turned up the real shape of
+the gap, and it's a keeper:
+
+> **Core only fires the pre-write Node event on the non-part-file branch.**
+> `OCA\DAV\Connector\Sabre\File::put()` emits the legacy `write` hook (which becomes
+> `BeforeNodeWrittenEvent`) *only* inside `if (!$needsPartFile)`. Almost every storage uploads
+> through a `.part` file first, so for a normal WebDAV PUT that branch is skipped and the event
+> **never fires.** A guard built on it is a guard that's off for the exact path users take.
+
+The right choke point is one layer up, in **Sabre** itself. `Sabre\DAV\Server::updateFile()` emits
+`beforeWriteContent` *before* `File::put()` runs — part-file or not. So the guard moved out of an
+event listener and into a real **Sabre server plugin**, [`lib/DAV/LinkWriteGuardPlugin.php`](../lib/DAV/LinkWriteGuardPlugin.php),
+registered onto every DAV server via the `SabrePluginAddEvent`
+([`lib/Listener/RegisterDavPluginsListener.php`](../lib/Listener/RegisterDavPluginsListener.php)).
+It refuses an overwrite of a `link`-mode workflow file with a native `Sabre\DAV\Exception\Forbidden`
+— a clean **403** to the client — logs it, and raises a notification telling the user to switch the
+file to sync. It **fails open** on any doubt (unreadable metadata, unmanaged file, non-`link` mode,
+non-`File` node) so it can never block a write it shouldn't. Verified live: a PUT to a link file
+returns 403 and the bytes are unchanged; a sync file in the same folder stays writable.
+
+The lessons, carved in:
+
+- **A UI affordance is not an enforcement.** Hiding the editor stopped the *Files app*; it did
+  nothing to WebDAV/desktop/curl. "Read-only" has to be enforced at the storage boundary or it
+  isn't read-only.
+- **Test the path users actually take.** The `BeforeNodeWrittenEvent` guard passed its test and
+  failed in life because the test wrote on the branch that fires the event and real clients write on
+  the branch that doesn't. *The part-file branch is the default; design for it.*
+- **When core's event is too high, drop to Sabre.** `beforeWriteContent` is the part-file-immune
+  hook; a `ServerPlugin` added on `SabrePluginAddEvent` is the supported way in.
+
+### §15.2 — The duplicate that taught us the toggle was the trap (FooBarlicious)
+
+While poking at the live app, a workflow named *FooBarlicious* showed up **twice** after a refresh —
+`FooBarlicious.n8n.json` and `FooBarlicious (1).n8n.json`. The first instinct ("pull is
+double-writing") was wrong: forensics showed **two real workflows in n8n** with that name (one from
+days earlier, one created *today*), and the pull had mirrored them **correctly** — collision-suffix
+and all. The bug wasn't the mirror; it was that *a second workflow had been born in n8n* when no one
+asked for one. The suspected trigger: a mode **toggle** firing the create-on-land path. The duplicate
+was a symptom; the disease was the per-file sync↔link toggle doing more than it claimed. Which led
+straight to the encore's real refactor.
+
+### §15.3 — Killing the per-file mode override: the mapping is the law (PR #39)
+
+Here's the honest reckoning of the encore. Through Chapter 3 we built an *ambitious* mode model: a
+folder mapping had a default mode, and on top of that, **any single file or workflow could override
+it** — flip one file `sync`↔`link` from a Files context-menu **Toggle**, or hand-tag a workflow
+`n8n:sync` / `n8n:link` in n8n to pull that one differently. It demoed well. It tested green
+(`mode-change.feature`, the override rows of `reserved-tags.feature`). And in actual use it was
+**over-engineering wearing a feature's coat** — the §14.20 villain, back for an encore of its own.
+The toggle was a foot-gun (it could mint duplicates, §15.2), the per-workflow override was a second
+source of truth fighting the mapping, and the whole thing existed to answer a question no real user
+was asking: *"what if I want one file in this folder to behave differently?"* You don't. You move it
+to a folder that behaves that way.
+
+So Kelly made the call that should have been the script all along:
+
+> **The folder mapping's mode is the single source of truth. Full stop.** Every workflow a mapping
+> pulls is held the mapping's way (`sync` or `link`). There is no per-file toggle and no
+> per-workflow `n8n:sync` / `n8n:link` override. To change how a folder's workflows are held, you
+> change the *mapping*.
+
+What that removed (the codebase got *smaller*, the best kind of change):
+
+- **JS** — the Files context-menu *Toggle n8n mode* action and its `toggleTargetTag` helper, gone
+  (`src/files.js`, `src/files-helpers.js`), with their Vitest blocks.
+- **`ReservedTagResolver`** — was "resolve a workflow's effective mode from `n8n:sync` / `n8n:link` /
+  `n8n:ignore`"; now it's **ignore-only**: it returns the mapping's mode, or `null` for
+  `n8n:ignore`. One axis (exclude), not three.
+- **`ModeTagListener`** — no longer routes a hand-assigned `n8n:sync` / `n8n:link` to a re-mode;
+  only `n8n:ignore` assign/unassign does anything (archive / restore-to-mapping-mode).
+- **`mode-change.feature`** — deleted outright; the override scenarios in `reserved-tags.feature`
+  went with it.
+
+What **stayed**, deliberately:
+
+- **`n8n:ignore`** — the exclude switch is still the one reserved tag the app reads. It's a
+  different axis (in/out), not a mode override, and it earns its keep.
+- **`unmapped`** — moving a file out of its mapping still archives + keeps the JSON; untouched.
+- **`ModeChangeService`** — the engine that rebuilds a `sync` or `link` body is *kept*, because
+  **un-ignoring** a file still has to restore it to its mapping's mode. The toggle was the *caller*
+  we deleted; the engine underneath is load-bearing for the ignore lifecycle.
+
+The lessons, the most important of the encore:
+
+- **A passing test can ratify a feature that shouldn't exist.** `mode-change.feature` was green the
+  whole time. Green doesn't mean *right*; it means *consistent with the spec we wrote*. The spec was
+  the bug. Using the app — not testing it — is what exposed that.
+- **One source of truth, always.** Two ways to set a file's mode (mapping default *and* per-file
+  override) is two ways for them to disagree, and the disagreement is where the duplicate crawled
+  out. Collapsing to the mapping didn't lose a capability anyone wanted; it removed a contradiction.
+- **Deleting code is a feature.** The encore's headline diff is *negative lines*. The §14.20 moral
+  ("over-engineering dressed as a feature") came back one chapter later wearing the toggle — and the
+  fix, again, was *decide well and remove*, not *build more*.
+- **Forensics over instinct.** The duplicate looked like a pull bug; it was a create-on-toggle bug
+  two hops away. Reading the actual n8n workflow list (two real workflows, distinct ids, distinct
+  creation times) beat the first three plausible guesses.
+
+### §15.4 — The CI tail: stubbing the platform we don't ship
+
+The encore's last note was unglamorous and worth recording. The Sabre plugin (§15.1) references
+classes that live in a running Nextcloud + the Sabre library but are **not** shipped in
+`nextcloud/ocp` — `Sabre\DAV\ServerPlugin`/`Server`/`INode`/`Exception\Forbidden`,
+`OCA\DAV\Connector\Sabre\File`, `OCA\DAV\Events\SabrePluginAddEvent`. So **Psalm** flagged them
+`UndefinedClass` and **PHPUnit** couldn't double them — both red, on a commit that was otherwise
+correct. The fix mirrors the existing `ocp-stubs.php` pattern: one declaration-only
+[`tests/external-stubs.php`](../tests/external-stubs.php), shared by the unit bootstrap (so the mock
+builder can generate the doubles) **and** by `psalm.xml`'s `<stubs>` (so static analysis resolves
+the same symbols). Plus `IUser` / `IUserSession` / `EventDispatcher\Event` shims in `ocp-stubs.php`.
+
+> **When you reference a host-app or library class the public stubs don't ship, stub it once and
+> point both Psalm and PHPUnit at the same file.** It's the `ocp-stubs.php` lesson from Chapter 2,
+> extended from `OCP\*` to `Sabre\*` / `OCA\DAV\*`. Declaration-only, no behaviour — just enough
+> surface for the type system and the mock builder.
+
+### §15.5 — Where the encore leaves us
+
+The encore changed the *model*, not the promise. A workflow's life in Nextcloud and in n8n still
+stay honestly in sync through create, rename, move, copy, reconcile, and ignore — and now the mode
+half of that promise is **simpler and truer**: the folder decides, the file obeys, and a `link` is
+read-only *everywhere*, not just in the Files app. PR #39 carries the lot (Sabre guard, toggle
+removal, override removal, CI stubs); all gating checks green.
+
+> *Turns out the audition wasn't quite over — there was one more number, and it was a number where
+> the band played fewer notes. The director took a seat in the house, listened, and cut the part of
+> the song that was showing off. Now the lights can really come up. Chapter 4 — Showtime — and this
+> time we mean it.*
+

@@ -16,11 +16,12 @@ use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
 /**
- * Unit tests for {@see ReservedTagResolver} — the pull-time per-workflow mode
- * resolution against the reserved n8n tags (saga §14.8 `reserved-tags.feature`).
+ * Unit tests for {@see ReservedTagResolver} — the pull-time exclude resolution
+ * against the `n8n:ignore` reserved tag (saga §14.8 `reserved-tags.feature`).
  *
- * Pure logic, no collaborators: a workflow row in, an effective mode (or null =
- * ignore) out.
+ * The mapping's mode is authoritative; the resolver only decides whether a workflow
+ * is excluded. Pure logic, no collaborators: a workflow row + the mapping mode in,
+ * the effective mode (the mapping mode, or null = ignore) out.
  */
 #[CoversClass(ReservedTagResolver::class)]
 final class ReservedTagResolverTest extends TestCase {
@@ -44,38 +45,16 @@ final class ReservedTagResolverTest extends TestCase {
 		self::assertSame(Mapping::MODE_LINK, $this->resolver->resolve($this->workflow(['team:flows']), Mapping::MODE_LINK));
 	}
 
-	public function testLinkTagOverridesASyncDefault(): void {
-		self::assertSame(
-			Mapping::MODE_LINK,
-			$this->resolver->resolve($this->workflow(['team:flows', OwnershipTags::TAG_LINK]), Mapping::MODE_SYNC),
-		);
-	}
-
-	public function testSyncTagOverridesALinkDefault(): void {
-		self::assertSame(
-			Mapping::MODE_SYNC,
-			$this->resolver->resolve($this->workflow(['team:links', OwnershipTags::TAG_SYNC]), Mapping::MODE_LINK),
-		);
-	}
-
 	public function testIgnoreTagResolvesToNull(): void {
 		self::assertNull($this->resolver->resolve($this->workflow(['team:flows', OwnershipTags::TAG_IGNORE]), Mapping::MODE_SYNC));
 	}
 
-	public function testIgnoreWinsOverAnOverrideTag(): void {
-		// ignore is the exclude switch — it takes precedence over sync/link.
+	public function testIgnoreAlongsideOtherTagsStillResolvesToNull(): void {
+		// ignore is the exclude switch — any other tag riding along is irrelevant.
 		self::assertNull($this->resolver->resolve(
-			$this->workflow([OwnershipTags::TAG_SYNC, OwnershipTags::TAG_IGNORE]),
-			Mapping::MODE_SYNC,
+			$this->workflow(['team:flows', OwnershipTags::TAG_IGNORE]),
+			Mapping::MODE_LINK,
 		));
-	}
-
-	public function testSyncWinsWhenBothOverrideTagsArePresent(): void {
-		// Documented out-of-scope: both sync+link → resolve to sync.
-		self::assertSame(
-			Mapping::MODE_SYNC,
-			$this->resolver->resolve($this->workflow([OwnershipTags::TAG_SYNC, OwnershipTags::TAG_LINK]), Mapping::MODE_LINK),
-		);
 	}
 
 	public function testAWorkflowWithNoTagsKeyTakesTheDefault(): void {
@@ -83,7 +62,8 @@ final class ReservedTagResolverTest extends TestCase {
 	}
 
 	public function testOddTagEntriesAreIgnored(): void {
-		$workflow = ['id' => 'wf-3', 'tags' => [['id' => '1'], 'not-an-array', ['name' => 42], ['name' => OwnershipTags::TAG_LINK]]];
-		self::assertSame(Mapping::MODE_LINK, $this->resolver->resolve($workflow, Mapping::MODE_SYNC));
+		// Malformed tag entries are skipped; with no n8n:ignore the mapping mode wins.
+		$workflow = ['id' => 'wf-3', 'tags' => [['id' => '1'], 'not-an-array', ['name' => 42], ['name' => 'team:flows']]];
+		self::assertSame(Mapping::MODE_LINK, $this->resolver->resolve($workflow, Mapping::MODE_LINK));
 	}
 }

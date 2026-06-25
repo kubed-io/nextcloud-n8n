@@ -112,4 +112,26 @@ namespace OCP {
 			public function getValueString(string $app, string $key, string $default = '', bool $lazy = false, bool $sensitive = false): string;
 		}
 	}
+	// LinkWriteGuardPlugin resolves the acting user for its notification; both are
+	// mocked in the plugin test, declaration-only here.
+	if (!interface_exists(IUser::class, false)) {
+		interface IUser {
+			public function getUID(): string;
+		}
+	}
+	if (!interface_exists(IUserSession::class, false)) {
+		interface IUserSession {
+			public function getUser(): ?IUser;
+		}
+	}
+}
+
+namespace OCP\EventDispatcher {
+	// Base event class other bundled-app events (e.g. SabrePluginAddEvent) extend;
+	// PHP resolves the parent at declaration time, so the external-stubs file needs
+	// this to exist first. Declaration-only.
+	if (!class_exists(Event::class, false)) {
+		class Event {
+		}
+	}
 }

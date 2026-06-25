@@ -7,7 +7,7 @@
  * net that makes a Vite major bump safe to land.
  */
 import { describe, it, expect } from 'vitest'
-import { N8N_MIME, getN8nId, buildUrl, isN8nFile, getN8nMode, canOpenInN8n, defaultOpener, toggleTargetTag } from '../../src/files-helpers.js'
+import { N8N_MIME, getN8nId, buildUrl, isN8nFile, getN8nMode, canOpenInN8n, canEditAsText, defaultOpener } from '../../src/files-helpers.js'
 
 describe('getN8nId', () => {
   it('reads the plain metadata-n8n_id attribute', () => {
@@ -123,6 +123,22 @@ describe('canOpenInN8n', () => {
   })
 })
 
+describe('canEditAsText', () => {
+  it('offers the text editor for every mode that holds the full JSON', () => {
+    expect(canEditAsText('sync')).toBe(true)
+    expect(canEditAsText('unmapped')).toBe(true)
+    expect(canEditAsText('ignored')).toBe(true)
+  })
+
+  it('hides the text editor for link (a pointer — nothing to edit)', () => {
+    expect(canEditAsText('link')).toBe(false)
+  })
+
+  it('stays permissive for an absent/unknown mode (first-load race)', () => {
+    expect(canEditAsText('')).toBe(true)
+  })
+})
+
 describe('defaultOpener', () => {
   it('defaults sync/link to n8n', () => {
     expect(defaultOpener('sync')).toBe('n8n')
@@ -136,21 +152,5 @@ describe('defaultOpener', () => {
 
   it('defaults an absent mode to n8n (matches canOpenInN8n)', () => {
     expect(defaultOpener('')).toBe('n8n')
-  })
-})
-
-describe('toggleTargetTag', () => {
-  it('flips sync → n8n:link', () => {
-    expect(toggleTargetTag('sync')).toBe('n8n:link')
-  })
-
-  it('flips link → n8n:sync', () => {
-    expect(toggleTargetTag('link')).toBe('n8n:sync')
-  })
-
-  it('returns "" for non-toggleable modes (unmapped/ignored/absent)', () => {
-    expect(toggleTargetTag('unmapped')).toBe('')
-    expect(toggleTargetTag('ignored')).toBe('')
-    expect(toggleTargetTag('')).toBe('')
   })
 })

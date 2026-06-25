@@ -60,6 +60,33 @@ final class WritebackNotifier {
 	}
 
 	/**
+	 * Notify $userId that an edit to $fileName (file id $fileId) was refused because
+	 * the file is in **link** mode — a pointer to a workflow that lives in n8n, with
+	 * no local JSON to change. Keyed on the file id + a distinct subject so repeated
+	 * blocked saves (a desktop client retrying) collapse onto one bell entry.
+	 */
+	public function linkEditBlocked(string $userId, int $fileId, string $fileName): void {
+		if ($userId === '') {
+			return;
+		}
+		try {
+			$notification = $this->manager->createNotification();
+			$notification->setApp(Application::APP_ID)
+				->setUser($userId)
+				->setDateTime($this->timeFactory->getDateTime())
+				->setObject('workflow', (string)$fileId)
+				->setSubject('link_edit_blocked', ['file' => $fileName]);
+			$this->manager->notify($notification);
+		} catch (\Throwable $e) {
+			// Notifications are a courtesy; the 403 is the real, load-bearing signal.
+			$this->logger->warning('n8n_sync: could not raise link-edit-blocked notification', [
+				'app' => Application::APP_ID,
+				'exception' => $e,
+			]);
+		}
+	}
+
+	/**
 	 * Clear any pending failure notification for $fileId (all users) — called on
 	 * a successful push so a fixed file doesn't keep a stale error in the bell.
 	 */

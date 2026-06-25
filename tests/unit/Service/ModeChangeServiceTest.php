@@ -168,6 +168,33 @@ final class ModeChangeServiceTest extends TestCase {
 		$this->service->changeTo($node, 'link');
 	}
 
+	// ── unmapped guard (no link outside a mapping) ───────────────────────────────
+
+	public function testUnmappedFileRefusesLinkAndReassertsUnmappedTag(): void {
+		$node = $this->createMock(File::class);
+		$node->method('getId')->willReturn(7);
+		$node->expects(self::never())->method('putContent'); // body left intact — no data loss
+		$this->expectRead(['n8n_id' => 'w1', 'n8n_mode' => WorkflowMetadata::MODE_UNMAPPED]);
+		$this->n8n->expects(self::never())->method('getWorkflow'); // never even reach out
+		$this->metadata->expects(self::never())->method('write');
+		// The manually-added n8n:link is scrubbed; the unmapped pill is re-asserted.
+		$this->tags->expects(self::once())->method('apply')->with(7, WorkflowMetadata::MODE_UNMAPPED);
+
+		$this->service->changeTo($node, 'link');
+	}
+
+	public function testUnmappedFileRefusesSyncAndReassertsUnmappedTag(): void {
+		$node = $this->createMock(File::class);
+		$node->method('getId')->willReturn(7);
+		$node->expects(self::never())->method('putContent');
+		$this->expectRead(['n8n_id' => 'w1', 'n8n_mode' => WorkflowMetadata::MODE_UNMAPPED]);
+		$this->n8n->expects(self::never())->method('getWorkflow');
+		$this->metadata->expects(self::never())->method('write');
+		$this->tags->expects(self::once())->method('apply')->with(7, WorkflowMetadata::MODE_UNMAPPED);
+
+		$this->service->changeTo($node, 'sync');
+	}
+
 	// ── ignored mode (saga §14.8 reserved-tags) ──────────────────────────────────
 
 	public function testChangeToIgnoredArchivesAndKeepsTheFile(): void {
