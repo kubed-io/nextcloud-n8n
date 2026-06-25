@@ -350,6 +350,27 @@ wins worth their weight before the submission epics. R1 is the prize for maintai
 sharpest knife — it goes **last, incrementally, behind a materially bigger integration net**, and
 only if the earlier rounds haven't already made the listeners pleasant enough to leave alone.
 
+### Phase B progress log
+
+One slice per PR; integration green is the gate, since these touch the load-bearing lifecycle paths.
+
+- **PR #41 — R2 (ManagedFile).** Merged. `read()` returns a typed value object; 16 call sites
+  simplified; behaviour identical on real NC + n8n.
+  - **Lesson, carved in:** dropping the local `$id = $meta[KEY_ID]` binding looked safe at every
+    site, but `ReconcileNameJob` used `$id` *downstream* (in `FilenameCodec::format`) — **Psalm
+    caught it as `UndefinedVariable` before it ever ran.** When you collapse a guard ladder, grep the
+    rest of the method for the variable you just stopped binding; don't trust the eyeball. Static
+    analysis is the safety net for the net.
+- **PR #42 — R3 (N8nWorkflowBody).** In flight. The duplication was worse than Round 1 logged: not
+  two copies but **four** — `encodeReference`/`encodeSync` were *verbatim* twins in `SyncService`
+  **and** `ModeChangeService`, a detail Round 1 missed and only a full re-read surfaced. The codec is
+  pure + unit-tested, closing the C2 gap (`CreateService`/`PushService` body logic had zero unit
+  coverage before).
+
+> *The from-scratch lens keeps paying out: every round we open the floorboards we find one more copy
+> of the same plank. The point of Phase B isn't to admire the house — it's to make the next change a
+> one-file change.*
+
 ---
 
 ## §4.1 — Epic 1: The frozen-feature refactor
@@ -372,12 +393,14 @@ gloves-off *from-scratch* pass (the **Round 2** section above), bigger and risk-
 
 - ☐ **Net first.** C1–C3 (delete/create/push/reconcile unit coverage) *plus* the bigger integration
   coverage R1 needs — land against *current* code, all green, before touching structure.
-- ☐ **R2** `ManagedFile` value object → kills the `array<string,mixed>` guard-ladder (~10 sites).
-- ☐ **R3** `N8nWorkflowBody` codec → all four body-shaping copies (A1 + the `encode*` twins) in one
-  unit-tested class.
+- ✅ **R2** `ManagedFile` value object → killed the `array<string,mixed>` guard-ladder across **16**
+  read sites; `read()` now returns `?ManagedFile`. **Merged (PR #41).** Also folded in the R7
+  `.n8n.json`-literal miss in `NodeWrittenListener`.
+- ◑ **R3** `N8nWorkflowBody` codec → all four body-shaping copies (A1 + the `encode*` twins) in one
+  unit-tested class (`toCreateBody`/`toUpdateBody`/`encodeReference`/`encodeSync`). **In flight (PR #42).**
 - ☐ **R6** mapping memoization + move migration out of the read path.
-- ☐ **R7** carryover DRY (A4/A5/A6) + comment hygiene (the `.n8n.json` literal, `Mapping` stale
-  override docblock, `Ch2 §14`→`Ch3 §14` in `lib/`).
+- ☐ **R7** remaining carryover DRY (A4/A5/A6) + comment hygiene (`Mapping` stale override docblock,
+  `Ch2 §14`→`Ch3 §14` in `lib/`).
 - ☐ **R4** mimetype: uninstall-revert repair-step + single-row restamp (store + perf).
 - ☐ **R5** SSRF / `allow_local_address`: document in `SECURITY.md` (toggle only if the store asks).
 - ☐ **R1** event coordinator — **last, incremental, behind the bigger net**, only if still worth it.
