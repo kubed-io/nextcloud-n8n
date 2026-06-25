@@ -514,13 +514,7 @@ final class SyncService {
 				}
 			}
 			$existing->putContent($body);
-			$this->metadata->write($existing->getId(), [
-				WorkflowMetadata::KEY_ID => $id,
-				WorkflowMetadata::KEY_MODE => $effectiveMode,
-				WorkflowMetadata::KEY_VERSION_ID => $versionId,
-				WorkflowMetadata::KEY_SYNCED_HASH => sha1($body),
-				WorkflowMetadata::KEY_MAPPING => $mapping->id,
-			]);
+			$this->metadata->stampSynced($existing->getId(), $id, $effectiveMode, $versionId, $body, $mapping->id);
 			$this->tags->apply($existing->getId(), $effectiveMode);
 			return;
 		}
@@ -540,13 +534,7 @@ final class SyncService {
 		$nameCounts[$basename] = $collision + 1;
 
 		$file = $folder->newFile($candidate, $body);
-		$this->metadata->write($file->getId(), [
-			WorkflowMetadata::KEY_ID => $id,
-			WorkflowMetadata::KEY_MODE => $effectiveMode,
-			WorkflowMetadata::KEY_VERSION_ID => $versionId,
-			WorkflowMetadata::KEY_SYNCED_HASH => sha1($body),
-			WorkflowMetadata::KEY_MAPPING => $mapping->id,
-		]);
+		$this->metadata->stampSynced($file->getId(), $id, $effectiveMode, $versionId, $body, $mapping->id);
 		$this->tags->apply($file->getId(), $effectiveMode);
 	}
 
