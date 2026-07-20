@@ -214,6 +214,7 @@ jobs:
     # Hand the store the public download URL + that signature; it downloads and
     # validates the tarball itself against our registered certificate.
     - name: Publish to Nextcloud App Store
+      if: false
       env:
         NC_APP_STORE_TOKEN: ${{ secrets.NEXTCLOUD_STORE_TOKEN }}
         DOWNLOAD_URL: ${{ github.server_url }}/${{ github.repository }}/releases/download/${{ needs.version.outputs.tag }}/${{ needs.package.outputs.tarball }}
