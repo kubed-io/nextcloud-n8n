@@ -1,5 +1,20 @@
 name: 🧬 Publish Version
 
+# Manual, intentional release, split into three jobs so each stage owns one thing
+# and hands the next a clean input:
+#
+#   version → bump package.json / lock / info.xml, commit + tag on main via
+#             duplocloud/version-bump. This is the ONLY job that writes files or
+#             a tag; it emits the new tag/version consumed downstream.
+#   package → calls package.yml with that tag, which checks out the exact released
+#             commit and uploads the app tarball as a GHA artifact (build only).
+#   release → downloads that artifact and does the outward-facing work: the GitHub
+#             Release + the apps.nextcloud.com upload. It needs NO source checkout —
+#             it operates purely on the artifact + secrets.
+#
+# Run once with push=false (dry run: computes the version and packages, changes
+# nothing, skips release) then push=true to actually cut the release.
+
 on:
   workflow_dispatch:
     inputs:
@@ -21,18 +36,25 @@ on:
 
 jobs:
 
-  publish:
-    name: Publish
+  # ---------------------------------------------------------------------------
+  # Bump the version files + tag. Owns every write; emits the tag/version.
+  # ---------------------------------------------------------------------------
+  version:
+    name: Version
     runs-on: ubuntu-latest
     permissions:
-      contents: write
+      contents: write   # commit the bump + push the tag to main
+    outputs:
+      tag: ${{ steps.bump.outputs.tag }}
+      version: ${{ steps.bump.outputs.version }}
+      release-notes: ${{ steps.bump.outputs.release-notes }}
     steps:
 
     - name: Validate Branch
       if: inputs.push
       run: |
         if [[ "$GITHUB_REF_NAME" != "main" ]]; then
-          echo "Error: Releases can only be pushed from main. Current branch: $GITHUB_REF_NAME"
+          echo "::error::Releases can only be pushed from main. Current branch: $GITHUB_REF_NAME"
           exit 1
         fi
 
@@ -55,9 +77,9 @@ jobs:
         node-version-file: .nvmrc
         cache: npm
 
-    # Compute the next semver using npm and rewrite package.json. No git tag
-    # here — duplocloud/version-bump owns the commit, tag, and changelog.
-    - name: NPM Version
+    # Compute the next semver with npm and rewrite package.json / lock. No git tag
+    # here — duplocloud/version-bump owns the commit, tag, and changelog below.
+    - name: Compute next version
       id: version
       env:
         ACTION: ${{ inputs.action }}
@@ -67,8 +89,8 @@ jobs:
         echo "tag=$TAG" >> "$GITHUB_OUTPUT"
         echo "version=$VERSION" >> "$GITHUB_OUTPUT"
 
-    # Mirror the new version into appinfo/info.xml so the Nextcloud app
-    # catalog and package.json agree on the released version.
+    # Mirror the new version into appinfo/info.xml so the Nextcloud app catalog
+    # and package.json agree on the released version.
     - name: Sync info.xml version
       env:
         VERSION: ${{ steps.version.outputs.version }}
@@ -76,37 +98,8 @@ jobs:
         sed -i -E "s|<version>[^<]+</version>|<version>${VERSION}</version>|" appinfo/info.xml
         grep -F "<version>${VERSION}</version>" appinfo/info.xml
 
-    - name: Install dependencies
-      run: npm ci --no-audit --no-fund
-
-    - name: Build
-      run: npm run build
-
-    # Pack the app folder Nextcloud expects: a single top-level directory
-    # named after the app id, containing only runtime files.
-    - name: Package
-      id: package
-      env:
-        VERSION: ${{ steps.version.outputs.version }}
-      run: |
-        APP_ID=n8n_sync
-        STAGE="dist/pkg/${APP_ID}"
-        rm -rf dist/pkg
-        mkdir -p "$STAGE"
-        for entry in appinfo lib css js img templates config CHANGELOG.md README.md LICENSE; do
-          [[ -e "$entry" ]] && cp -R "$entry" "$STAGE/"
-        done
-        mkdir -p "$STAGE/dist"
-        cp dist/n8n_sync-files.js "$STAGE/dist/"
-        TARBALL="dist/${APP_ID}-${VERSION}.tar.gz"
-        tar --create --gzip --file "$TARBALL" \
-          --directory dist/pkg \
-          --owner=0 --group=0 --sort=name \
-          --mtime='UTC 2020-01-01' \
-          "$APP_ID"
-        rm -rf dist/pkg
-        echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
-
+    # Commit the bumped files, roll the changelog, tag + push (when push=true).
+    # The tag it creates is what the package job checks out.
     - name: Bump Version
       id: bump
       uses: duplocloud/version-bump@main
@@ -119,15 +112,61 @@ jobs:
           package-lock.json
           appinfo/info.xml
 
-    - name: Create Release
-      if: inputs.push
+  # ---------------------------------------------------------------------------
+  # Build the tarball from the freshly tagged commit → GHA artifact. On a dry run
+  # there is no tag, so it packages the current ref instead (proves it still packs).
+  # ---------------------------------------------------------------------------
+  package:
+    name: Package
+    needs: version
+    uses: ./.github/workflows/package.yml
+    with:
+      ref: ${{ inputs.push && needs.version.outputs.tag || '' }}
+
+  # ---------------------------------------------------------------------------
+  # Outward-facing release. No source checkout — pure artifact + secrets. Login
+  # and secret-fetch run FIRST, then the GitHub Release, then the store upload.
+  # ---------------------------------------------------------------------------
+  release:
+    name: Release
+    needs:
+    - version
+    - package
+    if: inputs.push
+    runs-on: ubuntu-latest
+    # The nextcloud-store environment carries the app-store credentials:
+    #   NEXTCLOUD_STORE_KEY    the app's PEM signing key
+    #   NEXTCLOUD_STORE_TOKEN  the apps.nextcloud.com API token
+    environment:
+      name: nextcloud-store
+      url: https://apps.nextcloud.com/apps/n8n_sync
+    permissions:
+      contents: write   # create the GitHub Release on the existing tag
+    steps:
+
+    - name: Create GitHub App Token
+      id: app-token
+      uses: actions/create-github-app-token@v3
+      with:
+        client-id: ${{ vars.GH_CLIENT_ID }}
+        private-key: ${{ secrets.GH_APP_KEY }}
+
+    # Stage the newly minted artifact for releasing
+
+    - name: Download package artifact
+      uses: actions/download-artifact@v8
+      with:
+        name: ${{ needs.package.outputs.artifact }}
+        path: dist
+
+    - name: Create GitHub Release
       uses: softprops/action-gh-release@v3
       with:
         token: ${{ steps.app-token.outputs.token }}
-        name: ${{ steps.bump.outputs.tag }}
-        tag_name: ${{ steps.bump.outputs.tag }}
-        prerelease: ${{ contains(steps.bump.outputs.tag, '-') }}
-        files: ${{ steps.package.outputs.tarball }}
+        name: ${{ needs.version.outputs.tag }}
+        tag_name: ${{ needs.version.outputs.tag }}
+        prerelease: ${{ contains(needs.version.outputs.tag, '-') }}
+        files: dist/${{ needs.package.outputs.tarball }}
         body: |
           [![Publish](${{ github.server_url }}/${{ github.repository }}/actions/workflows/publish.yml/badge.svg)](${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }})
           [![Tests](${{ github.server_url }}/${{ github.repository }}/actions/workflows/tests.yml/badge.svg)](${{ github.server_url }}/${{ github.repository }}/actions/workflows/tests.yml)
@@ -135,45 +174,51 @@ jobs:
           [![Integration](${{ github.server_url }}/${{ github.repository }}/actions/workflows/integration.yml/badge.svg)](${{ github.server_url }}/${{ github.repository }}/actions/workflows/integration.yml)
           [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](${{ github.server_url }}/${{ github.repository }}/blob/main/LICENSE)
 
-          ${{ steps.bump.outputs.release-notes }}
+          ${{ needs.version.outputs.release-notes }}
 
           ## Installation
 
-          Download the tarball and extract into your Nextcloud `apps/` directory:
+          **From the Nextcloud App Store** (recommended, once published) — in the
+          Apps UI search for “n8n Sync”, or from the CLI:
+
+          ```sh
+          occ app:install n8n_sync
+          ```
+
+          **Manual** — download this release's tarball and extract into your
+          Nextcloud `apps/` directory:
 
           ```sh
           curl -L -o n8n_sync.tar.gz \
-            https://github.com/${{ github.repository }}/releases/download/${{ steps.bump.outputs.tag }}/n8n_sync-${{ steps.bump.outputs.version }}.tar.gz
+            https://github.com/${{ github.repository }}/releases/download/${{ needs.version.outputs.tag }}/${{ needs.package.outputs.tarball }}
           tar -xzf n8n_sync.tar.gz -C /path/to/nextcloud/apps/
           occ app:enable n8n_sync
           ```
 
-    # Publish the release to apps.nextcloud.com. The store needs the public
-    # download URL + a signature over the tarball, made with the app's private
-    # signing key (the one whose CSR the Nextcloud team countersigned). Both the
-    # key and the store API token are secrets; until they're set this step no-ops,
-    # so a GitHub-only release keeps working.
-    #
-    # Not done here: appinfo/signature.json (the in-tarball code-integrity blob from
-    # `occ integrity:sign-app`). It is OPTIONAL for store acceptance — the store
-    # verifies the tarball signature below — and generating it faithfully needs a
-    # real Nextcloud (phpseclib), so it's a later add via occ, not a hand-rolled one.
-    - name: Publish to Nextcloud App Store
-      if: inputs.push
+    # --- apps.nextcloud.com publish (only once the store token secret exists) ---
+
+    # Sign the tarball with the app's private key. Separate step from the upload:
+    # its one job is to produce the base64 sha512 signature the store verifies.
+    - name: Sign tarball
+      id: sign
       env:
-        NC_APP_SIGN_KEY: ${{ secrets.NC_APP_SIGN_KEY }}
-        NC_APP_STORE_TOKEN: ${{ secrets.NC_APP_STORE_TOKEN }}
-        TARBALL: ${{ steps.package.outputs.tarball }}
-        DOWNLOAD_URL: ${{ github.server_url }}/${{ github.repository }}/releases/download/${{ steps.bump.outputs.tag }}/n8n_sync-${{ steps.bump.outputs.version }}.tar.gz
+        NC_APP_SIGN_KEY: ${{ secrets.NEXTCLOUD_STORE_KEY }}
+        TARBALL: dist/${{ needs.package.outputs.tarball }}
       run: |
-        if [[ -z "$NC_APP_SIGN_KEY" || -z "$NC_APP_STORE_TOKEN" ]]; then
-          echo "::notice::Store secrets (NC_APP_SIGN_KEY / NC_APP_STORE_TOKEN) not set — skipping apps.nextcloud.com upload. The GitHub release is still published."
-          exit 0
-        fi
-        KEY="$(mktemp)"
-        printf '%s' "$NC_APP_SIGN_KEY" > "$KEY"
-        SIGNATURE="$(openssl dgst -sha512 -sign "$KEY" "$TARBALL" | openssl base64 -A)"
-        rm -f "$KEY"
+        mkdir -p .signing
+        printf '%s' "$NC_APP_SIGN_KEY" > .signing/n8n_sync.key
+        SIGNATURE="$(openssl dgst -sha512 -sign .signing/n8n_sync.key "$TARBALL" | openssl base64 -A)"
+        rm -f .signing/n8n_sync.key
+        echo "signature=$SIGNATURE" >> "$GITHUB_OUTPUT"
+
+    # Hand the store the public download URL + that signature; it downloads and
+    # validates the tarball itself against our registered certificate.
+    - name: Publish to Nextcloud App Store
+      env:
+        NC_APP_STORE_TOKEN: ${{ secrets.NEXTCLOUD_STORE_TOKEN }}
+        DOWNLOAD_URL: ${{ github.server_url }}/${{ github.repository }}/releases/download/${{ needs.version.outputs.tag }}/${{ needs.package.outputs.tarball }}
+        SIGNATURE: ${{ steps.sign.outputs.signature }}
+      run: |
         BODY="$(jq -n --arg d "$DOWNLOAD_URL" --arg s "$SIGNATURE" '{download:$d, signature:$s, nightly:false}')"
         CODE="$(curl -sS -o /tmp/store-resp.json -w '%{http_code}' -X POST \
           https://apps.nextcloud.com/api/v1/apps/releases \
@@ -186,23 +231,23 @@ jobs:
           echo "::error::App store upload failed (HTTP $CODE)"
           exit 1
         fi
-        echo "::notice::Published n8n_sync ${{ steps.bump.outputs.version }} to apps.nextcloud.com"
+        echo "::notice::Published n8n_sync ${{ needs.version.outputs.version }} to apps.nextcloud.com"
 
     - name: Summary
       env:
-        VERSION: ${{ steps.bump.outputs.version }}
-        TAG: ${{ steps.bump.outputs.tag }}
-        TARBALL: ${{ steps.package.outputs.tarball }}
-        PUSHED: ${{ inputs.push }}
-        RELEASE_NOTES: ${{ steps.bump.outputs.release-notes }}
+        VERSION: ${{ needs.version.outputs.version }}
+        TAG: ${{ needs.version.outputs.tag }}
+        TARBALL: ${{ needs.package.outputs.tarball }}
+        STORE: https://apps.nextcloud.com/apps/n8n_sync
+        RELEASE_NOTES: ${{ needs.version.outputs.release-notes }}
       run: |
         {
-          echo "## Publish"
+          echo "## Release"
           echo ""
           echo "- **Version**: $VERSION"
           echo "- **Tag**: $TAG"
           echo "- **Tarball**: $TARBALL"
-          echo "- **Pushed**: $PUSHED"
+          echo "- **App store**: $STORE"
           echo ""
           echo "### Release Notes"
           echo ""

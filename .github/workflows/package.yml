@@ -1,0 +1,106 @@
+name: 📦 Package App
+
+# Builds the Nextcloud app tarball and NOTHING else, then saves it as a GHA
+# artifact. Packaging only — it never bumps versions, tags, commits, or
+# publishes. Two entry points:
+#
+#   workflow_dispatch  manual — package an arbitrary ref (default: current ref)
+#   workflow_call      publish.yml calls this with the freshly-created release
+#                      tag, so the tarball is built from the exact released commit
+#
+# The version is read from package.json on whatever ref is checked out, so the
+# ref you package already carries its own version — nothing to pass separately.
+
+on:
+  # Manual runs choose their ref straight from the dispatch form's branch/tag
+  # selector — no ref input needed; checkout defaults to that ref.
+  workflow_dispatch: {}
+  workflow_call:
+    inputs:
+      ref:
+        description: Git ref to package — optional; empty = the caller's context ref (same as a dispatch run). publish.yml passes the release tag.
+        type: string
+        required: false
+        default: ''
+    outputs:
+      version:
+        description: Version packaged (read from package.json on the ref)
+        value: ${{ jobs.package.outputs.version }}
+      tarball:
+        description: Tarball file name
+        value: ${{ jobs.package.outputs.tarball }}
+      artifact:
+        description: Name of the uploaded artifact holding the tarball
+        value: ${{ jobs.package.outputs.artifact }}
+
+jobs:
+
+  package:
+    name: Package
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tarball: ${{ steps.package.outputs.tarball }}
+      artifact: ${{ steps.package.outputs.artifact }}
+    steps:
+
+    - name: Checkout
+      uses: actions/checkout@v7
+      with:
+        # empty = the ref this workflow runs on; publish.yml passes the release tag
+        ref: ${{ inputs.ref }}
+
+    - name: Setup Node
+      uses: actions/setup-node@v6
+      with:
+        node-version-file: .nvmrc
+        cache: npm
+
+    - name: Read version
+      id: meta
+      run: |
+        VERSION="$(node -p "require('./package.json').version")"
+        echo "version=$VERSION" >> "$GITHUB_OUTPUT"
+
+    - name: Install dependencies
+      run: npm ci --no-audit --no-fund
+
+    - name: Build
+      run: npm run build
+
+    # Pack the app folder Nextcloud expects: a single top-level directory named
+    # after the app id, containing only runtime files. Deterministic tar
+    # (fixed owner/mtime, sorted) so the same commit packs byte-identically.
+    - name: Package
+      id: package
+      env:
+        VERSION: ${{ steps.meta.outputs.version }}
+      run: |
+        APP_ID=n8n_sync
+        STAGE="dist/pkg/${APP_ID}"
+        rm -rf dist/pkg
+        mkdir -p "$STAGE"
+        for entry in appinfo lib css js img templates config CHANGELOG.md README.md LICENSE; do
+          [[ -e "$entry" ]] && cp -R "$entry" "$STAGE/"
+        done
+        mkdir -p "$STAGE/dist"
+        cp dist/n8n_sync-files.js "$STAGE/dist/"
+        TARBALL="${APP_ID}-${VERSION}.tar.gz"
+        tar --create --gzip --file "dist/${TARBALL}" \
+          --directory dist/pkg \
+          --owner=0 --group=0 --sort=name \
+          --mtime='UTC 2020-01-01' \
+          "$APP_ID"
+        rm -rf dist/pkg
+        echo "tarball=$TARBALL" >> "$GITHUB_OUTPUT"
+        echo "artifact=${APP_ID}-package" >> "$GITHUB_OUTPUT"
+
+    - name: Upload package artifact
+      uses: actions/upload-artifact@v7
+      with:
+        name: ${{ steps.package.outputs.artifact }}
+        path: dist/${{ steps.package.outputs.tarball }}
+        if-no-files-found: error
+        retention-days: 7
