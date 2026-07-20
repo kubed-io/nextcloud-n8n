@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Internal: n8n cursor pagination (workflows + tags) shares one bounded walk in `N8nClient` instead of two copies (no behaviour change).
 - Docs: document the `occ n8n_sync:sync` command; corrected stale code comments (the removed per-file mode override) and saga chapter citations.
 - Docs: SECURITY.md now documents the deliberate `allow_local_address` (SSRF) trade-off — the app opts out of Nextcloud's local-address guard so it can reach a self-hosted n8n at a private/in-cluster address (admin-trust boundary, single n8n target).
+- CI: the publish workflow can now upload a release to apps.nextcloud.com (signed, secret-gated).
 
 ## [0.1.3] - 2026-06-25
 

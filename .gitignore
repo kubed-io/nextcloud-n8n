@@ -10,3 +10,6 @@ tests/results/
 .php-cs-fixer.cache
 tests/integration/vendor/
 tests/integration/junit/
+
+# the csr for the market
+.signing
