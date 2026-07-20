@@ -9,6 +9,10 @@ A Nextcloud app that surfaces n8n workflows as native files — browse, edit, an
 [![Nextcloud](https://img.shields.io/badge/Nextcloud-30--33-0082c9?logo=nextcloud&logoColor=white)](https://apps.nextcloud.com)
 [![PHP](https://img.shields.io/badge/PHP-%E2%89%A58.1-777bb4?logo=php&logoColor=white)](composer.json)
 
+![n8n workflows shown as .n8n.json files in the Nextcloud Files app, each tagged n8n:sync](screenshots/mapped-folder.png)
+
+*Your n8n workflows, living in Nextcloud as native `.n8n.json` files — tagged, versioned, and synced both ways.*
+
 ---
 
 ## How It Works
@@ -61,6 +65,10 @@ This is a high-level showcase. Each feature links to its **executable specificat
 Make a `.n8n.json` file in a mapped sync folder (new file, upload, or move-in) and the app registers it as a real n8n workflow — tagged with the mapping and stamped with the workflow's ID. Author in your editor of choice; it goes live in n8n without opening the n8n UI. A file created **outside** any mapped folder stays a plain, untracked document.
 
 📋 spec: [`features/create-workflow.feature`](features/create-workflow.feature) · 🛠 [`lib/Listener/CreateInN8nListener.php`](lib/Listener/CreateInN8nListener.php)
+
+![The Files app New menu with an n8n workflow option](screenshots/create-workflow.png)
+
+*The Files **+ New** menu gains an "n8n workflow" item — create one and it goes live in n8n, no n8n UI needed.*
 
 ### Mapping membership follows the folder
 
@@ -149,6 +157,10 @@ Closely related to the file type, but driven by the file's **mode**. Two openers
 
 📋 spec: [`features/open-with.feature`](features/open-with.feature) · 🛠 [`src/files.js`](src/files.js)
 
+![The Files app right-click menu showing Open in n8n and Open with text editor](screenshots/context-menu.png)
+
+*Right-click a workflow: **Open in n8n** jumps to the live editor, **Open with text editor** edits the raw JSON.*
+
 ### Tagging
 
 Each managed file carries exactly one system tag indicating its mode:
@@ -186,9 +198,17 @@ A mapping binds **one** n8n tag to a folder + a mode — and that tag can be **a
 
 A request-scoped guard prevents the app from pushing its own pull writes back to n8n (the classic bidirectional sync loop problem).
 
+![A .n8n.json workflow open in the Nextcloud text editor showing the raw n8n workflow JSON](screenshots/edit-workflow.png)
+
+*Open any managed file to edit the raw workflow JSON — hitting **Save** pushes the change straight back to n8n.*
+
 ---
 
 ## Administration
+
+![The n8n admin settings panel with Sync Actions, Purge, and connection test buttons](screenshots/admin-actions.png)
+
+*The admin panel: one-shot sync actions, a data-safe purge, and live "Test API / Test webhook" connection checks.*
 
 ### n8n Instance
 
@@ -247,6 +267,10 @@ A mapping binds an n8n workflow tag to a Nextcloud folder and defines who can se
 - The app never creates groups — it only uses groups that already exist.
 
 **Per-mapping sync controls** let you pull or push an individual mapping without triggering a full sync across all folders.
+
+![The Folder mappings admin UI with n8n tag, mode, folder, team folder toggle, and group checkboxes](screenshots/admin-folder-mappings.png)
+
+*Each mapping binds an n8n tag to a folder, a mode (sync or link), and the groups allowed to see it.*
 
 ---
 
