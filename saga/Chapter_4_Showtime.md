@@ -54,9 +54,9 @@ the detailed backlog). They're in *causal* order — each clears the ground for 
 | 2 | **Branding** — name & tagline, icon system, store copy, screenshots, repo face | ◑ | §4.2 (icons PR #45; copy PR #46; **screenshots + repo face remain**) |
 | 3 | **Quality stamps** — README badges mapped to real CI + REUSE/license | ◑ | §4.3 (CI + license/NC/PHP badges landed PR #46; **REUSE remains**) |
 | 4 | **Store: info.xml** — schema-valid metadata with the branding assets dropped in | ◑ | §4.4 (copy/summary/website/category landed PR #46; **screenshot remains**) |
-| 5 | **Store: signing** — CSR → countersigned cert → app-id registration | ☐ | §4.5 |
-| 6 | **Store: pipeline** — tarball signature + upload step in `publish.yml` | ◑ | §4.6 (secret-gated upload landed; `signature.json` deferred — optional, needs occ) |
-| 7 | **Finale: first store release** *(may not happen this chapter)* | ☐ | §4.8 |
+| 5 | **Store: signing** — CSR → countersigned cert → app-id registration | ◑ | §4.5 — key minted + reconciled to one identity; **CSR submitted (PR #1103)**; account registered + API token in hand; **awaiting the countersign** |
+| 6 | **Store: pipeline** — tarball signature + upload step in `publish.yml` | ◑ | §4.6 — split into **version→package→release** (+ reusable `package.yml`); store upload wired to the `nextcloud-store` GitHub Environment; `signature.json` still deferred (optional, needs occ) |
+| 7 | **Finale: first store release** *(may not happen this chapter)* | ☐ | §4.8 — everything staged; blocked *only* on the countersign (Epic 5) |
 
 Epics 1–3 are entirely in our control and stand alone. Epics 4–7 are the store run; the **CSR
 countersign wait (5)** is the only external dependency in the whole chapter — start it early so it
@@ -67,6 +67,15 @@ overlaps the polish work.
 > *cutting a GitHub release is done and repeatable — we release when we want.* What's still open in
 > Epics 5–7 is specifically the **apps.nextcloud.com** track (the countersigned cert + `signature.json`
 > + store upload), which layers on top of that working pipeline rather than replacing it.
+
+> **The store track has moved (mid-Ch4 update, part 2).** The name is settled — n8n's silence made
+> `n8n_sync` the answer (§4.2.1). The signing key is minted, survived a two-keys scare, and now resolves
+> to a single canonical identity whose **CSR is in with Nextcloud (PR #1103)**. The apps.nextcloud.com
+> account is registered with an API token in hand, and `publish.yml` has been refactored into
+> **version→package→release** (a reusable `package.yml` in the middle), with the store upload wired to a
+> **`nextcloud-store` GitHub Environment**. **The single remaining gate is the CSR countersign** — until
+> that PR merges, the store has no certificate on record and will reject our signatures. Everything else
+> for the finale is built and waiting on the wings.
 
 ---
 
@@ -506,11 +515,10 @@ Two real considerations to resolve, not just pick a favourite:
    name now** (discoverability matters more than a hypothetical sibling), revisit only if the template
    actually spawns.
 
-- ☐ **Decide the display name** (recommend "n8n Sync" or "Workflow Sync for n8n").
-- ☐ **Lock the app id `n8n_sync`** as a conscious decision *before* the CSR.
-- ☐ **Land a one-line `<summary>`** — what it is + who it's for. Current placeholder is fine but
-  generic ("Sync n8n workflows to and from Nextcloud as files"); sharpen to a benefit
-  (e.g. *"Your n8n workflows as native, editable, backed-up Nextcloud files."*).
+- ☑ **Display name decided — "n8n Sync."** n8n's silence settled it; kept descriptive for store search.
+- ☑ **App id `n8n_sync` locked** as a conscious decision — and now committed for real: the CSR is in
+  (PR #1103), which binds the id.
+- ☑ **One-line `<summary>` landed** *(PR #46)* — sharpened from the generic placeholder to the benefit line.
 
 #### The audience with the king (the branding climax)
 
@@ -540,6 +548,15 @@ is the last thing we mint, once the king has spoken (or hasn't).
 
 > *Every good Showtime has a moment where the performer steps to the front of the house and asks the
 > room for something. We asked the one person whose name is on the marquee next to ours.*
+
+**The king never answered.** The few days became weeks; the partnership team stayed silent. By the
+plan's own terms that was always a valid ending — *"No / silence → `n8n_sync` it is, with a clear
+conscience."* So the non-answer became the decision, cleanly: the display name is **n8n Sync**, the app
+id **`n8n_sync`**, an unofficial integration that says so out loud (nominative use of the mark + an
+affiliation disclaimer in the description). No rename, no partnership, no more waiting on someone else's
+inbox. And the stand-in signing key stopped being a stand-in the instant the name stopped being
+provisional — it became *the* key, and its CSR went out the door (§4.5). Silence, it turns out, was
+the fastest possible curtain-up.
 
 ### 4.2.2 — The icon system (this is the "we sorta generated something" cleanup)
 
@@ -711,7 +728,38 @@ The store requires every release to be cryptographically signed, and the Nextclo
 dependency — kick it off the moment the app id is locked (§4.2.1), so the few-days wait overlaps the
 polish work.
 
-### Step 1 — Generate the key + CSR
+> **What actually happened — the signing arc (mid-Ch4).** The plan below reads clean; the reality had a
+> twist worth keeping.
+>
+> - **The key already existed.** On the eve of the store push a stand-in keypair was minted with
+>   `CN=n8n_sync` and parked in the repo's gitignored **`.signing/`** (key + CSR + a self-signed cert),
+>   so the pipeline had *something* real to be built against. When n8n's silence locked the name, that
+>   stand-in quietly graduated into *the* key.
+> - **A two-keys near-miss.** Reaching for durable storage, a **fresh** key was generated and pushed to
+>   GCP Secret Manager — before noticing the `.signing/` key had been sitting there for weeks. Two
+>   different keypairs for one app id is precisely how you end up with a countersigned certificate that
+>   doesn't match your signing key. Caught by comparing public-key fingerprints; reconciled by making the
+>   original `.signing/` key canonical everywhere (GCP secret `nextcloud-n8n` v2, the errant v1 disabled).
+>   One identity — `514760af…` — from then on.
+> - **The CSR went out.** `n8n_sync/n8n_sync.csr` submitted to
+>   [nextcloud/app-certificate-requests](https://github.com/nextcloud/app-certificate-requests) as
+>   **PR #1103**, with a link to the public source. The Nextcloud team will countersign and commit
+>   `n8n_sync.crt` back **into that same repo** — that's the delivery mechanism; the certificate is
+>   *public*, it lives beside our CSR, and we never need to keep it secret.
+> - **Registered + tokened.** Registered at apps.nextcloud.com via GitHub login and minted an account
+>   **API token** (apps.nextcloud.com/account/token). That token authenticates *uploads* — it is not the
+>   signing key, and the two must not be confused.
+> - **Where the key lives now.** Not 1Password as the old plan guessed: the private key is the value of
+>   the **`NEXTCLOUD_STORE_KEY`** secret in the `nextcloud-store` GitHub Environment, with the GCP
+>   `nextcloud-n8n` secret kept as the durable, *retrievable* backup (the env secret can't be read back;
+>   `.signing/` is only a local, gitignored working copy).
+>
+> **The one gate left is the countersign.** Signing a tarball needs only the private key, so that works
+> today — but the store verifies each signature against the certificate it has *on record*, and it has
+> none until PR #1103 merges. So a real store upload will fail until then. That is the last thread of the
+> finale, and the only thing we're waiting on.
+
+### Step 1 — Generate the key + CSR *(done — see the box above; the real key lives in `.signing/`, not `~/.nextcloud/certificates/`, and the CSR was filed as `n8n_sync/n8n_sync.csr`)*
 
 ```sh
 mkdir -p ~/.nextcloud/certificates
@@ -744,7 +792,33 @@ releases.
 
 ## §4.6 — Epic 6: What the pipeline needs added (Chapter 2 → Chapter 4 delta)
 
-Chapter 2's `publish.yml` produces a tarball. To reach the store it needs two new steps:
+> **What actually happened — the pipeline found its final shape (mid-Ch4).** The store work didn't just
+> bolt a step onto the old single-job `publish.yml`; the whole release pipeline was split into three jobs
+> that each own one thing, so the outward-facing work is cleanly isolated from the build:
+>
+> - **`version`** — bumps `package.json`/lock/`info.xml`, commits + tags on `main`
+>   (duplocloud/version-bump). The *only* writer; it emits the new tag consumed downstream.
+> - **`package`** — a **new reusable `package.yml`** (`workflow_call` + `workflow_dispatch`) that checks
+>   out that exact tag and builds the tarball, uploading it as a GHA artifact. Build only; on a dry run it
+>   packages the current ref instead. This is what lets `version` push a tag and the downstream checkout
+>   read *that* tag rather than a now-stale `main`.
+> - **`release`** — needs **no source checkout at all**: it downloads the artifact, cuts the GitHub
+>   Release, then signs the tarball and POSTs it to apps.nextcloud.com. Login + secrets first, then the
+>   outward-facing steps, each broken into a single-purpose run.
+>
+> **Secrets took a detour and came home.** First wired to tokenless **GCP Workload-Identity Federation →
+> Secret Manager** (the homelab org's standard, so nothing lives as a static GitHub secret). Then the
+> obvious correction: this repo is **public**, so GitHub Environments and org vars are *free* — the GCP
+> dance was only ever a workaround for *private*-repo Actions billing. So the store credentials now live
+> in a **`nextcloud-store` GitHub Environment**: `NEXTCLOUD_STORE_KEY` (the PEM signing key) and
+> `NEXTCLOUD_STORE_TOKEN` (the account API token). GCP stays purely as the durable key backup.
+>
+> **Install docs** in the release notes now lead with the store path — `occ app:install n8n_sync` (or the
+> Apps UI) — and keep the manual tarball extract as the fallback. The `signature.json` blob below is
+> **still deferred** — optional for acceptance, and doing it faithfully needs a real Nextcloud/`occ`.
+
+Chapter 2's `publish.yml` produces a tarball. To reach the store it needs two new steps (this section is
+the *original* plan; the box above is what shipped):
 
 ### 1. Generate `appinfo/signature.json` (inside the tarball)
 
