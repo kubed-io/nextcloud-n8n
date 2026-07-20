@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.4] - 2026-07-20
+
 ### Added
 
 - A **Purge Nextcloud files** admin button (in Sync Actions, also `occ n8n_sync:purge`) that removes the `sync`/`link` workflow files this app created across every mapping — n8n is never touched, and `unmapped`/`ignored`/standalone files are kept — so a later **Sync from n8n** brings them all back.
