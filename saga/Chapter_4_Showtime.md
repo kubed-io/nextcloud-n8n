@@ -758,6 +758,14 @@ polish work.
 > today — but the store verifies each signature against the certificate it has *on record*, and it has
 > none until PR #1103 merges. So a real store upload will fail until then. That is the last thread of the
 > finale, and the only thing we're waiting on.
+>
+> **The CSR commit itself wasn't signed — caught and fixed (2026-07-21).** The PR #1103 commit went up
+> while the local dev environment's commit-signing setup was broken, so it landed on the fork unsigned.
+> Caught after the fact, fixed the environment (SSH commit signing, `gpg.format=ssh` +
+> `commit.gpgsign=true`), then amended the commit in place — same content, same author/date — and
+> force-pushed it to `kferrone/app-certificate-requests:add-n8n_sync-cert`, which updates PR #1103
+> in place with the now-signed commit. Purely a housekeeping fix; still waiting on the Nextcloud team's
+> countersign, unaffected by this.
 
 ### Step 1 — Generate the key + CSR *(done — see the box above; the real key lives in `.signing/`, not `~/.nextcloud/certificates/`, and the CSR was filed as `n8n_sync/n8n_sync.csr`)*
 
@@ -787,6 +795,31 @@ web "register app" form), provide:
 
 A one-time claim that proves you hold the private key for app id `n8n_sync`. After this you can publish
 releases.
+
+---
+
+### Meanwhile — a Dependabot + code-scanning pass (mid-wait, 2026-07-21)
+
+The CSR countersign is the only blocking dependency left in the chapter, so the wait got used for routine
+security/quality upkeep rather than sitting idle:
+
+- **Dependabot — all 7 open alerts cleared.** All five `guzzlehttp/guzzle` advisories (dev-only,
+  `tests/integration/composer.lock`) cleared by an in-range bump to 7.15.1. Both `brace-expansion` DoS
+  advisories (transitive, via eslint) cleared by an in-range `npm audit fix` (2.1.1→2.1.2,
+  5.0.6→5.0.7). Both lockfile-only — no direct dependency version changed.
+- **Code scanning — of 381 total alerts, only 7 were actually still open** (everything else already
+  shows `fixed`). Two small Psalm notes fixed in `N8nClient.php`: a redundant pagination-cursor check
+  Psalm could already prove true, and the `request()` helper's `$jsonBody` docblock widened so
+  `setWorkflowTags`'s list-shaped body no longer trips `InvalidArgument` (also let a stale
+  `psalm-baseline.xml` entry come out). `Application.php`'s `IAppContainer` deprecation is
+  already-documented, unavoidable noise (see §4.6 — it rides the baseline on purpose) — left alone.
+- **Deferred, flagged rather than chased.** Four remaining Psalm notes share one root cause:
+  `@implements IEventListener<T>` templated against NC event classes Psalm can't fully see
+  (`RestoreFromTrashListener`, `LoadFilesScriptListener`, `DeleteToN8nListener`) — the same OCP-stub gap
+  `psalm.xml` already suppresses `InvalidTemplateParam` for. A real fix means touching the template
+  contract across three listener files; scoped out of this pass rather than risked as a drive-by.
+
+Opened as its own PR, independent of #1103 — no overlap with the signing work.
 
 ---
 
