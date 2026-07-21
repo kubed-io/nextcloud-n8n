@@ -819,7 +819,7 @@ security/quality upkeep rather than sitting idle:
   `psalm.xml` already suppresses `InvalidTemplateParam` for. A real fix means touching the template
   contract across three listener files; scoped out of this pass rather than risked as a drive-by.
 
-Opened as its own PR, independent of #1103 — no overlap with the signing work.
+Opened as **PR #49**, independent of #1103 — no overlap with the signing work.
 
 ---
 
