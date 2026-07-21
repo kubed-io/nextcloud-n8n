@@ -917,10 +917,11 @@ settings), not app code.
 | **Code scanning — PHP** | **Psalm SARIF** uploaded via `codeql-action/upload-sarif@v4` (CodeQL has no PHP extractor) | ✅ done (§10 PHP job) |
 | **JS linting in the gate** | ESLint 10 flat config (`eslint.config.js`) wired into the Quality JS job before `npm audit` | ✅ done (PR #5) |
 | **Dependency review** | block PRs that introduce vulnerable deps (`actions/dependency-review-action`) | ☐ todo |
-| **Dependabot — alerts** | GitHub flags vulnerable deps in the Security tab | ⚠️ 2 pending alerts on `main` (1 moderate, 1 low); enable in repo settings to surface |
+| **Dependabot — alerts** | GitHub flags vulnerable deps in the Security tab | ✅ enabled and surfacing real alerts (worked through a batch in Chapter 4 §4.5's "meanwhile" pass) |
 | **Dependabot — security updates** | auto-PRs that bump vulnerable deps | ☐ enable in repo settings (clears the 2 pending alerts above) |
 | **Dependabot — version updates** | scheduled `dependabot.yml` for `composer`, `npm`, **and `github-actions`** | ✅ done (PR #7) — weekly, grouped minor+patch, with cooldown; durable fix for §5.2's stale action majors |
-| **Secret scanning + push protection** | block committed secrets (crown jewels per "Secrets hygiene") | ☐ enable in repo settings |
+| **Secret scanning** | block committed secrets (crown jewels per "Secrets hygiene") | ✅ enabled |
+| **Secret scanning — push protection** | reject a push containing a known secret format, before it lands | ☐ enable in repo settings |
 | **Security policy** | `SECURITY.md` (how to report a vuln) — GitHub shows a ✓ for it | ✅ done (PR #3) |
 | **Dependency graph** | required substrate for Dependabot/dependency review | ✅ on (default for public repos; Dependabot wouldn't function otherwise) |
 | **Audit gates (belt-and-suspenders)** | `composer audit` / `npm audit` in CI | ✅ done (§10), complements Dependabot |

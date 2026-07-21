@@ -124,10 +124,13 @@ PR gets blocked or a release gets held:
 - **Psalm** (PHP static analysis) — uploads SARIF to the Security tab; new findings
   block merge.
 - **CodeQL** (JS / TS) — uploads to the Security tab; new findings block merge.
-- **Dependabot** (planned, [Chapter 2 §13](saga/Chapter_2_Pretty_Package.md)) — alerts,
-  security updates, and version updates for `composer`, `npm`, and `github-actions`.
-- **Secret scanning + push protection** (planned, [Chapter 2 §13](saga/Chapter_2_Pretty_Package.md))
-  — GitHub-side, blocks known secret formats at push time.
+- **Dependabot** ([Chapter 2 §13](saga/Chapter_2_Pretty_Package.md)) — alerts and version
+  updates active for `composer`, `npm`, and `github-actions`; auto security-update PRs are
+  not yet enabled, so alerts are triaged and fixed by hand (e.g. Chapter 4 §4.5's
+  "meanwhile" pass).
+- **Secret scanning** ([Chapter 2 §13](saga/Chapter_2_Pretty_Package.md)) — enabled,
+  GitHub-side. **Push protection** (reject a push containing a known secret format before
+  it lands) is not yet enabled.
 
 If a Quality gate is failing on a PR that purports to fix a vulnerability, **fix the
 gate** rather than bypassing it. The gates are how we know the fix is sound.

@@ -252,7 +252,7 @@ final class N8nClient {
 		$cursor = null;
 		for ($page = 0; $page < self::MAX_PAGES; $page++) {
 			$pageQuery = $query + ['limit' => 250];
-			if ($cursor !== null && $cursor !== '') {
+			if ($cursor !== null) {
 				$pageQuery['cursor'] = $cursor;
 			}
 			$batch = $this->decode($this->request('GET', $path, $pageQuery));
@@ -369,7 +369,7 @@ final class N8nClient {
 	 * lets transport errors bubble up otherwise so the caller can format them.
 	 *
 	 * @param array<string,mixed> $query
-	 * @param array<string,mixed>|null $jsonBody
+	 * @param array<string,mixed>|list<array<string,mixed>>|null $jsonBody
 	 */
 	private function request(string $method, string $path, array $query = [], ?array $jsonBody = null): IResponse {
 		$base = rtrim($this->config->getValueString(Application::APP_ID, 'n8n_url', ''), '/');

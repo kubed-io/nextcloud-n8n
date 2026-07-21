@@ -19,6 +19,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Fixed
+
+- Security: bumped `guzzlehttp/guzzle` (integration-test dependency) to 7.15.1 and `brace-expansion` (transitive lint dependency) to 2.1.2/5.0.7, clearing all open Dependabot alerts.
+- Cleared two open Psalm findings in `N8nClient` (a redundant pagination-cursor check; the shared request helper's body type widened for `setWorkflowTags`'s list-shaped payload).
+
 ## [0.1.4] - 2026-07-20
 
 ### Added
