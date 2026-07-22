@@ -13,3 +13,4 @@ tests/integration/junit/
 
 # the csr for the market
 .signing
+.claude
