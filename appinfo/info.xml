@@ -26,7 +26,7 @@ This is a community integration and is not affiliated with, endorsed by, or spon
 by n8n GmbH. "n8n" and the n8n logo are trademarks of n8n GmbH, used here only to
 identify the service this app integrates with.
   ]]></description>
-  <version>0.1.4</version>
+  <version>0.1.5</version>
   <licence>agpl</licence>
   <author>Kelly Ferrone</author>
   <namespace>N8nSync</namespace>

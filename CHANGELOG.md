@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [0.1.5] - 2026-07-22
+
 ### Fixed
 
 - Security: bumped `guzzlehttp/guzzle` (integration-test dependency) to 7.15.1 and `brace-expansion` (transitive lint dependency) to 2.1.2/5.0.7, clearing all open Dependabot alerts.
