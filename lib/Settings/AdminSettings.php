@@ -34,7 +34,7 @@ use OCP\Settings\IDeclarativeSettingsForm;
  */
 final class AdminSettings implements IDeclarativeSettingsForm {
 	public function __construct(
-		private IAppConfig $config,
+		private readonly IAppConfig $config,
 	) {
 	}
 
