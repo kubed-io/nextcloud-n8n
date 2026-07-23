@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- REST API card now shows whether an API key is **currently stored** (the field itself always looks empty because the key is sensitive/encrypted), so you can tell "not set yet" from "already saved" at a glance.
+
+### Fixed
+
+- Test connection now tells a **missing** API key apart from a **rejected** one — an unset key says so, an invalid/expired one reports "n8n rejected the API key (HTTP 401)". Previously a rejected key surfaced n8n's raw error and looked the same as other failures. Same wording on the button and `occ n8n_sync:test-connection`.
+
 ## [0.1.5] - 2026-07-22
 
 ### Fixed

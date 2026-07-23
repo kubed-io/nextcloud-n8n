@@ -23,9 +23,10 @@ use OCP\IRequest;
  * the bulk reconciler and the writeback push — there's only ever one place
  * we read+decrypt the API key and hit the n8n REST API.
  *
- * The 401/403/404 friendly mapping stays here because those codes are
- * HTTP-transport noise that only the connection test cares about; deeper
- * callers (Phase 3/4) want raw exceptions to drive retry/backoff.
+ * The 401/403/404 friendly mapping now lives in
+ * {@see N8nClient::describeConnectionError()} — shared with the occ command so both
+ * surfaces word failures identically — rather than here; deeper callers (Phase 3/4)
+ * still get the raw typed exceptions to drive retry/backoff.
  */
 final class ConfigController extends Controller {
 	public function __construct(
@@ -46,27 +47,15 @@ final class ConfigController extends Controller {
 				'message' => $result['message'],
 				'httpStatus' => $result['httpStatus'],
 			]);
-		} catch (\RuntimeException $e) {
-			// Friendly, pre-formatted messages from N8nClient (missing URL,
-			// missing key, decrypt failure, local-address refused).
-			return new JSONResponse(['status' => 'error', 'message' => $e->getMessage()]);
 		} catch (\Throwable $e) {
-			$code = $e->getCode();
-			if ($code === 401 || $code === 403) {
-				return new JSONResponse([
-					'status' => 'error',
-					'message' => "Authentication failed (HTTP $code) — check the API key.",
-				]);
-			}
-			if ($code === 404) {
-				return new JSONResponse([
-					'status' => 'error',
-					'message' => 'Reached the host but /api/v1 was not found — check the base URL.',
-				]);
-			}
+			// One shared formatter (also used by the occ command) so the button and
+			// the CLI say the same thing — and so a *rejected* key (401/403) reads
+			// differently from a *missing* one. A single `catch \Throwable` is
+			// deliberate: N8nApiException is a RuntimeException subclass, so a
+			// narrower `catch \RuntimeException` here would hide the 401 mapping.
 			return new JSONResponse([
 				'status' => 'error',
-				'message' => 'Could not reach n8n: ' . $e->getMessage(),
+				'message' => N8nClient::describeConnectionError($e),
 			]);
 		}
 	}

@@ -9,6 +9,8 @@ declare(strict_types=1);
 
 namespace OCA\N8nSync\Settings;
 
+use OCA\N8nSync\AppInfo\Application;
+use OCP\IAppConfig;
 use OCP\Settings\DeclarativeSettingsTypes;
 use OCP\Settings\IDeclarativeSettingsForm;
 
@@ -22,10 +24,31 @@ use OCP\Settings\IDeclarativeSettingsForm;
  * core stores it encrypted and never echoes it back. `api_enabled` gates whether
  * saved files are PUT to `/workflows/{id}` — turn it off to push *only* via the
  * webhook. (Pull + Test connection still require a valid key regardless.)
+ *
+ * Because a sensitive field renders **blank** even when a value is stored (core
+ * never echoes it), the admin otherwise can't tell "no key yet" from "a key is
+ * saved". So the key field's copy is rendered *dynamically* from whether a key is
+ * currently stored — a plain "is it set?" signal that doesn't depend on the
+ * framework showing the masked value. (Whether the key is *valid* is what the Test
+ * connection button answers.)
  */
 final class AdminSettings implements IDeclarativeSettingsForm {
+	public function __construct(
+		private readonly IAppConfig $config,
+	) {
+	}
+
 	#[\Override]
 	public function getSchema(): array {
+		$hasKey = $this->config->getValueString(Application::APP_ID, 'api_key', '') !== '';
+
+		$keyDescription = $hasKey
+			? '✓ An API key is currently stored (encrypted). Paste a new one to replace it, or use the Test API button to check it still works.'
+			: 'No API key stored yet. Sent as X-N8N-API-KEY to the REST API once saved.';
+		$keyPlaceholder = $hasKey
+			? '•••••••••••••• — a key is stored (paste to replace)'
+			: 'Paste the n8n API key';
+
 		return [
 			// NOTE: do NOT prefix the form id with the app id. The settings
 			// frontend strips a leading "<app>_" before calling the save API,
@@ -50,9 +73,9 @@ final class AdminSettings implements IDeclarativeSettingsForm {
 				[
 					'id' => 'api_key',
 					'title' => 'n8n API key',
-					'description' => 'Stored encrypted. Sent as X-N8N-API-KEY to the REST API.',
+					'description' => $keyDescription,
 					'type' => DeclarativeSettingsTypes::PASSWORD,
-					'placeholder' => 'Paste the n8n API key',
+					'placeholder' => $keyPlaceholder,
 					'default' => '',
 					'sensitive' => true,
 				],

@@ -39,8 +39,11 @@ For the user-facing "what does it do?" → [README.md](README.md).
    - [Chapter_3_An_Audition.md](saga/Chapter_3_An_Audition.md) — the second round of
      coding the safety net made safe: the mode-model + motion refactor and edge-case
      features. **§14 is the current feature backlog/ledger.**
-   - [Chapter_4_Showtime.md](saga/Chapter_4_Showtime.md) — Nextcloud app store
-     submission. Mostly future work.
+   - [Chapter_4_Showtime.md](saga/Chapter_4_Showtime.md) — branding, quality stamps,
+     Nextcloud app store submission (CSR + pipeline).
+   - [Chapter_5_The_Marquee_and_the_Meal.md](saga/Chapter_5_The_Marquee_and_the_Meal.md)
+     — **on the store now**; post-release polish (connection UX + the dead-401 lesson),
+     the tuned Copilot review bot, and the `nextcloud-grafana` cameo. **Currently open.**
 
 If the task is about **how a thing works**, the README + the saga chapter are
 where to look. If the task is about **the process of getting a change in**,
@@ -136,6 +139,15 @@ Things that have bitten contributors (human and AI) and shouldn't bite again:
   version-specific rules; a 8.3 CI job will disagree with an 8.4 pod. (Chapter 2 §5.2)
 - **PSR-4 paths are case-sensitive** and must mirror namespaces segment-for-segment.
   A mismatch is a silent composer warning, not an error.
+- **A sensitive settings field always renders blank**, even when a value is stored
+  (core never echoes it). So an admin can't tell "not set" from "already saved"
+  from the field alone. Drive the card's copy from whether a value is stored (read
+  it in `getSchema()`), and make the connection *test* distinguish a **missing**
+  credential from a **rejected** one — different problems, and the error must say
+  which. NB: `N8nApiException` is a `RuntimeException` subclass and stows the status
+  in `httpStatus` (Exception code stays 0), so a `catch (RuntimeException)` before
+  the 401 branch — or reading `getCode()` — silently hides the auth case. See
+  `AdminSettings` + `N8nClient::describeConnectionError`.
 - **CodeQL has no PHP extractor.** PHP is scanned by Psalm SARIF, JS by CodeQL.
   Don't list `php` as a CodeQL language.
 - **The Psalm baseline is the deferred-cleanup ledger.** Don't regenerate it on a
@@ -185,6 +197,37 @@ Long version in [CONTRIBUTING.md](CONTRIBUTING.md). Short version:
 
 If you're working on behalf of a human, **point them at CONTRIBUTING.md** rather
 than re-explaining the flow each session.
+
+### After the PR is open — close the review loop
+
+An automated reviewer (**GitHub Copilot code review**, driven by our
+`.github/copilot-instructions.md` + `.github/instructions/*`) comments on every PR.
+Close the loop before asking a human to review — don't leave a wall of open threads.
+
+1. **Read the bot's threads back.** List them with `gh api graphql`
+   (`repository.pullRequest.reviewThreads`) or `gh api repos/<owner>/<repo>/pulls/<n>/comments`.
+   `review_on_push` re-reviews on every push, so expect duplicate / `isOutdated`
+   re-posts of the same point — the push that fixed the code usually leaves its
+   thread `isOutdated: true`.
+2. **Triage each — worth it vs fluff.** Real correctness / security / nativeness
+   issues are worth it. **Verify a claim against the framework before acting** (e.g.
+   check whether a helper already escapes — `Util::sanitizeHTML` does `ENT_QUOTES`).
+   The recurring fluff is: framework-internal ignorance, un-scoped old-browser
+   paranoia, speculative *unreachable* edge cases, and low-value wording/docblock nits.
+3. **Handled → resolve the thread.** After the fix lands, resolve it via the GraphQL
+   mutation (thread id from step 1):
+   `gh api graphql -f query='mutation { resolveReviewThread(input:{threadId:"<id>"}){ thread { isResolved } } }'`.
+   Optionally reply `Fixed in <sha>` first.
+4. **Not handled (fluff / declined) → reply, don't resolve.** Post a short reply
+   prefixed **`[declined — safe to resolve]`** with the reason, and leave the thread
+   open so the human can scan it and resolve in the UI if they agree. **Never silently
+   resolve a thread you didn't address.**
+5. Post a one-paragraph triage summary as a PR comment, and tell the human what you
+   fixed vs declined.
+
+If the fluff shows a *pattern*, fix it at the source — add the false-positive to the
+"what not to flag" list in `.github/copilot-instructions.md` so the bot stops
+re-raising it (that file, not the PR, is where you tune the reviewer).
 
 ### Shape of a feature change
 

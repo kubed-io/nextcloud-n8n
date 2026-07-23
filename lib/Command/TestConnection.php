@@ -45,7 +45,9 @@ final class TestConnection extends Command {
 		try {
 			$result = $this->client->ping();
 		} catch (\Throwable $e) {
-			$output->writeln('<error>' . $e->getMessage() . '</error>');
+			// Same friendly formatter the admin button uses — so an unset key and a
+			// rejected key report differently, and the CLI matches the UI.
+			$output->writeln('<error>' . N8nClient::describeConnectionError($e) . '</error>');
 			return 1;
 		}
 		$output->writeln('<info>' . $result['message'] . '</info>');
