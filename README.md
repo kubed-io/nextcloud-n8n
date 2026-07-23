@@ -225,6 +225,13 @@ A request-scoped guard prevents the app from pushing its own pull writes back to
 | **Enable REST API** | Master toggle for the REST API channel. When on, file saves and pulls communicate with n8n via its REST API. Pull and Test buttons always use the REST API regardless of this toggle. |
 | **API Key** | Your n8n REST API key. Sent as `X-N8N-API-KEY` on every request. Stored encrypted — never echoed back after saving. |
 
+Because the key is stored encrypted and never echoed back, the field always looks
+empty — so the card's text tells you whether a key is **currently stored**, and the
+**Test API / Test connection** check confirms whether it actually *works*. A failure
+distinguishes the two cases you care about: **no key set yet** vs. a key that was
+**set but rejected** (invalid/expired) — the same wording on the button and the
+`occ n8n_sync:test-connection` command.
+
 ---
 
 ### Webhook

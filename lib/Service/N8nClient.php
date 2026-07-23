@@ -75,6 +75,42 @@ final class N8nClient {
 	}
 
 	/**
+	 * Turn any failure from {@see ping()} into one friendly, user-facing line —
+	 * shared by the Test connection button ({@see \OCA\N8nSync\Controller\ConfigController})
+	 * and the `n8n_sync:test-connection` occ command, so both surfaces say the exact
+	 * same thing. Crucially it tells the two failure classes apart:
+	 *
+	 *  - **Not set / misconfigured** — our own pre-formatted guards (missing URL or
+	 *    key, decrypt failure, local-address refused) are plain `\RuntimeException`s;
+	 *    their message is already user-ready, so pass it through. The "setup isn't
+	 *    finished" case.
+	 *  - **Rejected / unreachable** — a real HTTP failure arrives as an
+	 *    {@see N8nApiException} carrying the status in its `httpStatus` property.
+	 *    401/403 means the key was *set but rejected* — a different problem from
+	 *    "not set", and the whole reason this method exists.
+	 *
+	 * Two load-bearing subtleties: N8nApiException is a `\RuntimeException` subclass,
+	 * so catch order/`instanceof` must exclude it from the passthrough (the older
+	 * `catch (RuntimeException)` in ConfigController swallowed the 401 mapping); and
+	 * the status lives in `httpStatus`, not the Exception code (always 0).
+	 */
+	public static function describeConnectionError(\Throwable $e): string {
+		if (!($e instanceof N8nApiException)) {
+			return $e instanceof \RuntimeException
+				? $e->getMessage()
+				: 'Could not reach n8n: ' . $e->getMessage();
+		}
+		$code = $e->httpStatus;
+		if ($code === 401 || $code === 403) {
+			return "Authentication failed (HTTP $code) — n8n rejected the API key. Check it is valid, not expired, and has access.";
+		}
+		if ($code === 404) {
+			return 'Reached the host but /api/v1 was not found — check the base URL.';
+		}
+		return 'Could not reach n8n: ' . $e->getMessage();
+	}
+
+	/**
 	 * @param int<1,250>|null $limit n8n caps at 250; null = server default.
 	 * @param string|null $cursor pagination cursor returned by previous call.
 	 * @param list<string>|null $tags AND-filter on these n8n tag names. The n8n
@@ -378,7 +414,7 @@ final class N8nClient {
 			throw new \RuntimeException('Set the n8n base URL first.');
 		}
 		if ($enc === '') {
-			throw new \RuntimeException('Set the API key first.');
+			throw new \RuntimeException('No n8n API key is set — add one first.');
 		}
 		try {
 			$key = $this->crypto->decrypt($enc);

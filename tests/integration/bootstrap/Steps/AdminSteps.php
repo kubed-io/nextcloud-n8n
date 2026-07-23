@@ -113,9 +113,33 @@ trait AdminSteps {
 		$this->theAdminProvidesTheN8nApiKey();
 	}
 
+	/** @Given no API key is set */
+	public function noApiKeyIsSet(): void {
+		// Best-effort: the key may or may not exist depending on scenario order.
+		$this->occ('config:app:delete ' . self::APP_ID . ' api_key');
+	}
+
 	/** @When the admin tests the connection */
 	public function theAdminTestsTheConnection(): void {
 		$this->occ('n8n_sync:test-connection');
+	}
+
+	/** @Then the connection test says the key is not set */
+	public function theConnectionTestSaysTheKeyIsNotSet(): void {
+		Assert::assertStringContainsStringIgnoringCase(
+			'add one first',
+			$this->lastOutput,
+			"expected a 'no key set' message, got:\n{$this->lastOutput}",
+		);
+	}
+
+	/** @Then the connection test says the key was rejected */
+	public function theConnectionTestSaysTheKeyWasRejected(): void {
+		Assert::assertStringContainsStringIgnoringCase(
+			'rejected',
+			$this->lastOutput,
+			"expected a 'key rejected' message, got:\n{$this->lastOutput}",
+		);
 	}
 
 	/** @Then the connection is verified */

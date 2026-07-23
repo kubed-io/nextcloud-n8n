@@ -136,6 +136,15 @@ Things that have bitten contributors (human and AI) and shouldn't bite again:
   version-specific rules; a 8.3 CI job will disagree with an 8.4 pod. (Chapter 2 §5.2)
 - **PSR-4 paths are case-sensitive** and must mirror namespaces segment-for-segment.
   A mismatch is a silent composer warning, not an error.
+- **A sensitive settings field always renders blank**, even when a value is stored
+  (core never echoes it). So an admin can't tell "not set" from "already saved"
+  from the field alone. Drive the card's copy from whether a value is stored (read
+  it in `getSchema()`), and make the connection *test* distinguish a **missing**
+  credential from a **rejected** one — different problems, and the error must say
+  which. NB: `N8nApiException` is a `RuntimeException` subclass and stows the status
+  in `httpStatus` (Exception code stays 0), so a `catch (RuntimeException)` before
+  the 401 branch — or reading `getCode()` — silently hides the auth case. See
+  `AdminSettings` + `N8nClient::describeConnectionError`.
 - **CodeQL has no PHP extractor.** PHP is scanned by Psalm SARIF, JS by CodeQL.
   Don't list `php` as a CodeQL language.
 - **The Psalm baseline is the deferred-cleanup ledger.** Don't regenerate it on a

@@ -46,27 +46,15 @@ final class ConfigController extends Controller {
 				'message' => $result['message'],
 				'httpStatus' => $result['httpStatus'],
 			]);
-		} catch (\RuntimeException $e) {
-			// Friendly, pre-formatted messages from N8nClient (missing URL,
-			// missing key, decrypt failure, local-address refused).
-			return new JSONResponse(['status' => 'error', 'message' => $e->getMessage()]);
 		} catch (\Throwable $e) {
-			$code = $e->getCode();
-			if ($code === 401 || $code === 403) {
-				return new JSONResponse([
-					'status' => 'error',
-					'message' => "Authentication failed (HTTP $code) — check the API key.",
-				]);
-			}
-			if ($code === 404) {
-				return new JSONResponse([
-					'status' => 'error',
-					'message' => 'Reached the host but /api/v1 was not found — check the base URL.',
-				]);
-			}
+			// One shared formatter (also used by the occ command) so the button and
+			// the CLI say the same thing — and so a *rejected* key (401/403) reads
+			// differently from a *missing* one. A single `catch \Throwable` is
+			// deliberate: N8nApiException is a RuntimeException subclass, so a
+			// narrower `catch \RuntimeException` here would hide the 401 mapping.
 			return new JSONResponse([
 				'status' => 'error',
-				'message' => 'Could not reach n8n: ' . $e->getMessage(),
+				'message' => N8nClient::describeConnectionError($e),
 			]);
 		}
 	}
