@@ -136,3 +136,26 @@ namespace OCP\EventDispatcher {
 		}
 	}
 }
+
+namespace OCP\Settings {
+	// AdminSettings implements IDeclarativeSettingsForm and reads
+	// DeclarativeSettingsTypes constants; the AdminSettings test instantiates one to
+	// assert its dynamic "is a key stored?" copy. Declaration-only — the constant
+	// *values* are irrelevant to the assertions (they check id/sensitive/description/
+	// placeholder), so any strings suffice.
+	if (!interface_exists(IDeclarativeSettingsForm::class, false)) {
+		interface IDeclarativeSettingsForm {
+			public function getSchema(): array;
+		}
+	}
+	if (!class_exists(DeclarativeSettingsTypes::class, false)) {
+		final class DeclarativeSettingsTypes {
+			public const SECTION_TYPE_ADMIN = 'admin';
+			public const STORAGE_TYPE_INTERNAL = 'internal';
+			public const TEXT = 'text';
+			public const PASSWORD = 'password';
+			public const URL = 'url';
+			public const CHECKBOX = 'checkbox';
+		}
+	}
+}
