@@ -39,8 +39,11 @@ For the user-facing "what does it do?" → [README.md](README.md).
    - [Chapter_3_An_Audition.md](saga/Chapter_3_An_Audition.md) — the second round of
      coding the safety net made safe: the mode-model + motion refactor and edge-case
      features. **§14 is the current feature backlog/ledger.**
-   - [Chapter_4_Showtime.md](saga/Chapter_4_Showtime.md) — Nextcloud app store
-     submission. Mostly future work.
+   - [Chapter_4_Showtime.md](saga/Chapter_4_Showtime.md) — branding, quality stamps,
+     Nextcloud app store submission (CSR + pipeline).
+   - [Chapter_5_The_Marquee_and_the_Meal.md](saga/Chapter_5_The_Marquee_and_the_Meal.md)
+     — **on the store now**; post-release polish (connection UX + the dead-401 lesson),
+     the tuned Copilot review bot, and the `nextcloud-grafana` cameo. **Currently open.**
 
 If the task is about **how a thing works**, the README + the saga chapter are
 where to look. If the task is about **the process of getting a change in**,
