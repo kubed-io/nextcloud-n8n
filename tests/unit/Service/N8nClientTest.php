@@ -48,7 +48,15 @@ final class N8nClientTest extends TestCase {
 	}
 
 	public function testDescribesATransportErrorAsUnreachable(): void {
+		// httpStatus 0 = no response at all — genuinely "could not reach".
 		$msg = N8nClient::describeConnectionError(new N8nApiException('connection refused', 0));
 		self::assertStringContainsStringIgnoringCase('could not reach', $msg);
+	}
+
+	public function testDescribesA500AsAReachedHttpErrorNotUnreachable(): void {
+		// n8n WAS reached and returned 500 — must not claim "could not reach".
+		$msg = N8nClient::describeConnectionError(new N8nApiException('internal error', 500));
+		self::assertStringContainsString('500', $msg);
+		self::assertStringNotContainsStringIgnoringCase('could not reach', $msg);
 	}
 }
