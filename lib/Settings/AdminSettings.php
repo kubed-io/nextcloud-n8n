@@ -43,7 +43,7 @@ final class AdminSettings implements IDeclarativeSettingsForm {
 		$hasKey = $this->config->getValueString(Application::APP_ID, 'api_key', '') !== '';
 
 		$keyDescription = $hasKey
-			? '✓ An API key is currently stored (encrypted). Paste a new one to replace it, or use Test connection to check it still works.'
+			? '✓ An API key is currently stored (encrypted). Paste a new one to replace it, or use the Test API button to check it still works.'
 			: 'No API key stored yet. Sent as X-N8N-API-KEY to the REST API once saved.';
 		$keyPlaceholder = $hasKey
 			? '•••••••••••••• — a key is stored (paste to replace)'

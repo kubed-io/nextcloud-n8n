@@ -198,6 +198,37 @@ Long version in [CONTRIBUTING.md](CONTRIBUTING.md). Short version:
 If you're working on behalf of a human, **point them at CONTRIBUTING.md** rather
 than re-explaining the flow each session.
 
+### After the PR is open — close the review loop
+
+An automated reviewer (**GitHub Copilot code review**, driven by our
+`.github/copilot-instructions.md` + `.github/instructions/*`) comments on every PR.
+Close the loop before asking a human to review — don't leave a wall of open threads.
+
+1. **Read the bot's threads back.** List them with `gh api graphql`
+   (`repository.pullRequest.reviewThreads`) or `gh api repos/<owner>/<repo>/pulls/<n>/comments`.
+   `review_on_push` re-reviews on every push, so expect duplicate / `isOutdated`
+   re-posts of the same point — the push that fixed the code usually leaves its
+   thread `isOutdated: true`.
+2. **Triage each — worth it vs fluff.** Real correctness / security / nativeness
+   issues are worth it. **Verify a claim against the framework before acting** (e.g.
+   check whether a helper already escapes — `Util::sanitizeHTML` does `ENT_QUOTES`).
+   The recurring fluff is: framework-internal ignorance, un-scoped old-browser
+   paranoia, speculative *unreachable* edge cases, and low-value wording/docblock nits.
+3. **Handled → resolve the thread.** After the fix lands, resolve it via the GraphQL
+   mutation (thread id from step 1):
+   `gh api graphql -f query='mutation { resolveReviewThread(input:{threadId:"<id>"}){ thread { isResolved } } }'`.
+   Optionally reply `Fixed in <sha>` first.
+4. **Not handled (fluff / declined) → reply, don't resolve.** Post a short reply
+   prefixed **`[declined — safe to resolve]`** with the reason, and leave the thread
+   open so the human can scan it and resolve in the UI if they agree. **Never silently
+   resolve a thread you didn't address.**
+5. Post a one-paragraph triage summary as a PR comment, and tell the human what you
+   fixed vs declined.
+
+If the fluff shows a *pattern*, fix it at the source — add the false-positive to the
+"what not to flag" list in `.github/copilot-instructions.md` so the bot stops
+re-raising it (that file, not the PR, is where you tune the reviewer).
+
 ### Shape of a feature change
 
 Features here follow one repeatable shape — see **[CONTRIBUTING.md → Anatomy of a

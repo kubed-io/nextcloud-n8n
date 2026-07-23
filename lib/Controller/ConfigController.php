@@ -23,9 +23,10 @@ use OCP\IRequest;
  * the bulk reconciler and the writeback push — there's only ever one place
  * we read+decrypt the API key and hit the n8n REST API.
  *
- * The 401/403/404 friendly mapping stays here because those codes are
- * HTTP-transport noise that only the connection test cares about; deeper
- * callers (Phase 3/4) want raw exceptions to drive retry/backoff.
+ * The 401/403/404 friendly mapping now lives in
+ * {@see N8nClient::describeConnectionError()} — shared with the occ command so both
+ * surfaces word failures identically — rather than here; deeper callers (Phase 3/4)
+ * still get the raw typed exceptions to drive retry/backoff.
  */
 final class ConfigController extends Controller {
 	public function __construct(

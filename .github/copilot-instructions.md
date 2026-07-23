@@ -45,6 +45,25 @@ framework already provides. In priority order:
 - **When the native path isn't obvious, match a mature first-party app** (Deck,
   Files, integration_openai) rather than inventing a new pattern.
 
+## Signal over volume — the most important rule for this reviewer
+
+Fewer, higher-value comments beat exhaustive nitpicking. A review with 3 real
+findings is better than one with 15 where 12 are cosmetic. Noise trains the team to
+ignore you.
+
+- **Worth a comment:** correctness, security, and Nextcloud-nativeness — always.
+- **Usually skip:** a minor wording tweak, a slightly-stale docblock comment, or a
+  non-user-facing string that isn't translated — unless the file is otherwise clean
+  or it's egregious. Don't open a separate thread for each cosmetic nit.
+- **Verify a bug is real before flagging it.** Before raising a possible
+  crash/throw/edge case, trace the guards in the *same function* and confirm the
+  failure path is actually reachable. Don't file speculative "this could break if X"
+  without a concrete path to X.
+- **Assume the framework is correct before calling something "unsafe".** If a
+  Nextcloud/OCP helper plausibly already handles the concern (escaping, encryption,
+  SSRF), assume it does unless the code shows otherwise — don't ask to "also" do what
+  a primitive already does.
+
 ## Review priorities (highest first)
 
 1. **Security** — hardcoded/committed secrets or tokens; a credential written to a
@@ -82,8 +101,13 @@ framework already provides. In priority order:
 - Explain the "why" in one line; acknowledge good native patterns when you see them.
 - Stay within the diff and its blast radius.
 
-## What not to flag (avoid noise)
+## What not to flag (known-safe here — these are settled, and are the recurring false positives)
 
+- **`OCP\Util::sanitizeHTML()` already escapes with `htmlspecialchars(…, ENT_QUOTES)`** —
+  its output is safe in HTML-attribute context. Don't ask to "also escape" it.
+- **The frontend targets Nextcloud's supported (evergreen) browsers.** ES2019+ syntax —
+  optional `catch {}`, `?.`, `??` — is fully supported. Don't raise old-JS-engine
+  compatibility.
 - The compound `.n8n.json` extension + `application/n8n+json` mimetype, the
   deliberate `allow_local_address` egress, and the two-channel (REST + webhook)
   design are all intentional and documented — don't suggest "fixing" them.
