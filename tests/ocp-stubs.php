@@ -179,7 +179,7 @@ namespace OCP\SystemTag {
 	if (!interface_exists(ISystemTagManager::class, false)) {
 		interface ISystemTagManager {
 			/**
-			 * @param list<string> $tagIds
+			 * @param array<int|string> $tagIds tag ids (string or numeric, per NC events)
 			 * @return array<string, ISystemTag>
 			 */
 			public function getTagsByIds($tagIds): array;
