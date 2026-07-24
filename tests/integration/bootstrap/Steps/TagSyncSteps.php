@@ -64,7 +64,7 @@ trait TagSyncSteps {
 	 * @Given a managed :mode workflow file in :tag with n8n tags :a and :b
 	 */
 	public function aManagedFileWithN8nTags(string $mode, string $tag, string $a, string $b): void {
-		$this->tagArrangeManagedFile($tag, [$a, $b], false);
+		$this->tagArrangeManagedFile($mode, $tag, [$a, $b], false);
 	}
 
 	/**
@@ -74,7 +74,7 @@ trait TagSyncSteps {
 	 * @Given a managed :mode workflow file in :tag tagged :a and :b
 	 */
 	public function aManagedFileTaggedTwo(string $mode, string $tag, string $a, string $b): void {
-		$this->tagArrangeManagedFile($tag, [$a, $b], true);
+		$this->tagArrangeManagedFile($mode, $tag, [$a, $b], true);
 	}
 
 	/**
@@ -84,7 +84,7 @@ trait TagSyncSteps {
 	 * @Given a managed :mode workflow file in :tag tagged :a, :b, and :c
 	 */
 	public function aManagedFileTaggedThree(string $mode, string $tag, string $a, string $b, string $c): void {
-		$this->tagArrangeManagedFile($tag, [$a, $b, $c], true);
+		$this->tagArrangeManagedFile($mode, $tag, [$a, $b, $c], true);
 	}
 
 	/**
@@ -95,7 +95,7 @@ trait TagSyncSteps {
 	 * @Given a managed :mode workflow file in :tag with body tags :a and :b
 	 */
 	public function aManagedFileWithBodyTagsTwo(string $mode, string $tag, string $a, string $b): void {
-		$this->tagArrangeManagedFile($tag, [$a, $b], true);
+		$this->tagArrangeManagedFile($mode, $tag, [$a, $b], true);
 	}
 
 	/**
@@ -105,12 +105,12 @@ trait TagSyncSteps {
 	 * @Given a managed :mode workflow file in :tag tagged :only
 	 */
 	public function aManagedFileTaggedOne(string $mode, string $tag, string $only): void {
-		$this->tagArrangeManagedFile($tag, [$only], true);
+		$this->tagArrangeManagedFile($mode, $tag, [$only], true);
 	}
 
 	/** @Given a managed :mode file last synced with tags :a and :b */
 	public function aManagedFileLastSyncedTwo(string $mode, string $a, string $b): void {
-		$this->tagArrangeManagedFile($a, [$a, $b], true);
+		$this->tagArrangeManagedFile($mode, $a, [$a, $b], true);
 	}
 
 	/** @Given a managed :mode file last synced with tags :a, :b, and :c */
@@ -443,7 +443,10 @@ trait TagSyncSteps {
 	 *
 	 * @param list<string> $names
 	 */
-	private function tagArrangeManagedFile(string $tag, array $names, bool $synced): void {
+	private function tagArrangeManagedFile(string $mode, string $tag, array $names, bool $synced): void {
+		// The tag/body reconcile surface is sync-only; a non-sync mode here is an
+		// authoring mistake, so fail loudly instead of silently arranging a sync file.
+		Assert::assertSame('sync', $mode, "tag arrange only supports 'sync' files, got '$mode'");
 		$folder = $this->folderNameForTag($tag);
 		$this->currentFolder = $folder;
 		$this->currentTag = $tag;

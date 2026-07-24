@@ -169,7 +169,11 @@ final class TagReconcileService {
 
 	/** True when two name lists are the same set (order/dupes ignored). */
 	private static function sameSet(array $a, array $b): bool {
-		return array_fill_keys($a, true) == array_fill_keys($b, true);
+		$a = array_unique($a);
+		$b = array_unique($b);
+		sort($a);
+		sort($b);
+		return $a === $b;
 	}
 
 	/**

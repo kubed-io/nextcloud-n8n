@@ -89,6 +89,17 @@ final class TagMergeTest extends TestCase {
 		self::assertSame(['a'], $out);
 	}
 
+	public function testNumericTagNamesStayStrings(): void {
+		// A purely-numeric tag name must not be silently cast to an int array key
+		// inside the set representation: it survives the merge as the string it was.
+		$out = TagMerge::merge([], ['123', 'gold'], ['123', '7']);
+		self::assertSame(['7', '123', 'gold'], $out);
+		self::assertContainsOnly('string', $out);
+
+		// And a numeric name is a real member: removing it on one side removes it.
+		self::assertSame(['9'], TagMerge::merge(['9', '10'], ['9'], ['9', '10']));
+	}
+
 	public function testEmptyInputsYieldEmpty(): void {
 		self::assertSame([], TagMerge::merge([], [], []));
 	}

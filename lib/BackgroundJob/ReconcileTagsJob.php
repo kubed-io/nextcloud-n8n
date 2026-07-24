@@ -53,7 +53,15 @@ final class ReconcileTagsJob extends QueuedJob {
 			return;
 		}
 
-		$node = $this->rootFolder->getUserFolder($userId)->getById($fileId)[0] ?? null;
+		try {
+			$node = $this->rootFolder->getUserFolder($userId)->getById($fileId)[0] ?? null;
+		} catch (\Throwable $e) {
+			$this->logger->warning('ReconcileTagsJob: could not resolve file ' . $fileId . ' for ' . $userId, [
+				'app' => Application::APP_ID,
+				'exception' => $e,
+			]);
+			return;
+		}
 		if (!$node instanceof File) {
 			$this->logger->info('ReconcileTagsJob: file ' . $fileId . ' no longer exists for ' . $userId, [
 				'app' => Application::APP_ID,

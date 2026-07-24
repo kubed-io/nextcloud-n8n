@@ -84,7 +84,9 @@ final class TagMerge {
 
 	/**
 	 * Normalise a name list to a set keyed by name (dedup + drop blanks), used as
-	 * the internal representation so membership tests are O(1).
+	 * the internal representation so membership tests are O(1). Keys are NUL-prefixed
+	 * so a purely-numeric tag name (e.g. "123") is not silently cast to an int array
+	 * key — the prefix is stripped again by {@see sortedKeys}.
 	 *
 	 * @param list<string> $names
 	 * @return array<string,true>
@@ -93,7 +95,7 @@ final class TagMerge {
 		$set = [];
 		foreach ($names as $name) {
 			if ($name !== '') {
-				$set[$name] = true;
+				$set["\0" . $name] = true;
 			}
 		}
 		return $set;
@@ -104,7 +106,7 @@ final class TagMerge {
 	 * @return list<string>
 	 */
 	private static function sortedKeys(array $set): array {
-		$keys = array_keys($set);
+		$keys = array_map(static fn ($k): string => substr((string)$k, 1), array_keys($set));
 		sort($keys);
 		return $keys;
 	}
