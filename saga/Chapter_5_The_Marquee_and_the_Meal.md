@@ -291,6 +291,68 @@ not the labels isn't a full sync of the object** — the apprentice's phrasing, 
 > tag-reconcile goes in it — same recipe, two backends, one baseline note that tells a new
 > tag from a dead one. Don't cook it twice. Cook it once, in the mother sauce."*
 
+### §5.6.1 — We cooked it (n8n first). The engine is on the pass.
+
+The note above said *"whenever we cook it — likely in the shared module."* We cooked it
+**here, now** — the n8n app takes the lead on tag parity ahead of the apprentice
+([PR #51](https://github.com/kubed-io/nextcloud-n8n/pull/51)). n8n could move first because
+its pull/push spine already exists (the apprentice still only has foundation), so the runtime
+lands here and the *shape* it took becomes the blueprint the shared pot inherits.
+
+**What actually shipped** (runtime, not spec):
+
+- **`TagMerge`** — the backend-agnostic core, extracted **pure** on purpose: no Nextcloud, no
+  n8n, just set algebra over `list<string>`. `merge(baseline, nc, source, sourceWins)` does the
+  three-way merge from §5.6 — adds are the union, removes propagate, and a genuine conflict
+  (same tag added on one side, removed on the other) falls to `$sourceWins`
+  (pull → source/n8n, push → NC). This is the piece that lifts into the mother sauce *verbatim*.
+- **`TagSyncService`** — the IO shell around `TagMerge`: reads/writes NC system tags
+  (`ISystemTagManager` + `ISystemTagObjectMapper`, the exact pattern `OwnershipTags` already
+  uses), and does the n8n write leg. It owns the two per-backend knobs that turned out to
+  matter — the reserved-prefix filter and the protected-tags force-keep.
+- **`WorkflowMetadata::KEY_SYNCED_TAGS`** (`n8n_syncedTags`) + `ManagedFile::syncedTags` — the
+  banked baseline, the tag analogue of `n8n_syncedHash`, stamped as canonical (unique + sorted)
+  JSON so equal sets always compare equal.
+- Wired into `SyncService`: pull reconcile in `writeWorkflow` (**sync AND link** — searchability
+  is mode-independent), push reconcile in `pushOne` (**sync only**).
+
+**What the build taught (updates to the spec above):**
+
+- **Baseline is what the *source* reflects, not what we wrote to disk.** On pull, NC-local
+  additions survive onto the pills (`source ∪ nc-local-adds`), but the **baseline is stamped to
+  the source set only** — an NC-local add is *not yet agreed* until a push lands it in n8n.
+  Stamp it too early and the next push reads that local add as a two-sided no-op and never
+  propagates it. This subtlety wasn't in the original note; it's the difference between "tag
+  reaches n8n next push" working and silently dropping.
+- **The n8n write leg is full-replace, so reserved markers must be re-sent.**
+  `setWorkflowTags` replaces the whole tag list. If you push only content tags, any `n8n:*`
+  marker a user hand-set *on the workflow in n8n* vanishes. So the push path reads the live
+  workflow's current tag names, **preserves the reserved ones**, and unions them back in before
+  the replace. (Grafana's upsert has the same "you send the whole set" property — this rhymes,
+  as predicted.)
+- **Tag failure must never sink the body sync.** The reconcile is wrapped in try/catch at the
+  `SyncService` call sites and logged — the body already landed via `putContent` +
+  `stampSynced`; a tags hiccup (n8n 500 on `setWorkflowTags`, a systemtag race) is retried next
+  reconcile, not promoted to a failed sync. Tags are the *last* thing done, deliberately.
+- **`getTagsByIds`, not per-id lookups.** Reading a file's NC content tags is
+  `getTagIdsForObjects` → one `getTagsByIds` batch → strip the reserved prefix. Matches how
+  core surfaces them and avoids N calls.
+
+**Still on the cutting board (why the feature file stays `@todo`):** surfaces **2 and 3** from
+the spec — the live **body↔pills projection listener** (edit a pill → the `.n8n.json` `tags`
+array follows, and vice-versa, *without* a full sync) — aren't wired yet, and the integration
+step definitions don't exist. The pull/push **reconcile** is real and unit-tested
+(`TagMergeTest` pins the algebra; `ManagedFileTest` pins the baseline decode); the *reactive
+projection* is the next slice. So today: **sync from n8n mirrors tags, sync to n8n writes them
+back, the baseline keeps adds and removes straight** — but re-tagging with a pill only reaches
+n8n on the next push, not instantly.
+
+> **Dr K, reading the ticket off the rail:** *"Good — you cooked the sauce, not just wrote the
+> recipe on the wall. And you kept it pure in the middle so it pours straight into the big pot
+> later. Now: the pill and the paper still don't talk to each other till the whole plate goes
+> out. That's your next fire. But the labels reach the guest now, both ways. The kid's still
+> plating his base — you're serving. Stay ahead."*
+
 ---
 
 ---
