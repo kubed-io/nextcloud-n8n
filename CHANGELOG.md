@@ -22,6 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Added
 
 - **Bidirectional tag sync** — a workflow's n8n tags and its Nextcloud system-tag pills are now kept as one searchable set. A pull mirrors n8n's tags onto the file (and keeps any tag you added in Nextcloud); a push sends your Nextcloud tag edits back to n8n. A last-synced baseline tells an add apart from a remove, so removing a tag on either side removes it on the other; the reserved `n8n:` pills are never mixed into content; and a mapping's folder-binding tag is protected so removing its pill can never silently unbind the workflow (leaving a mapping is an explicit move-out or `n8n:ignore`). Specs in `features/tag-sync.feature`, saga §5.6.
+- **Tag edits push on their own** — adding or removing a system-tag pill on a synced workflow file now reconciles that tag to n8n automatically, no "Sync to n8n" click needed, following the same instant/background timing as the rest of the writeback.
 
 ### Changed
 

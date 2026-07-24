@@ -392,13 +392,110 @@ their `@todo` — the *reactive projection* is the next slice. So today: **sync 
 tags, sync to n8n writes them back, the baseline keeps adds and removes straight** — but
 re-tagging with a pill only reaches n8n on the next push, not instantly.
 
+**Two scope lines nailed down while scrutinising the flow.** (1) **Move-out is
+tag-neutral.** The unmap path only *archives* the workflow in n8n — it never touches
+tags — so a move-out leaves both the n8n tag and the NC pill exactly as they were, and
+once the file is `unmapped` it is a plain Nextcloud file the tag machinery no longer
+applies to. That holds by construction today (the reconcile only runs inside a mapping's
+loop), and the future auto-trigger listener must gate on mapping membership to keep it
+true. The live move-out scenario now asserts precisely that — both sides still carry the
+tag — instead of leaning on an undefined "left as they were" step and a fuzzy
+"handled by the unmap path" one. (2) **A second multi-mapping hazard, pinned.** When one
+workflow carries two mapping tags and is mirrored into two folders, each mirror sees the
+*other* mapping's tag as an ordinary content pill that is **not** in its per-mapping
+protected set (`[mapping tag]`) — so dropping it would push a removal that unbinds the
+sibling and prunes its mirror. The real fix is a protected set that is the **union** of
+every mapping tag on the workflow; it is `@todo` alongside the sibling-convergence
+fan-out, both deliberately out of scope for this cut.
+
 > **Dr K, reading the ticket off the rail:** *"Good — you cooked the sauce, not just wrote the
 > recipe on the wall. And you kept it pure in the middle so it pours straight into the big pot
 > later. Now: the pill and the paper still don't talk to each other till the whole plate goes
 > out. That's your next fire. But the labels reach the guest now, both ways. The kid's still
 > plating his base — you're serving. Stay ahead."*
 
+### §5.6.2 — The reactive fire: making an edit reach the other side on its own
+
+§5.6.1 shipped the **engine** and one **trigger**: the bulk manual sync. Pull mirrors n8n → pills
+(sync + link), the per-mapping "Sync to n8n" button pushes pills → n8n, and the `n8n_syncedTags`
+baseline keeps adds and removes straight. That is a *correct* two-way sync — but only when a human
+clicks a button. The goal is **perfect** two-way: edit a tag on either side and *see it on the
+other on its own*. So the remaining work is not new algebra — the `TagMerge` pot is done — it is
+**triggers**: wiring the existing reconcile onto the events that already fire when a user edits
+tags, the same way the body writeback and the `name` reconcile are wired.
+
+**The three NC-side edit surfaces, and what actually happens today.** The spec names three places a
+tag can be edited, kept as one set (n8n tags; the file body `tags` array; the NC system-tag pills).
+Reading the wiring against that spec surfaced exactly where the reactive half is missing:
+
+| Surface | User gesture | Event that fires | What happens today |
+|---|---|---|---|
+| 1 — n8n tags | edit in n8n | (none in NC) | **Pull reconciles it.** ✅ (bulk pull, sync + link) |
+| 3 — NC pills | add/remove a pill in Files | `TagAssignedEvent` / `TagUnassignedEvent` | **Nothing.** No listener acts on a *content* pill — `ModeTagListener` only fires on `n8n:ignore`. The tag sits in NC and never reaches n8n until a manual push. ❌ |
+| 2 — file body | edit the JSON `tags` array + save | `NodeWrittenEvent` | **The tag edit is silently dropped.** `NodeWrittenListener` → `PushService::push` sends the body via `PUT /workflows/{id}`, which **omits `tags`** (`N8nWorkflowBody` whitelist), and `PushService` **never calls `reconcilePush`** — so n8n's tags don't change and the pills don't change. ❌ |
+
+**Logical issues found while reading the wiring (the real value of this pass):**
+
+1. **`PushService::push` drops body-tag edits on the floor.** The most surprising gap: a user edits
+   `tags` in the JSON, saves, the body PUT succeeds, the synced-hash is re-stamped as "done" — and
+   n8n's tags are untouched and the pills are untouched. A sync tool that *looks* like it saved but
+   silently discarded the change is worse than one that errored. Directly violates the user's
+   "honor editing tags from the file contents itself."
+2. **Pills-as-truth vs body-as-canonical is a real fork, not a detail.** `reconcilePush` reads the
+   **pills** as the NC-side truth. The spec says the **body** is canonical and the pills are a
+   projection. For a *pill* edit, pills-as-truth is exactly right. For a *body* edit, the body must
+   win — a reconcile that always reads pills would *overwrite the body edit with the stale pills*.
+   So the two reactive entry points cannot share one "read the NC side" step blindly; the body path
+   must feed the body's `tags` as the NC input. This is why surfaces 2 and 3, though they look like
+   one feature, split into two carefully-ordered slices.
+3. **A content-tag listener is a loop unless it is guarded.** `writeNcContentTags` assigns/unassigns
+   pills, which *fires* `TagAssignedEvent`/`TagUnassignedEvent`. Today that is harmless only because
+   nothing listens for content-tag events. The moment a reactive listener exists it must run its
+   reconcile **inside `SyncGuard`** (exactly as `ModeChangeService` does for `n8n:ignore`), or the
+   pill it writes re-enters the listener forever.
+4. **The mapping-tag safety net now has a reactive face.** Remove the `flows` mapping pill in Files
+   and the reactive reconcile reads the pills (no `flows`), merges, **force-keeps** the protected
+   mapping tag, and writes the pills back — so the pill *pops back on its own*. That is the intended
+   safety net (a stray click can never unbind), and the pop-back write is swallowed by the same
+   guard. The deliberate eject (drop-pill ⇒ `n8n:ignore`) stays `@todo` — the net ships first.
+
+**The plan — reactive triggers, smallest safe slices first.** The engine is reused verbatim; only
+the triggers are new. Ordered by value ÷ risk:
+
+- **Slice A (this cut) — the pill-edit auto-trigger (surface 3).** A new `ContentTagListener` on
+  `TagAssignedEvent`/`TagUnassignedEvent` that, for a **content** (non-reserved) pill on a managed
+  **sync** file, runs `reconcilePush` on **that one file** — inline when `timing=sync`, or via a new
+  `ReconcileTagsJob` when `timing=async`, honouring the *same* knob the body writeback already uses.
+  It reuses `reconcilePush` **unchanged** (pills = NC truth — precisely correct for a pill edit), so
+  the risk is only in the trigger, not the algebra. Delivers the headline "add/remove a pill in
+  Files → n8n updates on its own," and the mapping-tag pop-back net comes for free. Orchestration
+  (resolve the file's mapping → protected tag, wrap in the guard, best-effort log) lives in a small
+  `TagReconcileService` shared by the inline listener and the async job. **Deliberately does NOT
+  touch the file body `tags` array** — that is Slice B — so the on-disk `tags` briefly trail the
+  pills/n8n and self-heal on the next pull. Safe today because *nothing* yet reads the body `tags`
+  as canonical (see issue 2), so a stale body cannot revert anything until Slice B lands and updates
+  it atomically.
+- **Slice B (next) — body ⇆ pills projection (surface 2).** Make the body `tags` array canonical: a
+  pill edit updates the body in place (loop-safe: re-stamp `n8n_syncedHash` so the write it triggers
+  is recognised as ours and pushes *no* body), and a body-`tags` edit updates the pills and pushes
+  the tags — **without** a redundant full-file body push (the "silent body update" scenario). This
+  is where issue 1 is fully closed and where the body-vs-pills authority (issue 2) is resolved in
+  code. Bigger and trickier (the tag-only-vs-body-changed discrimination on `NodeWrittenEvent`), so
+  it follows A behind its own tests.
+- **Slice C (next) — pull change-detection.** The scheduled/manual pull already reconciles tags on
+  every file every run; add the skip-unchanged / body-only / tags-only branches so an hourly pull
+  doesn't churn every file. Correctness is already there; this is the anti-churn refinement.
+- **Later — reactive eject (drop mapping pill ⇒ `n8n:ignore`), the union protected-set + sibling
+  fan-out (multi-mapping), and the optional catalog sweep.** All already specced `@todo`.
+
+> **Dr K, sliding the next ticket across:** *"The pot's done — quit stirring it. What's missing is
+> the *bell*: nobody rings when a plate changes. Wire the bell for the pills first — it's the
+> gesture a guest actually makes at the table — and leave the paper ticket for the next fire. And
+> for the love of the line, put the guard on before you ring it, or you'll be plating the same dish
+> till close."*
+
 ---
+
 
 ---
 
