@@ -13,6 +13,7 @@ use OCA\DAV\Events\SabrePluginAddEvent;
 use OCA\Files\Event\LoadAdditionalScriptsEvent;
 use OCA\Files_Trashbin\Events\NodeRestoredEvent;
 use OCA\N8nSync\BackgroundJob\ScheduledPullJob;
+use OCA\N8nSync\Listener\ContentTagListener;
 use OCA\N8nSync\Listener\CopyListener;
 use OCA\N8nSync\Listener\CreateInN8nListener;
 use OCA\N8nSync\Listener\DeleteToN8nListener;
@@ -150,6 +151,15 @@ final class Application extends App implements IBootstrap {
 		// Removing n8n:ignore is the inverse: unarchive the workflow and return the file
 		// to its mapping's default mode (saga §14.8). Same listener, TagUnassignedEvent.
 		$context->registerEventListener(TagUnassignedEvent::class, ModeTagListener::class);
+
+		// §5.6.2 reactive tag sync (surface 3): a CONTENT pill add/remove on a managed
+		// sync file reconciles that tag to n8n on its own — the tag-side sibling of the
+		// body writeback, honouring the same `timing` knob (inline vs ReconcileTagsJob).
+		// Splits from ModeTagListener by namespace: that one owns reserved `n8n:ignore`,
+		// this one owns content tags. Loop-safe: its reconcile writes pills under
+		// SyncGuard, so the tag events it re-fires bail here.
+		$context->registerEventListener(TagAssignedEvent::class, ContentTagListener::class);
+		$context->registerEventListener(TagUnassignedEvent::class, ContentTagListener::class);
 
 		// Files-app frontend: load the file-action bundle (icon + "Open in n8n"
 		// default click) on every page that fires LoadAdditionalScriptsEvent.
