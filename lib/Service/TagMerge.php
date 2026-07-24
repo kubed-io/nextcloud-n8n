@@ -53,8 +53,8 @@ final class TagMerge {
 	 * new baseline.
 	 *
 	 * @param list<string> $baseline last-agreed set (empty on first sync)
-	 * @param list<string> $nc       current Nextcloud content tags
-	 * @param list<string> $source   current source (n8n) content tags
+	 * @param list<string> $nc current Nextcloud content tags
+	 * @param list<string> $source current source (n8n) content tags
 	 * @return list<string> the merged set, unique + sorted (canonical)
 	 */
 	public static function merge(array $baseline, array $nc, array $source): array {

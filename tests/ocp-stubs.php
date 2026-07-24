@@ -164,3 +164,52 @@ namespace OCP\Settings {
 		}
 	}
 }
+
+namespace OCP\SystemTag {
+	// TagSyncService reconciles a workflow's Nextcloud content tags through the
+	// system-tag manager + object mapper; both are mocked in TagSyncServiceTest, so
+	// these are declaration-only, naming just the surface the service calls.
+	if (!interface_exists(ISystemTag::class, false)) {
+		interface ISystemTag {
+			public function getId(): string;
+
+			public function getName(): string;
+		}
+	}
+	if (!interface_exists(ISystemTagManager::class, false)) {
+		interface ISystemTagManager {
+			/**
+			 * @param list<string> $tagIds
+			 * @return array<string, ISystemTag>
+			 */
+			public function getTagsByIds($tagIds): array;
+
+			public function getTag(string $tagName, bool $userVisible, bool $userAssignable): ISystemTag;
+
+			public function createTag(string $tagName, bool $userVisible, bool $userAssignable): ISystemTag;
+		}
+	}
+	if (!interface_exists(ISystemTagObjectMapper::class, false)) {
+		interface ISystemTagObjectMapper {
+			/**
+			 * @param list<string> $objIds
+			 * @return array<string, list<string>>
+			 */
+			public function getTagIdsForObjects($objIds, string $objectType): array;
+
+			public function assignTags(string $objId, string $objectType, $tagIds): void;
+
+			public function unassignTags(string $objId, string $objectType, $tagIds): void;
+
+			public function haveTag($objIds, string $objectType, string $tagId, bool $all = true): bool;
+		}
+	}
+	if (!class_exists(TagNotFoundException::class, false)) {
+		class TagNotFoundException extends \RuntimeException {
+		}
+	}
+	if (!class_exists(TagAlreadyExistsException::class, false)) {
+		class TagAlreadyExistsException extends \RuntimeException {
+		}
+	}
+}

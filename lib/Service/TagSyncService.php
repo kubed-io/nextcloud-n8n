@@ -144,8 +144,7 @@ final class TagSyncService {
 	 * ownership pills are invisible to this method, so they are never touched.
 	 *
 	 * @param list<string> $desired reserved-free content tag names
-	 * @param list<string>|null $current the file's already-read content tags; pass it to
-	 *   skip the re-read when the caller just read them (the reconcile paths do).
+	 * @param list<string>|null $current the file's already-read content tags; pass to skip the re-read when the caller just read them (the reconcile paths do)
 	 */
 	public function writeNcContentTags(int $fileId, array $desired, ?array $current = null): void {
 		$objId = (string)$fileId;
