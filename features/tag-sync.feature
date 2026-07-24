@@ -144,6 +144,17 @@
 # branches); and (4) the reactive eject and the optional catalog sweep. Shared with
 # the Grafana sibling; per-backend knobs = tag write path, reserved prefix,
 # protected-tags set.
+#
+# SCOPE — TAG SYNC IS A MAPPED-FOLDER FEATURE: every tag behaviour here (pull mirror,
+# push, auto-trigger, change-detection) applies ONLY to a file managed by a mapping.
+# An `unmapped` or `ignored` file is a plain Nextcloud file — its pills are ordinary
+# system tags with NO n8n side effect — so the machinery must not leak onto it.
+#
+# KNOWN, NOT SOLVED HERE — ONE WORKFLOW, MANY MAPPINGS: a workflow carrying two
+# mapping tags is mirrored into two folders (two files, one shared n8n object). A tag
+# edit on one mirror reaches n8n but the sibling only catches up on its next pull;
+# converging every mirror of an id in one gesture is future fan-out work (specced
+# `@todo` at the end, deliberately out of scope for now).
 
 Feature: A workflow's tags and its Nextcloud system tags stay one set
   As an n8n admin browsing workflows in Nextcloud
@@ -337,7 +348,21 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     Given a managed "sync" workflow file in "flows" tagged "flows"
     When the file is moved out of the "flows" mapped folder
     Then the file becomes "unmapped"
+    And its Nextcloud system tags are left exactly as they were (the move changes no tags)
     And the workflow's "flows" tag is handled by the unmap path, not the tag sync
+
+  # An unmapped file is just a Nextcloud file. Tag sync is a MAPPED-folder feature, so
+  # the auto-trigger listener and the push/pull tag reconcile must all no-op on an
+  # unmapped (or ignored) file — editing its pills is a plain Nextcloud tag change with
+  # NO n8n side effect. This keeps the mapped-folder tag machinery from leaking onto
+  # files it no longer owns.
+  @todo
+  Scenario: Editing tags on an unmapped file has no n8n tag-sync side effect
+    Given a workflow file that has become "unmapped"
+    When the admin adds the Nextcloud system tag "urgent" to the file
+    Then no tag push to n8n is triggered
+    And no tag-push job is queued
+    And the tag is just a plain Nextcloud system tag on the file
 
   Scenario: Ejecting via n8n:ignore keeps the file instead of pruning it
     Given a managed "sync" workflow file in "flows" tagged "flows" and "linux"
@@ -387,3 +412,36 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     When an admin runs the optional catalog sweep
     Then the "n8n:sync" definition is kept
     And the "flows" mapping-tag definition is kept
+
+  # ── one workflow mirrored by several mappings (known, not solved here) ─────────
+  # A single n8n workflow can carry two mapping tags at once (e.g. "flows" AND
+  # "reports"), and each mapping mirrors it into its own folder — so the SAME
+  # workflow id exists as TWO managed files in Nextcloud. They share one canonical
+  # object in n8n, so an n8n tag is a property of the workflow, not of either file.
+  #
+  # The hazard: edit the pills on ONE mirror and push, and n8n now holds the merged
+  # tag set — but the SIBLING file (same id, other folder) still shows its old pills
+  # until its own mapping is next pulled, and its stale `n8n_syncedTags` baseline
+  # could then read a since-agreed tag as a local remove and bounce it. Converging
+  # all mirrors of one id on a tag edit (fan-out by workflow id, not just by file) is
+  # the real fix and is deliberately OUT OF SCOPE for now; these scenarios only
+  # PIN THE SHAPE so the future work has a target and the current behaviour is known.
+  @todo
+  Scenario: One workflow with two mapping tags is mirrored into both mapped folders
+    Given a folder mapped as "sync" to the n8n tag "flows"
+    And a folder mapped as "sync" to the n8n tag "reports"
+    And n8n has one workflow tagged both "flows" and "reports"
+    When both mappings are pulled
+    Then the workflow appears as a file in the "flows" folder
+    And the workflow appears as a file in the "reports" folder
+    And both files carry the same workflow id
+
+  @todo
+  Scenario: Editing tags on one mirror should converge its sibling (future fan-out)
+    Given one n8n workflow mirrored as a file in both the "flows" and "reports" folders
+    When the admin adds the Nextcloud system tag "urgent" to the "flows" mirror
+    Then the workflow in n8n is tagged "flows", "reports", and "urgent"
+    And the "reports" mirror should also show the "urgent" pill once its mapping next syncs
+    # NOTE: same-request convergence of every mirror of one workflow id is not built
+    # yet — for now the sibling catches up on its own next pull, and the app must not
+    # bounce the agreed tag when it does.
