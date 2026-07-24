@@ -133,8 +133,13 @@ Things that have bitten contributors (human and AI) and shouldn't bite again:
 - **Never bump `appinfo/info.xml` `<version>` in a feature PR.** It triggers a
   Nextcloud upgrade flow and can crash-loop the pod. The release workflow owns
   version bumps. See `/memories/repo/nextcloud-crash-loops.md` for the recovery.
-- **Deploy to a running NC by copying files, not the whole dir.** `kubectl cp` of
-  a directory clobbers permissions. Copy the changed files only. (saga §15)
+- **Deploy to the cluster with the guarded script, not raw `kubectl cp`.** The
+  `cloud` pod runs the App Store stable build, so use
+  `apps/nextcloud/components/n8n/deploy-dev.sh` in the cluster repo: it backs up
+  the pristine build, **pins the staged `info.xml <version>` to the installed one**
+  (no upgrade flow), overlays code only, and leaves the live URL/API key alone.
+  `restore-stable.sh` reverts. opcache revalidates in ~60s (no restart). A live-pod
+  smoke test is a standing pre-approval obligation — CI green is not a substitute.
 - **CI PHP must match the prod pod's PHP** (currently 8.4). `php-cs-fixer` applies
   version-specific rules; a 8.3 CI job will disagree with an 8.4 pod. (Chapter 2 §5.2)
 - **PSR-4 paths are case-sensitive** and must mirror namespaces segment-for-segment.
