@@ -337,6 +337,40 @@ final class N8nClient {
 	}
 
 	/**
+	 * Batch {@see ensureTag}: resolve many names to ids with a SINGLE
+	 * {@see listTags} fetch, creating only the names that don't exist yet. Callers
+	 * pushing a whole tag set (e.g. the tag reconciler) must use this rather than a
+	 * per-name `ensureTag()` loop, which would issue one full paginated tag-list GET
+	 * per name — an N+1 on every push.
+	 *
+	 * @param list<string> $names
+	 * @return list<string> the tag ids, in the order of the deduplicated $names
+	 */
+	public function ensureTags(array $names): array {
+		$names = array_values(array_unique($names));
+		if ($names === []) {
+			return [];
+		}
+		$byName = [];
+		foreach ($this->listTags() as $tag) {
+			$byName[$tag['name']] = $tag['id'];
+		}
+		$ids = [];
+		foreach ($names as $name) {
+			if (!isset($byName[$name])) {
+				$created = $this->decode($this->request('POST', '/api/v1/tags', [], ['name' => $name]));
+				$id = $created['id'] ?? null;
+				if (!is_string($id) || $id === '') {
+					throw new \RuntimeException('n8n create-tag did not return an id');
+				}
+				$byName[$name] = $id;
+			}
+			$ids[] = $byName[$name];
+		}
+		return $ids;
+	}
+
+	/**
 	 * Replace the tag set on a workflow with $tagIds (n8n's PUT semantics on
 	 * `/workflows/{id}/tags` — additive callers must merge first via
 	 * {@see getWorkflow}'s `tags` array). The body shape is `[{id: …}, …]`.

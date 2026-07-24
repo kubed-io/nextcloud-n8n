@@ -182,10 +182,7 @@ final class TagSyncService {
 		$reserved = array_filter($currentNames, fn (string $n): bool => $this->isReserved($n));
 		$finalNames = array_values(array_unique(array_merge($content, $reserved)));
 
-		$ids = [];
-		foreach ($finalNames as $name) {
-			$ids[] = $this->n8n->ensureTag($name);
-		}
+		$ids = $this->n8n->ensureTags($finalNames);
 		$this->n8n->setWorkflowTags($workflowId, $ids);
 	}
 
