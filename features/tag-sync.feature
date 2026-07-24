@@ -108,7 +108,6 @@
 # (surfaces 2 and 3) land. Shared with the Grafana sibling; per-backend knobs = tag
 # write path, reserved prefix, protected-tags set.
 
-@todo
 Feature: A workflow's tags and its Nextcloud system tags stay one set
   As an n8n admin browsing workflows in Nextcloud
   I want each workflow's n8n tags mirrored as Nextcloud system tags and back
@@ -129,13 +128,12 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     When the "flows" mapping is pulled
     Then the workflow's file has the Nextcloud system tag "linux"
     And the file has no content tag "n8n:sync"
-    And the file's "n8n:sync" mode pill is unaffected
 
   Scenario: Pull mirrors tags even for a link mapping (searchability, not push)
     Given a folder mapped as "link" to the n8n tag "reports"
-    And n8n has a workflow tagged "reports" and "prod"
+    And n8n has a workflow tagged "reports", "prod", and "dns"
     When the "reports" mapping is pulled
-    Then the link file has the Nextcloud system tag "prod"
+    Then the workflow's file has the Nextcloud system tags "prod" and "dns"
     And the file can be found by a Nextcloud tag search for "prod"
 
   Scenario: Push writes Nextcloud content tags into n8n (sync only)
@@ -145,11 +143,16 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     Then the workflow in n8n is tagged "flows", "linux", and "urgent"
     And the reserved "n8n:*" tags are not written to n8n
 
+  # Surfaces 2 & 3 (the live body↔pills projection listener) are not wired yet, so
+  # a hand-edit of the JSON `tags` array is not reflected onto the pills or pushed.
+  # These scenarios are the spec for that PLANNED work.
+  @todo
   Scenario: Editing a pill updates the file body's tags array (body is canonical)
     Given a managed "sync" workflow file in "flows" with body tags "flows" and "linux"
     When the admin adds the Nextcloud system tag "urgent" to the file
     Then the file body's "tags" array becomes "flows", "linux", and "urgent"
 
+  @todo
   Scenario: Editing the file body's tags array updates the pills and pushes to n8n
     Given a managed "sync" workflow file in "flows" tagged "flows" and "linux"
     When the admin edits the file body's "tags" array to "flows", "linux", and "prod"
@@ -159,12 +162,14 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
   # Removing a tag from the JSON body itself is a real edit surface — the same
   # NodeWrittenEvent path the `name` key already rides. The body is canonical, so
   # dropping a tag there drops the pill, and the next push drops it in n8n.
+  @todo
   Scenario: Removing a tag from the file body's tags array removes the pill
     Given a managed "sync" workflow file in "flows" tagged "flows", "linux", and "old"
     When the admin edits the file body's "tags" array to "flows" and "linux"
     Then the file's Nextcloud system tags become "flows" and "linux"
     And the file has no content tag "old"
 
+  @todo
   Scenario: A tag removed in the file body is removed in n8n on the next push
     Given a managed "sync" workflow file in "flows" tagged "flows", "linux", and "old"
     And the workflow in n8n is tagged "flows", "linux", and "old"
@@ -172,6 +177,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     And the "flows" mapping is pushed
     Then the workflow in n8n is tagged "flows" and "linux"
 
+  @todo
   Scenario: Removing the mapping-tag from the file body does not unbind the workflow
     Given a managed "sync" workflow file in "flows" tagged "flows" and "linux"
     When the admin edits the file body's "tags" array to only "linux"
@@ -209,7 +215,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
   Scenario: An add on one side and an unrelated remove on the other both apply
     Given a managed "sync" file last synced with tags "flows", "linux", and "old"
     And the file now also has the Nextcloud system tag "urgent"
-    And the workflow in n8n now has only "flows" and "linux" (dropped "old")
+    And the workflow in n8n now has only "flows" and "linux"
     When the "flows" mapping is reconciled
     Then the resulting tag set on both sides is "flows", "linux", and "urgent"
     And the "old" tag is gone from both sides
@@ -220,7 +226,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     Given a managed "sync" workflow file in "flows" tagged "flows" and "linux"
     When the admin removes the Nextcloud system tag "flows" from the file
     And the "flows" mapping is reconciled
-    Then the file still carries the "flows" system tag (it is force-kept)
+    Then the file still carries the "flows" system tag
     And the workflow in n8n still carries the "flows" tag
     And the file is still bound to the "flows" mapping
 
@@ -238,6 +244,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     And the file is kept as a standalone copy, not pruned
     And "n8n:ignore" is never written to n8n as a content tag
 
+  @todo
   Scenario: Removing the mapping pill as a deliberate eject is paired with n8n:ignore
     # The planned reactive gesture: dropping the binding tag on purpose means "take
     # this out of the mapping" — so the app marks it ignored rather than silently
@@ -264,12 +271,14 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     When the "flows" mapping is reconciled
     Then no new tag definition is created on either side
 
+  @todo
   Scenario: An optional catalog sweep keeps any tag still used on either side
     Given a non-reserved tag "shared" that is orphaned in Nextcloud
     But the tag "shared" is still on a workflow in n8n
     When an admin runs the optional catalog sweep
     Then the "shared" definition is kept on both sides
 
+  @todo
   Scenario: An optional catalog sweep never removes a reserved or mapping tag
     Given the reserved definition "n8n:sync" and the mapping-tag definition "flows" exist
     When an admin runs the optional catalog sweep

@@ -27,6 +27,7 @@ use OCA\N8nSync\Tests\Integration\Steps\PurgeSteps;
 use OCA\N8nSync\Tests\Integration\Steps\ReconcileSteps;
 use OCA\N8nSync\Tests\Integration\Steps\RenameSteps;
 use OCA\N8nSync\Tests\Integration\Steps\ReservedTagsSteps;
+use OCA\N8nSync\Tests\Integration\Steps\TagSyncSteps;
 use OCA\N8nSync\Tests\Integration\Support\N8nApiTrait;
 use OCA\N8nSync\Tests\Integration\Support\OccTrait;
 use OCA\N8nSync\Tests\Integration\Support\SetupTrait;
@@ -81,6 +82,7 @@ final class FeatureContext implements Context {
 	use ModeChangeSteps;
 	use ReconcileSteps;
 	use ReservedTagsSteps;
+	use TagSyncSteps;
 	use FileTypeSteps;
 	use MappingMembershipSteps;
 
