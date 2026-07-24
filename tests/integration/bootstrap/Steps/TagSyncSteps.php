@@ -341,9 +341,13 @@ trait TagSyncSteps {
 	 */
 	private function tagArrangeManagedFile(string $tag, array $names, bool $synced): void {
 		$folder = $this->folderNameForTag($tag);
+		$this->currentFolder = $folder;
+		$this->currentTag = $tag;
 		$this->putManagedFile($folder . '/Tagged-' . bin2hex(random_bytes(3)) . '.n8n.json', 'Tagged');
 		$this->tagWfId = $this->lastWorkflowId;
-		$this->tagFilePath = $this->currentFilePath;
+		// Do NOT trust the PUT path: a pull mirrors the workflow name onto the file,
+		// renaming it. Resolve lazily by workflow id (see tagLocateFile) instead.
+		$this->tagFilePath = '';
 		$this->tagSetN8n($names);
 		if ($synced) {
 			$this->runMappingSync('pull', $tag);
