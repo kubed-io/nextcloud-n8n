@@ -211,8 +211,9 @@ final class TagSyncServiceTest extends TestCase {
 
 		$sent = null;
 		$this->n8n->method('setWorkflowTags')->willReturnCallback(
-			function (string $id, array $ids) use (&$sent): void {
+			function (string $id, array $ids) use (&$sent): array {
 				$sent = $ids;
+				return $ids;
 			},
 		);
 		$this->metadata->method('stampTags');
@@ -233,7 +234,7 @@ final class TagSyncServiceTest extends TestCase {
 		$this->tagMapper->method('unassignTags');
 		$this->n8n->method('getWorkflow')->willReturn(['id' => 'wf-1', 'tags' => [['id' => 'a', 'name' => 'flows']]]);
 		$this->n8n->method('ensureTag')->willReturnCallback(fn (string $n): string => 'n8nid:' . $n);
-		$this->n8n->method('setWorkflowTags');
+		$this->n8n->method('setWorkflowTags')->willReturn([]);
 
 		$stamped = null;
 		$this->metadata->method('stampTags')->willReturnCallback(
