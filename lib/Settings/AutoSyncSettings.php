@@ -58,7 +58,11 @@ final class AutoSyncSettings implements IDeclarativeSettingsForm {
 					'title' => 'n8n → Nextcloud: scheduled sync',
 					'description' => 'Nextcloud periodically pulls workflows from n8n (read-only — nothing changes in n8n). Optional; when off, use the manual “Sync from n8n” button. For near-real-time instead, build an n8n workflow that pushes changes to Nextcloud.',
 					'type' => DeclarativeSettingsTypes::CHECKBOX,
-					'default' => '0',
+					// NC's DeclarativeManager does no type coercion — a CHECKBOX default
+					// MUST be a real bool (matches core, e.g. dav SystemAddressBookSettings).
+					// A string '0' breaks the frontend boolean round-trip, so the toggle
+					// silently never persists to appconfig (job then reads it as off).
+					'default' => false,
 				],
 				[
 					'id' => 'schedule_interval',

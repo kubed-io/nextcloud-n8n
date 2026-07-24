@@ -31,6 +31,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Scheduled n8n → Nextcloud sync can be turned on again** — the "scheduled sync" checkbox in Sync Settings now actually saves. It declared its default as a string, which Nextcloud's checkbox couldn't round-trip, so ticking it silently did nothing and the background pull never ran. It now defaults to a real boolean like Nextcloud's own settings.
 - Corrupted tag-baseline metadata (a JSON object where a list was expected) can no longer turn into real tags — only a proper list of strings is honoured.
 
 - Test connection now tells a **missing** API key apart from a **rejected** one — an unset key says so, an invalid/expired one reports "n8n rejected the API key (HTTP 401)". Previously a rejected key surfaced n8n's raw error and looked the same as other failures. Same wording on the button and `occ n8n_sync:test-connection`.

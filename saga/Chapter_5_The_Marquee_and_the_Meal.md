@@ -494,6 +494,27 @@ the triggers are new. Ordered by value ÷ risk:
 > for the love of the line, put the guard on before you ring it, or you'll be plating the same dish
 > till close."*
 
+#### §5.6.2.1 — Slice A, taken to the live line (and a checkbox that fought back)
+Slice A shipped and went to the production pod for a real smoke test. Two legs, two outcomes:
+
+- **Push leg (NC pill → n8n): GREEN.** Removed the `tasks` pill from a synced workflow file in the
+  Nextcloud UI; with `timing=async` the `ReconcileTagsJob` fired on the next tick and the `tasks`
+  tag was gone from the workflow in n8n. The reactive bell rings, the guard held (no echo), the
+  three-way merge did the right thing end-to-end on live data. This is the gesture a guest actually
+  makes at the table, and it works.
+- **Pull leg (n8n tag → NC): BLOCKED, then unblocked.** Adding a tag in n8n and waiting for the
+  scheduled pull to mirror it into Nextcloud went nowhere — because the **scheduled pull had never
+  run once.** The `schedule_enabled` checkbox in Sync Settings was silently refusing to save: its
+  schema declared a **string** `'0'` default where Nextcloud's declarative checkbox needs a real
+  **bool** (`DeclarativeManager` stores string-in/string-out with no coercion, so the frontend's
+  boolean round-trip broke and the toggle persisted nothing). One-line fix — `'default' => false` —
+  and the pull is scheduled again. The full autopsy lives in **Chapter 1 §17.3.3**; the short of it
+  is the reactive tag *push* was never the blocker — a settings-persistence bug on an unrelated
+  toggle was gating the whole *pull* direction, tag reconcile included.
+
+So Slice A is proven live on the push side, and the pull side is clear to validate now that the
+schedule actually turns on. Slice B (body ⇆ pills) is still the next fire.
+
 ---
 
 
