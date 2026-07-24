@@ -170,9 +170,11 @@ final class TagReconcileService {
 	 */
 	private function rewriteBodyTags(File $node, array $wf, string $original, array $rows): ?string {
 		usort($rows, static fn (array $a, array $b): int => strcmp((string)($a['name'] ?? ''), (string)($b['name'] ?? '')));
-		$wf['tags'] = array_values($rows);
+		$wf['tags'] = $rows;
+		// JSON_PRETTY carries JSON_THROW_ON_ERROR, so json_encode returns a string
+		// (or throws) — never false; only the "unchanged" case yields no write.
 		$new = json_encode($wf, N8nWorkflowBody::JSON_PRETTY);
-		if (!is_string($new) || $new === $original) {
+		if ($new === $original) {
 			return null;
 		}
 		$node->putContent($new);
