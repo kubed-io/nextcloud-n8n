@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Design + executable specs for **bidirectional tag sync** (planned): a workflow's tags and its Nextcloud system tags kept as one searchable set, editable from three surfaces (n8n, the file JSON, the NC pills), with a last-synced baseline to tell an add from a remove and mapping-tag protection so pill edits never unbind a workflow. Documented in the README, `features/tag-sync.feature`, and saga §5.6; no runtime code yet.
+
 ### Changed
 
 - REST API card now shows whether an API key is **currently stored** (the field itself always looks empty because the key is sensitive/encrypted), so you can tell "not set yet" from "already saved" at a glance.

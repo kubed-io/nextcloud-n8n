@@ -206,9 +206,92 @@ letting it run generic:
 
 ---
 
-> **Dr K, refilling both glasses:** *"Chapter 4 got you on the marquee. Chapter 5 is
-> the part they don't put on the poster — the quiet fixes, the second cook you trained,
-> and a meal with someone who finally speaks your language. Chapter's open. Eat slow."*
+## §5.6 — A gap we *both* have: bidirectional tag sync (note from the apprentice's kitchen)
+
+The apprentice (`nextcloud-grafana`), cooking its pull engine, tasted an ingredient we
+shipped *around* rather than *through* — **tags** — and found a seam that is open in **this**
+app too. Recording it here because the fix is shared-module bait, not a one-app patch. **No
+code changes here; this is a saga note.**
+
+**The gap, stated for n8n.** An n8n workflow carries real tags (`/api/v1/tags`, opaque ids,
+`PUT …/workflows/{id}/tags` to set them). We use those tags only as the **mapping key** and
+as reserved control tags (`n8n:ignore`, the `n8n:sync`/`n8n:link` mode pills). We do **not**
+reconcile a workflow's *content* tags into Nextcloud's **system tags**. So a user browsing
+the mirror in Files can't filter "every `prod` workflow" the Nextcloud-native way, and can't
+re-tag a workflow with an NC pill and have it reach n8n. **A sync that carries the body but
+not the labels isn't a full sync of the object** — the apprentice's phrasing, and it's right.
+
+**The dish (spec, for whenever we cook it — likely in the shared module):**
+
+- **Equality minus the reserved namespace.** After a reconcile, a workflow's n8n tags and
+  its NC system tags hold the same strings, excluding the reserved `n8n:*` control tags
+  (never pushed to n8n; never imported as content). The `n8n:` prefix on the mode/ignore
+  pills is exactly the seam that lets content and control tags share the NC systemtag space.
+- **Three edit surfaces — the object body is the third.** The apprentice's user sharpened
+  this: tags live *inside* the object we map, so a `sync` file's on-disk JSON already has a
+  `tags` array. That makes **three** editable places, kept as one set: (1) **n8n tags** on
+  the workflow, (2) the **`tags` array in the `.n8n.json` file body**, (3) the **NC system
+  tags** (pills). Two of the three live inside Nextcloud (body + pills) and can drift from
+  each other without ever touching n8n, so the model makes the **file body the canonical
+  object** and the pills a **listener-kept projection**: edit a pill → the body's `tags`
+  follow → the change pushes to n8n; edit the JSON `tags` → the pills follow → it pushes;
+  edit in n8n → a pull writes both. `link` files have only surfaces 1 + 3 (the pointer body
+  is not the object), so their pills are a read-only projection of n8n, pull-only.
+- **The n8n write leg differs from Grafana (and it matters here).** On Grafana, tags ride
+  *inside* the dashboard upsert — writing the body writes the tags. On n8n they do **not**:
+  `N8nWorkflowBody::WRITABLE` deliberately excludes `tags`, and `PUT /workflows/{id}` ignores
+  a `tags` field — tags are a **separate** write (`ensureTag` each name → id, then
+  `setWorkflowTags(id, [ids])` = a full-replace `PUT /workflows/{id}/tags`). So the body push
+  and the tag push are two calls on n8n, one call on Grafana. The **read** side is parallel
+  (both echo `tags` in the GET body); only the write leg forks. This is exactly the kind of
+  per-backend seam the shared module isolates behind one `writeTags(object, names)` method.
+- **⚠ The mapping-tag hazard — n8n-only, no Grafana analogue.** n8n maps a **tag** to a
+  folder, so the workflow's binding *is* a content tag (e.g. `myflows`). If we sync all
+  content tags bidirectionally, the mapping tag becomes an NC pill too — and **removing that
+  pill would push a tag removal that unmaps the workflow** (it falls out of the mapping and
+  gets pruned). Grafana maps by *folder*, so it has no such coupling — a Grafana content tag
+  is never load-bearing for placement. Resolution options (a genuine n8n fork): **(a)**
+  treat each mapping's own tag as **protected** — surface it as a pill for visibility but
+  refuse to push its *removal* via the pill (removal only happens by moving the file out, the
+  existing unmap path); or **(b)** allow it and define "remove the mapping pill = unmap,"
+  consistent with move-out semantics. Leaning **(a)** — least-surprise, and it keeps the tag
+  sync from ever silently un-binding a workflow. **This asymmetry is a parity divergence to
+  record: the shared tag-reconcile must accept a per-backend "protected tags" set (n8n passes
+  its mapping tags; Grafana passes none).**
+- **Pull is mode-independent.** The systemtag reconcile runs for **both** `sync` and `link`
+  files — a `link` file's body is a pointer, but its **NC tags still mirror the live n8n
+  tags**, so the mirror is *as searchable as n8n itself* regardless of mode. Push stays
+  `sync`-only (a `link` file never pushes), so `link` tags flow one way, n8n → NC.
+- **Provenance needs a baseline.** The hard part is two-sided drift: when a tag is on one
+  side and not the other, you **cannot** tell an *add* from a *remove* from the two current
+  sets alone. The fix is a banked baseline — **`n8n_syncedTags`, the reserved-stripped tag
+  set as of the last successful sync** (the tag analogue of `n8n_syncedHash`). With it,
+  `added = side − baseline` and `removed = baseline − side` on each side give a true
+  three-way merge (union of adds, propagate removes); the only genuine conflict — same tag
+  added on one side, removed on the other — falls to the reconcile's direction-of-truth
+  (pull → n8n wins, push → NC wins). We track the *baseline set*, **not** per-tag authorship
+  (neither system records who made a tag; an origin flag would rot on re-add).
+- **Why it's shared-module bait.** The NC-side half — systemtag reconcile, reserved-prefix
+  filter, baseline three-way merge, direction-of-truth on conflict, body↔pills projection —
+  is **backend-agnostic** and identical to Grafana's. The per-backend differences are three,
+  all small and nameable: **where tags live / how they're written** (separate id'd resource
+  for n8n → `ensureTag` + `setWorkflowTags`; inside the object for Grafana → upsert the
+  dashboard), **the reserved prefix** (`n8n:` vs `grafana:`), and **the protected-tags set**
+  (n8n's mapping tags vs. Grafana's empty set). Two backends, one label-reconcile recipe with
+  three injected knobs — the clearest shared-base signal yet (§5.5 rule 7: fix twice, watch
+  the diffs rhyme — here they rhyme *before* we cook).
+
+> **Cross-note:** the apprentice's full treatment (live measurements of Grafana's tag model,
+> the `link`-searchability rule, the provenance/baseline merge) is in
+> [`nextcloud-grafana` saga, Chapter 2 — "Dashboard tags / bidirectional tag sync"](https://github.com/kubed-io/nextcloud-grafana/blob/main/saga/Chapter_2_Service_for_a_King.md).
+> Fork H there == this note here.
+
+> **Dr K, tapping the rail:** *"The kid found a hole in *your* line, not just theirs. Both
+> apps carry the body and drop the labels. When you finally build the shared pot, the
+> tag-reconcile goes in it — same recipe, two backends, one baseline note that tells a new
+> tag from a dead one. Don't cook it twice. Cook it once, in the mother sauce."*
+
+---
 
 ---
 
