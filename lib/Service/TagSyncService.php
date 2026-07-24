@@ -151,13 +151,13 @@ final class TagSyncService {
 		$desired = array_values(array_unique(array_filter($desired, static fn (string $n): bool => $n !== '')));
 		$current ??= $this->readNcContentTags($fileId);
 
-		$toAssign = array_diff($desired, $current);
+		$toAssign = array_values(array_diff($desired, $current));
 		if ($toAssign !== []) {
 			$ids = array_map(fn (string $name): string => $this->ensureTag($name)->getId(), $toAssign);
 			$this->tagMapper->assignTags($objId, self::OBJECT_TYPE, $ids);
 		}
 
-		$toRemove = array_diff($current, $desired);
+		$toRemove = array_values(array_diff($current, $desired));
 		foreach ($toRemove as $name) {
 			try {
 				$tag = $this->tagManager->getTag($name, true, true);
