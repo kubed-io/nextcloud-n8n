@@ -148,8 +148,12 @@ final class TagSyncService {
 	 */
 	public function writeNcContentTags(int $fileId, array $desired, ?array $current = null): void {
 		$objId = (string)$fileId;
-		$desired = array_values(array_unique(array_filter($desired, static fn (string $n): bool => $n !== '')));
-		$current ??= $this->readNcContentTags($fileId);
+		// Defensively strip the reserved namespace from both sides: the docblock
+		// promises this method never touches ownership pills, so enforce it here
+		// rather than trusting every caller to pre-filter (a raw system-tag read
+		// would otherwise let us create/assign/unassign control tags).
+		$desired = $this->contentTags(array_values(array_unique(array_filter($desired, static fn (string $n): bool => $n !== ''))));
+		$current = $this->contentTags($current ?? $this->readNcContentTags($fileId));
 
 		$toAssign = array_values(array_diff($desired, $current));
 		if ($toAssign !== []) {
