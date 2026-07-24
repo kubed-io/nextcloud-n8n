@@ -98,15 +98,17 @@
 # on BOTH sides at once — a tag still used on either side survives. Symmetry is the
 # whole point: nothing alive anywhere in the pair is ever swept.
 #
-# ENGINE WIRED, SCENARIOS PENDING STEPS: the tag-reconcile engine
+# ENGINE WIRED, SURFACES 1 LIVE: the tag-reconcile engine
 # ({@see TagSyncService} + the pure {@see TagMerge} three-way merge) and the
 # `n8n_syncedTags` baseline key are implemented and unit-tested (saga Ch5 §5.6):
 # pull mirrors n8n → pills for sync AND link, push writes pills → n8n for sync, the
 # baseline disambiguates add-vs-remove, the reserved `n8n:*` namespace is excluded,
-# and the mapping tag is protected. This feature stays @todo — CI skips it — until
-# the integration step definitions and the live body↔pills projection listener
-# (surfaces 2 and 3) land. Shared with the Grafana sibling; per-backend knobs = tag
-# write path, reserved prefix, protected-tags set.
+# and the mapping tag is protected. Those n8n↔pills scenarios are LIVE — their
+# integration steps ({@see TagSyncSteps}) run in CI. Only the live body↔pills
+# projection listener (surfaces 2 and 3) is unbuilt, so the scenarios that hand-edit
+# the JSON `tags` array — and the reactive eject and the optional catalog sweep —
+# stay `@todo` per-scenario until that listener lands. Shared with the Grafana
+# sibling; per-backend knobs = tag write path, reserved prefix, protected-tags set.
 
 Feature: A workflow's tags and its Nextcloud system tags stay one set
   As an n8n admin browsing workflows in Nextcloud

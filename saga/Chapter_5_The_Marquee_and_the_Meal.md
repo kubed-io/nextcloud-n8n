@@ -381,14 +381,16 @@ lands here and the *shape* it took becomes the blueprint the shared pot inherits
   exactly like a pill-drop. (The listener that makes body↔pills instant is still `@todo`; the
   reconcile already honors whatever the body says.)
 
-**Still on the cutting board (why the feature file stays `@todo`):** surfaces **2 and 3** from
+**Still on the cutting board (why some scenarios stay `@todo`):** surfaces **2 and 3** from
 the spec — the live **body↔pills projection listener** (edit a pill → the `.n8n.json` `tags`
-array follows, and vice-versa, *without* a full sync) — aren't wired yet, and the integration
-step definitions don't exist. The pull/push **reconcile** is real and unit-tested
-(`TagMergeTest` pins the algebra; `ManagedFileTest` pins the baseline decode); the *reactive
-projection* is the next slice. So today: **sync from n8n mirrors tags, sync to n8n writes them
-back, the baseline keeps adds and removes straight** — but re-tagging with a pill only reaches
-n8n on the next push, not instantly.
+array follows, and vice-versa, *without* a full sync) — aren't wired yet. The pull/push
+**reconcile** is real, unit-tested (`TagMergeTest` pins the algebra; `ManagedFileTest` pins the
+baseline decode), *and* now covered end-to-end: the n8n↔pills scenarios are live in
+`tag-sync.feature`, backed by the `TagSyncSteps` integration trait. Only the scenarios that
+hand-edit the JSON `tags` array (plus the reactive eject and the optional catalog sweep) keep
+their `@todo` — the *reactive projection* is the next slice. So today: **sync from n8n mirrors
+tags, sync to n8n writes them back, the baseline keeps adds and removes straight** — but
+re-tagging with a pill only reaches n8n on the next push, not instantly.
 
 > **Dr K, reading the ticket off the rail:** *"Good — you cooked the sauce, not just wrote the
 > recipe on the wall. And you kept it pure in the middle so it pours straight into the big pot
