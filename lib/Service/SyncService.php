@@ -52,6 +52,7 @@ final class SyncService {
 		private SyncStatusService $status,
 		private IAppConfig $config,
 		private ReservedTagResolver $reservedTags,
+		private TagSyncService $tagSync,
 		private LoggerInterface $logger,
 	) {
 	}
@@ -355,6 +356,7 @@ final class SyncService {
 			$processed++;
 			try {
 				if ($this->push->push($node)) {
+					$this->tagSync->reconcilePush($node->getId(), $managed, [$mapping->n8nTag]);
 					$succeeded++;
 				}
 			} catch (\Throwable $e) {
@@ -478,6 +480,7 @@ final class SyncService {
 			$existing->putContent($body);
 			$this->metadata->stampSynced($existing->getId(), $id, $effectiveMode, $versionId, $body, $mapping->id);
 			$this->tags->apply($existing->getId(), $effectiveMode);
+			$this->reconcileTagsOnPull($existing->getId(), $workflow, $mapping);
 			return;
 		}
 
@@ -498,6 +501,31 @@ final class SyncService {
 		$file = $folder->newFile($candidate, $body);
 		$this->metadata->stampSynced($file->getId(), $id, $effectiveMode, $versionId, $body, $mapping->id);
 		$this->tags->apply($file->getId(), $effectiveMode);
+		$this->reconcileTagsOnPull($file->getId(), $workflow, $mapping);
+	}
+
+	/**
+	 * Mirror the n8n workflow's content tags onto the just-written file (saga Ch5
+	 * §5.6). Runs for sync AND link — tag searchability is mode-independent. A tag
+	 * failure must never sink the pull that already wrote the body, so it is logged
+	 * and swallowed; the next pull retries.
+	 *
+	 * @param array<string,mixed> $workflow
+	 */
+	private function reconcileTagsOnPull(int $fileId, array $workflow, Mapping $mapping): void {
+		$managed = $this->metadata->read($fileId);
+		if ($managed === null) {
+			return;
+		}
+		try {
+			$this->tagSync->reconcilePull($fileId, $workflow, $managed, [$mapping->n8nTag]);
+		} catch (\Throwable $e) {
+			$this->logger->warning('n8n_sync tag pull failed', [
+				'app' => Application::APP_ID,
+				'fileId' => $fileId,
+				'exception' => $e,
+			]);
+		}
 	}
 
 	/**

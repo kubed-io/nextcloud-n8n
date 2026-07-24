@@ -47,10 +47,15 @@
 # would unbind the workflow. To unmap, move the file out (the unmapped path). This
 # hazard has no Grafana analogue (Grafana maps by real folders).
 #
-# DESIGN, NOT WIRED: this feature is @todo — CI skips it — until the tag-reconcile
-# engine and the `n8n_syncedTags` baseline key are cooked (saga Ch5 §5.6). Shared
-# with the Grafana sibling; per-backend knobs = tag write path, reserved prefix,
-# protected-tags set.
+# ENGINE WIRED, SCENARIOS PENDING STEPS: the tag-reconcile engine
+# ({@see TagSyncService} + the pure {@see TagMerge} three-way merge) and the
+# `n8n_syncedTags` baseline key are implemented and unit-tested (saga Ch5 §5.6):
+# pull mirrors n8n → pills for sync AND link, push writes pills → n8n for sync, the
+# baseline disambiguates add-vs-remove, the reserved `n8n:*` namespace is excluded,
+# and the mapping tag is protected. This feature stays @todo — CI skips it — until
+# the integration step definitions and the live body↔pills projection listener
+# (surfaces 2 and 3) land. Shared with the Grafana sibling; per-backend knobs = tag
+# write path, reserved prefix, protected-tags set.
 
 @todo
 Feature: A workflow's tags and its Nextcloud system tags stay one set

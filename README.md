@@ -54,7 +54,7 @@ When you **move** a sync workflow *out* of its mapped folder, it becomes **unmap
 
 Sometimes you want to keep a workflow file **in** its mapped folder but stop syncing it. Tag it `n8n:ignore` and it becomes **ignored**: it stays put and keeps its identity, the workflow is archived in n8n, and every sync (scheduled or manual) skips it. It's the in-place sibling of *unmapped* — same "parked, archived, restorable" idea, but the file never leaves the folder. Remove the `n8n:ignore` tag and it returns to the mapping's default mode.
 
-## Tags — synced three ways *(planned)*
+## Tags — one searchable set
 
 A workflow's **tags** are part of the object, so a full sync keeps them in step too. n8n holds tags on the workflow; Nextcloud has its own first-class **system tags** (the searchable coloured pills in Files). n8n Sync keeps the two the same set, so **the mirror is as searchable as n8n itself** — filter "every `prod` workflow" the Nextcloud-native way.
 
