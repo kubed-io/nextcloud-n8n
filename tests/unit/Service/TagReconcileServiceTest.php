@@ -23,13 +23,15 @@ use Psr\Log\NullLogger;
 
 /**
  * Unit tests for {@see TagReconcileService} — the orchestrator behind the reactive
- * tag triggers (saga Ch5 §5.6.2). The **pill** path ({@see reconcileFile}) gates on
- * managed+sync, resolves the mapping's protected tag, runs
- * {@see TagSyncService::reconcilePush} inside the {@see SyncGuard}, and locksteps the
- * body to n8n's canonical rows. The **body** path ({@see reconcileFromBody}, Slice B)
- * treats the file's JSON `tags` as truth, fast-path-skips an unchanged set, and writes
- * n8n's `{id,name}` back so a bare `{"name":…}` gains its id. The merge algebra itself
- * lives (and is tested) in {@see TagSyncServiceTest}; here we pin the orchestration.
+ * tag triggers (saga Ch5 §5.6.2). The **pill** path ({@see reconcileFile}) is LIVE: it
+ * gates on managed+sync, resolves the mapping's protected tag, and runs
+ * {@see TagSyncService::reconcilePush} inside the {@see SyncGuard} — carrying the pill
+ * to n8n and leaving the file body untouched (the body mirror self-heals on pull). The
+ * **body** path ({@see reconcileFromBody}) is the DORMANT Slice B engine (saga
+ * §5.6.2.3): unwired in production but unit-tested here — it treats the file's JSON
+ * `tags` as truth, fast-path-skips an unchanged set, and writes n8n's `{id,name}` back
+ * so a bare `{"name":…}` gains its id. The merge algebra itself lives (and is tested)
+ * in {@see TagSyncServiceTest}; here we pin the orchestration.
  *
  * `final` collaborators are doubled via the unit bootstrap's `dg/bypass-finals`.
  */
@@ -150,31 +152,6 @@ final class TagReconcileServiceTest extends TestCase {
 			->willReturn([]);
 
 		self::assertTrue($this->service->reconcileFile($this->node()));
-	}
-
-	// ── body lockstep (pill path) ───────────────────────────────────────────────
-
-	public function testPillReconcileLockstepsBodyToCanonicalRows(): void {
-		$managed = $this->managed(Mapping::MODE_SYNC, 'map-a');
-		$this->metadata->method('read')->willReturn($managed);
-		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
-		// n8n's canonical rows come back with ids; the body must mirror them.
-		$this->tagSync->method('reconcilePush')->willReturn([
-			['id' => 't9', 'name' => 'flows'],
-			['id' => 't3', 'name' => 'inventory'],
-		]);
-
-		$written = null;
-		$node = $this->fileWith(5, '{"name":"WF","tags":[]}', $written);
-		$this->service->reconcileFile($node);
-
-		self::assertNotNull($written, 'the body was not lockstepped after the pill reconcile');
-		$decoded = json_decode($written, true);
-		self::assertSame(
-			[['id' => 't9', 'name' => 'flows'], ['id' => 't3', 'name' => 'inventory']],
-			$decoded['tags'],
-			'body tags should be n8n rows sorted by name',
-		);
 	}
 
 	// ── guard + error handling (pill path) ──────────────────────────────────────

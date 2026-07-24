@@ -432,7 +432,7 @@ Reading the wiring against that spec surfaced exactly where the reactive half is
 |---|---|---|---|
 | 1 — n8n tags | edit in n8n | (none in NC) | **Pull reconciles it.** ✅ (bulk pull, sync + link) |
 | 3 — NC pills | add/remove a pill in Files | `TagAssignedEvent` / `TagUnassignedEvent` | **Nothing.** No listener acts on a *content* pill — `ModeTagListener` only fires on `n8n:ignore`. The tag sits in NC and never reaches n8n until a manual push. ❌ |
-| 2 — file body | edit the JSON `tags` array + save | `NodeWrittenEvent` | **LIVE (Slice B).** `NodeWrittenListener` → `PushService::push` sends the body via `PUT /workflows/{id}` (which omits `tags`), then `TagReconcileService::reconcileFromBody` reconciles the JSON `tags` array to n8n (body-canonical) and rewrites the body with n8n's canonical `{id,name}` — a bare `{"name":"foo"}` gains its id. ✅ |
+| 2 — file body | edit the JSON `tags` array + save | `NodeWrittenEvent` | **Deferred (Slice B — see §5.6.2.3).** Attempted, reverted: the body's `tags` array is a **derived mirror** a pull writes; a hand-edit is not projected to n8n today and self-heals on the next pull. The reconcile engine exists (`TagReconcileService::reconcileFromBody`, unit-tested) but is **not wired**. ⏸ |
 
 **Logical issues found while reading the wiring (the real value of this pass):**
 
@@ -513,9 +513,15 @@ Slice A shipped and went to the production pod for a real smoke test. Two legs, 
   toggle was gating the whole *pull* direction, tag reconcile included.
 
 So Slice A is proven live on the push side, and the pull side is clear to validate now that the
-schedule actually turns on. Slice B (body ⇆ pills) is still the next fire.
+schedule actually turns on. Slice B (body ⇆ pills) was attempted next — and then deliberately
+deferred; §5.6.2.3 is the autopsy.
 
 #### §5.6.2.2 — Slice B: the body is canonical (and the `PUT` that ate the tags)
+> **Read this as the attempt, not the outcome.** Slice B was built as described below, then
+> **reverted** before merge — the CI spec caught that it broke a shipping feature. §5.6.2.3 is the
+> autopsy and the decision to defer. The design here is preserved because it is the starting point
+> when the feature is picked up again.
+
 The next smoke test found the gap the §5.6.2 read had already flagged as **logical issue #1**:
 copy an `mcp` tag object into a workflow's JSON `tags` array via *Files → edit in JSON*, save, wait
 — and `mcp` never reached n8n. The pod logs told the whole story: a `PushWorkflowJob` fired for the
@@ -560,6 +566,74 @@ Unit-tested in `TagReconcileServiceTest` (pill lockstep, body fast-path, and the
 itself). The body↔pills *integration* step defs (a WebDAV body PUT + async drain + n8n assert) are
 the remaining follow — the feature scenarios stay `@todo` for that step-def work, not for unbuilt
 behaviour.
+
+#### §5.6.2.3 — Slice B, reverted: when the ladder caught a wolf in the merge
+Slice B went up on the PR and CI turned red — and reading *which* rung caught it is the whole point
+of the README → feature → code → integration-test ladder. Two failures, one of them the real reason:
+
+- **The unit tests failed first (my own doubles).** Easy: the body path's mocks needed
+  `contentTagsFromWorkflow` stubbed and the lockstep sort was alphabetical (`flows` < `inventory`),
+  plus a `createStub`→`createMock` where `expects()` was used. Fixed, green. This was noise.
+- **The integration tests failed for a real reason — and not the one I expected.** The seven new
+  body↔pills scenarios failed (the behaviour was never verified live), *and* — the sharp part —
+  **seven already-green pill-driven scenarios regressed** (`tag-sync.feature:195, 296–414`). The
+  Slice B commit hadn't just *added* a body path; it had **refactored the shared merge**
+  (`reconcilePush` dropped `sourceWins: false`, `writeNcContentTags` changed) so the pill path and
+  the body path shared one code path. That refactor changed the pill path's behaviour and broke a
+  *shipping* feature — the working "edit a pill → n8n" reactive trigger from Slice A.
+
+**That is the executable spec doing exactly its job.** The "advertisement" (README) had written a
+check the code couldn't cash; the bottom rung — integration tests against a live n8n — refused to
+certify it and, more importantly, caught the collateral damage to a neighbour. A proof-of-concept
+that fails its own spec is a *successful* PoC: we learned it wasn't ready **without shipping a
+regression**. The fix was a clean revert of the two entangled files (`SyncService`, `PushService`)
+back to the Slice-A line, plus their unit tests — restoring the pill path, leaving Slice A live.
+
+A second, smaller cleanup followed once the deferral was decided: the pill path had *also* grown a
+Slice-B habit — after pushing a pill to n8n, `reconcileFile` was lockstepping the file body's `tags`
+array (and re-stamping the hash). That body write is part of the deferred surface, was never
+verified live, and contradicts Slice A's own contract ("carry the pill, leave the body alone"). It
+was stripped from `reconcileFile` (and its unit test removed) so the live pill path is **pure Slice
+A**: it carries the pill to n8n and leaves the body untouched — the body mirror self-heals on the
+next pull. `reconcileFromBody`, `rewriteBodyTags`, and the `reconcilePush*` row-returning helpers
+stay in place, dormant and unit-tested, as the Slice-B starting point.
+
+**Why this is fiddly, not blocked (the notes for next time).** No n8n limitation makes body-tag
+editing impossible. The genuine difficulties, in order:
+
+1. **The REST `PUT` strips `tags`** (n8n's body whitelist omits it), so a body save can *never*
+   carry tags on its own — a body edit always needs a separate tag call. "Push the body" ≠ "push the
+   tags."
+2. **The id-fill write-back is re-entrant.** Turning a bare `{"name":"foo"}` into `{"id":…,"name":…}`
+   rewrites the file, firing another `NodeWrittenEvent`. It must be loop-guarded (hash re-stamp) or
+   it plates the same dish till close.
+3. **Two authoritative NC surfaces.** Pills *and* the body `tags` array both being editable means
+   keeping them converged across two different events (`TagAssignedEvent` vs `NodeWrittenEvent`)
+   that can double-fire or diff against stale state — the pills-vs-body authority fork (issue #2).
+4. **Do NOT refactor the shared merge to serve the new path.** The regression came from making
+   `reconcilePush` (pills = truth) and a body path share one "read the NC side" step. The body path
+   needs its **own** entry that feeds the body's `tags` as the NC input; the pill path's algebra
+   must stay untouched.
+
+**The correct shape when it's picked up again:** a dedicated `NodeWrittenEvent` trigger (the same
+event the `name`/filename reconcile already rides), calling `reconcileFromBody` **only**, guarded,
+with the body-vs-nodes discrimination so a nodes-only save costs nothing — and **without** touching
+`reconcilePush`. The engine (`TagReconcileService::reconcileFromBody`) and its unit tests are kept,
+dormant, for exactly that. The six body scenarios stay `@todo`, and they must be **verified live**
+against real n8n before the `@todo` comes off — a green unit test was not enough to trust this one.
+
+**Today's shipped truth, stated plainly (so no doc lies):** the **pills are the authoritative
+Nextcloud tag surface**; the body's `tags` array is a **derived mirror** a pull writes. Hand-edit
+the JSON `tags` and it is *not* projected to n8n — it self-heals (is overwritten) on the next pull.
+To change a workflow's tags from Nextcloud, edit the **pills**. This is not "editing JSON tags is an
+error" — it is "the `tags` array is read-only/derived," which is both truthful and cheap (ignoring a
+body-tag delta is *less* work than detecting and rejecting it).
+
+> **Dr K, wiping the pass down:** *"Better to 86 the dish than send a plate that poisons the table
+> next to it. You didn't lose the recipe — it's still on the board. You learned the bell for the
+> paper ticket rings the pill station too, and rings it wrong. Wire it its own bell next fire. And
+> notice what saved you: the taster at the door sent it back before it reached a guest. That taster
+> is the whole reason we write the ticket first."*
 
 ---
 

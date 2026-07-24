@@ -21,39 +21,40 @@
 # THREE EDIT SURFACES — the object body is the third: tags are part of the object,
 # so a sync file's on-disk JSON already has a `tags` array. That makes three
 # editable places, kept as one set:
-#   1. n8n tags on the workflow    (edit in n8n → pull)
-#   2. the file body `tags` array  (edit the JSON → push)
-#   3. Nextcloud system-tag pills  (edit the pills → push)
-# The FILE BODY is the canonical object; the PILLS are a listener-kept projection.
-# Editing either Nextcloud surface updates the other and pushes to n8n; a pull
-# writes n8n's tags into the body and reconciles the pills. In `link` mode the body
-# is a pointer (not the object), so only surfaces 1 and 3 exist and the pills are a
-# read-only projection of n8n.
+#   1. n8n tags on the workflow    (edit in n8n → pull)                    — LIVE
+#   2. the file body `tags` array  (edit the JSON → push)                  — DEFERRED
+#   3. Nextcloud system-tag pills  (edit the pills → push)                 — LIVE
+# The design INTENT is: the FILE BODY is the canonical object and the PILLS are a
+# listener-kept projection. But surface 2 is DEFERRED (saga §5.6.2.3) — see the status
+# block below. TODAY the body `tags` array is a DERIVED MIRROR the pull writes; a
+# hand-edit of it is NOT projected to n8n and self-heals on the next pull. The PILLS
+# are the authoritative Nextcloud tag surface today (surface 3). In `link` mode the
+# body is a pointer (not the object), so only surfaces 1 and 3 exist and the pills are
+# a read-only projection of n8n.
 #
-# NO EXTRA BUTTON FOR TAGS — a pill edit auto-propagates: adding or removing a
-# system-tag pill on a managed `sync` file is caught by a dedicated tag listener
-# (`TagAssignedEvent`/`TagUnassignedEvent` for CONTENT tags, not only the reserved
-# `n8n:ignore`). The listener does two things, and neither is a manual sync:
-#   a. It updates the file body's `tags` array IN PLACE with a loop-safe write — it
-#      re-stamps `n8n_syncedHash` to the new body so the `NodeWrittenEvent` the write
-#      emits is recognised as the app's own and does NOT re-push the whole file. A
-#      tag change must never masquerade as a body edit.
-#   b. It reconciles the ONE tag to n8n via the tags-only path
-#      (`setWorkflowTags` → `PUT /workflows/{id}/tags`), NEVER the body PUT — so it is
-#      decoupled from full-file writeback and safe on archived / odd-body workflows.
-# Both steps honour the SAME `timing` knob the save-push already uses:
+# NO EXTRA BUTTON FOR TAGS — a pill edit auto-propagates (LIVE, Slice A): adding or
+# removing a system-tag pill on a managed `sync` file is caught by a dedicated tag
+# listener (`TagAssignedEvent`/`TagUnassignedEvent` for CONTENT tags, not only the
+# reserved `n8n:ignore`). Today it reconciles the tag to n8n via the tags-only path
+# (`setWorkflowTags` → `PUT /workflows/{id}/tags`), NEVER the body PUT — so it is
+# decoupled from full-file writeback and safe on archived / odd-body workflows.
+# (DEFERRED, Slice B: the listener would ALSO update the file body's `tags` array in
+# place with a loop-safe write — re-stamping `n8n_syncedHash` so the `NodeWrittenEvent`
+# the write emits is recognised as the app's own and does NOT re-push the whole file.
+# That body lockstep is not wired today; the body self-heals on the next pull instead.)
+# The reconcile honours the SAME `timing` knob the save-push already uses:
 #   • `sync`  — reconcile inline during the request (instant, may briefly lock).
 #   • `async` — enqueue a per-file job the cron worker runs on its next tick.
 # This is the existing reconcile engine, triggered by the tag event and scoped to the
 # one file — not a new manual action, and not a global scheduled push (there is NO
 # scheduled NC→n8n sweep; the only bulk NC→n8n path is the manual "Sync to n8n").
 #
-# BODY EDITS RIDE THE SAME PATH AS `name`: a hand-edit of the JSON `tags` array is
-# just a `NodeWrittenEvent`, the very event the filename/`name` reconcile already
-# listens on. So ADDING or REMOVING a tag inside the body is a first-class edit:
-# the pills follow the body (add a pill / drop a pill), and the next push carries
-# the change to n8n (a removed body tag is a removed n8n tag) — subject to the
-# mapping-tag protection below.
+# BODY EDITS WOULD RIDE THE SAME PATH AS `name` (DEFERRED, Slice B — saga §5.6.2.3): a
+# hand-edit of the JSON `tags` array is just a `NodeWrittenEvent`, the very event the
+# filename/`name` reconcile already listens on. The INTENT is that adding or removing a
+# tag inside the body becomes a first-class edit: the pills follow the body and the
+# next push carries the change to n8n. This is NOT wired today (the attempt regressed
+# the pill path and was reverted); the body is a derived mirror for now.
 #
 # PULL CHANGE-DETECTION — the scheduled (and manual) pull only writes what actually
 # changed, so an hourly n8n→NC pull does not churn every file. Per workflow it
@@ -129,8 +130,8 @@
 # on BOTH sides at once — a tag still used on either side survives. Symmetry is the
 # whole point: nothing alive anywhere in the pair is ever swept.
 #
-# ENGINE WIRED, SURFACES 1, 2 & 3 LIVE: the tag-reconcile engine
-# ({@see TagSyncService} + the pure {@see TagMerge} three-way merge) and the
+# ENGINE WIRED, SURFACES 1 & 3 LIVE — SURFACE 2 (BODY) DEFERRED: the tag-reconcile
+# engine ({@see TagSyncService} + the pure {@see TagMerge} three-way merge) and the
 # `n8n_syncedTags` baseline key are implemented and unit-tested (saga Ch5 §5.6):
 # pull mirrors n8n → pills for sync AND link, push writes pills → n8n for sync, the
 # baseline disambiguates add-vs-remove, the reserved `n8n:*` namespace is excluded,
@@ -138,20 +139,22 @@
 # §5.6.2 Slice A the PILL EDIT IS REACTIVE: adding/removing a content pill on a sync
 # file is caught by {@see ContentTagListener} and reconciled to n8n on its own — no
 # "Sync to n8n" click — honouring the same `timing` knob as the body writeback
-# (`sync` inline, `async` via {@see ReconcileTagsJob}). And as of §5.6.2 Slice B the
-# BODY EDIT IS REACTIVE TOO: {@see PushService::push} intercepts before the tag-less
-# REST `PUT`, and {@see TagReconcileService::reconcileFromBody} reconciles the file's
-# JSON `tags` array to n8n (body-canonical) — a bare `{"name":"foo"}` is created on
-# n8n and rewritten in place with its real `{id,name}`; a pill edit locksteps the
-# body the same way. Both are unit-tested ({@see TagReconcileServiceTest}). The
-# body↔pills integration scenarios below have their WebDAV step defs written but
-# stay `@todo` until the reactive body write is verified end-to-end against a live
-# n8n (the pill→n8n reconcile is already green; the body lockstep + body-canonical
-# push await a live re-test). Still PLANNED (`@todo` per-scenario): (1) the loop-guard
-# "silent body update pushes no whole file" assertion, (2) PULL CHANGE-DETECTION
-# (skip-unchanged / body / tags-only branches), and (3) the reactive eject and the
-# optional catalog sweep. Shared with the Grafana sibling; per-backend
-# knobs = tag write path, reserved prefix, protected-tags set.
+# (`sync` inline, `async` via {@see ReconcileTagsJob}).
+#
+# SURFACE 2 (edit the JSON `tags` array) IS DEFERRED (saga §5.6.2.3): Slice B was
+# built (body-canonical push in {@see PushService}) and then REVERTED before merge —
+# CI caught that its shared-merge refactor regressed the shipping pill path. TODAY the
+# body `tags` array is a DERIVED MIRROR a pull writes: a hand-edit of it is NOT
+# projected to n8n and self-heals (is overwritten) on the next pull. The pills are the
+# authoritative Nextcloud tag surface — re-tag from the pills, not the JSON. The
+# reconcile engine ({@see TagReconcileService::reconcileFromBody}) is kept, unit-tested
+# but UNWIRED, for when the feature is picked up as its own `NodeWrittenEvent` trigger
+# (and it must be verified live before its `@todo` scenarios come off).
+#
+# Still PLANNED (`@todo` per-scenario): (1) the body↔pills projection scenarios below
+# (surface 2), (2) PULL CHANGE-DETECTION (skip-unchanged / body / tags-only branches),
+# and (3) the reactive eject and the optional catalog sweep. Shared with the Grafana
+# sibling; per-backend knobs = tag write path, reserved prefix, protected-tags set.
 #
 # SCOPE — TAG SYNC IS A MAPPED-FOLDER FEATURE: every tag behaviour here (pull mirror,
 # push, auto-trigger, change-detection) applies ONLY to a file managed by a mapping.
@@ -239,12 +242,13 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     Then the workflow in n8n is tagged "flows" and "linux" without a manual push
     And the file has no content tag "old"
 
-  # Surfaces 2 & 3 (the body↔pills projection) ARE wired now (Slice B) — the engine
-  # is unit-tested in TagReconcileServiceTest and the WebDAV body-edit step defs are
-  # written (below). They stay @todo until the reactive body write is verified
-  # end-to-end against a live n8n: the pill→n8n reconcile is green (see the Slice A
-  # scenarios above), but the body-array lockstep + body-canonical push need a live
-  # re-test before we assert them in CI. Flip off @todo once that passes.
+  # Surface 2 (the body↔pills projection) is DEFERRED (saga §5.6.2.3). The reconcile
+  # engine is unit-tested (TagReconcileServiceTest) and the WebDAV body-edit step defs
+  # below are written, but the trigger is NOT wired: Slice B was built and reverted
+  # because its shared-merge refactor regressed the shipping pill path. These stay
+  # @todo until the body edit is re-implemented as its own NodeWrittenEvent trigger
+  # (without touching reconcilePush) AND verified end-to-end against a live n8n. Until
+  # then the body `tags` array is a derived mirror — edit the pills, not the JSON.
   @todo
   Scenario: Editing a pill updates the file body's tags array (body is canonical)
     Given the push timing is "sync"

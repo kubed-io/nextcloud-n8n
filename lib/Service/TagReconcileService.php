@@ -35,13 +35,17 @@ use Psr\Log\LoggerInterface;
  *     listener) and best-effort logs a failure instead of surfacing it (a tag hiccup
  *     must never break the user's Files action).
  *
- * Two reactive surfaces converge here (saga Ch5 §5.6.2):
+ * Two reactive surfaces were designed to converge here (saga Ch5 §5.6.2):
  *
- *  - **Pills** ({@see reconcileFile}) — a system-tag pill toggle. NC pills are truth.
- *  - **Body** ({@see reconcileFromBody}) — a hand-edit of the file's JSON `tags` array
- *    (Slice B). The body tags are truth. Both paths then lockstep the *other* NC
- *    surface to the merged result, so the pills and the on-disk `tags` never disagree
- *    and a later edit of either can't diff against a stale sibling.
+ *  - **Pills** ({@see reconcileFile}) — a system-tag pill toggle. NC pills are truth,
+ *    and this path is LIVE (wired by the ContentTagListener). It carries the pill to
+ *    n8n and leaves the file body untouched; the body's `tags` mirror self-heals on
+ *    the next pull.
+ *  - **Body** ({@see reconcileFromBody}) — a hand-edit of the file's JSON `tags` array.
+ *    This is the deferred Slice B: the engine below is built and unit-tested but has
+ *    **no production caller** (the writeback push does not invoke it). See saga
+ *    §5.6.2.3 for why body-tag input was deferred and the shape it must take when
+ *    picked up (a dedicated body-write trigger, never a refactor of the pill merge).
  */
 final class TagReconcileService {
 	public function __construct(
@@ -67,11 +71,12 @@ final class TagReconcileService {
 		$fileId = $node->getId();
 		$this->guard->run(function () use ($fileId, $managed, $protected, $node): void {
 			try {
-				$rows = $this->tagSync->reconcilePush($fileId, $managed, $protected);
-				// Lockstep the on-disk `tags` array to n8n's canonical rows so a later
-				// hand-edit of the JSON can never diff against a body left stale by
-				// this pill change.
-				$this->lockstepBody($node, $rows, true);
+				$this->tagSync->reconcilePush($fileId, $managed, $protected);
+				// Slice A only: the pill is carried to n8n and the pills converge.
+				// We deliberately do NOT rewrite the file body `tags` array here — that
+				// (body ⇆ pills projection) is the deferred Slice B (saga §5.6.2.3). The
+				// body is a derived mirror and self-heals on the next pull, so a briefly
+				// stale on-disk `tags` array reverts nothing.
 			} catch (\Throwable $e) {
 				// The user's pill click already landed in Nextcloud; a failure to carry
 				// it to n8n is logged and retried by the next sync, never surfaced as a
@@ -87,17 +92,22 @@ final class TagReconcileService {
 	}
 
 	/**
-	 * Reconcile one file's **body** `tags` array to n8n and the pills (Slice B). Called
-	 * from the writeback push ({@see PushService}) so an edit to the JSON `tags` array
-	 * reaches n8n on its own — the REST `PUT` body omits tags, so without this a
-	 * body-tag edit is silently dropped.
+	 * Reconcile one file's **body** `tags` array to n8n and the pills (Slice B).
 	 *
-	 * The body tags are the NC-side truth. A user may add a bare `{"name":"foo"}` to the
-	 * array; we ensure/set it on n8n and then rewrite the body with n8n's canonical
-	 * `{id,name}` object, so the id is filled in from the source. Returns the file's
-	 * final content so the caller can stamp the loop-guard hash against what is actually
-	 * on disk; returns `$content` unchanged when nothing reconciled. A no-op fast path
-	 * skips the n8n round-trip entirely when the body's tags still match the baseline.
+	 * DORMANT / NOT WIRED. This is the deferred Slice B engine (saga §5.6.2.3): it is
+	 * fully built and unit-tested but has **no production caller**. The writeback push
+	 * ({@see PushService}) intentionally does NOT invoke it, because the REST `PUT` body
+	 * omits tags and driving a body-tag push through the shared merge regressed the
+	 * live pill path. When body-tag input is picked up it must run from a dedicated
+	 * body-write trigger that leaves the pill merge alone — see saga §5.6.2.3.
+	 *
+	 * When wired, the body tags are the NC-side truth. A user may add a bare
+	 * `{"name":"foo"}` to the array; we ensure/set it on n8n and then rewrite the body
+	 * with n8n's canonical `{id,name}` object, so the id is filled in from the source.
+	 * Returns the file's final content so the caller can stamp the loop-guard hash
+	 * against what is actually on disk; returns `$content` unchanged when nothing
+	 * reconciled. A no-op fast path skips the n8n round-trip entirely when the body's
+	 * tags still match the baseline.
 	 */
 	public function reconcileFromBody(File $node, string $content): string {
 		$managed = $this->metadata->read($node->getId());
@@ -131,30 +141,6 @@ final class TagReconcileService {
 			}
 		});
 		return $final;
-	}
-
-	/**
-	 * Lockstep the on-disk `tags` array to n8n's canonical rows and, when asked,
-	 * re-stamp the loop-guard hash — used by the pill path to keep the body in step
-	 * after a pill change (the re-stamp means the body write it triggers is recognised
-	 * as ours and pushes nothing). Must run inside the guard.
-	 *
-	 * @param list<array<string,mixed>> $rows n8n's canonical tag rows
-	 */
-	private function lockstepBody(File $node, array $rows, bool $restampHash): void {
-		try {
-			$content = $node->getContent();
-		} catch (\Throwable) {
-			return;
-		}
-		$wf = json_decode($content, true);
-		if (!is_array($wf)) {
-			return;
-		}
-		$new = $this->rewriteBodyTags($node, $wf, $content, $rows);
-		if ($new !== null && $restampHash) {
-			$this->metadata->write($node->getId(), [WorkflowMetadata::KEY_SYNCED_HASH => sha1($new)]);
-		}
 	}
 
 	/**
