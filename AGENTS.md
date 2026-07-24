@@ -202,32 +202,56 @@ than re-explaining the flow each session.
 
 An automated reviewer (**GitHub Copilot code review**, driven by our
 `.github/copilot-instructions.md` + `.github/instructions/*`) comments on every PR.
-Close the loop before asking a human to review — don't leave a wall of open threads.
+**Close the loop before asking a human to review — the end state is ZERO open
+threads.** `review_on_push` re-reviews on *every* push, so this is a LOOP: each fix
+you push can spawn new threads. Keep going until a fetch shows none open.
 
-1. **Read the bot's threads back.** List them with `gh api graphql`
-   (`repository.pullRequest.reviewThreads`) or `gh api repos/<owner>/<repo>/pulls/<n>/comments`.
-   `review_on_push` re-reviews on every push, so expect duplicate / `isOutdated`
-   re-posts of the same point — the push that fixed the code usually leaves its
-   thread `isOutdated: true`.
+You need the **GraphQL API** (`gh api graphql`) for this — the REST comments API
+can't resolve threads. The three moves:
+
+1. **List the threads (with ids + state).** Thread ids (`PRRT_…`) only come from GraphQL:
+   ```bash
+   gh api graphql -f query='
+   { repository(owner:"<owner>", name:"<repo>") { pullRequest(number:<n>) {
+     reviewThreads(first:100){ nodes { id isResolved isOutdated path line
+       comments(first:1){ nodes { author{login} body } } } } } } }' \
+   --jq '.data.repository.pullRequest.reviewThreads.nodes[]
+     | select(.isResolved==false)
+     | "=== \(.path):\(.line)\nID:\(.id)\n\(.comments.nodes[0].body)\n"'
+   ```
+   The push that fixed a point usually leaves its own thread `isOutdated:true`; the
+   bot may still re-post the same point as a fresh `current` thread — treat each
+   open thread on its own id.
 2. **Triage each — worth it vs fluff.** Real correctness / security / nativeness
    issues are worth it. **Verify a claim against the framework before acting** (e.g.
-   check whether a helper already escapes — `Util::sanitizeHTML` does `ENT_QUOTES`).
-   The recurring fluff is: framework-internal ignorance, un-scoped old-browser
-   paranoia, speculative *unreachable* edge cases, and low-value wording/docblock nits.
-3. **Handled → resolve the thread.** After the fix lands, resolve it via the GraphQL
-   mutation (thread id from step 1):
-   `gh api graphql -f query='mutation { resolveReviewThread(input:{threadId:"<id>"}){ thread { isResolved } } }'`.
-   Optionally reply `Fixed in <sha>` first.
-4. **Not handled (fluff / declined) → reply, don't resolve.** Post a short reply
-   prefixed **`[declined — safe to resolve]`** with the reason, and leave the thread
-   open so the human can scan it and resolve in the UI if they agree. **Never silently
-   resolve a thread you didn't address.**
-5. Post a one-paragraph triage summary as a PR comment, and tell the human what you
-   fixed vs declined.
-
-If the fluff shows a *pattern*, fix it at the source — add the false-positive to the
-"what not to flag" list in `.github/copilot-instructions.md` so the bot stops
-re-raising it (that file, not the PR, is where you tune the reviewer).
+   check whether a helper already escapes — `Util::sanitizeHTML` does `ENT_QUOTES`;
+   PHP ignores extra positional args to a closure, so a "too many args" mock warning
+   is a false positive). The recurring fluff is: framework-internal ignorance,
+   un-scoped old-browser paranoia, speculative *unreachable* edge cases, and
+   low-value wording/docblock nits.
+3. **Reply, then resolve — EVERY thread you touch, handled or declined.** Post a
+   reply on the thread, then resolve it. Do NOT leave declined threads open (that's
+   what buries the PR in open conversations). Resolving does not delete the reply —
+   the rationale stays in the thread history and a human can re-open if they disagree.
+   ```bash
+   TID=PRRT_…
+   # reply (explain the fix, or "[declined — <reason>]" for a false positive)
+   gh api graphql -f query='mutation($t:ID!,$b:String!){
+     addPullRequestReviewThreadReply(input:{pullRequestReviewThreadId:$t, body:$b}){ comment { id } } }' \
+     -f t="$TID" -f b="Fixed in <sha> — <what changed>."
+   # then resolve
+   gh api graphql -f query='mutation($t:ID!){
+     resolveReviewThread(input:{threadId:$t}){ thread { isResolved } } }' -f t="$TID"
+   ```
+   - **Handled** → reply what changed (ideally the sha), resolve.
+   - **Declined (fluff / false positive)** → reply prefixed **`[declined — <reason>]`**
+     with the evidence (e.g. "CI unit tests green; PHP ignores extra closure args"),
+     resolve. **Never resolve silently — always leave the reason first.**
+4. **Loop.** After pushing fixes, wait for the re-review and re-run step 1. Repeat
+   until the fetch returns zero open threads. Only then hand off to a human.
+5. If the fluff shows a *pattern*, fix it at the source — add the false-positive to
+   the "what not to flag" list in `.github/copilot-instructions.md` so the bot stops
+   re-raising it (that file, not the PR, is where you tune the reviewer).
 
 ### Shape of a feature change
 
