@@ -72,13 +72,19 @@ final class TagSyncService {
 		$nc = $this->readNcContentTags($fileId);
 		$baseline = $managed->syncedTagList();
 
-		// Pull semantic: source, plus any tag NC gained since the last sync.
+		// Pull is NOT the symmetric TagMerge — deliberately. n8n is authoritative
+		// here, so the desired pill set is `source ∪ (tags NC gained since the last
+		// sync)`. A tag the user *removed* on the NC side that n8n still carries is
+		// re-added (source wins); removing it durably is a push (NC wins) or an n8n
+		// edit, not a pull. Running the symmetric merge on every pull would instead
+		// flip-flop such a tag (pull N removes it, pull N+1 re-adds it from source).
 		$localAdds = array_values(array_diff($nc, $baseline));
 		$desired = $this->withProtected(array_merge($source, $localAdds), $protected);
 
 		$this->writeNcContentTags($fileId, $desired);
 		// The agreed set is only what the source actually reflects; NC-local adds are
-		// not agreed until a push lands them, so they stay OUT of the baseline.
+		// not agreed until a push lands them, so they stay OUT of the baseline (the
+		// next push reads them as `nc − baseline` and propagates them to n8n).
 		$this->metadata->stampTags($fileId, $this->withProtected($source, $protected));
 	}
 

@@ -6,7 +6,9 @@
 #   • n8n tags       — tags on the workflow (`/api/v1/tags`, opaque ids; the
 #                      workflow GET body echoes `tags: [{id,name},...]`). Written
 #                      via a SEPARATE call: ensureTag(name)->id, then
-#                      setWorkflowTags(id, [ids]) — the body PUT ignores tags.
+#                      setWorkflowTags(id, [ids]) — the body PUT does not accept
+#                      tags (n8n rejects the field; `N8nWorkflowBody`'s writable
+#                      whitelist omits it).
 #   • Nextcloud tags — collaborative SYSTEM TAGS (the coloured pills in Files,
 #                      searchable via DAV REPORT).
 #

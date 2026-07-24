@@ -21,6 +21,7 @@ use OCA\N8nSync\Service\StorageService;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\SyncService;
 use OCA\N8nSync\Service\SyncStatusService;
+use OCA\N8nSync\Service\TagSyncService;
 use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\BackgroundJob\IJobList;
 use OCP\Files\File;
@@ -54,6 +55,7 @@ final class SyncServiceTest extends TestCase {
 	private WorkflowMetadata $metadata;
 	private PushService $push;
 	private MappingService $mappings;
+	private TagSyncService $tagSync;
 	private SyncService $service;
 
 	protected function setUp(): void {
@@ -71,6 +73,7 @@ final class SyncServiceTest extends TestCase {
 		$mimeLoader->method('getId')->willReturn(1);
 
 		$this->mappings = $this->createStub(MappingService::class);
+		$this->tagSync = $this->createMock(TagSyncService::class);
 		$this->service = new SyncService(
 			$this->mappings,
 			$this->n8n,
@@ -84,6 +87,7 @@ final class SyncServiceTest extends TestCase {
 			$this->createStub(SyncStatusService::class),
 			$this->createStub(IAppConfig::class),
 			new ReservedTagResolver(),
+			$this->tagSync,
 			new NullLogger(),
 		);
 	}
@@ -159,7 +163,89 @@ final class SyncServiceTest extends TestCase {
 		self::assertNull($res['message']);
 	}
 
+	public function testPushOneReconcilesTagsForEachPushedFile(): void {
+		$managed = $this->file(1, 'Flow.n8n.json');
+		$folder = $this->createStub(Folder::class);
+		$folder->method('getDirectoryListing')->willReturn([$managed]);
+
+		$this->storage->method('isAvailable')->willReturn(true);
+		$this->storage->method('findFolder')->willReturn($folder);
+		$this->metadata->method('read')->willReturn($this->managed('wf-1', Mapping::MODE_SYNC));
+		$this->push->method('push')->willReturn(true);
+
+		// Parity: a forced push reconciles the file's tags back to n8n, passing the
+		// mapping's own tag as the protected set (it must never be pushed as removed).
+		$this->tagSync->expects(self::once())
+			->method('reconcilePush')
+			->with(1, self::isInstanceOf(ManagedFile::class), ['nextcloud:alpha']);
+
+		$res = $this->service->pushOne($this->mapping());
+
+		self::assertSame(1, $res['succeeded']);
+	}
+
+	public function testPushOneTagFailureDoesNotFailTheFile(): void {
+		// The body already pushed + stamped; a tag reconcile error is logged and
+		// swallowed, so the file still counts as succeeded, not failed.
+		$managed = $this->file(1, 'Flow.n8n.json');
+		$folder = $this->createStub(Folder::class);
+		$folder->method('getDirectoryListing')->willReturn([$managed]);
+
+		$this->storage->method('isAvailable')->willReturn(true);
+		$this->storage->method('findFolder')->willReturn($folder);
+		$this->metadata->method('read')->willReturn($this->managed('wf-1', Mapping::MODE_SYNC));
+		$this->push->method('push')->willReturn(true);
+		$this->tagSync->method('reconcilePush')
+			->willThrowException(new \RuntimeException('n8n 500 on setWorkflowTags'));
+
+		$res = $this->service->pushOne($this->mapping());
+
+		self::assertSame(1, $res['succeeded']);
+		self::assertSame(0, $res['failed']);
+		self::assertNull($res['message']);
+	}
+
+	public function testPushOneSkipDoesNotReconcileTags(): void {
+		// A link file in a sync mapping is skipped before push — so no tag write.
+		$linkFile = $this->file(2, 'B.n8n.json');
+		$folder = $this->createStub(Folder::class);
+		$folder->method('getDirectoryListing')->willReturn([$linkFile]);
+
+		$this->storage->method('isAvailable')->willReturn(true);
+		$this->storage->method('findFolder')->willReturn($folder);
+		$this->metadata->method('read')->willReturn($this->managed('wf-2', Mapping::MODE_LINK));
+
+		$this->tagSync->expects(self::never())->method('reconcilePush');
+
+		$this->service->pushOne($this->mapping(Mapping::MODE_SYNC));
+	}
+
 	// ── pull prune ───────────────────────────────────────────────────────────────
+
+	public function testPullOneReconcilesTagsForWrittenWorkflow(): void {
+		// Parity: a forced pull reconciles each written workflow's tags onto the
+		// file, passing the workflow row (its `tags`) and the mapping's protected tag.
+		$keepName = FilenameCodec::format('Keep', 'wf-keep', false, 0);
+		$keep = $this->file(10, $keepName);
+
+		$folder = $this->createStub(Folder::class);
+		$folder->method('getDirectoryListing')->willReturn([$keep]);
+
+		$this->storage->method('isAvailable')->willReturn(true);
+		$this->storage->method('ensureFolder')->willReturn($folder);
+		$this->metadata->method('read')->willReturn($this->managed('wf-keep', Mapping::MODE_SYNC, 'map-alpha'));
+		$this->n8n->method('eachWorkflow')->willReturn([
+			['id' => 'wf-keep', 'name' => 'Keep', 'versionId' => 'v1', 'tags' => [['id' => 't', 'name' => 'prod']]],
+		]);
+
+		$this->tagSync->expects(self::once())
+			->method('reconcilePull')
+			->with(10, self::isType('array'), self::isInstanceOf(ManagedFile::class), ['nextcloud:alpha']);
+
+		$res = $this->service->pullOne($this->mapping(Mapping::MODE_SYNC, 'map-alpha'));
+
+		self::assertSame(1, $res['succeeded']);
+	}
 
 	public function testPullOnePrunesFilesWhoseWorkflowLostTheTag(): void {
 		// The kept file's name already matches the canonical form, so writeWorkflow

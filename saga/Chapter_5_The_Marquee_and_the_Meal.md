@@ -239,8 +239,10 @@ not the labels isn't a full sync of the object** — the apprentice's phrasing, 
   is not the object), so their pills are a read-only projection of n8n, pull-only.
 - **The n8n write leg differs from Grafana (and it matters here).** On Grafana, tags ride
   *inside* the dashboard upsert — writing the body writes the tags. On n8n they do **not**:
-  `N8nWorkflowBody::WRITABLE` deliberately excludes `tags`, and `PUT /workflows/{id}` ignores
-  a `tags` field — tags are a **separate** write (`ensureTag` each name → id, then
+  `N8nWorkflowBody::WRITABLE` deliberately excludes `tags`, and `PUT /workflows/{id}` **does not
+  accept** a `tags` field — n8n rejects unknown/read-only fields, which is exactly why
+  `N8nWorkflowBody` keeps a writable-field whitelist — so tags are a **separate** write
+  (`ensureTag` each name → id, then
   `setWorkflowTags(id, [ids])` = a full-replace `PUT /workflows/{id}/tags`). So the body push
   and the tag push are two calls on n8n, one call on Grafana. The **read** side is parallel
   (both echo `tags` in the GET body); only the write leg forks. This is exactly the kind of
