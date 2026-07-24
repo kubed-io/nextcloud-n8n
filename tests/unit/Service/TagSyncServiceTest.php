@@ -88,6 +88,10 @@ final class TagSyncServiceTest extends TestCase {
 		return new ManagedFile('wf-1', Mapping::MODE_SYNC, '', '', 'map-alpha', $baselineJson);
 	}
 
+	private function linkManaged(string $baselineJson = ''): ManagedFile {
+		return new ManagedFile('wf-1', Mapping::MODE_LINK, '', '', 'map-alpha', $baselineJson);
+	}
+
 	// ── readNcContentTags ──────────────────────────────────────────────────────
 
 	public function testReadNcContentTagsStripsReservedNamespace(): void {
@@ -188,6 +192,29 @@ final class TagSyncServiceTest extends TestCase {
 		$this->service->reconcilePull(1, $workflow, $this->managed('["flows","linux"]'), ['flows']);
 
 		self::assertNotContains($this->tagId('flows'), $unassigned, 'the protected mapping tag must not be removed');
+	}
+
+	public function testPullForALinkDropsLocalAddsAsPureMirror(): void {
+		// A link is a READ-ONLY projection of n8n's tags. A pill added locally
+		// ("urgent") that n8n does not carry has no push channel to ever land it, so
+		// the pull wipes it — unlike a sync file, where a local add survives to push.
+		$this->fileHasTags(1, ['urgent']);
+		$this->tagManager->method('createTag')->willReturnCallback(fn (string $n): ISystemTag => $this->makeTag($n));
+		$this->tagManager->method('getTag')->willReturnCallback(fn (string $n): ISystemTag => $this->makeTag($n));
+		$this->tagMapper->method('haveTag')->willReturn(true);
+		$this->tagMapper->method('assignTags');
+
+		$unassigned = [];
+		$this->tagMapper->method('unassignTags')->willReturnCallback(
+			function (string $objId, string $type, array $ids) use (&$unassigned): void {
+				$unassigned = array_merge($unassigned, $ids);
+			},
+		);
+
+		$workflow = ['id' => 'wf-1', 'tags' => [['id' => 'a', 'name' => 'linux']]];
+		$this->service->reconcilePull(1, $workflow, $this->linkManaged('[]'), []);
+
+		self::assertContains($this->tagId('urgent'), $unassigned, 'a link must drop a local pill n8n does not carry');
 	}
 
 	// ── reconcilePush ──────────────────────────────────────────────────────────

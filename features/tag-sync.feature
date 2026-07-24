@@ -195,6 +195,37 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     Then the workflow's file has the Nextcloud system tags "prod" and "dns"
     And the file can be found by a Nextcloud tag search for "prod"
 
+  # A link is a READ-ONLY projection of n8n's tags: the pills are there so you can
+  # search, but n8n is the only writer. A pill added on a link never pushes (the
+  # reactive reconcile gates on sync), and because a link has no push channel that
+  # stray pill would linger forever — so the pull wipes it, mirroring n8n exactly.
+  Scenario: A pill added on a link is not pushed to n8n (read-only projection)
+    Given the push timing is "sync"
+    And a folder mapped as "link" to the n8n tag "reports"
+    And n8n has a workflow tagged "reports", "prod", and "dns"
+    When the "reports" mapping is pulled
+    And the admin adds the Nextcloud system tag "local" to the file
+    Then the workflow in n8n is tagged "reports", "prod", and "dns"
+
+  Scenario: A locally-added pill on a link is wiped on the next pull (n8n is the only writer)
+    Given a folder mapped as "link" to the n8n tag "reports"
+    And n8n has a workflow tagged "reports", "prod", and "dns"
+    When the "reports" mapping is pulled
+    And the admin adds the Nextcloud system tag "local" to the file
+    And the "reports" mapping is pulled
+    Then the file has no content tag "local"
+    And the workflow's file has the Nextcloud system tags "prod" and "dns"
+    And the file can be found by a Nextcloud tag search for "prod"
+
+  Scenario: A tag added in n8n lands on the link on the next pull (searchable projection)
+    Given a folder mapped as "link" to the n8n tag "reports"
+    And n8n has a workflow tagged "reports", "prod", and "dns"
+    When the "reports" mapping is pulled
+    And the workflow in n8n now also has "urgent"
+    And the "reports" mapping is pulled
+    Then the workflow's file has the Nextcloud system tags "prod" and "urgent"
+    And the file can be found by a Nextcloud tag search for "urgent"
+
   Scenario: Push writes Nextcloud content tags into n8n (sync only)
     Given a managed "sync" workflow file in "flows" with n8n tags "flows" and "linux"
     When the admin adds the Nextcloud system tag "urgent" to the file

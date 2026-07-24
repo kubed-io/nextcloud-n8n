@@ -115,7 +115,7 @@ trait TagSyncSteps {
 
 	/** @Given a managed :mode file last synced with tags :a, :b, and :c */
 	public function aManagedFileLastSyncedThree(string $mode, string $a, string $b, string $c): void {
-		$this->tagArrangeManagedFile($a, [$a, $b, $c], true);
+		$this->tagArrangeManagedFile($mode, $a, [$a, $b, $c], true);
 	}
 
 	// ── Given: mutate the two sides between the baseline and the reconcile ─────

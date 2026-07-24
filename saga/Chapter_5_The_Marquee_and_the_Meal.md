@@ -264,6 +264,14 @@ not the labels isn't a full sync of the object** — the apprentice's phrasing, 
   files — a `link` file's body is a pointer, but its **NC tags still mirror the live n8n
   tags**, so the mirror is *as searchable as n8n itself* regardless of mode. Push stays
   `sync`-only (a `link` file never pushes), so `link` tags flow one way, n8n → NC.
+  - **A `link`'s pills are read-only, and the pull enforces it.** A `sync` pull keeps
+    NC-local additions (`nc − baseline`) so a pill added in Files survives to push next
+    time; a `link` has no push channel, so `reconcilePull` **drops** local adds for a
+    `link` (`localAdds = isSync ? nc − baseline : []`) and mirrors n8n's content tags
+    exactly. Without this, a pill clicked on a link would linger forever as a phantom the
+    system could never carry anywhere. You *can* click a pill on a link; it just isn't
+    pushed and is wiped on the next pull. Proven live by the three `link` read-only
+    scenarios in `tag-sync.feature` and `TagSyncServiceTest::testPullForALinkDropsLocalAddsAsPureMirror`.
 - **Provenance needs a baseline.** The hard part is two-sided drift: when a tag is on one
   side and not the other, you **cannot** tell an *add* from a *remove* from the two current
   sets alone. The fix is a banked baseline — **`n8n_syncedTags`, the reserved-stripped tag

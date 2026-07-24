@@ -65,8 +65,10 @@ final class TagSyncService {
 
 	/**
 	 * Pull: reconcile n8n's tags onto the Nextcloud file and re-stamp the baseline.
-	 * n8n wins, but NC-local additions survive (they push out next time). Safe to
-	 * call for both sync and link files.
+	 * n8n wins. For a **sync** file, NC-local additions survive (they push out next
+	 * time); for a **link** file the pull is a pure mirror — n8n's tags are the whole
+	 * read-only set, a locally-added pill can never push and is dropped here so a link
+	 * is a faithful, searchable projection of n8n and nothing more.
 	 *
 	 * @param array<string,mixed> $workflow the n8n workflow row (carries `tags`)
 	 * @param list<string> $protected mapping tags that must never be dropped
@@ -82,7 +84,12 @@ final class TagSyncService {
 		// re-added (source wins); removing it durably is a push (NC wins) or an n8n
 		// edit, not a pull. Running the symmetric merge on every pull would instead
 		// flip-flop such a tag (pull N removes it, pull N+1 re-adds it from source).
-		$localAdds = array_values(array_diff($nc, $baseline));
+		//
+		// A **link** keeps no local adds: it has no push channel, so a pill added on a
+		// link could never reach n8n and would linger as a phantom. Links are a
+		// read-only projection — the pull mirrors n8n's content tags exactly (plus the
+		// force-kept mapping tag), and a stray local pill is wiped on the next pull.
+		$localAdds = $managed->isSync() ? array_values(array_diff($nc, $baseline)) : [];
 		$desired = $this->withProtected(array_merge($source, $localAdds), $protected);
 
 		// Reuse the `$nc` we just read — nothing has touched the pills since.
