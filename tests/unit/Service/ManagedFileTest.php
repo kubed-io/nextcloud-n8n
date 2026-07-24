@@ -94,6 +94,7 @@ final class ManagedFileTest extends TestCase {
 	public static function malformedTagCases(): iterable {
 		yield 'not json' => ['nonsense'];
 		yield 'json object' => ['{"a":1}'];
+		yield 'json object with string values' => ['{"a":"prod"}'];
 		yield 'json scalar' => ['"linux"'];
 	}
 

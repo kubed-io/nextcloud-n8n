@@ -51,7 +51,7 @@ final class ManagedFile {
 			return [];
 		}
 		$decoded = json_decode($this->syncedTags, true);
-		if (!is_array($decoded)) {
+		if (!is_array($decoded) || !array_is_list($decoded)) {
 			return [];
 		}
 		return array_values(array_filter($decoded, 'is_string'));
