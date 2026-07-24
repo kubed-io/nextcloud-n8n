@@ -29,6 +29,9 @@ use PHPUnit\Framework\Assert;
  * \OCA\N8nSync\Tests\Integration\FeatureContext}.
  */
 trait TagSyncSteps {
+	/** The queued-job class the reactive pill-edit path enqueues under async timing. */
+	private const RECONCILE_TAGS_JOB = 'OCA\N8nSync\BackgroundJob\ReconcileTagsJob';
+
 	/** The n8n workflow id under test in a tag scenario. */
 	private string $tagWfId = '';
 	/** The managed file's files-root-relative path (resolved lazily after a pull). */
@@ -162,6 +165,25 @@ trait TagSyncSteps {
 		$this->assignSystemTag($this->tagLocateFile(), $reserved);
 	}
 
+	/** @Given the push timing is :timing */
+	public function thePushTimingIs(string $timing): void {
+		$res = $this->occ('config:app:set ' . self::APP_ID . ' timing --value=' . escapeshellarg($timing));
+		Assert::assertSame(0, $res['exit'], "setting timing=$timing failed:\n{$res['output']}");
+	}
+
+	/** @Then a tag-reconcile job is queued for the file */
+	public function aReconcileTagsJobIsQueued(): void {
+		$res = $this->occ('background-job:list --class=' . escapeshellarg(self::RECONCILE_TAGS_JOB) . ' --output=json');
+		$jobs = json_decode($res['output'], true);
+		Assert::assertIsArray($jobs, "could not list background jobs:\n{$res['output']}");
+		Assert::assertNotEmpty($jobs, 'no ReconcileTagsJob was queued by the pill edit');
+	}
+
+	/** @When the background queue runs */
+	public function theBackgroundQueueRuns(): void {
+		$this->drainJobs(self::RECONCILE_TAGS_JOB);
+	}
+
 	/** @When the file is moved out of the :tag mapped folder */
 	public function theFileIsMovedOut(string $tag): void {
 		$from = $this->tagLocateFile();
@@ -236,14 +258,21 @@ trait TagSyncSteps {
 
 	// ── Then: n8n side ──────────────────────────────────────────────────────────
 
-	/** @Then the workflow in n8n is tagged :a and :b */
+	/**
+	 * @Then the workflow in n8n is tagged :a and :b
+	 * @Then the workflow in n8n is tagged :a and :b without a manual push
+	 * @Then the workflow in n8n is still tagged only :a and :b
+	 */
 	public function theWorkflowIsTaggedTwo(string $a, string $b): void {
 		$expected = [$a, $b];
 		sort($expected);
 		Assert::assertSame($expected, $this->tagN8nContent($this->tagWfId), 'the n8n content tags are not exactly the expected two');
 	}
 
-	/** @Then the workflow in n8n is tagged :a, :b, and :c */
+	/**
+	 * @Then the workflow in n8n is tagged :a, :b, and :c
+	 * @Then the workflow in n8n is tagged :a, :b, and :c without a manual push
+	 */
 	public function theWorkflowIsTaggedThree(string $a, string $b, string $c): void {
 		$expected = [$a, $b, $c];
 		sort($expected);
@@ -309,13 +338,6 @@ trait TagSyncSteps {
 	/** @Then the file is kept as a standalone copy, not pruned */
 	public function theFileIsKeptStandalone(): void {
 		Assert::assertTrue($this->davExists($this->tagLocateFile()), 'the file was pruned instead of kept');
-	}
-
-	/** @Then the workflow's :tag tag is handled by the unmap path, not the tag sync */
-	public function theTagIsHandledByTheUnmapPath(string $tag): void {
-		// The unmap path (motion) archives the workflow and stamps `unmapped`; the
-		// tag sync must not have touched it. Assert the file is unmapped.
-		Assert::assertSame('unmapped', $this->davReadMetadata($this->tagLocateFile(), self::META_MODE), 'the moved-out file is not unmapped');
 	}
 
 	// ── Then: pruning is an edge sweep, not a catalog GC ────────────────────────

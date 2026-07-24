@@ -129,21 +129,23 @@
 # on BOTH sides at once — a tag still used on either side survives. Symmetry is the
 # whole point: nothing alive anywhere in the pair is ever swept.
 #
-# ENGINE WIRED, SURFACES 1 LIVE: the tag-reconcile engine
+# ENGINE WIRED, SURFACES 1 & 3 LIVE: the tag-reconcile engine
 # ({@see TagSyncService} + the pure {@see TagMerge} three-way merge) and the
 # `n8n_syncedTags` baseline key are implemented and unit-tested (saga Ch5 §5.6):
 # pull mirrors n8n → pills for sync AND link, push writes pills → n8n for sync, the
 # baseline disambiguates add-vs-remove, the reserved `n8n:*` namespace is excluded,
-# and the mapping tag is protected. Those n8n↔pills scenarios are LIVE — their
-# integration steps ({@see TagSyncSteps}) run in CI, and a MANUAL push/pull already
-# reconciles tags alongside the body. Still PLANNED (`@todo` per-scenario until the
-# code lands): (1) the AUTO-TRIGGER tag listener that makes a pill edit propagate on
-# its own — silent body update + timed (`sync`/`async`) tags-only push, no manual
-# button; (2) the body↔pills projection for hand-edits of the JSON `tags` array
-# (surfaces 2 and 3); (3) PULL CHANGE-DETECTION (skip-unchanged / body / tags-only
-# branches); and (4) the reactive eject and the optional catalog sweep. Shared with
-# the Grafana sibling; per-backend knobs = tag write path, reserved prefix,
-# protected-tags set.
+# and the mapping tag is protected. Those n8n↔pills scenarios are LIVE. And as of
+# §5.6.2 Slice A the PILL EDIT IS REACTIVE: adding/removing a content pill on a sync
+# file is caught by {@see ContentTagListener} and reconciled to n8n on its own — no
+# "Sync to n8n" click — honouring the same `timing` knob as the body writeback
+# (`sync` inline, `async` via {@see ReconcileTagsJob}). Its integration steps
+# ({@see TagSyncSteps}) run in CI. Still PLANNED (`@todo` per-scenario until the code
+# lands): (1) Slice B — the body↔pills projection: a pill edit ALSO rewrites the file
+# body's `tags` array (silent, loop-safe), and a hand-edit of the JSON `tags` array
+# updates the pills + pushes (surfaces 2 & 3 fully joined); (2) PULL CHANGE-DETECTION
+# (skip-unchanged / body / tags-only branches); and (3) the reactive eject and the
+# optional catalog sweep. Shared with the Grafana sibling; per-backend knobs = tag
+# write path, reserved prefix, protected-tags set.
 #
 # SCOPE — TAG SYNC IS A MAPPED-FOLDER FEATURE: every tag behaviour here (pull mirror,
 # push, auto-trigger, change-detection) applies ONLY to a file managed by a mapping.
@@ -194,26 +196,28 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
   # ── a pill edit auto-propagates (no manual button), honouring the timing knob ───
   # PLANNED: a content-tag pill change on a sync file updates the body silently and
   # reconciles that ONE tag to n8n on its own — no "Sync to n8n" click required.
+  #
+  # LIVE (Slice A, §5.6.2): the pill→n8n reconcile is wired reactively via
+  # ContentTagListener, honouring the same `timing` knob as the body writeback
+  # (`sync` inline, `async` via ReconcileTagsJob). Slice A carries the pill to n8n and
+  # converges the pills; it does NOT yet rewrite the file body's `tags` array (that is
+  # Slice B), so the body-array assertions stay in the @todo projection scenarios below.
 
-  @todo
   Scenario: Adding a pill pushes the tag to n8n immediately when timing is "sync"
     Given the push timing is "sync"
     And a managed "sync" workflow file in "flows" with n8n tags "flows" and "linux"
     When the admin adds the Nextcloud system tag "urgent" to the file
     Then the workflow in n8n is tagged "flows", "linux", and "urgent" without a manual push
-    And the file body's "tags" array becomes "flows", "linux", and "urgent"
-    And no full-file workflow push is triggered
+    And the workflow's file has the Nextcloud system tag "urgent"
 
-  @todo
   Scenario: Adding a pill queues the tag push when timing is "async"
     Given the push timing is "async"
     And a managed "sync" workflow file in "flows" with n8n tags "flows" and "linux"
     When the admin adds the Nextcloud system tag "urgent" to the file
-    Then a tag-push job is queued for the file
+    Then a tag-reconcile job is queued for the file
     And the workflow in n8n is still tagged only "flows" and "linux"
     When the background queue runs
     Then the workflow in n8n is tagged "flows", "linux", and "urgent"
-    And the file body's "tags" array becomes "flows", "linux", and "urgent"
 
   @todo
   Scenario: The silent body update for a tag edit does not re-push the whole file
@@ -222,13 +226,12 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     Then the file body's "tags" array becomes "flows", "linux", and "urgent"
     And the resulting file write is recognised as the app's own and pushes no workflow body
 
-  @todo
   Scenario: Removing a pill removes the tag from n8n on its own
     Given the push timing is "sync"
-    And a managed "sync" workflow file in "flows" with n8n tags "flows", "linux", and "old"
+    And a managed "sync" file last synced with tags "flows", "linux", and "old"
     When the admin removes the Nextcloud system tag "old" from the file
     Then the workflow in n8n is tagged "flows" and "linux" without a manual push
-    And the file body's "tags" array becomes "flows" and "linux"
+    And the file has no content tag "old"
 
   # Surfaces 2 & 3 (the live body↔pills projection listener) are not wired yet, so
   # a hand-edit of the JSON `tags` array is not reflected onto the pills or pushed.
@@ -344,12 +347,17 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     And the workflow in n8n still carries the "flows" tag
     And the file is still bound to the "flows" mapping
 
-  Scenario: Moving the file out is the sanctioned unmap (the tag is left to the unmap path)
+  # Move-out is the sanctioned unmap, and it is TAG-NEUTRAL: the unmap path only
+  # archives the workflow in n8n — it never touches tags. So the n8n workflow keeps
+  # its "flows" tag and the file keeps its "flows" pill; nothing is pushed or pruned.
+  # Once the file is `unmapped` it is a plain Nextcloud file (see the scope scenarios
+  # below), so tag-sync simply no longer applies to it.
+  Scenario: Moving the file out is the sanctioned unmap — it changes no tags
     Given a managed "sync" workflow file in "flows" tagged "flows"
     When the file is moved out of the "flows" mapped folder
     Then the file becomes "unmapped"
-    And its Nextcloud system tags are left exactly as they were (the move changes no tags)
-    And the workflow's "flows" tag is handled by the unmap path, not the tag sync
+    And the file still carries the "flows" system tag
+    And the workflow in n8n still carries the "flows" tag
 
   # An unmapped file is just a Nextcloud file. Tag sync is a MAPPED-folder feature, so
   # the auto-trigger listener and the push/pull tag reconcile must all no-op on an
@@ -426,6 +434,13 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
   # all mirrors of one id on a tag edit (fan-out by workflow id, not just by file) is
   # the real fix and is deliberately OUT OF SCOPE for now; these scenarios only
   # PIN THE SHAPE so the future work has a target and the current behaviour is known.
+  #
+  # A SECOND hazard in the same setup: on the "flows" mirror the OTHER mapping's tag
+  # ("reports") shows as an ORDINARY content pill — it is not THIS mapping's protected
+  # tag (protection is per-mapping, `[mapping tag]`) — so dropping it here would push a
+  # removal that unbinds the workflow from the "reports" mapping and prunes that mirror.
+  # The protected set must therefore be the UNION of every mapping tag on the workflow,
+  # not just the current mapping's. Also future fan-out work, pinned `@todo` below.
   @todo
   Scenario: One workflow with two mapping tags is mirrored into both mapped folders
     Given a folder mapped as "sync" to the n8n tag "flows"
@@ -445,3 +460,14 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     # NOTE: same-request convergence of every mirror of one workflow id is not built
     # yet — for now the sibling catches up on its own next pull, and the app must not
     # bounce the agreed tag when it does.
+
+  @todo
+  Scenario: A sibling mapping's tag is protected on every mirror (future cross-mapping guard)
+    # On the "flows" mirror the "reports" tag is an ordinary content pill, not this
+    # mapping's protected tag, so today a push could drop it and unbind the sibling.
+    # The fix is a protected set that is the UNION of all mapping tags on the workflow.
+    Given one n8n workflow mirrored as a file in both the "flows" and "reports" folders
+    When the admin removes the "reports" pill from the "flows" mirror
+    And the "flows" mapping is pushed
+    Then the workflow in n8n still carries the "reports" tag
+    And the "reports" mirror is still bound to its mapping
