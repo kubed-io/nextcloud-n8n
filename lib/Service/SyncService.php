@@ -356,9 +356,10 @@ final class SyncService {
 			$processed++;
 			try {
 				if ($this->push->push($node)) {
-					// push() sends the body AND reconciles the file's tags to n8n
-					// (Slice B — body-canonical), so a bulk push carries tag edits
-					// too; nothing more to do here.
+					// The body already pushed + stamped; a tag hiccup must not report
+					// the file as failed (it would mislead the admin and can't retry
+					// the body anyway — its hash now matches). Logged, retried next run.
+					$this->reconcileTagsOnPush($node->getId(), $managed, $mapping);
 					$succeeded++;
 				}
 			} catch (\Throwable $e) {
@@ -523,6 +524,24 @@ final class SyncService {
 			$this->tagSync->reconcilePull($fileId, $workflow, $managed, [$mapping->n8nTag]);
 		} catch (\Throwable $e) {
 			$this->logger->warning('n8n_sync tag pull failed', [
+				'app' => Application::APP_ID,
+				'fileId' => $fileId,
+				'exception' => $e,
+			]);
+		}
+	}
+
+	/**
+	 * Push the just-synced file's Nextcloud content tags back to n8n (saga Ch5
+	 * §5.6). The body already pushed and stamped, so a tag failure is logged and
+	 * swallowed — never promoted to a failed push (that would mislead the admin and
+	 * the body can't re-push anyway, its hash now matches). Sync files only.
+	 */
+	private function reconcileTagsOnPush(int $fileId, ManagedFile $managed, Mapping $mapping): void {
+		try {
+			$this->tagSync->reconcilePush($fileId, $managed, [$mapping->n8nTag]);
+		} catch (\Throwable $e) {
+			$this->logger->warning('n8n_sync tag push failed', [
 				'app' => Application::APP_ID,
 				'fileId' => $fileId,
 				'exception' => $e,

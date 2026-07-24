@@ -46,7 +46,6 @@ final class PushService {
 		private IAppConfig $appConfig,
 		private N8nClient $n8n,
 		private WorkflowMetadata $metadata,
-		private TagReconcileService $tagReconcile,
 		private LoggerInterface $logger,
 	) {
 	}
@@ -103,20 +102,9 @@ final class PushService {
 			throw new N8nApiException(implode(' · ', $errors));
 		}
 
-		// Tag writeback (Slice B). The REST `PUT` body omits the `tags` array
-		// ({@see N8nWorkflowBody} whitelist), so a hand-edit of the JSON `tags`
-		// would be silently dropped. Reconcile it separately with the body as the
-		// NC-side truth: a bare `{"name":"foo"}` is created on n8n and rewritten in
-		// place with n8n's canonical `{id,name}`. Only over the REST channel — the
-		// webhook payload already carried the full body (tags included) to its flow.
-		// Returns the final on-disk content (possibly rewritten with tag ids).
-		$final = $apiOn ? $this->tagReconcile->reconcileFromBody($node, $content) : $content;
-
 		// Full success (incl. the no-channels no-op): stamp the synced hash so
-		// this exact content won't re-trigger a push, plus the new versionId. The
-		// hash is over `$final` — what is actually on disk after the tag rewrite —
-		// so the guarded body write the rewrite triggered is recognised as ours.
-		$update = [WorkflowMetadata::KEY_SYNCED_HASH => sha1($final)];
+		// this exact content won't re-trigger a push, plus the new versionId.
+		$update = [WorkflowMetadata::KEY_SYNCED_HASH => sha1($content)];
 		if ($versionId !== null && $versionId !== '') {
 			$update[WorkflowMetadata::KEY_VERSION_ID] = $versionId;
 		}

@@ -58,17 +58,15 @@ Sometimes you want to keep a workflow file **in** its mapped folder but stop syn
 
 A workflow's **tags** are part of the object, so a full sync keeps them in step too. n8n holds tags on the workflow; Nextcloud has its own first-class **system tags** (the searchable coloured pills in Files). n8n Sync keeps the two the same set, so **the mirror is as searchable as n8n itself** — filter "every `prod` workflow" the Nextcloud-native way.
 
-Because the tags are part of the object, there are several places to edit them, kept in agreement:
+Because the tags are part of the object, there are **three** places to edit them, all kept in agreement:
 
-- **Edit in n8n** → a pull brings the tags into the Nextcloud file's pills.
-- **Edit the file's pills** → adding or removing a system-tag pill on a synced file reconciles that tag to n8n **on its own** — no "Sync to n8n" click needed. (It follows the same *instant* vs *background* timing as the rest of the writeback: with background timing the change is applied on the next queue run.)
-- **Edit the `tags` array inside the `.n8n.json` file** → a hand-edit of the workflow JSON's `tags` reaches n8n on its own too. You can add a tag with just its name — `{ "name": "prod" }` — and Nextcloud fills in n8n's real tag id for you and updates the file's pills to match. (A plain save can't carry tags to n8n by itself, so the app reconciles them separately; same instant/background timing.)
+- **Edit in n8n** → a pull brings the tags into the Nextcloud file and onto its pills.
+- **Edit the file's pills** (or the `tags` array in the JSON) → the change pushes back to n8n.
+- The file body is the hinge: the pills mirror it, and it round-trips to n8n.
 
-Removing a tag on any of the three surfaces removes it on the others: drop a pill and it drops the n8n tag and the body entry; drop it in n8n and the next pull drops the pill; delete it from the `tags` array and the save drops the pill and the n8n tag. The **file body is the canonical object** and the pills are a projection kept in step with it.
+Two rules keep it safe. The app's own control tags (the reserved `n8n:` namespace, e.g. `n8n:sync`, `n8n:ignore`) are **never** mixed into your workflow's tags in either direction. And when tags have changed on **both** sides since the last sync, a three-way merge (against the last-synced set the app remembers) tells an *add* apart from a *remove* so nothing is lost. Tag sync runs in **both** `sync` and `link` mappings for searchability — a `link` file is read-only, so its tags flow one way, n8n → Nextcloud.
 
-Two rules keep it safe. The app's own control tags (the reserved `n8n:` namespace, e.g. `n8n:sync`, `n8n:ignore`) are **never** mixed into your workflow's tags in either direction. And because the app remembers the last-synced set (a baseline), a change on one side is applied to the other as a true *add* or *remove* rather than a blind overwrite. Tag sync runs in **both** `sync` and `link` mappings for searchability — a `link` file never pushes, so its tags flow one way, n8n → Nextcloud.
-
-> **One n8n-specific caveat — the mapping tag is protected.** Because a folder mapping is keyed **by tag**, the tag that binds a workflow to its folder is itself a content tag. n8n Sync shows it as a pill for visibility, but removing that one pill will **not** silently unbind the workflow and prune your local copy — a reconcile restores it (it pops back). Leaving a mapping is always an **explicit** gesture with two sanctioned forms: **move the file out** of the mapped folder (it becomes *unmapped* — the workflow is archived in n8n and restored if you move it back), or tag it **`n8n:ignore`** (the workflow is excluded from the mapping and your file is kept as a standalone copy). *(Planned:* removing the mapping pill as a deliberate "eject this workflow" gesture will be paired automatically with `n8n:ignore` so the file is kept, never pruned. Until that reactive listener ships, the pill is simply force-kept — use move-out or the `n8n:ignore` tag to eject.) (Grafana Sync, which maps by real folders, has no such caveat.)
+> **One n8n-specific caveat:** because a folder mapping is keyed **by tag**, the tag that binds a workflow to its folder is itself a content tag. n8n Sync shows it as a pill for visibility but will **not** unbind a workflow just because you remove that pill — to take a workflow out of a mapping, move its file out (the *unmapped* path) rather than stripping the mapping tag. (Grafana Sync, which maps by real folders, has no such caveat.)
 
 ---
 
