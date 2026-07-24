@@ -40,9 +40,6 @@ final class TagSyncServiceTest extends TestCase {
 	private WorkflowMetadata $metadata;
 	private TagSyncService $service;
 
-	/** name → id, seeded lazily by makeTag(); ids are just "tag:<name>". */
-	private array $tagIds = [];
-
 	protected function setUp(): void {
 		$this->tagManager = $this->createMock(ISystemTagManager::class);
 		$this->tagMapper = $this->createMock(ISystemTagObjectMapper::class);

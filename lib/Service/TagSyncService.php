@@ -82,9 +82,11 @@ final class TagSyncService {
 		$desired = $this->withProtected(array_merge($source, $localAdds), $protected);
 
 		$this->writeNcContentTags($fileId, $desired);
-		// The agreed set is only what the source actually reflects; NC-local adds are
-		// not agreed until a push lands them, so they stay OUT of the baseline (the
-		// next push reads them as `nc − baseline` and propagates them to n8n).
+		// Baseline = the source's content tags, plus the force-kept protected (mapping)
+		// tags — but NOT the NC-local additions. A local add is not agreed until a push
+		// lands it in n8n, so it stays out of the baseline and the next push reads it as
+		// `nc − baseline` and propagates it. (Protected tags are in the baseline so a
+		// later genuine remove of one is still measured against a set that contained it.)
 		$this->metadata->stampTags($fileId, $this->withProtected($source, $protected));
 	}
 

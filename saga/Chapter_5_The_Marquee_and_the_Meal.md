@@ -362,6 +362,24 @@ lands here and the *shape* it took becomes the blueprint the shared pot inherits
 - **`getTagsByIds`, not per-id lookups.** Reading a file's NC content tags is
   `getTagIdsForObjects` → one `getTagsByIds` batch → strip the reserved prefix. Matches how
   core surfaces them and avoids N calls.
+- **Pruning is an edge sweep, not a catalog GC.** Chasing "minimal in the end" tempts you to
+  delete unused tag *definitions* on both sides. Don't: neither catalog is ours alone — an NC
+  system tag may be pinned on non-workflow files, an n8n tag may sit on unmanaged workflows — so
+  deleting a definition because no *managed* object uses it strips it off bystanders. The pruning
+  that matters is the **assignment** edge, and the three-way merge already sweeps it both ways
+  (remove-on-either-side drops the pill *and* the n8n tag). Minimality then comes free from being
+  **prune-free by construction**: `ensureTag` reuses by name (no dup definitions), reserved never
+  crosses (n8n's catalog never grows a control tag), and the reconcile computes the *final* set
+  before it writes — so it never mints a pill or tag it's about to drop. Verified both write legs
+  (`writeNcContentTags`, `pushSourceTags`) only `ensureTag` the winners. A true catalog sweep, if
+  ever wanted, is an opt-in `occ` command, dry-run first, symmetric (a tag alive on *either* side
+  survives), never on the hot path.
+- **Removing a tag from the JSON body is just another `NodeWrittenEvent`.** The `name` key already
+  rides that event (the filename↔name reconcile); the body `tags` array is the same surface. So a
+  hand-edit that *drops* a tag inside the JSON is a first-class removal — pill follows the body,
+  next push drops it in n8n — and the mapping-tag protection covers a body-drop of the binding tag
+  exactly like a pill-drop. (The listener that makes body↔pills instant is still `@todo`; the
+  reconcile already honors whatever the body says.)
 
 **Still on the cutting board (why the feature file stays `@todo`):** surfaces **2 and 3** from
 the spec — the live **body↔pills projection listener** (edit a pill → the `.n8n.json` `tags`
