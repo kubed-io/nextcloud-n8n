@@ -19,7 +19,6 @@ use OCP\SystemTag\ISystemTagManager;
 use OCP\SystemTag\ISystemTagObjectMapper;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
-use Psr\Log\NullLogger;
 
 /**
  * Unit tests for {@see TagSyncService} — the IO shell around the pure
@@ -54,7 +53,6 @@ final class TagSyncServiceTest extends TestCase {
 			$this->tagMapper,
 			$this->n8n,
 			$this->metadata,
-			new NullLogger(),
 		);
 	}
 

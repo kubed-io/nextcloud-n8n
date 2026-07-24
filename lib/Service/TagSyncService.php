@@ -14,7 +14,6 @@ use OCP\SystemTag\ISystemTagManager;
 use OCP\SystemTag\ISystemTagObjectMapper;
 use OCP\SystemTag\TagAlreadyExistsException;
 use OCP\SystemTag\TagNotFoundException;
-use Psr\Log\LoggerInterface;
 
 /**
  * Keeps a workflow's **content tags** in sync three ways (saga Ch5 §5.6): the n8n
@@ -30,8 +29,10 @@ use Psr\Log\LoggerInterface;
  *    destroys a tag the user added on the Nextcloud side since the last sync, so the
  *    pill set becomes `source ∪ (nc-local additions)`. Those local additions reach
  *    n8n on the next push.
- *  - **Push** ({@see reconcilePush}) runs for synced files on writeback. Nextcloud is
- *    authoritative; a genuine both-sides-drifted conflict is resolved in NC's favour.
+ *  - **Push** ({@see reconcilePush}) runs for synced files on writeback. Nextcloud's
+ *    pills are reconciled with n8n through the deterministic {@see TagMerge} — an
+ *    NC-side removal of a baseline tag propagates to n8n, an n8n-side addition since
+ *    the baseline is kept, and there is no ambiguous conflict to break (see TagMerge).
  *
  * Two namespaces are handled here so {@see TagMerge} only ever sees plain content:
  *
@@ -55,7 +56,6 @@ final class TagSyncService {
 		private ISystemTagObjectMapper $tagMapper,
 		private N8nClient $n8n,
 		private WorkflowMetadata $metadata,
-		private LoggerInterface $logger,
 	) {
 	}
 
@@ -90,8 +90,8 @@ final class TagSyncService {
 
 	/**
 	 * Push: reconcile the Nextcloud pills onto the n8n workflow and re-stamp the
-	 * baseline. NC wins conflicts. Fetches the live workflow so the merge sees n8n's
-	 * current tags and any reserved markers are preserved. Sync files only.
+	 * baseline. Fetches the live workflow so the deterministic {@see TagMerge} sees
+	 * n8n's current tags and any reserved markers are preserved. Sync files only.
 	 *
 	 * @param list<string> $protected mapping tags that must never be dropped
 	 */
@@ -102,7 +102,7 @@ final class TagSyncService {
 		$nc = $this->readNcContentTags($fileId);
 		$baseline = $managed->syncedTagList();
 
-		$merged = TagMerge::merge($baseline, $nc, $source, sourceWins: false);
+		$merged = TagMerge::merge($baseline, $nc, $source);
 		$merged = $this->withProtected($merged, $protected);
 
 		// Converge both sides on the merged set, preserving n8n's reserved markers.

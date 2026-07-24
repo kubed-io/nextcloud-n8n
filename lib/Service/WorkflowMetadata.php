@@ -182,7 +182,7 @@ final class WorkflowMetadata {
 	 * @param list<string> $tags
 	 */
 	public static function encodeTags(array $tags): string {
-		$tags = array_values(array_unique($tags));
+		$tags = array_values(array_unique(array_filter($tags, static fn (string $t): bool => $t !== '')));
 		sort($tags);
 		return json_encode($tags, JSON_THROW_ON_ERROR);
 	}

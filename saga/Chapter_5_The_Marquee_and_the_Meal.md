@@ -304,10 +304,9 @@ lands here and the *shape* it took becomes the blueprint the shared pot inherits
 **What actually shipped** (runtime, not spec):
 
 - **`TagMerge`** — the backend-agnostic core, extracted **pure** on purpose: no Nextcloud, no
-  n8n, just set algebra over `list<string>`. `merge(baseline, nc, source, sourceWins)` does the
-  three-way merge from §5.6 — adds are the union, removes propagate, and a genuine conflict
-  (same tag added on one side, removed on the other) falls to `$sourceWins`
-  (pull → source/n8n, push → NC). This is the piece that lifts into the mother sauce *verbatim*.
+  n8n, just set algebra over `list<string>`. `merge(baseline, nc, source)` does the three-way
+  merge from §5.6 — adds are the union, removes propagate. This is the piece that lifts into the
+  mother sauce *verbatim*.
 - **`TagSyncService`** — the IO shell around `TagMerge`: reads/writes NC system tags
   (`ISystemTagManager` + `ISystemTagObjectMapper`, the exact pattern `OwnershipTags` already
   uses), and does the n8n write leg. It owns the two per-backend knobs that turned out to
@@ -320,12 +319,36 @@ lands here and the *shape* it took becomes the blueprint the shared pot inherits
 
 **What the build taught (updates to the spec above):**
 
+- **The "conflict tiebreak" was a phantom — the merge is deterministic.** The §5.6 spec (and my
+  first cut, `merge(baseline, nc, source, sourceWins)`) assumed a genuine two-sided conflict —
+  "same tag added on one side, removed on the other" — needing a pull-vs-push winner. The PR
+  reviewer caught that for a **set** element against a *single* baseline that case is impossible:
+  *added* means not-in-baseline, *removed* means in-baseline, and those are disjoint. So a tag
+  is in the result iff either side added it or the baseline kept it, and a remove by either side
+  always wins over the untouched side. There is nothing to break. `$sourceWins` was dead code;
+  it's gone. Direction-of-truth still exists — but it lives in *which* reconcile runs and where
+  it writes the result, **not** inside the pure merge, which stays a symmetric function of three
+  sets. (Provenance/authorship would only matter if we banked per-*element* history or allowed
+  concurrent same-tag add+remove — we bank the baseline *set*, so we don't.)
 - **Baseline is what the *source* reflects, not what we wrote to disk.** On pull, NC-local
   additions survive onto the pills (`source ∪ nc-local-adds`), but the **baseline is stamped to
   the source set only** — an NC-local add is *not yet agreed* until a push lands it in n8n.
   Stamp it too early and the next push reads that local add as a two-sided no-op and never
   propagates it. This subtlety wasn't in the original note; it's the difference between "tag
   reaches n8n next push" working and silently dropping.
+- **The mapping tag gets a *sane* eject, not just a force-keep.** §5.6 landed on "protect the
+  mapping tag" (option a) but left the UX of a pill-removal fuzzy. Thinking it through: a bare
+  force-keep means the pill *pops back* on the next reconcile — which reads as broken. So the
+  full model is two-layer: (1) the reconcile **force-keeps** the mapping tag as the safety net —
+  a bulk sync can never let a stray pill click prune the mirror; and (2) *leaving* a mapping is
+  an **explicit** gesture with exactly two forms — **move the file out** (`unmapped`, workflow
+  archived, restorable) or **`n8n:ignore`** (`ignored`, file kept standalone). Removing the
+  mapping pill *as a deliberate eject* is defined as form (2): it is **paired with `n8n:ignore`**
+  so the workflow leaves the mapping but the file is **kept, never pruned**. That is the "if we
+  do allow removing the mapped tag, we add the ignore tag to make it logical" resolution — the
+  binding tag can never be silently dropped, only ever traded for an explicit ignore. (The
+  reactive pill→ignore listener is surface-2/3 work, still `@todo`; the force-keep safety net
+  ships now.)
 - **The n8n write leg is full-replace, so reserved markers must be re-sent.**
   `setWorkflowTags` replaces the whole tag list. If you push only content tags, any `n8n:*`
   marker a user hand-set *on the workflow in n8n* vanishes. So the push path reads the live

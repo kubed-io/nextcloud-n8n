@@ -27,10 +27,19 @@ namespace OCA\N8nSync\Service;
  *
  *   added_x   = x − baseline        removed_x = baseline − x
  *
- * The merge starts from the baseline, applies both sides' adds and removes, and only
- * a genuine **conflict** — a tag one side added while the other removed it — needs a
- * tiebreak. `$sourceWins` picks the winner by direction of truth: a **pull** trusts
- * the source (`true`), a **push** trusts Nextcloud (`false`).
+ * For a **set** element against a single baseline the merge is fully **deterministic**
+ * — there is no tiebreak to make. A tag is in the result iff it was *added* by either
+ * side (it wasn't in the baseline; at least one side now has it) or it *survived* in
+ * the baseline (both sides still carry it). The only way the two current sets can
+ * disagree on a baseline tag is that exactly one side *removed* it — and a removal
+ * always wins over the unchanged side, because that side is the one that changed. A
+ * tag can never be simultaneously "added on one side and removed on the other":
+ * *added* means not-in-baseline, *removed* means in-baseline, and those are disjoint.
+ *
+ * Direction-of-truth (pull trusts n8n, push trusts Nextcloud) is therefore **not** a
+ * property of this merge — it is expressed by *which* reconcile runs it and what that
+ * reconcile does with the result ({@see TagSyncService}). This class stays a pure,
+ * symmetric function of its three inputs.
  *
  * The reserved namespace ({@see TagSyncService::RESERVED_PREFIX}) and any protected
  * tags (n8n's folder-binding mapping tag) are handled by {@see TagSyncService} before
@@ -38,48 +47,36 @@ namespace OCA\N8nSync\Service;
  */
 final class TagMerge {
 	/**
-	 * Resolve the agreed content-tag set from the three inputs. Both the Nextcloud
-	 * pills and the source workflow should be reconciled *to this result*, and it
-	 * becomes the new baseline.
+	 * Resolve the agreed content-tag set from the three inputs (deterministic; see
+	 * the class docblock for why no tiebreak is needed). Both the Nextcloud pills and
+	 * the source workflow should be reconciled *to this result*, and it becomes the
+	 * new baseline.
 	 *
 	 * @param list<string> $baseline last-agreed set (empty on first sync)
 	 * @param list<string> $nc       current Nextcloud content tags
 	 * @param list<string> $source   current source (n8n) content tags
-	 * @param bool $sourceWins       conflict tiebreak: true = source (pull), false = NC (push)
 	 * @return list<string> the merged set, unique + sorted (canonical)
 	 */
-	public static function merge(array $baseline, array $nc, array $source, bool $sourceWins): array {
+	public static function merge(array $baseline, array $nc, array $source): array {
 		$base = self::set($baseline);
 		$ncSet = self::set($nc);
 		$srcSet = self::set($source);
 
-		// Deltas of each side against the shared baseline.
+		// Deltas of each side against the shared baseline. Adds are disjoint from
+		// removes (an add is not-in-baseline, a remove is in-baseline), so applying
+		// every add and every remove is unambiguous — a removal by either side wins
+		// over the side that left the baseline tag untouched.
 		$ncAdded = array_diff_key($ncSet, $base);
-		$ncRemoved = array_diff_key($base, $ncSet);
 		$srcAdded = array_diff_key($srcSet, $base);
+		$ncRemoved = array_diff_key($base, $ncSet);
 		$srcRemoved = array_diff_key($base, $srcSet);
 
-		// Start from the baseline, then apply every unambiguous change.
 		$merged = $base;
 		foreach ($ncAdded + $srcAdded as $tag => $_) {
 			$merged[$tag] = true;
 		}
 		foreach ($ncRemoved + $srcRemoved as $tag => $_) {
 			unset($merged[$tag]);
-		}
-
-		// Conflicts: one side added a tag the other removed. The removes above may
-		// have dropped a tag the winning side wants, or kept one it doesn't — so
-		// re-decide every conflicting tag by the direction of truth.
-		$conflicts = (array_intersect_key($ncAdded, $srcRemoved))
-			+ (array_intersect_key($srcAdded, $ncRemoved));
-		foreach ($conflicts as $tag => $_) {
-			$winnerHas = $sourceWins ? isset($srcSet[$tag]) : isset($ncSet[$tag]);
-			if ($winnerHas) {
-				$merged[$tag] = true;
-			} else {
-				unset($merged[$tag]);
-			}
 		}
 
 		return self::sortedKeys($merged);

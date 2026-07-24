@@ -38,16 +38,26 @@
 # differ on a string you cannot tell an ADD on one side from a REMOVE on the other
 # from the current sets alone. So the app banks the reserved-stripped tag set as of
 # the last successful sync in `n8n_syncedTags` (the tag analogue of
-# `n8n_syncedHash`) and three-way-merges against it: add-on-either-side is additive,
-# remove-on-either-side propagates, and the only genuine conflict (same tag added on
-# one side, removed on the other) falls to the reconcile's direction of truth —
-# pull → n8n wins, push → Nextcloud wins.
+# `n8n_syncedHash`) and three-way-merges against it. Against a single baseline the
+# merge is DETERMINISTIC — there is no add-vs-remove conflict to break: a tag is
+# ADDED only if it was not in the baseline (so at least one side newly has it) and
+# REMOVED only if it was in the baseline (so a side dropped it), and those are
+# disjoint. Rule: add-on-either-side keeps the tag; REMOVE-ON-EITHER-SIDE drops it
+# (the side that dropped a baseline tag is the one that changed, so it wins over the
+# side that left it untouched). Direction (pull vs push) is NOT a merge input — it
+# only decides which side the merged set is written back to.
 #
 # MAPPING-TAG PROTECTION (n8n-only): n8n maps a folder BY TAG, so the tag that binds
 # a workflow to its folder is itself a content tag. It is shown as a pill for
-# visibility but is PROTECTED — removing the pill must NOT push a tag removal that
-# would unbind the workflow. To unmap, move the file out (the unmapped path). This
-# hazard has no Grafana analogue (Grafana maps by real folders).
+# visibility but is PROTECTED: a reconcile FORCE-KEEPS it on both sides, so removing
+# the pill alone never pushes a tag removal that would unbind the workflow and prune
+# the mirror. Leaving a mapping is always an EXPLICIT gesture, and there are exactly
+# two sanctioned forms: (1) move the file out of the folder → `unmapped` (workflow
+# archived in n8n, restored on move-back), or (2) tag it `n8n:ignore` → `ignored`
+# (workflow excluded from the mapping, file kept standalone). Removing the mapping
+# pill AS a deliberate eject is therefore treated as form (2): it is paired with
+# `n8n:ignore` so the file is KEPT, never silently pruned. This hazard has no Grafana
+# analogue (Grafana maps by real folders).
 #
 # ENGINE WIRED, SCENARIOS PENDING STEPS: the tag-reconcile engine
 # ({@see TagSyncService} + the pure {@see TagMerge} three-way merge) and the
@@ -120,6 +130,14 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     When the "flows" mapping is pulled
     Then the file's Nextcloud system tags are exactly "flows" and "linux"
 
+  Scenario: A tag removed in Nextcloud since the last sync is removed in n8n
+    Given a managed "sync" file last synced with tags "flows", "linux", and "old"
+    And the admin removes the Nextcloud system tag "old" from the file
+    And the workflow in n8n still has "flows", "linux", and "old"
+    When the "flows" mapping is pushed
+    Then the workflow in n8n is tagged "flows" and "linux"
+    And the "old" tag is gone from n8n
+
   Scenario: Independent changes on both sides both survive a reconcile
     Given a managed "sync" file last synced with tags "flows" and "linux"
     And the file now also has the Nextcloud system tag "urgent"
@@ -127,15 +145,43 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     When the "flows" mapping is reconciled
     Then the resulting tag set on both sides is "flows", "linux", "urgent", and "prod"
 
-  Scenario: The mapping tag is protected — removing its pill does not unmap
+  Scenario: An add on one side and an unrelated remove on the other both apply
+    Given a managed "sync" file last synced with tags "flows", "linux", and "old"
+    And the file now also has the Nextcloud system tag "urgent"
+    And the workflow in n8n now has only "flows" and "linux" (dropped "old")
+    When the "flows" mapping is reconciled
+    Then the resulting tag set on both sides is "flows", "linux", and "urgent"
+    And the "old" tag is gone from both sides
+
+  # ── mapping-tag protection (the n8n-only hazard) ──────────────────────────────
+
+  Scenario: Removing the mapping-tag pill alone does not unbind the workflow
     Given a managed "sync" workflow file in "flows" tagged "flows" and "linux"
     When the admin removes the Nextcloud system tag "flows" from the file
-    And the "flows" mapping is pushed
-    Then the workflow in n8n still carries the "flows" tag
+    And the "flows" mapping is reconciled
+    Then the file still carries the "flows" system tag (it is force-kept)
+    And the workflow in n8n still carries the "flows" tag
     And the file is still bound to the "flows" mapping
 
-  Scenario: Unmapping is done by moving the file out, not by removing the tag pill
+  Scenario: Moving the file out is the sanctioned unmap (the tag is left to the unmap path)
     Given a managed "sync" workflow file in "flows" tagged "flows"
     When the file is moved out of the "flows" mapped folder
     Then the file becomes "unmapped"
     And the workflow's "flows" tag is handled by the unmap path, not the tag sync
+
+  Scenario: Ejecting via n8n:ignore keeps the file instead of pruning it
+    Given a managed "sync" workflow file in "flows" tagged "flows" and "linux"
+    When the admin tags the file "n8n:ignore"
+    And the "flows" mapping is reconciled
+    Then the file becomes "ignored"
+    And the file is kept as a standalone copy, not pruned
+    And "n8n:ignore" is never written to n8n as a content tag
+
+  Scenario: Removing the mapping pill as a deliberate eject is paired with n8n:ignore
+    # The planned reactive gesture: dropping the binding tag on purpose means "take
+    # this out of the mapping" — so the app marks it ignored rather than silently
+    # pruning the mirror on the next pull.
+    Given a managed "sync" workflow file in "flows" tagged "flows"
+    When the admin removes the mapping-tag pill "flows" as an eject gesture
+    Then the file is tagged "n8n:ignore" and becomes "ignored"
+    And the file is kept, not pruned
