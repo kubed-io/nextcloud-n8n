@@ -42,7 +42,9 @@ final class TagReconcileServiceTest extends TestCase {
 	private TagReconcileService $service;
 
 	protected function setUp(): void {
-		$this->mappings = $this->createStub(MappingService::class);
+		// A mock (not a stub) so the "blank mapping id never hits the lookup" test can
+		// assert getById is never called.
+		$this->mappings = $this->createMock(MappingService::class);
 		$this->metadata = $this->createStub(WorkflowMetadata::class);
 		$this->tagSync = $this->createMock(TagSyncService::class);
 		// Real guard so "runs inside the guard" is verifiable from the reconcile call.
@@ -169,7 +171,7 @@ final class TagReconcileServiceTest extends TestCase {
 		self::assertNotNull($written, 'the body was not lockstepped after the pill reconcile');
 		$decoded = json_decode($written, true);
 		self::assertSame(
-			[['id' => 't3', 'name' => 'inventory'], ['id' => 't9', 'name' => 'flows']],
+			[['id' => 't9', 'name' => 'flows'], ['id' => 't3', 'name' => 'inventory']],
 			$decoded['tags'],
 			'body tags should be n8n rows sorted by name',
 		);
@@ -219,6 +221,7 @@ final class TagReconcileServiceTest extends TestCase {
 		// Body carries exactly the baseline set → nothing NC-side changed; no n8n hit.
 		$managed = $this->managed(Mapping::MODE_SYNC, 'map-a', '["foo"]');
 		$this->metadata->method('read')->willReturn($managed);
+		$this->tagSync->method('contentTagsFromWorkflow')->willReturn(['foo']);
 		$this->tagSync->expects(self::never())->method('reconcilePushFromBody');
 
 		$content = '{"name":"WF","tags":[{"id":"t1","name":"foo"}]}';
@@ -230,6 +233,7 @@ final class TagReconcileServiceTest extends TestCase {
 		$managed = $this->managed(Mapping::MODE_SYNC, 'map-a', '');
 		$this->metadata->method('read')->willReturn($managed);
 		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
+		$this->tagSync->method('contentTagsFromWorkflow')->willReturn(['foo']);
 
 		$this->tagSync->expects(self::once())
 			->method('reconcilePushFromBody')

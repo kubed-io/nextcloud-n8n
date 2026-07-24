@@ -62,7 +62,8 @@ final class SyncServiceTest extends TestCase {
 		$this->storage = $this->createStub(StorageService::class);
 		$this->n8n = $this->createStub(N8nClient::class);
 		$this->metadata = $this->createStub(WorkflowMetadata::class);
-		$this->push = $this->createStub(PushService::class);
+		// A mock (not a stub) so the link-file scenario can assert push() is never called.
+		$this->push = $this->createMock(PushService::class);
 
 		// SyncGuard just brackets work in enter/leave (and run()); inert stub.
 		$guard = $this->createStub(SyncGuard::class);
