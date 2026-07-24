@@ -18,7 +18,10 @@ use PHPUnit\Framework\Assert;
  * link), push writeback, the `n8n_syncedTags` baseline that keeps adds/removes
  * straight, the deterministic three-way merge, the force-kept mapping tag, the
  * `n8n:ignore` eject, and edge-vs-catalog pruning. The body↔pills projection
- * (surfaces 2 & 3) and the optional catalog sweep stay `@todo`.
+ * (Slice B: pill edits lockstep the body's `tags` array, and a hand-edit of that
+ * array — even a bare `{name}` — reconciles to n8n and back onto the pills with
+ * its id filled) is exercised live here too; only the optional catalog sweep
+ * stays `@todo`.
  *
  * Leans on the composed helpers: ReconcileSteps (`ensureN8nTag`,
  * `createN8nWorkflow`, `setN8nWorkflowTags`, `propfindWorkflowIds`,
@@ -71,6 +74,27 @@ trait TagSyncSteps {
 	 * @Given a managed :mode workflow file in :tag tagged :a and :b
 	 */
 	public function aManagedFileTaggedTwo(string $mode, string $tag, string $a, string $b): void {
+		$this->tagArrangeManagedFile($tag, [$a, $b], true);
+	}
+
+	/**
+	 * A managed sync file already tag-synced to three tags (baseline stamped via a
+	 * pull) — the starting point for the body-edit remove cases.
+	 *
+	 * @Given a managed :mode workflow file in :tag tagged :a, :b, and :c
+	 */
+	public function aManagedFileTaggedThree(string $mode, string $tag, string $a, string $b, string $c): void {
+		$this->tagArrangeManagedFile($tag, [$a, $b, $c], true);
+	}
+
+	/**
+	 * A managed sync file already tag-synced to :a and :b, whose JSON body already
+	 * carries those tags (a pull writes the whole workflow, tags included) — the
+	 * starting point for the body↔pills (Slice B) cases.
+	 *
+	 * @Given a managed :mode workflow file in :tag with body tags :a and :b
+	 */
+	public function aManagedFileWithBodyTagsTwo(string $mode, string $tag, string $a, string $b): void {
 		$this->tagArrangeManagedFile($tag, [$a, $b], true);
 	}
 
@@ -165,6 +189,21 @@ trait TagSyncSteps {
 		$this->assignSystemTag($this->tagLocateFile(), $reserved);
 	}
 
+	/** @When the admin edits the file body's :field array to :a and :b */
+	public function theAdminEditsBodyArrayTwo(string $field, string $a, string $b): void {
+		$this->editBodyTagArray([$a, $b]);
+	}
+
+	/** @When the admin edits the file body's :field array to :a, :b, and :c */
+	public function theAdminEditsBodyArrayThree(string $field, string $a, string $b, string $c): void {
+		$this->editBodyTagArray([$a, $b, $c]);
+	}
+
+	/** @When the admin edits the file body's :field array to only :a */
+	public function theAdminEditsBodyArrayOne(string $field, string $a): void {
+		$this->editBodyTagArray([$a]);
+	}
+
 	/** @Given the push timing is :timing */
 	public function thePushTimingIs(string $timing): void {
 		$res = $this->occ('config:app:set ' . self::APP_ID . ' timing --value=' . escapeshellarg($timing));
@@ -207,6 +246,7 @@ trait TagSyncSteps {
 	/**
 	 * @Then the workflow's file has the Nextcloud system tag :tag
 	 * @Then the file still carries the :tag system tag
+	 * @Then the file's Nextcloud system tags still include :tag
 	 */
 	public function theFileHasSystemTag(string $tag): void {
 		$pills = $this->tagContentPills($this->tagLocateFile());
@@ -224,6 +264,45 @@ trait TagSyncSteps {
 		$expected = [$a, $b];
 		sort($expected);
 		Assert::assertSame($expected, $this->tagContentPills($this->tagLocateFile()), 'the pill set is not exactly the expected two');
+	}
+
+	/** @Then the file's Nextcloud system tags become :a and :b */
+	public function theFileTagsBecomeTwo(string $a, string $b): void {
+		$expected = [$a, $b];
+		sort($expected);
+		Assert::assertSame($expected, $this->tagContentPills($this->tagLocateFile()), 'the pill set did not become exactly the expected two');
+	}
+
+	/** @Then the file's Nextcloud system tags become :a, :b, and :c */
+	public function theFileTagsBecomeThree(string $a, string $b, string $c): void {
+		$expected = [$a, $b, $c];
+		sort($expected);
+		Assert::assertSame($expected, $this->tagContentPills($this->tagLocateFile()), 'the pill set did not become exactly the expected three');
+	}
+
+	/** @Then the file body's :field array becomes :a and :b */
+	public function theBodyArrayBecomesTwo(string $field, string $a, string $b): void {
+		$this->assertBodyTagArray([$a, $b]);
+	}
+
+	/** @Then the file body's :field array becomes :a, :b, and :c */
+	public function theBodyArrayBecomesThree(string $field, string $a, string $b, string $c): void {
+		$this->assertBodyTagArray([$a, $b, $c]);
+	}
+
+	/** @Then every tag in the file body carries an n8n id */
+	public function everyBodyTagCarriesAnId(): void {
+		$path = $this->tagLocateFile();
+		$wf = json_decode($this->davGet($path), true);
+		Assert::assertIsArray($wf, "managed file at $path is not JSON");
+		$tags = (array)($wf['tags'] ?? []);
+		Assert::assertNotEmpty($tags, 'the body has no tags array to check for ids');
+		foreach ($tags as $tag) {
+			Assert::assertIsArray($tag, 'a body tag entry is not an object');
+			$name = (string)($tag['name'] ?? '?');
+			Assert::assertArrayHasKey('id', $tag, "the body tag '$name' has no n8n id");
+			Assert::assertNotSame('', (string)$tag['id'], "the body tag '$name' has an empty n8n id");
+		}
 	}
 
 	/** @Then the unrelated file still carries the :tag pill */
@@ -321,7 +400,10 @@ trait TagSyncSteps {
 
 	// ── Then: mapping-tag protection + eject ────────────────────────────────────
 
-	/** @Then the file is still bound to the :tag mapping */
+	/**
+	 * @Then the file is still bound to the :tag mapping
+	 * @Then the file stays mapped to :tag
+	 */
 	public function theFileIsStillBound(string $tag): void {
 		$path = $this->tagLocateFile();
 		Assert::assertTrue($this->davExists($path), 'the file was pruned');
@@ -376,6 +458,49 @@ trait TagSyncSteps {
 		}
 		$this->tagCatalogBefore = $this->allSystemTagNames();
 		$this->tagN8nBefore = $this->allN8nTagNames();
+	}
+
+	/**
+	 * Hand-edit the managed file's JSON body `tags` array to exactly $names, each
+	 * a bare `{name}` object with NO id — exactly what a human editing the file
+	 * would type — then save it over WebDAV and drain the writeback push so Slice B
+	 * reconciles the body tags to n8n and back onto the pills (and fills the ids).
+	 *
+	 * @param list<string> $names
+	 */
+	private function editBodyTagArray(array $names): void {
+		$path = $this->tagLocateFile();
+		$wf = json_decode($this->davGet($path), true);
+		Assert::assertIsArray($wf, "managed file at $path is not JSON");
+		$wf['tags'] = array_map(static fn (string $n): array => ['name' => $n], array_values($names));
+		$this->davPut($path, json_encode($wf, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT));
+		// The save fires NodeWrittenEvent → PushWorkflowJob (async default). Draining
+		// runs PushService::push → reconcileFromBody: body tags become the truth,
+		// get pushed to n8n, and the canonical rows land back on the pills + body.
+		// Under sync timing the push already ran inline, so this is a harmless no-op.
+		$this->drainJobs('OCA\\N8nSync\\BackgroundJob\\PushWorkflowJob');
+	}
+
+	/**
+	 * Assert the managed file's JSON body `tags` array carries exactly $names
+	 * (reserved namespace excluded), sorted.
+	 *
+	 * @param list<string> $names
+	 */
+	private function assertBodyTagArray(array $names): void {
+		sort($names);
+		$path = $this->tagLocateFile();
+		$wf = json_decode($this->davGet($path), true);
+		Assert::assertIsArray($wf, "managed file at $path is not JSON");
+		$got = [];
+		foreach ((array)($wf['tags'] ?? []) as $tag) {
+			$name = is_array($tag) ? (string)($tag['name'] ?? '') : '';
+			if ($name !== '' && !str_starts_with($name, 'n8n:')) {
+				$got[] = $name;
+			}
+		}
+		sort($got);
+		Assert::assertSame($names, array_values(array_unique($got)), 'the body tags array is not the expected set (has: ' . implode(',', $got) . ')');
 	}
 
 	// ── helpers: n8n tag mutation / reads ───────────────────────────────────────

@@ -35,9 +35,13 @@ use Psr\Log\LoggerInterface;
  *     listener) and best-effort logs a failure instead of surfacing it (a tag hiccup
  *     must never break the user's Files action).
  *
- * Slice A deliberately reconciles the **pills** to n8n and does NOT rewrite the file
- * body's `tags` array — the body ⇆ pills projection is Slice B. The body catches up on
- * the next pull; nothing reads the body `tags` as canonical yet, so it can't revert.
+ * Two reactive surfaces converge here (saga Ch5 §5.6.2):
+ *
+ *  - **Pills** ({@see reconcileFile}) — a system-tag pill toggle. NC pills are truth.
+ *  - **Body** ({@see reconcileFromBody}) — a hand-edit of the file's JSON `tags` array
+ *    (Slice B). The body tags are truth. Both paths then lockstep the *other* NC
+ *    surface to the merged result, so the pills and the on-disk `tags` never disagree
+ *    and a later edit of either can't diff against a stale sibling.
  */
 final class TagReconcileService {
 	public function __construct(
@@ -61,9 +65,13 @@ final class TagReconcileService {
 		}
 		$protected = $this->protectedTagsFor($managed);
 		$fileId = $node->getId();
-		$this->guard->run(function () use ($fileId, $managed, $protected): void {
+		$this->guard->run(function () use ($fileId, $managed, $protected, $node): void {
 			try {
-				$this->tagSync->reconcilePush($fileId, $managed, $protected);
+				$rows = $this->tagSync->reconcilePush($fileId, $managed, $protected);
+				// Lockstep the on-disk `tags` array to n8n's canonical rows so a later
+				// hand-edit of the JSON can never diff against a body left stale by
+				// this pill change.
+				$this->lockstepBody($node, $rows, true);
 			} catch (\Throwable $e) {
 				// The user's pill click already landed in Nextcloud; a failure to carry
 				// it to n8n is logged and retried by the next sync, never surfaced as a
@@ -76,6 +84,104 @@ final class TagReconcileService {
 			}
 		});
 		return true;
+	}
+
+	/**
+	 * Reconcile one file's **body** `tags` array to n8n and the pills (Slice B). Called
+	 * from the writeback push ({@see PushService}) so an edit to the JSON `tags` array
+	 * reaches n8n on its own — the REST `PUT` body omits tags, so without this a
+	 * body-tag edit is silently dropped.
+	 *
+	 * The body tags are the NC-side truth. A user may add a bare `{"name":"foo"}` to the
+	 * array; we ensure/set it on n8n and then rewrite the body with n8n's canonical
+	 * `{id,name}` object, so the id is filled in from the source. Returns the file's
+	 * final content so the caller can stamp the loop-guard hash against what is actually
+	 * on disk; returns `$content` unchanged when nothing reconciled. A no-op fast path
+	 * skips the n8n round-trip entirely when the body's tags still match the baseline.
+	 */
+	public function reconcileFromBody(File $node, string $content): string {
+		$managed = $this->metadata->read($node->getId());
+		if (!$managed?->isManaged() || !$managed->isSync()) {
+			return $content;
+		}
+		$wf = json_decode($content, true);
+		if (!is_array($wf)) {
+			return $content; // not a JSON object — leave the file untouched
+		}
+		$bodyContent = $this->tagSync->contentTagsFromWorkflow($wf);
+		// Fast path: the body's tags are unchanged vs the last agreed baseline, so
+		// there is nothing NC-side to push. n8n-side drift is the pull's job. This
+		// keeps an ordinary nodes-only save from a pointless getWorkflow + setTags.
+		if (self::sameSet($bodyContent, $managed->syncedTagList())) {
+			return $content;
+		}
+		$protected = $this->protectedTagsFor($managed);
+		$fileId = $node->getId();
+		$final = $content;
+		$this->guard->run(function () use (&$final, $fileId, $managed, $bodyContent, $protected, $node, $wf, $content): void {
+			try {
+				$rows = $this->tagSync->reconcilePushFromBody($fileId, $managed, $bodyContent, $protected);
+				$final = $this->rewriteBodyTags($node, $wf, $content, $rows) ?? $content;
+			} catch (\Throwable $e) {
+				$this->logger->warning('n8n_sync reactive body-tag reconcile failed', [
+					'app' => Application::APP_ID,
+					'fileId' => $fileId,
+					'exception' => $e,
+				]);
+			}
+		});
+		return $final;
+	}
+
+	/**
+	 * Lockstep the on-disk `tags` array to n8n's canonical rows and, when asked,
+	 * re-stamp the loop-guard hash — used by the pill path to keep the body in step
+	 * after a pill change (the re-stamp means the body write it triggers is recognised
+	 * as ours and pushes nothing). Must run inside the guard.
+	 *
+	 * @param list<array<string,mixed>> $rows n8n's canonical tag rows
+	 */
+	private function lockstepBody(File $node, array $rows, bool $restampHash): void {
+		try {
+			$content = $node->getContent();
+		} catch (\Throwable) {
+			return;
+		}
+		$wf = json_decode($content, true);
+		if (!is_array($wf)) {
+			return;
+		}
+		$new = $this->rewriteBodyTags($node, $wf, $content, $rows);
+		if ($new !== null && $restampHash) {
+			$this->metadata->write($node->getId(), [WorkflowMetadata::KEY_SYNCED_HASH => sha1($new)]);
+		}
+	}
+
+	/**
+	 * Set the decoded workflow's `tags` to n8n's canonical rows (content + reserved
+	 * markers, each carrying the real tag id), sorted by name for a stable on-disk
+	 * order, and write the re-encoded body only when it actually changed — so a bare
+	 * `{"name":"foo"}` gains its id, a removed tag disappears, and an unchanged set
+	 * never churns the file. Returns the new content when written, else null.
+	 * Guard-scoped (the write fires a guarded, ignored NodeWrittenEvent).
+	 *
+	 * @param array<string,mixed> $wf decoded body
+	 * @param list<array<string,mixed>> $rows n8n's canonical tag rows
+	 */
+	private function rewriteBodyTags(File $node, array $wf, string $original, array $rows): ?string {
+		usort($rows, static fn (array $a, array $b): int => strcmp((string)($a['name'] ?? ''), (string)($b['name'] ?? '')));
+		$wf['tags'] = array_values($rows);
+		$new = json_encode($wf, N8nWorkflowBody::JSON_PRETTY);
+		if (!is_string($new) || $new === $original) {
+			return null;
+		}
+		$node->putContent($new);
+		return $new;
+	}
+
+	/** True when two name lists are the same set (order/dupes ignored). */
+	private static function sameSet(array $a, array $b): bool {
+		return array_fill_keys($a, true) == array_fill_keys($b, true);
 	}
 
 	/**

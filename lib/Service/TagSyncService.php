@@ -96,26 +96,70 @@ final class TagSyncService {
 	}
 
 	/**
-	 * Push: reconcile the Nextcloud pills onto the n8n workflow and re-stamp the
+	 * Push: reconcile the Nextcloud **pills** onto the n8n workflow and re-stamp the
 	 * baseline. Fetches the live workflow so the deterministic {@see TagMerge} sees
 	 * n8n's current tags and any reserved markers are preserved. Sync files only.
+	 * Returns n8n's canonical tag rows after the set, so callers can write the real
+	 * `{id,name}` objects back into the file body.
 	 *
 	 * @param list<string> $protected mapping tags that must never be dropped
+	 * @return list<array<string,mixed>> n8n's canonical tag rows (id+name+…) after the set
 	 */
-	public function reconcilePush(int $fileId, ManagedFile $managed, array $protected): void {
+	public function reconcilePush(int $fileId, ManagedFile $managed, array $protected): array {
+		return $this->reconcilePushWith($fileId, $managed, $this->readNcContentTags($fileId), $protected);
+	}
+
+	/**
+	 * Push from the file **body**: same three-way reconcile as {@see reconcilePush},
+	 * but the Nextcloud-side content set is the file's own `tags` array rather than
+	 * the pills (Slice B — an edit to the JSON `tags` is an authoritative NC-side
+	 * statement). The pills are then converged to the merged result too, so the two
+	 * NC surfaces never disagree. Returns n8n's canonical tag rows after the set.
+	 *
+	 * @param list<string> $bodyContentTags reserved-free content tags read from the body
+	 * @param list<string> $protected mapping tags that must never be dropped
+	 * @return list<array<string,mixed>> n8n's canonical tag rows after the set
+	 */
+	public function reconcilePushFromBody(int $fileId, ManagedFile $managed, array $bodyContentTags, array $protected): array {
+		return $this->reconcilePushWith($fileId, $managed, $bodyContentTags, $protected);
+	}
+
+	/**
+	 * Shared push reconcile: merge `$ncContent` (pills or body tags) with n8n against
+	 * the baseline, converge the pills and the n8n workflow on the result, re-stamp
+	 * the baseline. Preserves n8n's reserved markers ({@see pushSourceTags}). Returns
+	 * n8n's canonical tag rows so the caller can mirror the real `{id,name}` objects
+	 * into the file body.
+	 *
+	 * @param list<string> $ncContent the NC-side content set to treat as truth
+	 * @param list<string> $protected mapping tags that must never be dropped
+	 * @return list<array<string,mixed>> n8n's canonical tag rows after the set
+	 */
+	private function reconcilePushWith(int $fileId, ManagedFile $managed, array $ncContent, array $protected): array {
 		$workflow = $this->n8n->getWorkflow($managed->workflowId);
 		$sourceNames = $this->tagNames($workflow);
 		$source = $this->contentTags($sourceNames);
-		$nc = $this->readNcContentTags($fileId);
 		$baseline = $managed->syncedTagList();
 
-		$merged = TagMerge::merge($baseline, $nc, $source);
-		$merged = $this->withProtected($merged, $protected);
+		$merged = $this->withProtected(TagMerge::merge($baseline, $this->contentTags($ncContent), $source), $protected);
 
-		// Converge both sides on the merged set, preserving n8n's reserved markers.
-		$this->writeNcContentTags($fileId, $merged, $nc);
-		$this->pushSourceTags($managed->workflowId, $sourceNames, $merged);
+		// Converge both NC surfaces (pills read fresh — $ncContent may be body tags,
+		// not pills) and n8n on the merged set, preserving n8n's reserved markers.
+		$this->writeNcContentTags($fileId, $merged);
+		$rows = $this->pushSourceTags($managed->workflowId, $sourceNames, $merged);
 		$this->metadata->stampTags($fileId, $merged);
+		return $rows;
+	}
+
+	/**
+	 * The reserved-free content tag names carried in an n8n workflow row / file body
+	 * (`tags: [{name}, …]`). Shared shape for the row and the on-disk sync body.
+	 *
+	 * @param array<string,mixed> $workflow
+	 * @return list<string>
+	 */
+	public function contentTagsFromWorkflow(array $workflow): array {
+		return $this->contentTags($this->tagNames($workflow));
 	}
 
 	/**
@@ -177,17 +221,31 @@ final class TagSyncService {
 	/**
 	 * Replace the n8n workflow's tags with `$content` while preserving whatever
 	 * reserved markers (`n8n:*`) were already on it — {@see N8nClient::setWorkflowTags}
-	 * is a full replace, so the reserved ones must be re-sent or they vanish.
+	 * is a full replace, so the reserved ones must be re-sent or they vanish. Returns
+	 * n8n's canonical tag rows for the final set (each with the real tag id), so the
+	 * caller can mirror the authoritative `{id,name}` objects into the file body — a
+	 * user can add a bare `{"name":"foo"}` and get the id filled in from n8n.
 	 *
 	 * @param list<string> $currentNames the workflow's current tag names (from the row)
 	 * @param list<string> $content reserved-free content tags to set
+	 * @return list<array<string,mixed>> canonical tag rows (id+name) for the final set
 	 */
-	private function pushSourceTags(string $workflowId, array $currentNames, array $content): void {
+	private function pushSourceTags(string $workflowId, array $currentNames, array $content): array {
 		$reserved = array_filter($currentNames, fn (string $n): bool => $this->isReserved($n));
 		$finalNames = array_values(array_unique(array_merge($content, $reserved)));
 
 		$ids = $this->n8n->ensureTags($finalNames);
-		$this->n8n->setWorkflowTags($workflowId, $ids);
+		$resp = $this->n8n->setWorkflowTags($workflowId, $ids);
+
+		// n8n returns the workflow's new tag list ([{id,name,…}, …]); normalise to
+		// rows that carry a non-empty string name, dropping anything malformed.
+		$rows = [];
+		foreach ($resp as $row) {
+			if (is_array($row) && isset($row['name']) && is_string($row['name']) && $row['name'] !== '') {
+				$rows[] = $row;
+			}
+		}
+		return $rows;
 	}
 
 	/**

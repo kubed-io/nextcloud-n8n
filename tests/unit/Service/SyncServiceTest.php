@@ -163,7 +163,9 @@ final class SyncServiceTest extends TestCase {
 		self::assertNull($res['message']);
 	}
 
-	public function testPushOneReconcilesTagsForEachPushedFile(): void {
+	public function testPushOneDelegatesTagsToPushNotItself(): void {
+		// Tag reconcile now lives inside PushService::push (Slice B, body-canonical),
+		// so pushOne must NOT reconcile tags itself — a pushed file just counts.
 		$managed = $this->file(1, 'Flow.n8n.json');
 		$folder = $this->createStub(Folder::class);
 		$folder->method('getDirectoryListing')->willReturn([$managed]);
@@ -173,20 +175,16 @@ final class SyncServiceTest extends TestCase {
 		$this->metadata->method('read')->willReturn($this->managed('wf-1', Mapping::MODE_SYNC));
 		$this->push->method('push')->willReturn(true);
 
-		// Parity: a forced push reconciles the file's tags back to n8n, passing the
-		// mapping's own tag as the protected set (it must never be pushed as removed).
-		$this->tagSync->expects(self::once())
-			->method('reconcilePush')
-			->with(1, self::isInstanceOf(ManagedFile::class), ['nextcloud:alpha']);
+		$this->tagSync->expects(self::never())->method('reconcilePush');
 
 		$res = $this->service->pushOne($this->mapping());
 
 		self::assertSame(1, $res['succeeded']);
 	}
 
-	public function testPushOneTagFailureDoesNotFailTheFile(): void {
-		// The body already pushed + stamped; a tag reconcile error is logged and
-		// swallowed, so the file still counts as succeeded, not failed.
+	public function testPushOneReportsPushFailure(): void {
+		// push() surfaces n8n's message; the file is reported failed (tag reconcile
+		// is push()'s own concern and can't be reached when the body push throws).
 		$managed = $this->file(1, 'Flow.n8n.json');
 		$folder = $this->createStub(Folder::class);
 		$folder->method('getDirectoryListing')->willReturn([$managed]);
@@ -194,19 +192,17 @@ final class SyncServiceTest extends TestCase {
 		$this->storage->method('isAvailable')->willReturn(true);
 		$this->storage->method('findFolder')->willReturn($folder);
 		$this->metadata->method('read')->willReturn($this->managed('wf-1', Mapping::MODE_SYNC));
-		$this->push->method('push')->willReturn(true);
-		$this->tagSync->method('reconcilePush')
-			->willThrowException(new \RuntimeException('n8n 500 on setWorkflowTags'));
+		$this->push->method('push')->willThrowException(new \RuntimeException('n8n 400'));
 
 		$res = $this->service->pushOne($this->mapping());
 
-		self::assertSame(1, $res['succeeded']);
-		self::assertSame(0, $res['failed']);
-		self::assertNull($res['message']);
+		self::assertSame(0, $res['succeeded']);
+		self::assertSame(1, $res['failed']);
+		self::assertStringContainsString('n8n 400', (string)$res['message']);
 	}
 
-	public function testPushOneSkipDoesNotReconcileTags(): void {
-		// A link file in a sync mapping is skipped before push — so no tag write.
+	public function testPushOneSkipDoesNotPushLinkFile(): void {
+		// A link file in a sync mapping is skipped before push — so no push at all.
 		$linkFile = $this->file(2, 'B.n8n.json');
 		$folder = $this->createStub(Folder::class);
 		$folder->method('getDirectoryListing')->willReturn([$linkFile]);
@@ -215,7 +211,7 @@ final class SyncServiceTest extends TestCase {
 		$this->storage->method('findFolder')->willReturn($folder);
 		$this->metadata->method('read')->willReturn($this->managed('wf-2', Mapping::MODE_LINK));
 
-		$this->tagSync->expects(self::never())->method('reconcilePush');
+		$this->push->expects(self::never())->method('push');
 
 		$this->service->pushOne($this->mapping(Mapping::MODE_SYNC));
 	}

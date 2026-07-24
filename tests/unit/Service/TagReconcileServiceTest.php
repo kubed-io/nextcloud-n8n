@@ -22,11 +22,14 @@ use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
 
 /**
- * Unit tests for {@see TagReconcileService} — the small orchestrator behind the
- * reactive pill-edit trigger (saga Ch5 §5.6.2, Slice A). It gates on managed+sync,
- * resolves the mapping's protected tag, and runs {@see TagSyncService::reconcilePush}
- * inside the {@see SyncGuard}, best-effort. The merge algebra itself lives (and is
- * tested) in {@see TagSyncServiceTest}; here we pin the orchestration seams.
+ * Unit tests for {@see TagReconcileService} — the orchestrator behind the reactive
+ * tag triggers (saga Ch5 §5.6.2). The **pill** path ({@see reconcileFile}) gates on
+ * managed+sync, resolves the mapping's protected tag, runs
+ * {@see TagSyncService::reconcilePush} inside the {@see SyncGuard}, and locksteps the
+ * body to n8n's canonical rows. The **body** path ({@see reconcileFromBody}, Slice B)
+ * treats the file's JSON `tags` as truth, fast-path-skips an unchanged set, and writes
+ * n8n's `{id,name}` back so a bare `{"name":…}` gains its id. The merge algebra itself
+ * lives (and is tested) in {@see TagSyncServiceTest}; here we pin the orchestration.
  *
  * `final` collaborators are doubled via the unit bootstrap's `dg/bypass-finals`.
  */
@@ -59,15 +62,29 @@ final class TagReconcileServiceTest extends TestCase {
 		return $node;
 	}
 
-	private function managed(string $mode, string $mappingId = 'map-a'): ManagedFile {
-		return new ManagedFile('wf-1', $mode, '', '', $mappingId, '');
+	/**
+	 * A File whose getContent returns `$content` and whose putContent records the last
+	 * written body into `$written` (by reference) so a body rewrite is assertable.
+	 */
+	private function fileWith(int $id, string $content, ?string &$written): File {
+		$node = $this->createMock(File::class);
+		$node->method('getId')->willReturn($id);
+		$node->method('getContent')->willReturn($content);
+		$node->method('putContent')->willReturnCallback(function (string $c) use (&$written): void {
+			$written = $c;
+		});
+		return $node;
+	}
+
+	private function managed(string $mode, string $mappingId = 'map-a', string $syncedTags = ''): ManagedFile {
+		return new ManagedFile('wf-1', $mode, '', '', $mappingId, $syncedTags);
 	}
 
 	private function mapping(string $tag): Mapping {
 		return new Mapping('map-a', $tag, 'folder', ['admin'], Mapping::MODE_SYNC, false);
 	}
 
-	// ── gating ───────────────────────────────────────────────────────────────
+	// ── gating (pill path) ─────────────────────────────────────────────────────
 
 	public function testSkipsWhenNoMetadataRecord(): void {
 		$this->metadata->method('read')->willReturn(null);
@@ -91,7 +108,7 @@ final class TagReconcileServiceTest extends TestCase {
 		self::assertFalse($this->service->reconcileFile($this->node()));
 	}
 
-	// ── protected-tag resolution ───────────────────────────────────────────────
+	// ── protected-tag resolution (pill path) ────────────────────────────────────
 
 	public function testReconcilesSyncFileWithMappingTagProtected(): void {
 		$managed = $this->managed(Mapping::MODE_SYNC, 'map-a');
@@ -100,7 +117,8 @@ final class TagReconcileServiceTest extends TestCase {
 
 		$this->tagSync->expects(self::once())
 			->method('reconcilePush')
-			->with(7, $managed, ['flows']);
+			->with(7, $managed, ['flows'])
+			->willReturn([]);
 
 		self::assertTrue($this->service->reconcileFile($this->node(7)));
 	}
@@ -112,7 +130,8 @@ final class TagReconcileServiceTest extends TestCase {
 
 		$this->tagSync->expects(self::once())
 			->method('reconcilePush')
-			->with(1, $managed, []);
+			->with(1, $managed, [])
+			->willReturn([]);
 
 		self::assertTrue($this->service->reconcileFile($this->node()));
 	}
@@ -125,22 +144,49 @@ final class TagReconcileServiceTest extends TestCase {
 
 		$this->tagSync->expects(self::once())
 			->method('reconcilePush')
-			->with(1, $managed, []);
+			->with(1, $managed, [])
+			->willReturn([]);
 
 		self::assertTrue($this->service->reconcileFile($this->node()));
 	}
 
-	// ── guard + error handling ─────────────────────────────────────────────────
+	// ── body lockstep (pill path) ───────────────────────────────────────────────
+
+	public function testPillReconcileLockstepsBodyToCanonicalRows(): void {
+		$managed = $this->managed(Mapping::MODE_SYNC, 'map-a');
+		$this->metadata->method('read')->willReturn($managed);
+		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
+		// n8n's canonical rows come back with ids; the body must mirror them.
+		$this->tagSync->method('reconcilePush')->willReturn([
+			['id' => 't9', 'name' => 'flows'],
+			['id' => 't3', 'name' => 'inventory'],
+		]);
+
+		$written = null;
+		$node = $this->fileWith(5, '{"name":"WF","tags":[]}', $written);
+		$this->service->reconcileFile($node);
+
+		self::assertNotNull($written, 'the body was not lockstepped after the pill reconcile');
+		$decoded = json_decode($written, true);
+		self::assertSame(
+			[['id' => 't3', 'name' => 'inventory'], ['id' => 't9', 'name' => 'flows']],
+			$decoded['tags'],
+			'body tags should be n8n rows sorted by name',
+		);
+	}
+
+	// ── guard + error handling (pill path) ──────────────────────────────────────
 
 	public function testReconcileRunsInsideTheGuard(): void {
 		$this->metadata->method('read')->willReturn($this->managed(Mapping::MODE_SYNC));
 		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
 
 		$seen = false;
-		$this->tagSync->method('reconcilePush')->willReturnCallback(function () use (&$seen): void {
+		$this->tagSync->method('reconcilePush')->willReturnCallback(function () use (&$seen): array {
 			// The pills this reconcile writes re-fire tag events; they must land with
 			// the guard active so the listener bails. Prove the bracket is on here.
 			$seen = $this->guard->active();
+			return [];
 		});
 
 		$this->service->reconcileFile($this->node());
@@ -157,5 +203,49 @@ final class TagReconcileServiceTest extends TestCase {
 		// A tag hiccup is logged, not thrown — the user's pill click already landed.
 		self::assertTrue($this->service->reconcileFile($this->node()));
 		self::assertFalse($this->guard->active(), 'the guard leaked after a failing reconcile');
+	}
+
+	// ── body path (Slice B) ─────────────────────────────────────────────────────
+
+	public function testReconcileFromBodySkipsUnmanaged(): void {
+		$this->metadata->method('read')->willReturn(null);
+		$this->tagSync->expects(self::never())->method('reconcilePushFromBody');
+
+		$content = '{"name":"WF","tags":[{"name":"foo"}]}';
+		self::assertSame($content, $this->service->reconcileFromBody($this->node(), $content));
+	}
+
+	public function testReconcileFromBodyFastPathWhenTagsMatchBaseline(): void {
+		// Body carries exactly the baseline set → nothing NC-side changed; no n8n hit.
+		$managed = $this->managed(Mapping::MODE_SYNC, 'map-a', '["foo"]');
+		$this->metadata->method('read')->willReturn($managed);
+		$this->tagSync->expects(self::never())->method('reconcilePushFromBody');
+
+		$content = '{"name":"WF","tags":[{"id":"t1","name":"foo"}]}';
+		self::assertSame($content, $this->service->reconcileFromBody($this->node(), $content));
+	}
+
+	public function testReconcileFromBodyPushesAndFillsTagIds(): void {
+		// User added a bare {"name":"foo"} that isn't in the (empty) baseline.
+		$managed = $this->managed(Mapping::MODE_SYNC, 'map-a', '');
+		$this->metadata->method('read')->willReturn($managed);
+		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
+
+		$this->tagSync->expects(self::once())
+			->method('reconcilePushFromBody')
+			->with(5, $managed, ['foo'], ['flows'])
+			->willReturn([['id' => 't1', 'name' => 'foo'], ['id' => 't9', 'name' => 'flows']]);
+
+		$written = null;
+		$node = $this->fileWith(5, '{"name":"WF","tags":[{"name":"foo"}]}', $written);
+		$final = $this->service->reconcileFromBody($node, '{"name":"WF","tags":[{"name":"foo"}]}');
+
+		self::assertNotNull($written, 'the body was not rewritten with the canonical rows');
+		$decoded = json_decode($final, true);
+		self::assertSame(
+			[['id' => 't9', 'name' => 'flows'], ['id' => 't1', 'name' => 'foo']],
+			$decoded['tags'],
+			'body should carry n8n rows (with ids), sorted by name',
+		);
 	}
 }

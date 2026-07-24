@@ -62,8 +62,9 @@ Because the tags are part of the object, there are several places to edit them, 
 
 - **Edit in n8n** → a pull brings the tags into the Nextcloud file's pills.
 - **Edit the file's pills** → adding or removing a system-tag pill on a synced file reconciles that tag to n8n **on its own** — no "Sync to n8n" click needed. (It follows the same *instant* vs *background* timing as the rest of the writeback: with background timing the change is applied on the next queue run.)
+- **Edit the `tags` array inside the `.n8n.json` file** → a hand-edit of the workflow JSON's `tags` reaches n8n on its own too. You can add a tag with just its name — `{ "name": "prod" }` — and Nextcloud fills in n8n's real tag id for you and updates the file's pills to match. (A plain save can't carry tags to n8n by itself, so the app reconciles them separately; same instant/background timing.)
 
-Removing a tag on either side removes it on the other: drop a pill and it drops the n8n tag; drop it in n8n and the next pull drops the pill. (Editing the `tags` array *inside* the `.n8n.json` body is a **planned** third surface — today the body's tag array is written by a pull but a hand-edit to it is not yet projected onto the pills or pushed; use the pills for now.)
+Removing a tag on any of the three surfaces removes it on the others: drop a pill and it drops the n8n tag and the body entry; drop it in n8n and the next pull drops the pill; delete it from the `tags` array and the save drops the pill and the n8n tag. The **file body is the canonical object** and the pills are a projection kept in step with it.
 
 Two rules keep it safe. The app's own control tags (the reserved `n8n:` namespace, e.g. `n8n:sync`, `n8n:ignore`) are **never** mixed into your workflow's tags in either direction. And because the app remembers the last-synced set (a baseline), a change on one side is applied to the other as a true *add* or *remove* rather than a blind overwrite. Tag sync runs in **both** `sync` and `link` mappings for searchability — a `link` file never pushes, so its tags flow one way, n8n → Nextcloud.
 

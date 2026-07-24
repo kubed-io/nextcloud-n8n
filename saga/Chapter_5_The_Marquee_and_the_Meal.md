@@ -432,7 +432,7 @@ Reading the wiring against that spec surfaced exactly where the reactive half is
 |---|---|---|---|
 | 1 — n8n tags | edit in n8n | (none in NC) | **Pull reconciles it.** ✅ (bulk pull, sync + link) |
 | 3 — NC pills | add/remove a pill in Files | `TagAssignedEvent` / `TagUnassignedEvent` | **Nothing.** No listener acts on a *content* pill — `ModeTagListener` only fires on `n8n:ignore`. The tag sits in NC and never reaches n8n until a manual push. ❌ |
-| 2 — file body | edit the JSON `tags` array + save | `NodeWrittenEvent` | **The tag edit is silently dropped.** `NodeWrittenListener` → `PushService::push` sends the body via `PUT /workflows/{id}`, which **omits `tags`** (`N8nWorkflowBody` whitelist), and `PushService` **never calls `reconcilePush`** — so n8n's tags don't change and the pills don't change. ❌ |
+| 2 — file body | edit the JSON `tags` array + save | `NodeWrittenEvent` | **LIVE (Slice B).** `NodeWrittenListener` → `PushService::push` sends the body via `PUT /workflows/{id}` (which omits `tags`), then `TagReconcileService::reconcileFromBody` reconciles the JSON `tags` array to n8n (body-canonical) and rewrites the body with n8n's canonical `{id,name}` — a bare `{"name":"foo"}` gains its id. ✅ |
 
 **Logical issues found while reading the wiring (the real value of this pass):**
 
@@ -514,6 +514,52 @@ Slice A shipped and went to the production pod for a real smoke test. Two legs, 
 
 So Slice A is proven live on the push side, and the pull side is clear to validate now that the
 schedule actually turns on. Slice B (body ⇆ pills) is still the next fire.
+
+#### §5.6.2.2 — Slice B: the body is canonical (and the `PUT` that ate the tags)
+The next smoke test found the gap the §5.6.2 read had already flagged as **logical issue #1**:
+copy an `mcp` tag object into a workflow's JSON `tags` array via *Files → edit in JSON*, save, wait
+— and `mcp` never reached n8n. The pod logs told the whole story: a `PushWorkflowJob` fired for the
+file, the body `PUT /workflows/{id}` succeeded, the synced-hash was re-stamped "done" — and the tags
+were **untouched**. `N8nWorkflowBody`'s writable whitelist omits `tags` (n8n rejects the field on the
+body `PUT`), and `PushService::push` never reconciled them separately. A save that *looked* like it
+worked silently discarded the edit. (The lone `getAppValueString() on null` line nearby is an
+unrelated notifications-app push-device quirk, not ours.)
+
+**The fix is exactly the user's instinct: "hop in front of the `PUT`, grab the tags, handle them
+ourselves."** `PushService::push` now, after the (tag-less) body push over the REST channel, calls a
+new `TagReconcileService::reconcileFromBody` — the file's JSON `tags` array is the NC-side truth,
+run through the same three-way `TagMerge` as everything else. And the nicer half of the ask — *let a
+user add a bare `{"name":"foo"}` and get the real tag back* — falls out for free: `setWorkflowTags`
+**returns n8n's canonical tag rows** (`[{id,name,…}]`), so after the set we rewrite the body's `tags`
+in place with those authoritative objects. Add `{"name":"foo"}`, save, and the file comes back with
+`{"id":"<n8n-id>","name":"foo"}` — the id filled in from the source, the pills updated, n8n tagged.
+
+Design decisions, so the fork from **logical issue #2** (pills-as-truth vs body-as-canonical) is
+resolved in code, not left ambiguous:
+
+- **The body is canonical; the pills lockstep it.** A body-`tags` edit is truth for a body save
+  (`reconcileFromBody`). A pill edit is truth for a pill event (`reconcilePush`) — and *then*
+  locksteps the body to n8n's canonical rows, re-stamping `n8n_syncedHash` so the body write it
+  triggers is recognised as the app's own and pushes nothing (the "silent body update"). Because a
+  pill edit always updates the body, the two NC surfaces never durably disagree, so a later body
+  save can't diff against a stale sibling and revert a tag.
+- **One tag path, one truth source.** `PushService::push` now owns tag reconcile for *both* the
+  reactive writeback and the bulk "Sync to n8n" — the old pills-truth `reconcileTagsOnPush` in
+  `SyncService::pushOne` is gone. Bulk is body-canonical too, consistently.
+- **A cheap fast-path keeps ordinary saves quiet.** `reconcileFromBody` compares the body's content
+  tags to the stamped baseline; if unchanged, it skips the n8n round-trip entirely — a nodes-only
+  save costs one metadata read and a set compare, no `getWorkflow`/`setWorkflowTags`. n8n-side drift
+  is the pull's job, not a push's.
+- **Only over REST.** The reconcile runs only when the API channel is on (it uses the REST tag
+  endpoints); a webhook-only deployment already ships the full body — tags included — to its flow.
+
+`TagSyncService::reconcilePush*` now return n8n's canonical rows (so the body writer can mirror the
+real objects); `pushSourceTags` normalises the `setWorkflowTags` response to rows carrying a name.
+Unit-tested in `TagReconcileServiceTest` (pill lockstep, body fast-path, and the bare-`{name}` →
+`{id,name}` fill) and `SyncServiceTest` (pushOne delegates tags to `push()`, no longer reconciles
+itself). The body↔pills *integration* step defs (a WebDAV body PUT + async drain + n8n assert) are
+the remaining follow — the feature scenarios stay `@todo` for that step-def work, not for unbuilt
+behaviour.
 
 ---
 

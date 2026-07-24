@@ -129,23 +129,29 @@
 # on BOTH sides at once — a tag still used on either side survives. Symmetry is the
 # whole point: nothing alive anywhere in the pair is ever swept.
 #
-# ENGINE WIRED, SURFACES 1 & 3 LIVE: the tag-reconcile engine
+# ENGINE WIRED, SURFACES 1, 2 & 3 LIVE: the tag-reconcile engine
 # ({@see TagSyncService} + the pure {@see TagMerge} three-way merge) and the
 # `n8n_syncedTags` baseline key are implemented and unit-tested (saga Ch5 §5.6):
 # pull mirrors n8n → pills for sync AND link, push writes pills → n8n for sync, the
 # baseline disambiguates add-vs-remove, the reserved `n8n:*` namespace is excluded,
-# and the mapping tag is protected. Those n8n↔pills scenarios are LIVE. And as of
+# and the mapping tag is protected. Those n8n↔pills scenarios are LIVE. As of
 # §5.6.2 Slice A the PILL EDIT IS REACTIVE: adding/removing a content pill on a sync
 # file is caught by {@see ContentTagListener} and reconciled to n8n on its own — no
 # "Sync to n8n" click — honouring the same `timing` knob as the body writeback
-# (`sync` inline, `async` via {@see ReconcileTagsJob}). Its integration steps
-# ({@see TagSyncSteps}) run in CI. Still PLANNED (`@todo` per-scenario until the code
-# lands): (1) Slice B — the body↔pills projection: a pill edit ALSO rewrites the file
-# body's `tags` array (silent, loop-safe), and a hand-edit of the JSON `tags` array
-# updates the pills + pushes (surfaces 2 & 3 fully joined); (2) PULL CHANGE-DETECTION
-# (skip-unchanged / body / tags-only branches); and (3) the reactive eject and the
-# optional catalog sweep. Shared with the Grafana sibling; per-backend knobs = tag
-# write path, reserved prefix, protected-tags set.
+# (`sync` inline, `async` via {@see ReconcileTagsJob}). And as of §5.6.2 Slice B the
+# BODY EDIT IS REACTIVE TOO: {@see PushService::push} intercepts before the tag-less
+# REST `PUT`, and {@see TagReconcileService::reconcileFromBody} reconciles the file's
+# JSON `tags` array to n8n (body-canonical) — a bare `{"name":"foo"}` is created on
+# n8n and rewritten in place with its real `{id,name}`; a pill edit locksteps the
+# body the same way. Both are unit-tested ({@see TagReconcileServiceTest}) AND driven
+# end-to-end by the body↔pills integration scenarios below (edit the pill → the body
+# `tags` array follows; edit the body → pills + n8n follow; a bare `{name}` gains its
+# id; a body remove drops the pill and the n8n tag; dropping the mapping tag in the
+# body is force-kept). Still PLANNED (`@todo` per-scenario): (1) the loop-guard
+# "silent body update pushes no whole file" assertion, (2) PULL CHANGE-DETECTION
+# (skip-unchanged / body / tags-only branches), and (3) the reactive eject and the
+# optional catalog sweep. Shared with the Grafana sibling; per-backend
+# knobs = tag write path, reserved prefix, protected-tags set.
 #
 # SCOPE — TAG SYNC IS A MAPPED-FOLDER FEATURE: every tag behaviour here (pull mirror,
 # push, auto-trigger, change-detection) applies ONLY to a file managed by a mapping.
@@ -233,33 +239,39 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     Then the workflow in n8n is tagged "flows" and "linux" without a manual push
     And the file has no content tag "old"
 
-  # Surfaces 2 & 3 (the live body↔pills projection listener) are not wired yet, so
-  # a hand-edit of the JSON `tags` array is not reflected onto the pills or pushed.
-  # These scenarios are the spec for that PLANNED work.
-  @todo
+  # Surfaces 2 & 3 (the body↔pills projection) ARE wired now (Slice B) — the engine
+  # is unit-tested in TagReconcileServiceTest and driven end-to-end below. The body
+  # is the canonical object: pill edits lockstep the body's `tags` array, and a
+  # hand-edit of that array reconciles to n8n and back onto the pills.
   Scenario: Editing a pill updates the file body's tags array (body is canonical)
-    Given a managed "sync" workflow file in "flows" with body tags "flows" and "linux"
+    Given the push timing is "sync"
+    And a managed "sync" workflow file in "flows" with body tags "flows" and "linux"
     When the admin adds the Nextcloud system tag "urgent" to the file
     Then the file body's "tags" array becomes "flows", "linux", and "urgent"
 
-  @todo
   Scenario: Editing the file body's tags array updates the pills and pushes to n8n
     Given a managed "sync" workflow file in "flows" tagged "flows" and "linux"
     When the admin edits the file body's "tags" array to "flows", "linux", and "prod"
     Then the file's Nextcloud system tags become "flows", "linux", and "prod"
-    And when the "flows" mapping is pushed the workflow in n8n is tagged "flows", "linux", and "prod"
+    And the workflow in n8n is tagged "flows", "linux", and "prod"
+
+  # The killer convenience: a human can add a tag with just its name and never
+  # touch an id. Slice B fills n8n's real tag id back into the body for them.
+  Scenario: A bare {name} tag added in the body gains its n8n id
+    Given a managed "sync" workflow file in "flows" tagged "flows" and "linux"
+    When the admin edits the file body's "tags" array to "flows", "linux", and "prod"
+    Then the file body's "tags" array becomes "flows", "linux", and "prod"
+    And every tag in the file body carries an n8n id
 
   # Removing a tag from the JSON body itself is a real edit surface — the same
   # NodeWrittenEvent path the `name` key already rides. The body is canonical, so
   # dropping a tag there drops the pill, and the next push drops it in n8n.
-  @todo
   Scenario: Removing a tag from the file body's tags array removes the pill
     Given a managed "sync" workflow file in "flows" tagged "flows", "linux", and "old"
     When the admin edits the file body's "tags" array to "flows" and "linux"
     Then the file's Nextcloud system tags become "flows" and "linux"
     And the file has no content tag "old"
 
-  @todo
   Scenario: A tag removed in the file body is removed in n8n on the next push
     Given a managed "sync" workflow file in "flows" tagged "flows", "linux", and "old"
     And the workflow in n8n is tagged "flows", "linux", and "old"
@@ -267,7 +279,6 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     And the "flows" mapping is pushed
     Then the workflow in n8n is tagged "flows" and "linux"
 
-  @todo
   Scenario: Removing the mapping-tag from the file body does not unbind the workflow
     Given a managed "sync" workflow file in "flows" tagged "flows" and "linux"
     When the admin edits the file body's "tags" array to only "linux"
