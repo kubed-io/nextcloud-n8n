@@ -27,7 +27,7 @@ Feature: n8n workflow is a first-class file type
     Then its mimetype is "application/n8n+json"
     And the Files app shows the n8n icon instead of a generic JSON icon
 
-  @in-nextcloud @gesture @ui
+  @user @in-nextcloud @gesture @ui
   Scenario: WebDAV PROPFIND exposes the workflow metadata in the XML
     Given a managed workflow file
     When a WebDAV client requests the file's properties (PROPFIND)
@@ -52,7 +52,7 @@ Feature: n8n workflow is a first-class file type
       | unmapped | unmapped  |
       | ignored  | ignored   |
 
-  @in-nextcloud @gesture @ui
+  @user @in-nextcloud @gesture @ui
   Scenario: The metadata is read-only over DAV
     Given a managed workflow file
     When a client tries to change "nc:metadata-n8n_id" via PROPPATCH

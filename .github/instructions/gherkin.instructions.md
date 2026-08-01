@@ -83,19 +83,27 @@ surfaces, not how the harness drove the scenario** — a test that runs `occ` is
 `@ui` if the admin panel has a button for the same thing. Flag a channel tag that
 records the test rather than the behaviour.
 
-### Actors: name them in the prose, tag only what you cannot infer
+### Actor — exactly one, in the UML sense
 
-Four things drive behaviour — **user**, **admin**, **n8n**, **time** — but only
-`@admin` and `@scheduled` are tags. `user` is `@in-nextcloud` without `@admin`, and
-`n8n` is `@in-n8n`, so tagging those repeats what the line already says.
+Every scenario is a use case, so it has a **primary actor**: `@user`, `@admin`,
+`@n8n`, or `@time`. Exactly one. Flag a scenario with two — it means the actor was
+read off the whole scenario instead of off whoever *initiates* it.
 
-**A tag earns its place by being unguessable from the rest of the scenario.** Flag a
-proposed tag that is derivable from the ones already there; it costs a word on every
-line and answers nothing.
+| Tag | Starts the behaviour by |
+|---|---|
+| `@user` | working in the Files app |
+| `@admin` | the settings panel or an admin-only `occ` command |
+| `@n8n` | changing a workflow in n8n, mirrored by a reconcile |
+| `@time` | the scheduled job firing, no human present |
 
-Where the actor genuinely varies, prefer an `Examples` column or a step parameter
-(*"the admin adds…"* vs *"the user adds…"*) over a tag, so one scenario covers both
-and the difference is legible in the table.
+`@user` and `@n8n` are derivable from origin and are tagged anyway. That is a
+deliberate exception to "a tag should be unguessable": *"everything an end user can
+do"* deserves one filter rather than `@in-nextcloud&&~@admin`, and the actor is the
+first thing a reader of a use-case model looks for.
+
+`@time` is currently unused, and that is a **gap in the specs**, not a tagging miss —
+the scheduled job's own behaviour (self-gating on `schedule_enabled`, re-reading its
+interval) is never exercised by the manual `occ` reconcile that stands in for it.
 
 ### Origin is decided by the WHEN, and it is exclusive
 

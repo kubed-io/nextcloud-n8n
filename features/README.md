@@ -54,33 +54,33 @@ The point is that `behat --tags` becomes a query. *"Everything a user can do fro
 Files app"*, *"everything that starts in n8n"*, *"everything the scheduled job does"* —
 each is one filter rather than a grep and a guess.
 
-### Actors — a concept to write with, mostly not a tag
+### Actor — who initiates, in the UML sense
 
-Four things can drive behaviour in this app, and naming them keeps scenarios honest
-about *who* is doing something:
+Every scenario is a use case, and a use case has a **primary actor**: the stick figure
+who starts it. Exactly one per scenario.
 
-| Actor | Who | Where it shows up |
+| Tag | Actor | Starts the behaviour by |
 |---|---|---|
-| **user** | An ordinary Nextcloud user working in the Files app | the step text: *"I move…"*, *"I create…"* |
-| **admin** | Someone with the settings panel and the `occ` commands | `@admin`, and *"the admin…"* in the step |
-| **n8n** | A person or client acting in n8n, mirrored by a reconcile | `@in-n8n` |
-| **time** | The scheduled job, with no human present | `@scheduled` |
+| `@user` | An ordinary Nextcloud user | working in the Files app |
+| `@admin` | An administrator | the settings panel or an admin-only `occ` command |
+| `@n8n` | A person or client acting **in n8n** | changing a workflow, mirrored by a reconcile |
+| `@time` | The clock | the scheduled job firing, with no human present |
 
-**Only `admin` and `time` are tags, deliberately.** The other two are already visible:
-`user` is `@in-nextcloud` without `@admin`, and `n8n` is `@in-n8n` — so tagging them
-adds a word to every line and tells you nothing the line did not already say. A tag
-earns its place by being *unguessable* from the rest of the scenario.
+`@user` and `@n8n` are strictly derivable from origin (`@in-nextcloud` minus `@admin`,
+and `@in-n8n`), and they are tagged anyway — deliberately. *"Everything an end user can
+do"* is a question worth one filter rather than a boolean expression, and an actor is
+the first thing a reader of a use-case model looks for. Redundancy that answers the
+primary question is not redundancy.
 
-Where the actor genuinely varies, make it a **variable rather than a tag** — an
-`Examples` column, or a parameter in the step (*"the admin adds…"* vs *"the user
-adds…"*), so one scenario covers both and the difference is visible in the table
-instead of buried in a tag.
+**`@time` is currently zero, and that is a real gap rather than a tagging oversight.**
+The scheduled pull is the one actor with no scenario of its own: everything it does is
+exercised through a manual `occ` reconcile, which is not the same thing — a job that
+self-gates on `schedule_enabled` and re-reads its interval on every instantiation has
+behaviour a manual invocation never reaches.
 
-**`@scheduled` is currently zero, and that is a real gap rather than a tagging
-oversight.** The timed pull is the one actor with no scenario of its own: everything
-it does is exercised through a manual `occ` reconcile, which is not the same thing —
-a job that reads its own config, self-gates on `schedule_enabled` and re-reads its
-interval has behaviour a manual invocation never touches.
+Where the actor genuinely *varies* across otherwise identical scenarios, prefer an
+`Examples` column or a step parameter (*"the admin adds…"* vs *"the user adds…"*) over
+writing the scenario twice.
 
 ### Origin — where the action happened
 

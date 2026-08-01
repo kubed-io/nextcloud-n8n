@@ -58,7 +58,7 @@ Feature: Uninstall reverts the system and reinstall reconnects the data
     And each file still carries its "n8n_id" metadata
 
   # ── reinstall reconnects with no duplicates (the headline) ────────────────────
-  @ui @occ
+  @admin @ui @occ
   Scenario: Re-enabling and syncing reconciles the existing files without duplicates
     Given the "nextcloud:alpha" folder has managed sync workflow files
     And the admin disables and then re-enables the app

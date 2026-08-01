@@ -261,7 +261,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     # n8n is authoritative; a pull carries its tags to BOTH Nextcloud surfaces and
     # re-stamps `agreed`.
 
-  @in-n8n @ui @occ
+  @n8n @in-n8n @ui @occ
   Scenario: A tag added in n8n reaches both Nextcloud surfaces
     Given the tag state starts as n8n "flows,linux" / pills "flows,linux" / body "flows,linux" / agreed "flows,linux"
     When the tag "prod" is added to the workflow in n8n
@@ -269,7 +269,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     Then the tag state is n8n "flows,linux,prod" / pills "flows,linux,prod" / body "flows,linux,prod" / agreed "flows,linux,prod"
     # All four move together, so nothing is left disagreeing.
 
-  @in-n8n @ui @occ
+  @n8n @in-n8n @ui @occ
   Scenario: A tag removed in n8n is removed from both Nextcloud surfaces
     Given the tag state starts as n8n "flows,linux,old" / pills "flows,linux,old" / body "flows,linux,old" / agreed "flows,linux,old"
     When the tag "old" is removed from the workflow in n8n
@@ -443,7 +443,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     And n8n is not contacted
     # Both directions, so neither surface can drift while the file waits outside.
 
-  @in-nextcloud @gesture @ui @todo
+  @user @in-nextcloud @gesture @ui @todo
   Scenario: Moving an untracked tagged file into a mapping creates it in n8n with its tags
     Given an untracked ".n8n.json" file outside every mapped folder tagged "prod" and "billing"
     When the file is moved into the "flows" mapped folder
@@ -455,7 +455,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     # pills came along only because this is the same file id, and a copy or a round
     # trip through another system would not have them at all.
 
-  @ui @occ @todo
+  @user @ui @occ @todo
   Scenario: The tags an adopted file arrives with come back with real ids
     Given an untracked ".n8n.json" file outside every mapped folder tagged "prod"
     And the file has been moved into the "flows" mapped folder
@@ -493,21 +493,21 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
 
     # ══ STEADY STATE ═══════════════════════════════════════════════════════════
 
-  @in-n8n @ui @occ
+  @n8n @in-n8n @ui @occ
   Scenario: Pull mirrors n8n tags onto the Nextcloud file as system tags
     Given n8n has a workflow tagged "flows", "dns", and "linux"
     When the "flows" mapping is pulled
     Then the workflow's file has the Nextcloud system tags "dns" and "linux"
     And the file can be found by a Nextcloud tag search for "linux"
 
-  @in-n8n @ui @occ
+  @n8n @in-n8n @ui @occ
   Scenario: The reserved namespace is never imported as a content tag
     Given n8n has a workflow tagged "flows", "linux", and "n8n:sync"
     When the "flows" mapping is pulled
     Then the workflow's file has the Nextcloud system tag "linux"
     And the file has no content tag "n8n:sync"
 
-  @in-n8n @ui @occ
+  @n8n @in-n8n @ui @occ
   Scenario: Pull mirrors tags even for a link mapping (searchability, not push)
     Given a folder mapped as "link" to the n8n tag "reports"
     And n8n has a workflow tagged "reports", "prod", and "dns"
@@ -539,7 +539,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     And the workflow's file has the Nextcloud system tags "prod" and "dns"
     And the file can be found by a Nextcloud tag search for "prod"
 
-  @in-n8n @ui @occ
+  @n8n @in-n8n @ui @occ
   Scenario: A tag added in n8n lands on the link on the next pull (searchable projection)
     Given a folder mapped as "link" to the n8n tag "reports"
     And n8n has a workflow tagged "reports", "prod", and "dns"
@@ -611,7 +611,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
   # these are what prove it did not resurrect the false-removal bug. They are the
   # first tests to write, not the last.
 
-  @ui @occ @todo
+  @user @ui @occ @todo
   Scenario: With no Nextcloud edit, a file that disagrees with n8n loses
     Given a managed "sync" workflow file in "flows" whose body's tags array reads "flows" and "linux"
     And the workflow in n8n is tagged "flows", "linux", and "prod"
@@ -619,7 +619,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     Then the file's Nextcloud system tags are "flows", "linux", and "prod"
     And the file body's "tags" array becomes "flows", "linux", and "prod"
 
-  @in-nextcloud @ui @occ
+  @user @in-nextcloud @ui @occ
   Scenario: A tag added in Nextcloud since the last sync is added in n8n
     Given a managed "sync" file last synced with tags "flows" and "linux"
     And the file now also has the Nextcloud system tag "urgent"
@@ -627,7 +627,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     When the "flows" mapping is pushed
     Then the workflow in n8n is tagged "flows", "linux", and "urgent"
 
-  @in-n8n @ui @occ
+  @n8n @in-n8n @ui @occ
   Scenario: A tag removed in n8n since the last sync is removed in Nextcloud
     Given a managed "sync" file last synced with tags "flows", "linux", and "old"
     And the workflow in n8n now has only "flows" and "linux"
@@ -638,21 +638,21 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
   # PLANNED: an hourly pull must not churn every file — it takes exactly one branch
   # per workflow based on what actually differs from the stamped baseline.
 
-  @ui @occ @unbuilt
+  @user @ui @occ @unbuilt
   Scenario: An unchanged workflow is skipped by the pull
     Given a managed "sync" workflow file in "flows" whose body and tags match n8n
     When the "flows" mapping is pulled
     Then the file is not rewritten
     And its Nextcloud system tags are unchanged
 
-  @ui @occ @unbuilt
+  @user @ui @occ @unbuilt
   Scenario: A content change pulls the new body and then reconciles the tags
     Given a managed "sync" workflow file in "flows" whose workflow body changed in n8n
     When the "flows" mapping is pulled
     Then the file body is updated from n8n
     And the file's Nextcloud system tags match the workflow's n8n tags
 
-  @ui @occ @unbuilt
+  @user @ui @occ @unbuilt
   Scenario: A tags-only change in n8n updates the pills and the body without rewriting it
     Given a managed "sync" workflow file in "flows" whose body matches n8n
     But the workflow in n8n gained the tag "prod" since the last sync
@@ -670,7 +670,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     Then the workflow in n8n is tagged "flows" and "linux"
     And the "old" tag is gone from n8n
 
-  @in-nextcloud @ui @occ
+  @user @in-nextcloud @ui @occ
   Scenario: Independent changes on both sides both survive a reconcile
     Given a managed "sync" file last synced with tags "flows" and "linux"
     And the file now also has the Nextcloud system tag "urgent"
@@ -678,7 +678,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     When the "flows" mapping is reconciled
     Then the resulting tag set on both sides is "flows", "linux", "urgent", and "prod"
 
-  @in-nextcloud @ui @occ
+  @user @in-nextcloud @ui @occ
   Scenario: An add on one side and an unrelated remove on the other both apply
     Given a managed "sync" file last synced with tags "flows", "linux", and "old"
     And the file now also has the Nextcloud system tag "urgent"
@@ -703,7 +703,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
   # its "flows" tag and the file keeps its "flows" pill; nothing is pushed or pruned.
   # Once the file is `unmapped` it is a plain Nextcloud file (see the scope scenarios
   # below), so tag-sync simply no longer applies to it.
-  @in-nextcloud @gesture @ui
+  @user @in-nextcloud @gesture @ui
   Scenario: Moving the file out is the sanctioned unmap — it changes no tags
     Given a managed "sync" workflow file in "flows" tagged "flows"
     When the file is moved out of the "flows" mapped folder
@@ -729,7 +729,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     And no tag-push job is queued
     And the body agrees with the pills
 
-  @in-nextcloud @gesture @ui @occ
+  @admin @in-nextcloud @gesture @ui @occ
   Scenario: Ejecting via n8n:ignore keeps the file instead of pruning it
     Given a managed "sync" workflow file in "flows" tagged "flows" and "linux"
     When the admin tags the file "n8n:ignore"
@@ -760,21 +760,21 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     And the "old" system-tag definition still exists
     And the unrelated file still carries the "old" pill
 
-  @in-n8n @ui @occ
+  @n8n @in-n8n @ui @occ
   Scenario: Reconcile never mints a definition it is about to drop
     Given a managed "sync" file last synced with tags "flows" and "linux"
     And the workflow in n8n now has only "flows" and "linux"
     When the "flows" mapping is reconciled
     Then no new tag definition is created on either side
 
-  @occ @unbuilt
+  @user @occ @unbuilt
   Scenario: An optional catalog sweep keeps any tag still used on either side
     Given a non-reserved tag "shared" that is orphaned in Nextcloud
     But the tag "shared" is still on a workflow in n8n
     When an admin runs the optional catalog sweep
     Then the "shared" definition is kept on both sides
 
-  @occ @unbuilt
+  @user @occ @unbuilt
   Scenario: An optional catalog sweep never removes a reserved or mapping tag
     Given the reserved definition "n8n:sync" and the mapping-tag definition "flows" exist
     When an admin runs the optional catalog sweep
