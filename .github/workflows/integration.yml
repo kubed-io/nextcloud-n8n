@@ -119,6 +119,12 @@ jobs:
         # WebDAV scenarios reach NC over HTTP at localhost:8080 (see below), so
         # that host:port must be trusted too.
         ./occ config:system:set trusted_domains 2 --value=localhost:8080
+        # Log at DEBUG. The "Nextcloud log on failure" step below is the only
+        # window into a failing integration run, and at the default level (2 =
+        # Warning) a listener that decides to do nothing writes nothing — so a
+        # silent bail and a listener that never fired look identical. That cost a
+        # full diagnostic cycle on the trash-purge hook.
+        ./occ config:system:set loglevel --type=integer --value=0
 
     # ── Serve: occ-only scenarios need no HTTP, but the WebDAV channel (file
     # create/PROPFIND, the create/delete/rename listeners) does. PHP's built-in

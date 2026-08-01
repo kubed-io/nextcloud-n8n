@@ -93,6 +93,16 @@ final class TrashPurgeHook {
 			return;
 		}
 
+		// EVERY BAIL BELOW SAYS WHY. Each one is a legitimate reason to do nothing,
+		// which is exactly what makes them indistinguishable from "the hook never
+		// fired" when they are silent — and that ambiguity cost a full CI cycle
+		// while diagnosing this very listener. The integration workflow sets
+		// loglevel 0 so these reach the log it dumps on failure.
+		$this->logger->debug('n8n_sync purge: hook fired', [
+			'app' => Application::APP_ID,
+			'path' => $path,
+		]);
+
 		$uid = $this->resolveUid();
 		if ($uid === '') {
 			$this->logger->warning('n8n_sync purge: no user context for the trashed node; skipping', [
@@ -103,20 +113,50 @@ final class TrashPurgeHook {
 		}
 
 		try {
-			// The home is …/<uid>/files and the trash is …/<uid>/files_trashbin,
-			// so the hook path resolves against the home's PARENT.
+			// The home is …/<uid>/files and the trash is …/<uid>/files_trashbin, so
+			// the hook path resolves against the home's PARENT. The path can carry a
+			// double slash (`Trashbin::delete()` concatenates a already-rooted
+			// filename onto its prefix); Folder::get() normalises it away.
 			$node = $this->rootFolder->getUserFolder($uid)->getParent()->get(ltrim($path, '/'));
-		} catch (\Throwable) {
+		} catch (\Throwable $e) {
+			$this->logger->debug('n8n_sync purge: could not resolve the trashed node', [
+				'app' => Application::APP_ID,
+				'path' => $path,
+				'uid' => $uid,
+				'exception' => $e,
+			]);
 			return;
 		}
-		if (!$node instanceof File || !FilenameCodec::isTrashedWorkflowName($node->getName())) {
+		if (!$node instanceof File) {
+			$this->logger->debug('n8n_sync purge: trashed node is not a file', [
+				'app' => Application::APP_ID,
+				'path' => $path,
+			]);
+			return;
+		}
+		if (!FilenameCodec::isTrashedWorkflowName($node->getName())) {
+			$this->logger->debug('n8n_sync purge: name is not a trashed workflow file', [
+				'app' => Application::APP_ID,
+				'name' => $node->getName(),
+			]);
 			return;
 		}
 
 		$managed = $this->metadata->read($node->getId());
 		if (!$managed?->isManaged()) {
-			return; // detached file — nothing in n8n is ours to remove
+			// Detached file — nothing in n8n is ours to remove.
+			$this->logger->debug('n8n_sync purge: trashed file carries no n8n metadata', [
+				'app' => Application::APP_ID,
+				'name' => $node->getName(),
+				'fileId' => $node->getId(),
+			]);
+			return;
 		}
+		$this->logger->debug('n8n_sync purge: deleting the workflow in n8n', [
+			'app' => Application::APP_ID,
+			'workflowId' => $managed->workflowId,
+			'mode' => $managed->mode,
+		]);
 
 		try {
 			$this->deleteService->hardDelete($managed->workflowId, $managed->mode);
