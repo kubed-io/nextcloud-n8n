@@ -225,59 +225,17 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     Given the app is connected to n8n
     And a folder mapped as "sync" to the n8n tag "flows"
 
-    # ══ ADOPTION: THE ONE MOMENT THE BODY IS THE ONLY THING THAT KNOWS ═════════
+    # ══ ADOPTION LIVES IN create-workflow.feature ══════════════════════════════
     #
-    # A file becomes managed — dropped into a mapped folder, copied, or moved in —
-    # and a workflow is created for it in n8n. At that instant there are no pills,
-    # no `n8n_syncedTags` baseline, and no workflow: the ONLY record of what this
-    # thing was tagged is its own `tags` array. So the body seeds n8n.
+    # A file arriving in a mapped folder already carrying tags in its body is a
+    # CREATION, so it is specced next to every other way a workflow comes into
+    # existence — not here. This file owns what happens to a workflow's tags once
+    # it is managed.
     #
-    # THIS IS A DEFECT TODAY, NOT MERELY UNBUILT (saga §5.6.3). `CreateService`
-    # sends `N8nWorkflowBody::toCreateBody`, whose whitelist omits `tags`, so
-    # `$created['tags']` is ALWAYS empty and the "additive merge" merges the mapping
-    # tag into nothing. Every tag in the file is silently discarded. The docblock
-    # claiming "POST /workflows preserves tags the body declared" is wrong twice
-    # over: we never declare them, and n8n's schema marks `tags` readOnly anyway.
-    #
-    # The fix is a `PUT /workflows/{id}/tags` with the body's tag names ensured to
-    # ids, unioned with the mapping tag — the same call the reconcile already makes.
-    # These scenarios are the spec for it. They were never written before, which is
-    # why nothing caught the bug.
-
-  @unbuilt
-  Scenario: Adopting a file carries the tags in its body into n8n
-    Given a workflow file whose body carries the tags "prod", "billing", and "critical"
-    When the file is placed in the "flows" mapped folder
-    Then a workflow is created in n8n for it
-    And the workflow in n8n is tagged "prod", "billing", "critical", and "flows"
-    And the file's Nextcloud system tags are "prod", "billing", and "critical"
-    # The mapping tag joins them — adoption is additive, never a replace.
-
-  @unbuilt
-  Scenario: A file with no tags in its body adopts with only the mapping tag
-    Given a workflow file whose body carries no tags
-    When the file is placed in the "flows" mapped folder
-    Then the workflow in n8n is tagged only "flows"
-    # Nothing to seed. The absence of a `tags` array is not an error.
-
-  @unbuilt
-  Scenario: A round trip out of Nextcloud and back keeps the workflow's tags
-    Given a mirrored workflow file tagged "prod" and "billing"
-    When the file is copied out of Nextcloud and its workflow is deleted in n8n
-    And the copy is placed back into the "flows" mapped folder
-    Then the workflow recreated in n8n is tagged "prod", "billing", and "flows"
-    # THE TRANSPORT CASE. The pills did not survive the trip (they are bound to a
-    # file id) and n8n no longer holds the workflow. The body is the only carrier
-    # left, and it is enough.
-
-  @unbuilt
-  Scenario: Adoption does not consult n8n for tags it cannot yet have
-    Given a workflow file whose body carries the tag "prod"
-    When the file is placed in the "flows" mapped folder
-    Then the tags are taken from the body alone
-    And no existing n8n workflow's tags are read to decide them
-    # There is no baseline and no remote counterpart at adoption, so there is
-    # nothing to merge against — the three-way merge does not apply here.
+    # Worth knowing while reading the rest of this file, because it is the one
+    # moment the body outranks everything: at adoption there are no pills, no
+    # baseline, and no workflow, so the body is the only record of the tags. Today
+    # they are silently discarded (saga §5.6.3) — see create-workflow.feature.
 
     # ══ STEADY STATE ═══════════════════════════════════════════════════════════
 
