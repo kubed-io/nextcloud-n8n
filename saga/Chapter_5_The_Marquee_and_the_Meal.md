@@ -962,6 +962,59 @@ missing.
 > station that said nothing when it decided to do nothing. Write down what you
 > refuse to do, and why, or the next cook reads silence as agreement."*
 
+## §5.8 — The apprentice cooked, and it was the best thing on the table
+
+This chapter opened with a table for two (§5.2): the master and a new apprentice
+still plating its base while we were serving. It closes with the apprentice cooking
+for **us** — and the meal being better than ours.
+
+`nextcloud-penpot` was forked from this app. So was `nextcloud-grafana`. That makes
+this repo the eldest, and for most of the year "alignment" meant the younger two
+catching up. This round it ran entirely the other way. Everything of substance in the
+alignment pass came from the youngest at the table:
+
+| What penpot fed back | What it fixed here |
+|---|---|
+| the legacy `preDelete` purge hook | a purged workflow left alive in n8n **forever** |
+| `<types><filesystem/></types>` | `boot()` never running on any WebDAV request |
+| `gherkin.instructions.md` + `features/README.md` | a 33-item "backlog" that was really 5 |
+| the session-less actor fallback | `occ tag:files:add` silently doing nothing |
+| dropping `#[NoCSRFRequired]` | an admin endpoint reachable cross-site |
+
+**And the sharpest part is that the debt travelled in a circle.** The purge bug did
+not originate in penpot — penpot walked into it *following this app's docblock*, which
+claimed `BeforeNodeDeletedEvent` fires twice. Penpot paid for the diagnosis, wrote it
+down, and sent it back as a note. We took the note, ported the cure, and missed its
+prerequisite — the `<types>` line penpot had already spelled out in its own
+`info.xml`. So this app shipped a wrong comment, was handed the correction twice, and
+still needed a third pass to receive it. The eldest was the slowest learner in the
+family.
+
+Why the youngest is the best cook is not a mystery, and it is worth stating because
+it will keep being true: **penpot was built after every lesson this app learned the
+hard way, so it started from the distilled version.** It never had to un-learn the
+path-discriminated purge, because it was born into a world where the trash purge was
+already known to be a legacy hook. Newest ≠ least mature when the lineage is written
+down. That is the whole return on keeping a saga.
+
+The concrete standing order that falls out of it:
+
+- **Alignment is bidirectional and the direction is not fixed by age.** Read the
+  sibling that shipped most recently, whichever one that is.
+- **When porting a fix, port the whole diff, not the paragraph about it.** Config is
+  where a fix hides in plain sight — `appinfo/info.xml` and `psalm.xml` are now part
+  of the checklist, because a correct listener in an app that never boots is
+  indistinguishable from no listener at all.
+- **A comment that another app might read is a load-bearing artefact.** The wrong one
+  here cost a sibling a full debugging cycle. Docblocks are an export surface.
+
+> **Dr K, pulling up a chair and not saying anything for a moment:** *"Well. The kid
+> plated that. And you three are cooking out of the same book now, so quit counting
+> who came in first — the newest station has the cleanest mise, that's all it means.
+> You wrote a bad ticket once and it went out to two other kitchens; that's the part
+> to sit with. Fix the ticket. Then eat, because that was a good dish and it's going
+> cold while you take notes."*
+
 ---
 
 Sources / cross-links:
