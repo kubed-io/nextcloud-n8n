@@ -149,6 +149,36 @@ trait TagSyncSteps {
 		$this->tagSetN8n($names);
 	}
 
+	/**
+	 * Add ONE tag to the workflow in n8n, leaving the rest alone.
+	 *
+	 * Shares its body with the `now also has` phrasing above — Behat ignores the
+	 * keyword when matching, so one function can honestly answer to both: `Given the
+	 * workflow in n8n now also has "x"` sets a precondition, `When the tag "x" is added
+	 * to the workflow in n8n` is the action under test. Same operation, two readings.
+	 *
+	 * @When the tag :tag is added to the workflow in n8n
+	 */
+	public function theTagIsAddedInN8n(string $tag): void {
+		$this->theWorkflowNowAlsoHas($tag);
+	}
+
+	/**
+	 * Remove ONE tag from the workflow in n8n, leaving the rest alone. The existing
+	 * n8n-side steps all restate the WHOLE set ("now has only x and y"), which is fine
+	 * for arranging but wrong for an action: a scenario about removing one tag should
+	 * say that, not list what survives.
+	 *
+	 * @When the tag :tag is removed from the workflow in n8n
+	 */
+	public function theTagIsRemovedInN8n(string $tag): void {
+		$names = array_values(array_filter(
+			$this->tagN8nContent($this->tagWfId),
+			static fn (string $n): bool => $n !== $tag,
+		));
+		$this->tagSetN8n($names);
+	}
+
 	/** @Given the Nextcloud system tag :tag is also pinned on an unrelated non-workflow file */
 	public function aSharedTagPinnedOnAnUnrelatedFile(string $tag): void {
 		$path = 'unrelated-' . bin2hex(random_bytes(3)) . '.txt';
@@ -181,7 +211,11 @@ trait TagSyncSteps {
 		Assert::assertSame($before, $wf['tags'] ?? null, 'this step must not alter the tags array');
 
 		$this->davPut($path, json_encode($wf, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
-		$this->drainJobs();
+		// drainJobs() takes the class to drain — calling it bare was a fatal, not a
+		// no-op. Both jobs a save can enqueue are drained so the step behaves the same
+		// under either `timing`, rather than only under the one the caller happens to set.
+		$this->drainJobs('OCA\\N8nSync\\BackgroundJob\\PushWorkflowJob');
+		$this->drainJobs(self::RECONCILE_TAGS_JOB);
 	}
 
 	// ── the four-surface tag state: one step for the whole picture ──────────────
