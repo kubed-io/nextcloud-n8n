@@ -14,6 +14,7 @@ Feature: Admin configures the n8n connection
   Background:
     Given the app is installed and enabled
 
+  @admin
   Scenario: Set up and verify the connection
     When the admin sets the n8n base URL
     And the admin provides the n8n API key
@@ -25,6 +26,7 @@ Feature: Admin configures the n8n connection
   # connection result is the admin's diagnostic — and it must tell the two failure
   # modes apart: "you haven't added a key" vs "the key you added was rejected". Same
   # distinct messages on the button and the occ command.
+  @admin
   Scenario: The connection test tells an unset key apart from a rejected one
     Given the admin has set the n8n base URL and enabled the REST API
     And no API key is set

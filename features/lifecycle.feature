@@ -6,11 +6,13 @@ Feature: App install lifecycle
   I want the n8n_sync app to enable and disable cleanly
   So that installing or removing it never leaves the instance broken
 
+  @admin
   Scenario: Enabling the app
     When the admin enables the app
     Then the app should be enabled
     And the app is installed correctly
 
+  @admin
   Scenario: Disabling the app
     Given the app is enabled
     When the admin disables the app

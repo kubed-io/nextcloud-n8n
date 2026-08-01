@@ -44,6 +44,51 @@ apart, and nobody reads two files to answer one question.
 **A scenario describing a behaviour another file owns is a defect**, even when it
 passes. Move it.
 
+## Tags are an index, not decoration
+
+A scenario carries tags on **one line, directly above `Scenario:`** — axis tags first,
+status last: `@in-nextcloud @gesture @unbuilt`. A tag on its own line separated by
+comments binds to the wrong scenario, so keep them together.
+
+The point is that `behat --tags` becomes a query. *"Everything a user can do from the
+Files app"*, *"everything that starts in n8n"*, *"everything the scheduled job does"* —
+each is one filter rather than a grep and a guess.
+
+### Origin — where the action happened
+
+| Tag | Meaning |
+|---|---|
+| `@in-nextcloud` | Someone acted in Nextcloud. The payoff is what reached n8n. |
+| `@in-n8n` | The workflow changed in n8n (a human, another client, n8n itself). The payoff is what reached Nextcloud, and a sync is implied. |
+
+A scenario with **neither** never crosses the boundary: configuration, a refusal, or a
+local-only surface like the mimetype or the opener menu. That absence is information —
+do not invent an origin to fill the column.
+
+### Channel — how it was triggered
+
+| Tag | Meaning |
+|---|---|
+| `@gesture` | A Files-app action: create, rename, move, copy, delete, restore, upload, toggling a pill. Driven over WebDAV, which is what a browser sends. |
+| `@occ` | A CLI command. |
+| `@admin` | The admin settings panel. |
+| `@scheduled` | The timed job, with no human present. |
+
+More than one is normal and correct: a scenario that toggles a pill and then runs a
+push is `@gesture @occ`. Tag what the scenario actually does, not what it is "about".
+
+### `sync` vs `link` is NOT an axis
+
+The tempting move is to write every behaviour twice, once per mode. Don't — the modes
+only diverge in one direction. An `@in-n8n` scenario is mode-agnostic: a workflow
+renamed or deleted in n8n reaches Nextcloud the same way either way, and a `link`
+simply has no bytes to update. Only `@in-nextcloud` scenarios branch, because a link is
+a read-only projection.
+
+The test: can you write the restriction as a sentence starting *"A link…"*? If yes it
+is a rule and deserves its own scenario. If the mode makes no difference to the
+outcome, leave it out.
+
 ## Status tags — four of them, and only one is a backlog
 
 The most useful question you can ask a spec is **"what is built but untested?"**.

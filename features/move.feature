@@ -30,12 +30,14 @@ Feature: Moving a workflow file is the same workflow leaving and returning
 
   # ── within the same mapping: no n8n change ───────────────────────────────────
 
+  @in-nextcloud @gesture
   Scenario: Move within the same mapping (rename) keeps it managed
     Given a managed "sync" workflow file in the "nextcloud:alpha" folder
     When I rename the file within the "nextcloud:alpha" folder
     Then the file stays in "sync" mode in the "nextcloud:alpha" mapping
     And nothing changes in n8n except the name
 
+  @in-nextcloud @gesture
   Scenario: Move into a subfolder of the same mapping keeps it managed
     Given a managed "sync" workflow file in the "nextcloud:alpha" folder
     When I move the file into a subfolder of the "nextcloud:alpha" folder
@@ -44,6 +46,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
 
   # ── sync move-out → unmapped + archived ──────────────────────────────────────
 
+  @in-nextcloud @gesture
   Scenario: Moving a sync file out of its mapping unmaps it and archives in n8n
     Given a managed "sync" workflow file in the "nextcloud:alpha" folder
     When I move the file to a folder that is not mapped
@@ -55,6 +58,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
 
   # ── move back in → restore (same workflow, not a new one) ────────────────────
 
+  @in-nextcloud @gesture
   Scenario: Moving an unmapped file back into a mapping restores the workflow
     Given an unmapped workflow file that still carries its "n8n_id"
     When I move the file into the "nextcloud:beta" folder
@@ -65,6 +69,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
   # Restore-fallback: the unmapped file kept its id, but the workflow was hard-
   # deleted in n8n in the meantime. moveIn catches the unarchive 404 and recreates
   # from the file we still hold (a fresh id), then re-stamps sync in the target.
+  @in-nextcloud @gesture
   Scenario: Restoring when the n8n workflow was hard-deleted falls back to create
     Given an unmapped workflow file that still carries its "n8n_id"
     And that workflow no longer exists in n8n
@@ -82,6 +87,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
   #                 §14.5): MotionService::moveIn sees a sibling already carrying the
   #                 id and hands the file to CreateService, which strips the carried id
   #                 and creates a fresh workflow — the existing file is left untouched.
+  @in-nextcloud @gesture
   Scenario: Moving a duplicate in under the same name is refused (the workflow is already synced here)
     Given a managed "sync" workflow file in the "nextcloud:alpha" folder
     And an unmapped copy of that same workflow with the same "n8n_id" outside any mapping
@@ -89,6 +95,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
     Then the move is refused with a message
     And the original synced file is unchanged
 
+  @in-nextcloud @gesture
   Scenario: Moving a duplicate in under a different name mints a brand-new workflow
     Given a managed "sync" workflow file in the "nextcloud:alpha" folder
     And an unmapped copy of that same workflow with the same "n8n_id" outside any mapping
@@ -99,6 +106,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
   # Move-in create: an untracked file (no id) dragged into a mapping is create-on-
   # land — CreateInN8nListener fires on the NodeRenamedEvent (NC doesn't fire
   # NodeWrittenEvent for a move) and mints the workflow, stamping sync + the mapping.
+  @in-nextcloud @gesture
   Scenario: Moving a brand-new workflow file into a mapping creates it
     Given a ".n8n.json" file that was never tracked in n8n
     When I move the file into the "nextcloud:alpha" folder
@@ -107,6 +115,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
 
   # ── link move-out is refused ─────────────────────────────────────────────────
 
+  @in-nextcloud @gesture
   Scenario: Moving a link out of its mapping is blocked
     Given a managed "link" workflow file in the "nextcloud:links" folder
     When I try to move the file to a folder that is not mapped
@@ -115,6 +124,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
 
   # ── relocating an already-unmapped file: pure relocation ─────────────────────
 
+  @in-nextcloud @gesture
   Scenario: Moving an unmapped file between unmapped locations changes nothing
     Given an unmapped workflow file that still carries its "n8n_id"
     When I move the file to another folder that is not mapped

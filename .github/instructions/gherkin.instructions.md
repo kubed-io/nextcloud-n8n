@@ -60,6 +60,55 @@ dead; check for it.
 A `@todo` that fails because of a **defect** is legitimate — but it must say so in
 a comment, or it is indistinguishable from an unwritten one.
 
+## Tags are an index — treat them as data, not decoration
+
+Tags go on **one line, directly above `Scenario:`** — axis tags first, status last:
+`@in-nextcloud @gesture @unbuilt`. A tag separated from its scenario by a comment
+binds to the *next* one.
+
+The payoff is that `behat --tags` becomes a query: *"everything a user can do from the
+Files app"*, *"everything that starts in n8n"*. That only holds if the tags are true,
+so review them as claims.
+
+| Axis | Tags | Rule |
+|---|---|---|
+| **Origin** | `@in-nextcloud` · `@in-n8n` | **Exactly one, or neither. Never both.** |
+| **Channel** | `@gesture` · `@occ` · `@admin` · `@scheduled` | Several is normal. |
+| **Status** | `@todo` · `@unbuilt` · `@blocked` · `@decision` | At most one. |
+
+### Origin is decided by the WHEN, and it is exclusive
+
+**A behaviour happens from one side or the other — never both.** A `Given` that
+mentions n8n is *arranging state*; it does not make the scenario n8n-origin. Read the
+`When`: whoever performed the action under test owns the scenario.
+
+The giveaway is the title. *"A tag added **in Nextcloud** since the last sync is added
+in n8n"* is `@in-nextcloud` however much n8n appears in its steps — the user acted in
+Nextcloud and the payoff is what reached n8n.
+
+Flag any scenario carrying both. It is not "thorough", it means the origin was
+inferred from the whole scenario rather than from its action.
+
+### `@in-n8n` means the RECONCILE mirrors it
+
+Use it only where the change happened in n8n **and the payoff is what the reconcile
+brings into Nextcloud**. A pull or a sync run is implied and usually explicit.
+
+That is narrower than "the scenario mentions n8n". Nextcloud drives; n8n does not
+drive back except through a reconcile — so if no sync run is what makes the outcome
+observable, the scenario is not `@in-n8n`.
+
+**Neither tag** is a real answer, and a common one: configuration, a refusal, or a
+local-only surface (the mimetype, the opener menu, a DAV property) never crosses the
+boundary. Do not invent an origin to fill the column.
+
+### `sync` vs `link` is not an axis
+
+`@in-n8n` scenarios are mode-agnostic — a change in n8n reaches Nextcloud the same way
+either way, and a `link` simply has no bytes to update. Only `@in-nextcloud` scenarios
+branch, because a link is a read-only projection. Flag a scenario written twice per
+mode when the outcome does not differ.
+
 ## Community standards this project follows
 
 From [Cucumber's own guidance](https://cucumber.io/docs/bdd/better-gherkin/):

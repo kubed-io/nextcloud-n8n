@@ -12,6 +12,7 @@ Feature: Renaming keeps file, JSON, and n8n in agreement
   Background:
     Given the app is installed and enabled
 
+  @in-nextcloud @gesture
   Scenario: Renaming the file updates the backend JSON name and n8n
     Given a managed "sync" workflow file named "Old Name.n8n.json"
     When I rename the file to "New Name.n8n.json"

@@ -13,6 +13,7 @@ Feature: Admin configures folder mappings
   Background:
     Given the app is enabled
 
+  @admin
   Scenario: Add the full storage × mode matrix
     When the admin adds these mappings:
       | n8n tag           | folder  | storage     | mode |

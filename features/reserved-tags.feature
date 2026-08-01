@@ -35,11 +35,13 @@ Feature: The n8n:ignore reserved tag excludes individual workflows
     Given the app is connected to n8n
     And a folder mapped as "sync" to the n8n tag "team:flows"
 
+  @in-n8n @occ
   Scenario: With no reserved tag, a workflow takes the mapping's mode
     Given n8n has a workflow tagged "team:flows" with no reserved tag
     When the "team:flows" mapping is pulled
     Then that workflow's file is in "sync" mode (the mapping mode)
 
+  @in-n8n @occ
   Scenario: n8n:ignore on a never-pulled workflow creates no file
     Given n8n has a workflow tagged "team:flows" and "n8n:ignore"
     When the "team:flows" mapping is pulled
@@ -60,12 +62,14 @@ Feature: The n8n:ignore reserved tag excludes individual workflows
     When I remove the "n8n:ignore" tag
     Then the file's mode becomes "sync"
 
+  @in-n8n @occ
   Scenario: A mapping tag needs no "nextcloud:" prefix
     Given a folder mapped as "sync" to the n8n tag "myfoobarflows"
     And n8n has a workflow tagged "myfoobarflows"
     When the "myfoobarflows" mapping is pulled
     Then that workflow's file is created in "sync" mode
 
+  @in-n8n @occ
   Scenario: The app never writes reserved tags onto n8n workflows
     Given n8n has a workflow tagged "team:flows" with no reserved tag
     When the "team:flows" mapping is pulled

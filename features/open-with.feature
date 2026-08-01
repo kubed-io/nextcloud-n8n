@@ -33,6 +33,7 @@ Feature: Opening a workflow file (Open in n8n / Open with text editor)
 
   # ── Open in n8n ───────────────────────────────────────────────────────────────
 
+  @in-nextcloud @gesture
   Scenario: Open in n8n opens the live workflow (sync)
     Given a managed workflow file in "sync" mode with a live workflow in n8n
     When I choose "Open in n8n" from its context menu
@@ -48,6 +49,7 @@ Feature: Opening a workflow file (Open in n8n / Open with text editor)
 
   # ── Open with text editor ──────────────────────────────────────────────────────
 
+  @in-nextcloud @gesture
   Scenario Outline: Open with text editor is available on every workflow file
     Given a managed workflow file in "<mode>" mode
     When I choose "Open with text editor" from its context menu
@@ -62,6 +64,7 @@ Feature: Opening a workflow file (Open in n8n / Open with text editor)
 
   # ── Default click action follows the mode ───────────────────────────────────────
 
+  @in-nextcloud @gesture
   Scenario Outline: The default click opens the right thing for the mode
     Given a managed workflow file in "<mode>" mode
     When I click the file in the Files app
