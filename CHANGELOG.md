@@ -26,12 +26,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING:** minimum Nextcloud version is now **31** (was 30). Fixing the scheduled-sync checkbox requires a settings API introduced in 31; Nextcloud 30 reached end of life in 2025.
 - REST API card now shows whether an API key is **currently stored** (the field itself always looks empty because the key is sensitive/encrypted), so you can tell "not set yet" from "already saved" at a glance.
 - Pushing tags to n8n now resolves the whole set with a single tag-list fetch instead of one per tag, so a workflow with many tags no longer triggers a burst of API calls on each push.
 
 ### Fixed
 
-- **Scheduled n8n → Nextcloud sync can be turned on again** — the "scheduled sync" checkbox in Sync Settings now actually saves. It declared its default as a string, which Nextcloud's checkbox couldn't round-trip, so ticking it silently did nothing and the background pull never ran. It now defaults to a real boolean like Nextcloud's own settings.
+- **Scheduled n8n → Nextcloud sync can be turned on again** — the "scheduled sync" checkbox in Sync Settings now actually saves, so the background pull runs. Ticking it used to do nothing at all: Nextcloud's built-in storage for declarative settings cannot round-trip a checkbox in an admin form (it rejects the boolean on the way in *and* on the way back out), so the Sync Settings panel now reads and writes its own values. The stored settings are unchanged — `occ config:app:get n8n_sync schedule_enabled` reads exactly what it always did.
 - Corrupted tag-baseline metadata (a JSON object where a list was expected) can no longer turn into real tags — only a proper list of strings is honoured.
 
 - Test connection now tells a **missing** API key apart from a **rejected** one — an unset key says so, an invalid/expired one reports "n8n rejected the API key (HTTP 401)". Previously a rejected key surfaced n8n's raw error and looked the same as other failures. Same wording on the button and `occ n8n_sync:test-connection`.

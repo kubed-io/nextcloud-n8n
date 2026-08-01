@@ -9,8 +9,11 @@ declare(strict_types=1);
 
 namespace OCA\N8nSync\Settings;
 
+use OCA\N8nSync\AppInfo\Application;
+use OCP\IAppConfig;
+use OCP\IUser;
 use OCP\Settings\DeclarativeSettingsTypes;
-use OCP\Settings\IDeclarativeSettingsForm;
+use OCP\Settings\IDeclarativeSettingsFormWithHandlers;
 
 /**
  * "Sync Settings" — the automatic-sync strategy for both directions: the NC→n8n
@@ -19,18 +22,65 @@ use OCP\Settings\IDeclarativeSettingsForm;
  * always-available bulk buttons live in their own dedicated panel
  * ({@see SyncSettings}); this form is config only.
  *
- * Declarative + STORAGE_TYPE_INTERNAL → values auto-persist to appconfig under
- * each field id, read elsewhere by:
- *   - `timing`            → {@see \OCA\N8nSync\Listener\NodeWrittenListener} (NC→n8n)
+ * Values live in appconfig under each field id, read elsewhere by:
+ *   - `timing`            → {@see \OCA\N8nSync\Listener\NodeWrittenListener} and
+ *                           {@see \OCA\N8nSync\Listener\ContentTagListener} (NC→n8n)
  *   - `schedule_enabled`  → {@see \OCA\N8nSync\BackgroundJob\ScheduledPullJob} (n8n→NC)
  *   - `schedule_interval` → same job's TimedJob interval (seconds)
  *
- * NC schedules by **interval** (TimedJob), not cron expressions — hence presets.
+ * NC schedules by **interval** (TimedJob), not cron expressions.
  *
  * Same id-prefix gotcha as AdminSettings — the form id must NOT be prefixed with
  * the app id.
+ *
+ * ── WHY THIS FORM HANDLES ITS OWN STORAGE ────────────────────────────────────
+ *
+ * `STORAGE_TYPE_INTERNAL` CANNOT CARRY A CHECKBOX IN AN ADMIN FORM. This is a
+ * core limitation, read out of `OC\Settings\DeclarativeManager` (verified on both
+ * `master` and `stable32`, which are identical here), not a preference:
+ *
+ *   - **the write** — `saveInternalValue()` for `SECTION_TYPE_ADMIN` calls
+ *     `IAppConfig::setValueString($app, $fieldId, $value)`. A CHECKBOX posts a
+ *     real JSON `bool`, and `DeclarativeManager.php` declares `strict_types=1`,
+ *     so the bool raises a **TypeError** and the save aborts.
+ *   - **the read** — `getInternalValue()` passes the schema's `default` straight
+ *     into `IConfig::getAppValue($app, $key, $default)`, whose third parameter is
+ *     also typed `string`. So a `'default' => false` (which a CHECKBOX needs, and
+ *     which is what core's own examples use) throws on the way *back out*.
+ *
+ * Both spellings are therefore broken, in opposite directions, and the toggle
+ * springs back on reload with nothing shown to the admin. The earlier
+ * `'default' => false` fix addressed only the frontend round-trip.
+ *
+ * `STORAGE_TYPE_EXTERNAL` + {@see IDeclarativeSettingsFormWithHandlers} hands the
+ * two operations back to this class, which coerces each value to the type its
+ * field actually means. Core calls {@see getValue}/{@see setValue} directly on the
+ * registered form object — **no listener class and no event wiring** (see
+ * `DeclarativeManager::getValue()`, which prefers the interface and only falls
+ * back to `DeclarativeSettingsGetValueEvent` when the form does not implement it).
+ *
+ * The KEYS AND THEIR STORAGE ARE UNCHANGED — `occ config:app:get n8n_sync timing`
+ * still reads exactly what it always did. Only who does the read and write moves.
+ *
+ * The interface is `@since 31.0.0`, which is why `appinfo/info.xml` requires
+ * Nextcloud ≥ 31.
  */
-final class AutoSyncSettings implements IDeclarativeSettingsForm {
+final class AutoSyncSettings implements IDeclarativeSettingsFormWithHandlers {
+	/** Fallback pull cadence, used as both the placeholder and the stored default. */
+	public const DEFAULT_INTERVAL = '1h';
+
+	private const FIELD_TIMING = 'timing';
+	private const FIELD_SCHEDULE_ENABLED = 'schedule_enabled';
+	private const FIELD_SCHEDULE_INTERVAL = 'schedule_interval';
+
+	private const TIMING_ASYNC = 'async';
+	private const TIMING_SYNC = 'sync';
+
+	public function __construct(
+		private IAppConfig $config,
+	) {
+	}
+
 	#[\Override]
 	public function getSchema(): array {
 		return [
@@ -38,41 +88,124 @@ final class AutoSyncSettings implements IDeclarativeSettingsForm {
 			'priority' => 33, // just below Folder mappings (30); the Manual sync buttons (40) follow
 			'section_type' => DeclarativeSettingsTypes::SECTION_TYPE_ADMIN,
 			'section_id' => 'n8n_sync',
-			'storage_type' => DeclarativeSettingsTypes::STORAGE_TYPE_INTERNAL,
+			// EXTERNAL so getValue()/setValue() below own the coercion — see the
+			// class docblock for why INTERNAL cannot carry the checkbox.
+			'storage_type' => DeclarativeSettingsTypes::STORAGE_TYPE_EXTERNAL,
 			'title' => 'Sync Settings',
 			'description' => 'How Nextcloud and n8n stay in sync automatically. The Manual sync buttons below run a one-off sync in either direction at any time.',
 			'fields' => [
 				[
-					'id' => 'timing',
+					'id' => self::FIELD_TIMING,
 					'title' => 'Nextcloud → n8n: when you save a workflow file',
 					'description' => 'Async (recommended): the push runs in the background after the save. Sync: pushes during the save for instant feedback, but can briefly lock the file. Only sync mappings push back.',
 					'type' => DeclarativeSettingsTypes::RADIO,
-					'default' => 'async',
+					'default' => self::TIMING_ASYNC,
 					'options' => [
-						['name' => 'Push in the background (asynchronous — recommended)', 'value' => 'async'],
-						['name' => 'Push immediately during the save (synchronous)', 'value' => 'sync'],
+						['name' => 'Push in the background (asynchronous — recommended)', 'value' => self::TIMING_ASYNC],
+						['name' => 'Push immediately during the save (synchronous)', 'value' => self::TIMING_SYNC],
 					],
 				],
 				[
-					'id' => 'schedule_enabled',
+					'id' => self::FIELD_SCHEDULE_ENABLED,
 					'title' => 'n8n → Nextcloud: scheduled sync',
 					'description' => 'Nextcloud periodically pulls workflows from n8n (read-only — nothing changes in n8n). Optional; when off, use the manual “Sync from n8n” button. For near-real-time instead, build an n8n workflow that pushes changes to Nextcloud.',
 					'type' => DeclarativeSettingsTypes::CHECKBOX,
-					// NC's DeclarativeManager does no type coercion — a CHECKBOX default
-					// MUST be a real bool (matches core, e.g. dav SystemAddressBookSettings).
-					// A string '0' breaks the frontend boolean round-trip, so the toggle
-					// silently never persists to appconfig (job then reads it as off).
+					// A real bool: this is what the frontend round-trips. It is safe
+					// here only because EXTERNAL storage never feeds it to
+					// IConfig::getAppValue() (see the class docblock).
 					'default' => false,
 				],
 				[
-					'id' => 'schedule_interval',
+					'id' => self::FIELD_SCHEDULE_INTERVAL,
 					'title' => 'Schedule — how often',
 					'description' => 'How often to pull, as a number + unit (s/m/h/d). Examples: 15m, 1h, 6h, 1d. A plain number = seconds. Minimum 1m.',
 					'type' => DeclarativeSettingsTypes::TEXT,
-					'placeholder' => '1h',
-					'default' => '1h',
+					'placeholder' => self::DEFAULT_INTERVAL,
+					'default' => self::DEFAULT_INTERVAL,
 				],
 			],
 		];
+	}
+
+	/**
+	 * Read one field for the settings UI, in the type that field means — a real
+	 * `bool` for the checkbox, a `string` for the radio and the text box.
+	 */
+	#[\Override]
+	public function getValue(string $fieldId, IUser $user): mixed {
+		return match ($fieldId) {
+			self::FIELD_TIMING => $this->readString(self::FIELD_TIMING, self::TIMING_ASYNC),
+			self::FIELD_SCHEDULE_ENABLED => $this->readBool(self::FIELD_SCHEDULE_ENABLED),
+			self::FIELD_SCHEDULE_INTERVAL => $this->readString(self::FIELD_SCHEDULE_INTERVAL, self::DEFAULT_INTERVAL),
+			default => null,
+		};
+	}
+
+	/**
+	 * Persist one field, normalising what the frontend sent. The radio is pinned
+	 * to its two known values so a malformed POST cannot write a `timing` nothing
+	 * reads; the interval is stored verbatim-but-trimmed because
+	 * {@see \OCA\N8nSync\BackgroundJob\ScheduledPullJob} already owns parsing it
+	 * (and falls back to hourly on anything it cannot read).
+	 */
+	#[\Override]
+	public function setValue(string $fieldId, mixed $value, IUser $user): void {
+		switch ($fieldId) {
+			case self::FIELD_TIMING:
+				$timing = is_string($value) ? strtolower(trim($value)) : '';
+				$this->config->setValueString(
+					Application::APP_ID,
+					self::FIELD_TIMING,
+					$timing === self::TIMING_SYNC ? self::TIMING_SYNC : self::TIMING_ASYNC,
+				);
+				break;
+			case self::FIELD_SCHEDULE_ENABLED:
+				// setValueBool (not a '1'/'0' string) so the job's primary
+				// getValueBool() read succeeds instead of falling through its
+				// AppConfigTypeConflict rescue path.
+				$this->config->setValueBool(Application::APP_ID, self::FIELD_SCHEDULE_ENABLED, $this->toBool($value));
+				break;
+			case self::FIELD_SCHEDULE_INTERVAL:
+				$raw = is_string($value) ? trim($value) : '';
+				$this->config->setValueString(
+					Application::APP_ID,
+					self::FIELD_SCHEDULE_INTERVAL,
+					$raw === '' ? self::DEFAULT_INTERVAL : $raw,
+				);
+				break;
+		}
+	}
+
+	/**
+	 * The checkbox, tolerant of how it was last written. A value stored by the
+	 * old INTERNAL path is string-typed, so `getValueBool` raises an
+	 * AppConfigTypeConflict until the admin saves once — fall back to parsing the
+	 * string rather than reporting the schedule as off. Mirrors the same rescue in
+	 * {@see \OCA\N8nSync\BackgroundJob\ScheduledPullJob}.
+	 */
+	private function readBool(string $key): bool {
+		try {
+			return $this->config->getValueBool(Application::APP_ID, $key, false);
+		} catch (\Throwable) {
+			return $this->toBool($this->readString($key, ''));
+		}
+	}
+
+	private function readString(string $key, string $default): string {
+		try {
+			return $this->config->getValueString(Application::APP_ID, $key, $default);
+		} catch (\Throwable) {
+			return $default;
+		}
+	}
+
+	private function toBool(mixed $value): bool {
+		if (is_bool($value)) {
+			return $value;
+		}
+		if (is_int($value)) {
+			return $value !== 0;
+		}
+		return is_string($value) && in_array(strtolower(trim($value)), ['1', 'true', 'yes', 'on'], true);
 	}
 }

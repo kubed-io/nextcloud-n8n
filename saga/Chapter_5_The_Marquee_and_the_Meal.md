@@ -643,6 +643,157 @@ body-tag delta is *less* work than detecting and rejecting it).
 > notice what saved you: the taster at the door sent it back before it reached a guest. That taster
 > is the whole reason we write the ticket first."*
 
+### §5.6.3 — The tag model, rebuilt from the transport case (and the bug it exposed)
+
+Slice B was deferred twice — once for a regression, once for the fiddliness — and both times the
+question was framed as *"which surface wins?"*. Command reframed it, and the reframing is what
+finally made the model fall out:
+
+> *"think of a situation where we took an n8n file out of n8n or even a copy … no tags in the body
+> and a file leaves nxt and comes back to nxt in a mapped folder, no tags can be known — so the json
+> file here is the ultimate source of truth that tags are needed to be added or removed."*
+
+That is not an opinion about precedence. It is an observation about **portability**, and it settles
+the design because only one of the three surfaces survives a round trip.
+
+#### The homework: what n8n's API actually permits
+
+Read off n8n's own OpenAPI spec (`workflow.yml` and `workflowCreate.yml`), not inferred:
+
+- Both schemas are `additionalProperties: false`, and in **both** of them `tags` is
+  **`readOnly: true`**. So tags cannot ride the body on **create** *or* on **update**.
+- The only writer is `PUT /workflows/{id}/tags`, which takes **tag ids** (not names) and returns the
+  workflow's full tag list afterwards.
+
+So "strip the tags out of the body and send them to the tags endpoint separately" is not a design
+choice we made — **it is the only door n8n leaves open.** §5.6.2.3's difficulty #1 is confirmed and
+now has a citation instead of a live observation.
+
+#### The bug this uncovered: adoption throws every tag away
+
+`CreateService::applyMappingTagAdditive`'s docblock claims:
+
+> *"POST `/workflows` preserves tags the body declared."*
+
+It does not, and we never declare them anyway — `N8nWorkflowBody::WRITABLE` is
+`['name','nodes','connections','settings','staticData']`. So `$created['tags']` is **always empty**
+and the "additive merge" merges the mapping tag into nothing.
+
+**Drop a `.n8n.json` carrying `prod`, `billing`, `critical` into a mapped folder and the workflow is
+created in n8n with the mapping tag ONLY. All three are silently discarded.** Same for a copy
+(`CopyService` routes through the same create).
+
+That is exactly the transport case Command described, handled exactly backwards: the body is the
+only thing that knows those tags, and it is the one moment we ignore it. **Found by reading, not by
+a failing test — the feature files never described adoption's tag behaviour at all.**
+
+#### The three surfaces have three different natures
+
+The mistake was treating them as three peers to referee. They are not:
+
+| Surface | Survives export / re-import? | Survives a copy? | Editable where |
+|---|---|---|---|
+| **n8n tags** | n/a — it *is* the remote | n/a | the n8n UI |
+| **NC pills** | **no** — bound to a file id | **no** (NC does not copy system tags) | the Files app |
+| **body `tags`** | **YES** — it is bytes in the file | **YES** | any text editor |
+
+The body is the only **portable** carrier. That single row is the whole argument.
+
+#### Authority belongs to the MOMENT, not to a surface
+
+Command's two statements — *"the json file is the ultimate source of truth"* and *"if the tags in
+the file disagree with n8n, n8n takes precedence and we lose the file change"* — read as a
+contradiction until they are separated by moment. Then they are the same model:
+
+| Moment | Authority | Why |
+|---|---|---|
+| **Adoption** — a file becomes managed (create / copy / move-in) | **the body** | Nothing else knows. No pills, no metadata, no workflow yet. |
+| **Steady state, no NC edit** | **n8n** | The system of record; the pull heals both NC surfaces. Command's precedence rule, exactly. |
+| **A deliberate NC edit** (a pill toggle, or a body-`tags` edit) | **the edit** | The user acted. Carry it. |
+
+#### Why "pick a winner" does not prevent split brain on its own
+
+Command asked whether a fixed precedence winner would prevent split brain. It helps — but only
+*after* you know a side changed, and that is the part that is missing. These two states are
+byte-identical:
+
+```
+body {a,b}   n8n {a,b,c}
+  ├─ the user deleted `c` from the file      → "n8n wins" silently restores it
+  └─ the user added the `c` pill, body stale → "file wins" silently deletes it
+```
+
+Same two sets, opposite correct answers. A fixed winner does not resolve that; it only chooses which
+of two legitimate gestures to break. **That is what a baseline is for** — it says *who moved*, and
+precedence is then needed only for a genuine both-moved tie. And per §5.6.1 such a tie is
+**impossible** for a set element against one baseline (added ⇒ ∉ baseline, removed ⇒ ∈ baseline,
+disjoint), which is why `$sourceWins` was deleted as dead code.
+
+Where Command's rule **is** load-bearing is where there is **no baseline at all** — adoption, or a
+file arriving from outside. There, "n8n wins" is the right tiebreak, and it is written down as such.
+
+#### The one hard problem, and the two honest ways to solve it
+
+Everything above is settled. This is not: **telling "the user edited the tags array" from "the body
+is merely stale."** The body goes stale for exactly one reason — a pill edit updates the pills and
+n8n but leaves the file alone (Slice A's deliberate contract).
+
+**Option A — a change marker (`n8n_bodyTags`).** Store the tag set the body carried the last time
+the app read or wrote it. Then `bodyTags == n8n_bodyTags` means the user did not touch tags (free,
+no n8n call, and a *stale* body still equals its own marker so it can never trigger a false
+removal); `bodyTags != n8n_bodyTags` is a deliberate edit, applied as a **delta** to the agreed set.
+This is not a competing baseline — it is change-detection on one surface, the same trick
+`n8n_syncedHash` already plays for the body as a whole, one level finer.
+
+**Option B — lockstep, and no marker.** Command's own instinct: *"wouldn't n8n_bodyTags always be
+the same as the pills anyway?"* Almost. They coincide the moment the body is written and diverge
+only after a pill edit — which is the only moment you would ever consult the marker. But the
+divergence can be **removed instead of tracked**: if a pill edit also rewrites the body's `tags`
+array, the two are always in lockstep, and `body ≠ pills` then unambiguously means a body edit.
+
+|   | extra metadata | extra file write | how it fails |
+|---|---|---|---|
+| **A — marker** | one key | none | the body visibly lags until the next pull |
+| **B — lockstep** | none | one guarded `putContent` per pill edit | every future writer of the tag set must remember to rewrite the body |
+
+Note the write in B is on a **deliberate gesture**, not the hourly sweep — a different thing
+entirely from the churn complaint below. **Leaning A** (it cannot be forgotten by a future code
+path, and it degrades to "looks stale" rather than "the surfaces silently disagree"), but this is a
+real fork and is recorded as one rather than settled by assertion.
+
+#### The churn, named
+
+`SyncService::writeWorkflow` calls `putContent($body)` **unconditionally**, for every workflow, on
+every pull. An hourly pull therefore rewrites every mirrored file every hour and bumps its mtime —
+which is precisely the *"it overdoes the amount of 'updated' changes I see"* Command noticed while
+working on the third app. Confirmed here by reading. That is Slice C, and it is also the answer to
+*"how do NC pills reach the file?"*: today, only by the pull rewriting the whole body; the fix is
+Slice C's **tags-only branch**, which updates the `tags` array and leaves the rest byte-identical.
+
+#### What is realtime, and what cannot be
+
+| Direction | Today | Ceiling |
+|---|---|---|
+| pill → n8n | realtime (`timing=sync`) / next tick (`async`) | **realtime** ✅ (Slice A, live) |
+| file body → n8n + pills | nothing | **realtime** ✅ (same `NodeWrittenEvent` trigger) |
+| n8n → NC | scheduled pull | **poll-only** ❌ |
+
+The third is not a gap we can close: n8n emits no outbound event on a tag change. The documented
+near-realtime answer stays "build an n8n workflow that pushes to Nextcloud" — the same escape hatch
+the schedule setting already advertises.
+
+#### Standing order
+
+The specs land first and the code follows, because that is what caught the last regression. The
+feature file now describes this model — including adoption, which it had never covered — with the
+unbuilt parts tagged as unbuilt rather than implied by a present-tense header.
+
+> **Dr K, reading the new ticket:** *"So the paper ticket is the only thing that walks out the door
+> with the plate. Then stop asking which station is boss and ask when. At the pass, the kitchen
+> owns it. Coming in off the truck, the label on the box is all you've got — and you've been
+> throwing those boxes' labels in the bin since service began. Fix that one first; it's the only
+> one that loses something you can't get back."*
+
 ---
 
 
@@ -652,3 +803,76 @@ Sources / cross-links:
 - [`n8n_sync` on the Nextcloud App Store](https://apps.nextcloud.com/apps/n8n_sync)
 - [`nextcloud-grafana` saga, Chapter 1 — Mise en Place](https://github.com/kubed-io/nextcloud-grafana/blob/main/saga/Chapter_1_Mise_en_Place.md) — the apprentice's side of the cameo.
 - This chapter's work: the connection-UX PR (missing-vs-rejected, "is a key stored?"), the Copilot instruction files (`.github/copilot-instructions.md` + `.github/instructions/*`), and the repo Security-&-Quality parity — all landed on the same branch as this chapter opened.
+
+---
+
+## ⚠️ INCOMING FINDING FROM THE THIRD APP — UNVERIFIED HERE, NOT YET ACTIONED
+
+> Dropped in from `nextcloud-penpot` while building its delete lifecycle. **Nobody
+> has checked this against a running n8n yet.** It is written down here so it is
+> not lost, not because it has been confirmed on this app.
+
+### The claim: `BeforeNodeDeletedEvent` does NOT fire when a file is purged from the trash
+
+`DeleteToN8nListener`'s docblock says:
+
+> *"The same event fires for BOTH lifecycle steps: the user's first delete (file
+> is at its normal path, on its way to trash) → soft step … the final purge from
+> trash (file lives under `<uid>/files_trashbin/files/…`) → hard step …
+> Discriminated by path prefix."*
+
+**Two independent pieces of evidence say the second half never fires.**
+
+1. **`nextcloud-grafana` states the opposite, and says it was proven live.** Its
+   `TrashPurgeHook` docblock: *"unlike the move-to-trash step — Nextcloud does NOT
+   fire a typed `BeforeNodeDeletedEvent` when a file is purged from the trash
+   (proven live: the trashbin's `removeItem` fires nothing typed). It emits the
+   legacy `\OCP\Trashbin` `preDelete` hook instead."* Grafana therefore wires
+   `\OCP\Util::connectHook('\OCP\Trashbin', 'preDelete', …)` in `Application::boot()`.
+
+2. **`nextcloud-penpot` built the path-discriminating version — following THIS
+   app's docblock — and its integration test failed on the first run.** The soft
+   step worked; the purge never reached the app at all, and the design stayed in
+   the remote trash. Switching to the legacy hook is what fixed it.
+
+### Why this matters here specifically
+
+`grep -rn "connectHook\|preDelete" lib/` in this repo returns **nothing**. So the
+hard step has only ever had one trigger, and that trigger appears not to exist.
+
+If the claim holds, the consequence is:
+
+- **soft delete (→ NC trash)** works — the workflow is archived / untagged;
+- **emptying the trash** silently does nothing in n8n, so a `sync+two-way`
+  workflow that should have been `DELETE /workflows/{id}`-ed is **left alive in
+  n8n forever**, with its Nextcloud file gone.
+
+That is a quiet leak rather than data loss, which is exactly the kind of thing
+that survives a long time without being noticed — nobody goes looking in n8n for
+workflows whose files they deleted months ago.
+
+### What to actually check before acting
+
+1. Delete a `sync+two-way` `.n8n.json` in the Files app → confirm the soft step
+   ran (archived/untagged in n8n).
+2. Empty the Nextcloud trash → **does `DELETE /workflows/{id}` ever happen?**
+   Watch `nextcloud.log` for this app's delete messages, or just look in n8n.
+3. If it does not: port `TrashPurgeHook` from `nextcloud-grafana` (or from
+   `nextcloud-penpot`, which is the same shape), and note the two details both
+   learned the hard way —
+   - the retention background job (`Files_Trashbin`'s `ExpireTrash`) has **no
+     session user**, so the uid has to fall back to `\OC_User::getUser()`, or an
+     auto-expired mirror leaks the same way;
+   - `connectHook` **appends with no de-duplication**, so a second `boot()` in one
+     process stacks the handler and fires the purge twice per file — both siblings
+     guard it with a static flag.
+4. Whichever way it lands, fix `DeleteToN8nListener`'s docblock: right now two
+   sibling apps document contradictory behaviour for the same Nextcloud version,
+   and this one is what the third app followed into a bug.
+
+### Also worth a look while in there
+
+The trashed node is renamed on its way into the trash — `<name>.n8n.json.d<ts>` —
+so any check shaped like `str_ends_with($name, '.n8n.json')` is **false** at purge
+time. `WebDavTrait` in this repo's integration suite already documents the
+`.dNNNN` suffix; the listener side may or may not account for it.

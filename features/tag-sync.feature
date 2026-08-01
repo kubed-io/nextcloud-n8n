@@ -6,9 +6,14 @@
 #   • n8n tags       — tags on the workflow (`/api/v1/tags`, opaque ids; the
 #                      workflow GET body echoes `tags: [{id,name},...]`). Written
 #                      via a SEPARATE call: ensureTag(name)->id, then
-#                      setWorkflowTags(id, [ids]) — the body PUT does not accept
-#                      tags (n8n rejects the field; `N8nWorkflowBody`'s writable
-#                      whitelist omits it).
+#                      setWorkflowTags(id, [ids]).
+#                      THE BODY CAN NEVER CARRY TAGS, ON CREATE OR ON UPDATE — this
+#                      is read off n8n's own OpenAPI spec, not inferred: both
+#                      `workflow.yml` and `workflowCreate.yml` are
+#                      `additionalProperties: false` with `tags: readOnly: true`.
+#                      `PUT /workflows/{id}/tags` (tag IDS, not names) is the only
+#                      writer there is. `N8nWorkflowBody`'s writable whitelist omits
+#                      `tags` for exactly that reason.
 #   • Nextcloud tags — collaborative SYSTEM TAGS (the coloured pills in Files,
 #                      searchable via DAV REPORT).
 #
@@ -24,13 +29,41 @@
 #   1. n8n tags on the workflow    (edit in n8n → pull)                    — LIVE
 #   2. the file body `tags` array  (edit the JSON → push)                  — DEFERRED
 #   3. Nextcloud system-tag pills  (edit the pills → push)                 — LIVE
-# The design INTENT is: the FILE BODY is the canonical object and the PILLS are a
-# listener-kept projection. But surface 2 is DEFERRED (saga §5.6.2.3) — see the status
-# block below. TODAY the body `tags` array is a DERIVED MIRROR the pull writes; a
-# hand-edit of it is NOT projected to n8n and self-heals on the next pull. The PILLS
-# are the authoritative Nextcloud tag surface today (surface 3). In `link` mode the
-# body is a pointer (not the object), so only surfaces 1 and 3 exist and the pills are
-# a read-only projection of n8n.
+# TODAY the body `tags` array is a DERIVED MIRROR the pull writes; a hand-edit of it
+# is NOT projected to n8n and self-heals on the next pull. The PILLS are the
+# authoritative Nextcloud tag surface today (surface 3). In `link` mode the body is a
+# pointer (not the object), so only surfaces 1 and 3 exist and the pills are a
+# read-only projection of n8n.
+#
+# THE THREE SURFACES ARE NOT PEERS — ONLY ONE IS PORTABLE (saga §5.6.3). This is what
+# decides the model, and it is a fact about the surfaces rather than a preference:
+#
+#   surface            survives export/re-import?   survives a copy?
+#   n8n tags           n/a — it IS the remote        n/a
+#   NC pills           NO — bound to a file id       NO (NC doesn't copy system tags)
+#   body `tags`        YES — it is bytes in the file YES
+#
+# So a `.n8n.json` that leaves Nextcloud and comes back carries its tags in exactly
+# one place: its own body. Nothing else can know them.
+#
+# AUTHORITY BELONGS TO THE MOMENT, NOT TO A SURFACE. "The JSON is the source of truth"
+# and "n8n takes precedence" are not in conflict once they are separated by when:
+#
+#   ADOPTION (a file becomes managed: create / copy / move-in)  → THE BODY WINS
+#       Nothing else knows. No pills, no metadata, no workflow yet.
+#   STEADY STATE, no Nextcloud edit                            → n8n WINS
+#       n8n is the system of record; the pull heals both NC surfaces and a stale
+#       body loses. A file-vs-n8n disagreement with no NC edit resolves to n8n.
+#   A DELIBERATE NEXTCLOUD EDIT (a pill toggle, or a body-`tags` edit) → THE EDIT WINS
+#       The user acted; carry it to n8n.
+#
+# WHY PICKING A WINNER IS NOT ENOUGH ON ITS OWN: `body {a,b}` vs `n8n {a,b,c}` is the
+# SAME two sets whether the user deleted `c` from the file or added the `c` pill while
+# the body sat stale — and the correct answer is opposite in each case. A fixed winner
+# does not resolve that, it only picks which of two legitimate gestures to break. The
+# BASELINE is what says who moved (see PROVENANCE below); precedence is then needed
+# only where there is no baseline at all — which is adoption, and there n8n's rule is
+# the tiebreak.
 #
 # NO EXTRA BUTTON FOR TAGS — a pill edit auto-propagates (LIVE, Slice A): adding or
 # removing a system-tag pill on a managed `sync` file is caught by a dedicated tag
@@ -56,9 +89,15 @@
 # next push carries the change to n8n. This is NOT wired today (the attempt regressed
 # the pill path and was reverted); the body is a derived mirror for now.
 #
-# PULL CHANGE-DETECTION — the scheduled (and manual) pull only writes what actually
-# changed, so an hourly n8n→NC pull does not churn every file. Per workflow it
-# compares n8n against the local file and takes ONE branch:
+# PULL CHANGE-DETECTION — NOT BUILT (saga §5.6.3). Stated here as the target, and
+# every scenario for it below is `@todo`. TODAY `SyncService::writeWorkflow` calls
+# `putContent($body)` UNCONDITIONALLY for every workflow on every pull, so an hourly
+# pull rewrites every mirrored file and bumps its mtime every hour. This is also why
+# a pill added in Nextcloud only reaches the file's `tags` array when the next pull
+# rewrites the WHOLE body — the tags-only branch below is what fixes both.
+#
+# The target: only write what actually changed. Per workflow, compare n8n against the
+# local file and take ONE branch:
 #   • body identical AND tags identical → SKIP: nothing to do, next workflow.
 #   • body differs                      → write the new body (it already carries
 #                                         n8n's `tags`), then reconcile the pills.
@@ -151,10 +190,20 @@
 # but UNWIRED, for when the feature is picked up as its own `NodeWrittenEvent` trigger
 # (and it must be verified live before its `@todo` scenarios come off).
 #
-# Still PLANNED (`@todo` per-scenario): (1) the body↔pills projection scenarios below
-# (surface 2), (2) PULL CHANGE-DETECTION (skip-unchanged / body / tags-only branches),
-# and (3) the reactive eject and the optional catalog sweep. Shared with the Grafana
-# sibling; per-backend knobs = tag write path, reserved prefix, protected-tags set.
+# Still PLANNED (`@todo` per-scenario): (1) ADOPTION carrying the body's tags into n8n
+# — a DEFECT today, not merely unbuilt: the tags are silently discarded (saga §5.6.3),
+# (2) the body↔pills projection scenarios (surface 2), (3) PULL CHANGE-DETECTION
+# (skip-unchanged / body / tags-only branches), and (4) the reactive eject and the
+# optional catalog sweep. Shared with the Grafana sibling; per-backend knobs = tag
+# write path, reserved prefix, protected-tags set.
+#
+# WHAT IS REALTIME, AND WHAT CANNOT BE:
+#   pill → n8n         realtime (`timing=sync`) or next tick (`async`)   — LIVE
+#   file body → n8n    would be realtime on the same NodeWrittenEvent    — PLANNED
+#   n8n → Nextcloud    scheduled pull only                               — POLL-ONLY
+# The third is not a gap that can be closed: n8n emits no outbound event on a tag
+# change. The near-realtime answer stays "build an n8n workflow that pushes to
+# Nextcloud", the same escape hatch the schedule setting already advertises.
 #
 # SCOPE — TAG SYNC IS A MAPPED-FOLDER FEATURE: every tag behaviour here (pull mirror,
 # push, auto-trigger, change-detection) applies ONLY to a file managed by a mapping.
@@ -175,6 +224,62 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
   Background:
     Given the app is connected to n8n
     And a folder mapped as "sync" to the n8n tag "flows"
+
+    # ══ ADOPTION: THE ONE MOMENT THE BODY IS THE ONLY THING THAT KNOWS ═════════
+    #
+    # A file becomes managed — dropped into a mapped folder, copied, or moved in —
+    # and a workflow is created for it in n8n. At that instant there are no pills,
+    # no `n8n_syncedTags` baseline, and no workflow: the ONLY record of what this
+    # thing was tagged is its own `tags` array. So the body seeds n8n.
+    #
+    # THIS IS A DEFECT TODAY, NOT MERELY UNBUILT (saga §5.6.3). `CreateService`
+    # sends `N8nWorkflowBody::toCreateBody`, whose whitelist omits `tags`, so
+    # `$created['tags']` is ALWAYS empty and the "additive merge" merges the mapping
+    # tag into nothing. Every tag in the file is silently discarded. The docblock
+    # claiming "POST /workflows preserves tags the body declared" is wrong twice
+    # over: we never declare them, and n8n's schema marks `tags` readOnly anyway.
+    #
+    # The fix is a `PUT /workflows/{id}/tags` with the body's tag names ensured to
+    # ids, unioned with the mapping tag — the same call the reconcile already makes.
+    # These scenarios are the spec for it. They were never written before, which is
+    # why nothing caught the bug.
+
+  @todo
+  Scenario: Adopting a file carries the tags in its body into n8n
+    Given a workflow file whose body carries the tags "prod", "billing", and "critical"
+    When the file is placed in the "flows" mapped folder
+    Then a workflow is created in n8n for it
+    And the workflow in n8n is tagged "prod", "billing", "critical", and "flows"
+    And the file's Nextcloud system tags are "prod", "billing", and "critical"
+    # The mapping tag joins them — adoption is additive, never a replace.
+
+  @todo
+  Scenario: A file with no tags in its body adopts with only the mapping tag
+    Given a workflow file whose body carries no tags
+    When the file is placed in the "flows" mapped folder
+    Then the workflow in n8n is tagged only "flows"
+    # Nothing to seed. The absence of a `tags` array is not an error.
+
+  @todo
+  Scenario: A round trip out of Nextcloud and back keeps the workflow's tags
+    Given a mirrored workflow file tagged "prod" and "billing"
+    When the file is copied out of Nextcloud and its workflow is deleted in n8n
+    And the copy is placed back into the "flows" mapped folder
+    Then the workflow recreated in n8n is tagged "prod", "billing", and "flows"
+    # THE TRANSPORT CASE. The pills did not survive the trip (they are bound to a
+    # file id) and n8n no longer holds the workflow. The body is the only carrier
+    # left, and it is enough.
+
+  @todo
+  Scenario: Adoption does not consult n8n for tags it cannot yet have
+    Given a workflow file whose body carries the tag "prod"
+    When the file is placed in the "flows" mapped folder
+    Then the tags are taken from the body alone
+    And no existing n8n workflow's tags are read to decide them
+    # There is no baseline and no remote counterpart at adoption, so there is
+    # nothing to merge against — the three-way merge does not apply here.
+
+    # ══ STEADY STATE ═══════════════════════════════════════════════════════════
 
   Scenario: Pull mirrors n8n tags onto the Nextcloud file as system tags
     Given n8n has a workflow tagged "flows", "dns", and "linux"
@@ -273,13 +378,33 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     Then the workflow in n8n is tagged "flows" and "linux" without a manual push
     And the file has no content tag "old"
 
-  # Surface 2 (the body↔pills projection) is DEFERRED (saga §5.6.2.3). The reconcile
-  # engine is unit-tested (TagReconcileServiceTest) and the WebDAV body-edit step defs
-  # below are written, but the trigger is NOT wired: Slice B was built and reverted
-  # because its shared-merge refactor regressed the shipping pill path. These stay
-  # @todo until the body edit is re-implemented as its own NodeWrittenEvent trigger
-  # (without touching reconcilePush) AND verified end-to-end against a live n8n. Until
-  # then the body `tags` array is a derived mirror — edit the pills, not the JSON.
+  # ── surface 2: editing the tags array in the file ────────────────────────────
+  #
+  # DEFERRED (saga §5.6.2.3, redesigned in §5.6.3). The reconcile engine is
+  # unit-tested (TagReconcileServiceTest) and the WebDAV body-edit step defs below
+  # are written, but the trigger is NOT wired: Slice B was built and reverted
+  # because its shared-merge refactor regressed the shipping pill path.
+  #
+  # THE OPEN PROBLEM, STATED SO IT IS NOT REDISCOVERED: telling "the user edited the
+  # tags array" from "the body is merely stale". The body goes stale for exactly one
+  # reason — a pill edit updates the pills and n8n and deliberately leaves the file
+  # alone (Slice A's contract). So `body ≠ pills` is ambiguous, and reading the body
+  # as whole-set truth would push a REMOVAL of the pill the user just added, on an
+  # unrelated nodes-only save. Two honest fixes, both recorded in §5.6.3:
+  #
+  #   A — a change marker (`n8n_bodyTags`): store the tag set the body carried when
+  #       the app last read or wrote it. Equal ⇒ the user did not touch tags (free,
+  #       no n8n call, and a stale body still equals its own marker). Different ⇒ a
+  #       deliberate edit, applied as a DELTA. No extra file writes; the body may lag
+  #       visibly until the next pull. ← current lean
+  #   B — lockstep: a pill edit also rewrites the body's `tags` array, so the two can
+  #       never diverge and `body ≠ pills` unambiguously means a body edit. No new
+  #       metadata; costs one guarded putContent per pill edit, and every future
+  #       writer of the tag set has to remember to do it.
+  #
+  # Until one lands, the body `tags` array is a derived mirror — edit the pills, not
+  # the JSON. Whichever lands must be VERIFIED LIVE before its @todo comes off; a
+  # green unit test was not enough for this one last time.
   @todo
   Scenario: Editing a pill updates the file body's tags array (body is canonical)
     Given the push timing is "sync"
@@ -327,6 +452,41 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     When the admin edits the file body's "tags" array to only "linux"
     Then the file's Nextcloud system tags still include "flows"
     And the file stays mapped to "flows"
+
+  # THE TWO SCENARIOS THAT MAKE THE SURFACE SAFE. Whichever of A/B above is built,
+  # these are what prove it did not resurrect the false-removal bug. They are the
+  # first tests to write, not the last.
+
+  @todo
+  Scenario: A save that did not touch the tags array costs nothing
+    Given a managed "sync" workflow file in "flows" tagged "flows" and "linux"
+    When the admin edits the workflow's nodes and saves, leaving the tags array alone
+    Then no tag call is made to n8n
+    And the file's Nextcloud system tags are unchanged
+    # The common case by far. It must be free — no getWorkflow, no setWorkflowTags.
+
+  @todo
+  Scenario: A stale tags array never removes a pill the user just added
+    Given a managed "sync" workflow file in "flows" tagged "flows" and "linux"
+    And the admin adds the Nextcloud system tag "urgent" to the file
+    When the admin edits the workflow's nodes and saves, leaving the tags array alone
+    Then the workflow in n8n is still tagged "flows", "linux", and "urgent"
+    And the file still has the Nextcloud system tag "urgent"
+    # The body's tags array still reads "flows, linux" — it lags by design, because a
+    # pill edit does not rewrite the file. Reading it as truth here would push a
+    # removal of the pill the user added seconds ago. THIS IS THE BUG THE WHOLE
+    # marker-vs-lockstep decision exists to prevent (saga §5.6.3).
+
+  # n8n's precedence, stated as behaviour rather than as a rule in a comment: with no
+  # deliberate Nextcloud edit in play, a disagreement resolves toward n8n and the
+  # file's copy loses. This is what "the file is a derived mirror" MEANS.
+  @todo
+  Scenario: With no Nextcloud edit, a file that disagrees with n8n loses
+    Given a managed "sync" workflow file in "flows" whose body's tags array reads "flows" and "linux"
+    And the workflow in n8n is tagged "flows", "linux", and "prod"
+    When the "flows" mapping is pulled
+    Then the file's Nextcloud system tags are "flows", "linux", and "prod"
+    And the file body's "tags" array becomes "flows", "linux", and "prod"
 
   Scenario: A tag added in Nextcloud since the last sync is added in n8n
     Given a managed "sync" file last synced with tags "flows" and "linux"

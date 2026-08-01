@@ -42,7 +42,12 @@ identify the service this app integrates with.
   <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/admin-folder-mappings.png</screenshot>
   <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/admin-actions.png</screenshot>
   <dependencies>
-    <nextcloud min-version="30" max-version="33"/>
+    <!-- 31, not 30: AutoSyncSettings implements IDeclarativeSettingsFormWithHandlers
+         (@since 31.0.0), which is the only way an ADMIN declarative form can carry a
+         CHECKBOX at all — core's INTERNAL storage throws a TypeError on both the read
+         and the write of a bool (see that class's docblock). Nextcloud 30 reached end
+         of life in 2025, so nothing supported is lost. -->
+    <nextcloud min-version="31" max-version="33"/>
   </dependencies>
   <settings>
     <!-- Test Connection buttons are folded into the Sync Actions panel

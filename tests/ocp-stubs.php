@@ -111,6 +111,10 @@ namespace OCP {
 		interface IAppConfig {
 			public function getValueString(string $app, string $key, string $default = '', bool $lazy = false, bool $sensitive = false): string;
 			public function setValueString(string $app, string $key, string $value, bool $lazy = false, bool $sensitive = false): bool;
+			// AutoSyncSettings stores `schedule_enabled` bool-typed so the scheduled
+			// job's primary getValueBool() read succeeds (see that class's docblock).
+			public function getValueBool(string $app, string $key, bool $default = false, bool $lazy = false): bool;
+			public function setValueBool(string $app, string $key, bool $value, bool $lazy = false): bool;
 		}
 	}
 	// LinkWriteGuardPlugin resolves the acting user for its notification; both are
@@ -148,6 +152,15 @@ namespace OCP\Settings {
 			public function getSchema(): array;
 		}
 	}
+	// AutoSyncSettings implements this (core `@since 31.0.0`) so it owns its own
+	// storage — the only way an ADMIN form can carry a CHECKBOX (see that class).
+	if (!interface_exists(IDeclarativeSettingsFormWithHandlers::class, false)) {
+		interface IDeclarativeSettingsFormWithHandlers extends IDeclarativeSettingsForm {
+			public function getValue(string $fieldId, \OCP\IUser $user): mixed;
+
+			public function setValue(string $fieldId, mixed $value, \OCP\IUser $user): void;
+		}
+	}
 	if (!class_exists(DeclarativeSettingsTypes::class, false)) {
 		// Mirror every DeclarativeSettingsTypes constant the app's forms reference
 		// (grep `DeclarativeSettingsTypes::` in lib/) so instantiating any settings
@@ -156,6 +169,7 @@ namespace OCP\Settings {
 		final class DeclarativeSettingsTypes {
 			public const SECTION_TYPE_ADMIN = 'admin';
 			public const STORAGE_TYPE_INTERNAL = 'internal';
+			public const STORAGE_TYPE_EXTERNAL = 'external';
 			public const TEXT = 'text';
 			public const PASSWORD = 'password';
 			public const URL = 'url';

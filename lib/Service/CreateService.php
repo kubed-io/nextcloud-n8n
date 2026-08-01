@@ -103,11 +103,24 @@ final class CreateService {
 	}
 
 	/**
-	 * Ensure $tagName exists in n8n and PUT it onto the workflow, **merging**
-	 * with any tags the create response already returned (POST `/workflows`
-	 * preserves tags the body declared; merging keeps any pre-existing tags
-	 * the user explicitly carried over from another instance). Failure here is
-	 * logged and swallowed — see createForFile() rationale.
+	 * Ensure $tagName exists in n8n and PUT it onto the workflow, **merging** with
+	 * any tags the create response returned.
+	 *
+	 * KNOWN GAP — THE MERGE IS CURRENTLY ALWAYS AGAINST AN EMPTY SET (saga §5.6.3).
+	 * This used to claim "POST /workflows preserves tags the body declared". It does
+	 * not, twice over: {@see N8nWorkflowBody::toCreateBody}'s writable whitelist omits
+	 * `tags`, so we never declare them — and n8n's own schema (`workflowCreate.yml`,
+	 * `additionalProperties: false`) marks `tags` **readOnly**, so declaring them would
+	 * be rejected anyway. `PUT /workflows/{id}/tags` is the only writer that exists.
+	 *
+	 * The consequence is a real defect: a `.n8n.json` carrying tags in its body is
+	 * adopted into n8n with the mapping tag ONLY, and every tag it arrived with is
+	 * silently discarded. That is the one moment the body is the sole record of those
+	 * tags (a copy or a round trip out of Nextcloud loses the pills, which are bound
+	 * to a file id). The fix is to union the body's tag names into `$merged` here;
+	 * `features/tag-sync.feature`'s ADOPTION section is its spec.
+	 *
+	 * Failure here is logged and swallowed — see createForFile() rationale.
 	 *
 	 * @param array<string,mixed> $created the workflow as returned by POST
 	 */
