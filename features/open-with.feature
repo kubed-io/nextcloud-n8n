@@ -39,10 +39,12 @@ Feature: Opening a workflow file (Open in n8n / Open with text editor)
     When I choose "Open in n8n" from its context menu
     Then n8n opens at that workflow (not a download, not the text editor)
 
+  @user @ui
   Scenario: Open in n8n is hidden when there is no live workflow (unmapped)
     Given a managed workflow file in "unmapped" mode
     Then "Open in n8n" is hidden from its context menu
 
+  @user @ui
   Scenario: Open in n8n is hidden when there is no live workflow (ignored)
     Given a managed workflow file in "ignored" mode
     Then "Open in n8n" is hidden from its context menu

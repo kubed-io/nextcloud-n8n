@@ -19,17 +19,20 @@ Feature: Mapping membership is resolved by folder
   Background:
     Given the app is connected to n8n
 
+  @user @in-nextcloud @gesture @ui
   Scenario: A file's mapping is the folder it lives in
     Given a folder mapped to the n8n tag "nextcloud:demo"
     When a managed workflow file lives in that folder
     Then the file belongs to the "nextcloud:demo" mapping
 
+  @user @in-nextcloud @gesture @ui
   Scenario: A file outside every mapped folder belongs to no mapping
     Given a folder that is not mapped
     When a workflow file lives in that folder
     Then the file belongs to no mapping
     And it is "untracked" if it has no n8n id, or "unmapped" if it carries one
 
+  @admin @ui @occ
   Scenario: Folder mappings are metadata, so a mapped folder can nest in another
     Given a folder mapped to the n8n tag "nextcloud:outer"
     And a subfolder of it mapped to the n8n tag "nextcloud:inner"

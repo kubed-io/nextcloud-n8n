@@ -48,6 +48,7 @@ Feature: The n8n:ignore reserved tag excludes individual workflows
     Then that workflow is not pulled into Nextcloud
     And no file is created for it
 
+  @user @in-nextcloud @gesture @ui
   Scenario: n8n:ignore on a file already in a mapped folder gives it "ignored" mode
     Given a managed "sync" workflow file in the "team:flows" folder
     When I tag it "n8n:ignore"
@@ -56,6 +57,7 @@ Feature: The n8n:ignore reserved tag excludes individual workflows
     And the workflow is archived in n8n
     And subsequent pulls/pushes for "team:flows" skip it
 
+  @user @in-nextcloud @gesture @ui
   Scenario: Removing n8n:ignore returns the file to the mapping's mode
     Given a managed "sync" workflow file in the "team:flows" folder
     And I tag it "n8n:ignore"

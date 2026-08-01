@@ -221,6 +221,31 @@ final class TagReconcileServiceTest extends TestCase {
 		);
 	}
 
+	/**
+	 * RESERVED MARKERS MUST NOT REACH THE BODY. `reconcilePush()` returns the final n8n
+	 * set, which deliberately re-sends any `n8n:*` marker the workflow already had —
+	 * correct for n8n (setWorkflowTags is a full replace) and wrong for the file. The
+	 * body is CONTENT, and it is the one portable surface: a reserved marker written
+	 * here would travel with the file and seed itself as a content tag on adoption.
+	 */
+	public function testPillEditNeverWritesReservedTagsIntoTheBody(): void {
+		$this->metadata->method('read')->willReturn($this->managed(Mapping::MODE_SYNC));
+		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
+		$this->tagSync->method('reconcilePush')->willReturn([
+			['id' => 't1', 'name' => 'prod'],
+			['id' => 't7', 'name' => 'n8n:ignore'],
+			['id' => 't9', 'name' => 'flows'],
+		]);
+
+		$written = null;
+		$node = $this->fileWith(5, '{"name":"WF","tags":[]}', $written);
+		$this->service->reconcileFile($node);
+
+		self::assertNotNull($written);
+		$names = array_column(json_decode($written, true)['tags'], 'name');
+		self::assertSame(['flows', 'prod'], $names, 'a reserved marker leaked into the file body');
+	}
+
 	/** A pill toggle resolving to the same set must not churn the file. */
 	public function testPillEditDoesNotRewriteAnUnchangedBody(): void {
 		$this->metadata->method('read')->willReturn($this->managed(Mapping::MODE_SYNC));

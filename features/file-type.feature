@@ -22,6 +22,7 @@ Feature: n8n workflow is a first-class file type
   Background:
     Given the app is connected to n8n
 
+  @user @ui
   Scenario: Workflow files get the custom mimetype and n8n icon
     Given a managed workflow file
     Then its mimetype is "application/n8n+json"
@@ -41,6 +42,7 @@ Feature: n8n workflow is a first-class file type
   # `link` stores as "reference" — the literal "link" is `is_callable()`, which
   # crashes core's PROPFIND, and that is the only reason a wire value differs from
   # its mode name anywhere in this app.
+  @user @ui
   Scenario Outline: The mode property carries the descriptive value
     Given a managed workflow file in "<mode>" mode
     Then its "nc:metadata-n8n_mode" property is "<dav value>"
