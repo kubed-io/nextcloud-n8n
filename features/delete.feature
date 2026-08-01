@@ -84,7 +84,7 @@ Feature: Deleting a workflow file
   # already archived and belongs to no mapping — purging the last Nextcloud copy is
   # arguably the user saying "done with this", but it is also the one case where
   # Nextcloud destroys an n8n object it no longer owns. Not a bug to fix quietly.
-  @todo
+  @unbuilt
   Scenario: Purging an unmapped file permanently deletes the archived workflow
     Given a trashed unmapped workflow file that still carries its "n8n_id"
     When I purge it from the trash
@@ -95,11 +95,12 @@ Feature: Deleting a workflow file
     When I restore it from the trash
     Then the archived workflow in n8n is left as-is
 
-  # Error-path branch — documented but not wired. Forcing a real transport
-  # failure mid-DELETE is brittle for an integration test; the cleaner home for
-  # this is a unit test against a mocked N8nClient asserting AbortedEventException.
-  # Left @todo (CI skips it) as a "bow on top" we can add later.
-  @todo
+  # @blocked, not @todo: the code exists (AbortedEventException aborts the NC
+  # delete), but this harness has no way to make n8n unreachable for the duration
+  # of one request — that is the missing capability, and naming it is what keeps
+  # this out of the @todo work queue. A unit test against a mocked N8nClient is
+  # the cheaper home if it is ever wanted.
+  @blocked
   Scenario: A delete is aborted if n8n is unreachable
     Given a managed "sync" workflow file
     And n8n is unreachable

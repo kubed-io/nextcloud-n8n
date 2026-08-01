@@ -15,16 +15,22 @@
 # (matched by id, never duplicated) — the reconnect is free, by design.
 #
 # The <uninstall> system leg needs a full app remove on a live pod (CI can't drive
-# it), so it stays @todo; the data-orphan + reinstall-reconnect legs are provable via
-# disable/re-enable + a pull, which exercises the same metadata-keyed reconcile.
+# it), so it stays skipped; the data-orphan + reinstall-reconnect legs are provable
+# via disable/re-enable + a pull, which exercises the same metadata-keyed reconcile.
 
-# Spec-first / @todo: the SYSTEM leg needs a real app-remove on a live pod (the CI
-# harness can only disable/enable, not remove+reinstall), so it stays manual. The
-# DATA promise — reinstall reconciles existing files in place by id with NO
-# duplicates — is already proven LIVE by reconcile.feature ("existing files are
-# updated in place — matched by workflow id, never duplicated"); a disable/enable
-# changes nothing about that reconcile, so re-proving it here would be redundant.
-@todo
+# @blocked, NOT @todo, and the missing capability is named: the CI harness can only
+# disable and enable the app, never remove and reinstall it. No test anyone writes
+# will pass until that exists, which is exactly the distinction the tag makes.
+#
+# NOTE THE TAG IS ON THE `Feature:`, so it excludes EVERY scenario below, including
+# the data-orphan ones a disable/enable could genuinely prove. That is deliberate
+# but easy to misread: the DATA promise — reinstall reconciles existing files in
+# place by id with NO duplicates — is already proven LIVE by reconcile.feature
+# ("existing files are updated in place — matched by workflow id, never
+# duplicated"), and a disable/enable changes nothing about that reconcile, so
+# re-proving it here would be duplicate coverage of one behaviour in two files.
+# If this file is ever un-blocked, delete those scenarios rather than run them.
+@blocked
 Feature: Uninstall reverts the system and reinstall reconnects the data
   As a Nextcloud admin
   I want removing the app to leave Nextcloud clean and reinstalling to just resync
@@ -35,7 +41,7 @@ Feature: Uninstall reverts the system and reinstall reconnects the data
     And a folder mapped as "sync" to the n8n tag "nextcloud:alpha"
 
   # ── system cleanup (needs a live app remove — @todo in CI) ────────────────────
-  @todo
+  @blocked
   Scenario: Removing the app reverts the custom mimetype registration
     Given the app registered the "application/n8n+json" mimetype on install
     When the app is removed
