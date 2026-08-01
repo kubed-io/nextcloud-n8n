@@ -44,6 +44,7 @@ final class CreateService {
 		private N8nClient $n8n,
 		private WorkflowMetadata $metadata,
 		private OwnershipTags $ownershipTags,
+		private TagSyncService $tagSync,
 		private SyncGuard $guard,
 		private IMimeTypeLoader $mimeLoader,
 		private LoggerInterface $logger,
@@ -73,7 +74,13 @@ final class CreateService {
 		// Tag (additive). Failure here is non-fatal — the workflow exists,
 		// we'd rather stamp the file and let the user re-tag manually than
 		// orphan an n8n workflow with no NC link. Logged, never thrown.
-		$this->applyMappingTagAdditive($id, $created, $mapping->n8nTag);
+		// THE ADOPTION RULE (saga §5.10): at this instant the body is the ONLY record of
+		// this thing's tags — there are no pills yet on a freshly-landed file, no baseline,
+		// and the workflow did not exist a moment ago. So the body seeds n8n. This is also
+		// where tags added while the file sat OUTSIDE any mapping finally reach n8n.
+		$this->applyMappingTagAdditive($id, $created, $mapping->n8nTag, $this->tagSync->contentTagsFromWorkflow(
+			is_array($decoded = json_decode($content, true)) ? $decoded : [],
+		));
 
 		// Re-fetch ourselves the new content if n8n re-shaped anything?
 		// No — POST /workflows echoes the body back as-stored, so the file the
@@ -117,32 +124,38 @@ final class CreateService {
 	 * adopted into n8n with the mapping tag ONLY, and every tag it arrived with is
 	 * silently discarded. That is the one moment the body is the sole record of those
 	 * tags (a copy or a round trip out of Nextcloud loses the pills, which are bound
-	 * to a file id). The fix is to union the body's tag names into `$merged` here;
-	 * `features/tag-sync.feature`'s ADOPTION section is its spec.
+	 * to a file id). FIXED: the body's own tag names are now ensured in n8n and unioned
+	 * in, so a file that arrives already tagged keeps its tags. `features/tag-sync.feature`'s
+	 * ADOPTION section is the spec.
+	 *
+	 * `$created['tags']` is still read and merged, even though n8n's schema means it is
+	 * always empty today — it costs nothing and stops this from silently discarding tags
+	 * if n8n ever does start echoing them back on create.
 	 *
 	 * Failure here is logged and swallowed — see createForFile() rationale.
 	 *
 	 * @param array<string,mixed> $created the workflow as returned by POST
+	 * @param list<string> $bodyTags content tag names the arriving file already carried
 	 */
-	private function applyMappingTagAdditive(string $workflowId, array $created, string $tagName): void {
+	private function applyMappingTagAdditive(string $workflowId, array $created, string $tagName, array $bodyTags): void {
 		try {
-			$tagId = $this->n8n->ensureTag($tagName);
 			$existing = [];
 			foreach (($created['tags'] ?? []) as $t) {
 				if (is_array($t) && isset($t['id']) && is_string($t['id']) && $t['id'] !== '') {
 					$existing[] = $t['id'];
 				}
 			}
-			$merged = $existing;
-			if (!in_array($tagId, $merged, true)) {
-				$merged[] = $tagId;
-			}
+			// The mapping tag plus whatever the file arrived carrying. `ensureTags` is the
+			// batch form — one tag-list GET for the whole set instead of one per name.
+			$names = $tagName === '' ? $bodyTags : array_merge([$tagName], $bodyTags);
+			$merged = array_values(array_unique(array_merge($existing, $this->n8n->ensureTags($names))));
 			$this->n8n->setWorkflowTags($workflowId, $merged);
 		} catch (\Throwable $e) {
-			$this->logger->warning('n8n_sync: failed to assign mapping tag to created workflow', [
+			$this->logger->warning('n8n_sync: failed to assign tags to created workflow', [
 				'app' => Application::APP_ID,
 				'workflowId' => $workflowId,
 				'tag' => $tagName,
+				'bodyTags' => $bodyTags,
 				'exception' => $e,
 			]);
 		}

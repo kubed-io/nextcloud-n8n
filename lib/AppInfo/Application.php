@@ -13,6 +13,7 @@ use OCA\DAV\Events\SabrePluginAddEvent;
 use OCA\Files\Event\LoadAdditionalScriptsEvent;
 use OCA\Files_Trashbin\Events\NodeRestoredEvent;
 use OCA\N8nSync\BackgroundJob\ScheduledPullJob;
+use OCA\N8nSync\Listener\BodyTagListener;
 use OCA\N8nSync\Listener\ContentTagListener;
 use OCA\N8nSync\Listener\CopyListener;
 use OCA\N8nSync\Listener\CreateInN8nListener;
@@ -164,6 +165,15 @@ final class Application extends App implements IBootstrap {
 		// SyncGuard, so the tag events it re-fires bail here.
 		$context->registerEventListener(TagAssignedEvent::class, ContentTagListener::class);
 		$context->registerEventListener(TagUnassignedEvent::class, ContentTagListener::class);
+
+		// §5.9 the THIRD tag direction: a hand-edit of the `tags` array inside a
+		// .n8n.json reaches n8n and the pills. Its OWN listener rather than a branch in
+		// NodeWrittenListener — an earlier attempt made the pill path and the body path
+		// share one "read the NC side" step and broke the shipping pill path (§5.6.2.3).
+		// They share the merge engine and nothing else. Cheap on an ordinary save: the
+		// body's tags are compared to the pills and bail before touching n8n when they
+		// agree, which is reliable only because a pill edit keeps the body in step.
+		$context->registerEventListener(NodeWrittenEvent::class, BodyTagListener::class);
 
 		// Files-app frontend: load the file-action bundle (icon + "Open in n8n"
 		// default click) on every page that fires LoadAdditionalScriptsEvent.

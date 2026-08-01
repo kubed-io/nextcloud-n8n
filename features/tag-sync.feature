@@ -395,6 +395,74 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     # This scenario is the acceptance test for the whole third direction. Any design
     # that cannot pass it is wrong regardless of how well it handles the happy path.
 
+    # ── RULE: THE NEXTCLOUD PAIR IS LOCAL; ONLY THE n8n LEG NEEDS A MAPPING ─────
+    #
+    # A `.n8n.json` has pills and a `tags` array whether or not it lives in a mapped
+    # folder. Keeping THOSE TWO in step is a Nextcloud-local concern — there is no
+    # remote system involved — so it happens for every workflow file, mapped or not.
+    # Only the third participant, n8n, requires a mapping.
+    #
+    #     pills  ⇄  body        always, for any .n8n.json
+    #     pills/body  →  n8n    only for a managed `sync` file
+    #     n8n  →  pills/body    only for a mapped folder, on a pull
+    #
+    # THIS IS WHAT MAKES THE TRANSPORT CASE WORK END TO END. Tags applied while a file
+    # sits outside every mapping are recorded in the body, which is the only surface
+    # that survives being moved, copied, or carried out of Nextcloud — so when the file
+    # is later dropped into a mapped folder, the tags are still there to seed n8n
+    # (create-workflow.feature's ADOPTION section). Without the local pair, a tag added
+    # to an unmapped file would live only in the pills and die the moment the file
+    # moved.
+    #
+    # A tag n8n has never seen has NO ID, and the body records it honestly as
+    # `{"name": "foo"}` with no other keys. n8n mints the id at adoption, and the next
+    # pull rewrites the array with canonical `{id,name}` rows. The file being briefly
+    # "incomplete" is correct, not a defect.
+
+  @unbuilt
+  Scenario: Tagging an unmapped workflow file keeps its body and pills in step
+    Given an untracked ".n8n.json" file outside every mapped folder
+    When the admin adds the Nextcloud system tag "prod" to the file
+    Then the file body's "tags" array becomes "prod"
+    And n8n is not contacted
+    And the tag is recorded by name only, with no id
+
+  @unbuilt
+  Scenario: Editing an unmapped file's tags array keeps its pills in step
+    Given an untracked ".n8n.json" file outside every mapped folder
+    When the admin adds the tag "prod" to the file body and saves
+    Then the file has the Nextcloud system tag "prod"
+    And n8n is not contacted
+
+  @unbuilt
+  Scenario: Untagging an unmapped workflow file keeps its body and pills in step
+    Given an untracked ".n8n.json" file outside every mapped folder tagged "prod"
+    When the admin removes the Nextcloud system tag "prod" from the file
+    Then the file body's "tags" array becomes empty
+    And n8n is not contacted
+    # Both directions, so neither surface can drift while the file waits outside.
+
+  @unbuilt
+  Scenario: Moving an untracked tagged file into a mapping creates it in n8n with its tags
+    Given an untracked ".n8n.json" file outside every mapped folder tagged "prod" and "billing"
+    When the file is moved into the "flows" mapped folder
+    Then a workflow is created in n8n for it
+    And the workflow in n8n is tagged "prod", "billing", and "flows"
+    And the file has the Nextcloud system tags "prod", "billing", and "flows"
+    # THE SCENARIO THE WHOLE LOCAL-PAIR RULE EXISTS FOR. No metadata means this is
+    # unambiguously a create, and the body is the only thing that knows the tags — the
+    # pills came along only because this is the same file id, and a copy or a round
+    # trip through another system would not have them at all.
+
+  @unbuilt
+  Scenario: The tags an adopted file arrives with come back with real ids
+    Given an untracked ".n8n.json" file outside every mapped folder tagged "prod"
+    And the file has been moved into the "flows" mapped folder
+    When the "flows" mapping is pulled
+    Then the file body's "tags" array carries "prod" with an n8n id
+    # The loose `{"name":"prod"}` the user typed is resolved by n8n, and the pull writes
+    # the canonical row back. Nothing corrects the file until n8n has an opinion.
+
     # ── THE TWO WAYS OUT, AND WHY ONE IS NOW PREFERRED ──────────────────────────
     #
     # A — REMEMBER WHAT THE BODY LAST HELD (`n8n_bodyTags`). A fourth stamp,

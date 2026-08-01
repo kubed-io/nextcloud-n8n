@@ -1015,6 +1015,144 @@ The concrete standing order that falls out of it:
 > to sit with. Fix the ticket. Then eat, because that was a good dish and it's going
 > cold while you take notes."*
 
+## §5.9 — Full three-way tag sync, and the blocker that turned out to be self-inflicted
+
+Slice B was deferred twice (§5.6.2.3), both times on the same reasoning: a body-tag
+edit cannot be told apart from a stale body, so reading the body as truth risks
+destroying a real pill edit. That reasoning was correct. What nobody had done was ask
+**how the body gets stale in the first place.**
+
+Command asked for the whole flow written out as pre/post state — every direction, all
+surfaces — precisely because it had only ever been argued about. Writing it down
+answered the question in one table.
+
+### The proof: staleness has exactly ONE cause
+
+Four surfaces, and the exercise is to enumerate every trigger and check the `body`
+column afterwards. Not asserted — enumerated, because the claim is that the list is
+exhaustive:
+
+| Trigger | What happens to the body | Verdict |
+|---|---|---|
+| a pull runs | rewritten wholesale from n8n | **fresh** |
+| the user edits the body | it *is* what they typed | **truth** |
+| a tag changes in n8n alone | invisible until a pull, which rewrites it | **fresh** |
+| **a pill is toggled** | n8n and pills move; the body is left alone | **STALE** |
+
+One row. And that row is not a fact about mirrors — it is Slice A's contract, chosen
+deliberately ("carry the pill, leave the body alone") to avoid writing a file on a tag
+click. So **the ambiguity that blocked this feature twice was a consequence of one
+design decision, not a property of three-way sync.**
+
+That reframes the whole problem. The two candidate fixes stop being equals:
+
+- **A — track the staleness.** A fourth stamp (`n8n_bodyTags`) recording what the body
+  last held, so a body change can be read as a delta rather than as truth.
+- **B — remove the staleness.** A pill edit also writes the body's `tags` array. Then
+  `body ≠ pills` can only mean a body edit, and no extra state exists to get stale.
+
+**B, and it is not close.** A adds a surface whose only job is to describe a lie we
+chose to tell; B stops telling it. B also needs no new metadata, and it converges with
+work already required: pull change-detection has to write the body's `tags` array
+in place on a tags-only change, which is the same operation. One mechanism, two
+features.
+
+### Correcting the record on why B was reverted
+
+B had been treated as discredited because it shipped once and was reverted. Re-reading
+that revert: **it was not about the body write at all.** The commit also refactored the
+SHARED merge so the pill path and the body path went through one "read the Nextcloud
+side" step, and *that* changed the pill path's behaviour and broke a shipping feature.
+The lesson recorded at the time — the body path needs its own entry point and must not
+touch `reconcilePush` — still stands, and it says nothing against lockstep.
+
+So a correct idea sat blocked for two rounds because it was bundled with an incorrect
+one, and the bundle was what got remembered. **When a revert is a bundle, record which
+part failed**, or the innocent half serves the sentence.
+
+### What shipped
+
+- `TagReconcileService::reconcileFile()` — the pill path now writes n8n's canonical
+  rows into the body, loop-guarded by a re-stamped `n8n_syncedHash`.
+- `TagReconcileService::reconcileFromBody()` — now compares the body to the **PILLS**,
+  not to `n8n_syncedTags`. That is the load-bearing change: the baseline moves on a
+  pill edit while the body does not, so comparing to it made an ordinary nodes-only
+  save look identical to a deliberate removal. Comparing to the pills is only reliable
+  *because* of the lockstep. The decidability comes from the invariant, not from a
+  cleverer comparison.
+- `BodyTagListener` — a dedicated `NodeWrittenEvent` trigger, sharing the merge engine
+  with the pill path and nothing else, exactly as §5.6.2.3 specified.
+- The body is left **as typed**. A bare `{"name": "prod"}` is not "corrected" on save;
+  n8n mints the id and the next pull writes the canonical row. Rewriting a file the
+  user is actively editing is hostile, and it would re-introduce the re-entrant write
+  this path is built without.
+
+One detail worth keeping: when the n8n push fails, the body is **still** converged —
+onto the pills. An outage is no reason to let the two Nextcloud surfaces disagree,
+because that disagreement is the very thing the design exists to prevent. The invariant
+has to hold on the error path or it is not an invariant.
+
+### The acceptance test, named
+
+> *A save that did not touch the tags must not undo a pill edit.*
+
+Any design that fails it is wrong however well it handles the happy path. It is a live
+scenario and a unit test, and it is the first thing to run if this ever regresses.
+
+---
+
+## §5.10 — The Nextcloud pair is local; only the n8n leg needs a mapping
+
+Command then added the case that completes the model:
+
+> *"a user adds/removes a tag from an unmapped flow — we don't even care about n8n in
+> this case, either direction is still synced."*
+
+Both reactive paths gated on `managed && sync`, so an unmapped `.n8n.json` synced
+neither way: its pills and its `tags` array could drift apart freely. That gate was
+wrong, and the reason is worth stating precisely — **it conflated three participants
+with two.**
+
+```
+pills  ⇄  body          Nextcloud-local. No remote system involved.
+pills/body  →  n8n      needs a mapping.
+n8n  →  pills/body      needs a mapping.
+```
+
+Only the legs that *talk to n8n* need a mapping. Keeping a file's own two surfaces in
+step never did.
+
+### Why it matters, and it is not a tidiness argument
+
+The body is the only **portable** surface (§5.6.3). Pills are bound to a file id and do
+not survive a copy or a trip out of Nextcloud; the `tags` array is bytes in the file. So
+a tag applied to a file sitting *outside* a mapping only survives if it reaches the
+body. With the old gate it never did — it lived in the pills and died the moment the
+file moved.
+
+Which means the transport case now closes end to end:
+
+1. tag a `.n8n.json` while it sits anywhere → the body records it, `{"name": "foo"}`,
+   no id, because n8n has never seen it and pretending otherwise would be a lie;
+2. move or copy the file into a mapped folder → no metadata, so this is unambiguously
+   a create, and the body is the only record of the tags → they seed the new workflow;
+3. the next pull writes n8n's canonical `{id,name}` rows back.
+
+Step 2 is also the **adoption defect** found in §5.6.3 finally fixed: `CreateService`
+was discarding every tag an arriving file carried, because `toCreateBody`'s whitelist
+omits `tags` and n8n marks the field readOnly on create anyway. It now ensures the
+body's names and unions them with the mapping tag through
+`PUT /workflows/{id}/tags` — the only writer n8n offers.
+
+A file being briefly "incomplete" on disk — a tag with a name and no id — is the
+honest state, not a defect to paper over. **Write down what you do not know yet.**
+
+> **Dr K, reading the ticket back:** *"So the thing blocking you was a rule you wrote
+> yourself, and you'd been treating it like weather. That's the lesson, not the merge.
+> And you had a gate asking 'is this mapped?' on a job that never once needed to leave
+> the building — two of your three parties don't care about the other kitchen at all.
+> Label the box before it goes on the truck. Even if all you know is what's in it."*
+
 ---
 
 Sources / cross-links:

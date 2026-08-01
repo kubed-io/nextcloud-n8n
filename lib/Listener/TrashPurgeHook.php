@@ -128,7 +128,10 @@ final class TrashPurgeHook {
 			// filename onto its prefix); Folder::get() normalises it away.
 			$node = $this->rootFolder->getUserFolder($uid)->getParent()->get(ltrim($path, '/'));
 		} catch (\Throwable $e) {
-			$this->logger->debug('n8n_sync purge: could not resolve the trashed node', [
+			// WARNING, not debug: production runs at loglevel 2, so a debug line here
+			// means the leak this listener exists to fix comes back with NO TRAIL. The
+			// benign bails below stay at debug; this one is a failure.
+			$this->logger->warning('n8n_sync purge: could not resolve the trashed node', [
 				'app' => Application::APP_ID,
 				'path' => $path,
 				'uid' => $uid,
@@ -161,11 +164,21 @@ final class TrashPurgeHook {
 			]);
 			return;
 		}
-		$this->logger->debug('n8n_sync purge: deleting the workflow in n8n', [
-			'app' => Application::APP_ID,
-			'workflowId' => $managed->workflowId,
-			'mode' => $managed->mode,
-		]);
+		// Say what will ACTUALLY happen. hardDelete() only deletes a `sync` workflow and
+		// no-ops for everything else, so an unconditional "deleting…" line made purge
+		// diagnostics lie for link/unmapped/ignored files.
+		if ($managed->isSync()) {
+			$this->logger->debug('n8n_sync purge: deleting the workflow in n8n', [
+				'app' => Application::APP_ID,
+				'workflowId' => $managed->workflowId,
+			]);
+		} else {
+			$this->logger->debug('n8n_sync purge: nothing to delete for a non-sync file', [
+				'app' => Application::APP_ID,
+				'workflowId' => $managed->workflowId,
+				'mode' => $managed->mode,
+			]);
+		}
 
 		try {
 			$this->deleteService->hardDelete($managed->workflowId, $managed->mode);

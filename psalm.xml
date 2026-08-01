@@ -51,9 +51,6 @@
 			<errorLevel type="suppress">
 				<referencedClass name="OC" />
 				<referencedClass name="OC_Util" />
-				<!-- TrashPurgeHook: names whose trash is being expired when the
-				     retention job runs with no session (see that class). -->
-				<referencedClass name="OC_User" />
 				<referencedClass name="OCA\Files\Event\LoadAdditionalScriptsEvent" />
 				<referencedClass name="OCA\Files_Trashbin\Events\NodeRestoredEvent" />
 			</errorLevel>
