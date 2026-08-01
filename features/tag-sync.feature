@@ -262,14 +262,14 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     # re-stamps `agreed`.
 
   Scenario: A tag added in n8n reaches both Nextcloud surfaces
-    Given the tag state is n8n "flows,linux" / pills "flows,linux" / body "flows,linux" / agreed "flows,linux"
+    Given the tag state starts as n8n "flows,linux" / pills "flows,linux" / body "flows,linux" / agreed "flows,linux"
     When the tag "prod" is added to the workflow in n8n
     And the "flows" mapping is pulled
     Then the tag state is n8n "flows,linux,prod" / pills "flows,linux,prod" / body "flows,linux,prod" / agreed "flows,linux,prod"
     # All four move together, so nothing is left disagreeing.
 
   Scenario: A tag removed in n8n is removed from both Nextcloud surfaces
-    Given the tag state is n8n "flows,linux,old" / pills "flows,linux,old" / body "flows,linux,old" / agreed "flows,linux,old"
+    Given the tag state starts as n8n "flows,linux,old" / pills "flows,linux,old" / body "flows,linux,old" / agreed "flows,linux,old"
     When the tag "old" is removed from the workflow in n8n
     And the "flows" mapping is pulled
     Then the tag state is n8n "flows,linux" / pills "flows,linux" / body "flows,linux" / agreed "flows,linux"
@@ -289,13 +289,13 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
 
   Scenario: A pill added in Nextcloud reaches n8n and the file body
     Given the push timing is "sync"
-    And the tag state is n8n "flows,linux" / pills "flows,linux" / body "flows,linux" / agreed "flows,linux"
+    And the tag state starts as n8n "flows,linux" / pills "flows,linux" / body "flows,linux" / agreed "flows,linux"
     When the admin adds the Nextcloud system tag "prod" to the file
     Then the tag state is n8n "flows,linux,prod" / pills "flows,linux,prod" / body "flows,linux,prod" / agreed "flows,linux,prod"
 
   Scenario: A pill removed in Nextcloud is removed from n8n and the file body
     Given the push timing is "sync"
-    And the tag state is n8n "flows,linux,old" / pills "flows,linux,old" / body "flows,linux,old" / agreed "flows,linux,old"
+    And the tag state starts as n8n "flows,linux,old" / pills "flows,linux,old" / body "flows,linux,old" / agreed "flows,linux,old"
     When the admin removes the Nextcloud system tag "old" from the file
     Then the tag state is n8n "flows,linux" / pills "flows,linux" / body "flows,linux" / agreed "flows,linux"
 
@@ -321,7 +321,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
 
   Scenario: The body never disagrees with the pills, whatever moved
     Given the push timing is "sync"
-    And the tag state is n8n "flows,linux" / pills "flows,linux" / body "flows,linux" / agreed "flows,linux"
+    And the tag state starts as n8n "flows,linux" / pills "flows,linux" / body "flows,linux" / agreed "flows,linux"
     When the admin adds the Nextcloud system tag "prod" to the file
     Then the body agrees with the pills
     When the tag "extra" is added to the workflow in n8n
@@ -344,7 +344,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
 
   Scenario: A tag typed into the file reaches n8n and the pills
     Given the push timing is "sync"
-    And the tag state is n8n "flows,linux" / pills "flows,linux" / body "flows,linux" / agreed "flows,linux"
+    And the tag state starts as n8n "flows,linux" / pills "flows,linux" / body "flows,linux" / agreed "flows,linux"
     When the admin edits the file body's "tags" array to "flows", "linux", and "prod"
     Then the tag state is n8n "flows,linux,prod" / pills "flows,linux,prod" / body "flows,linux,prod" / agreed "flows,linux,prod"
     # The body edit is written as a BARE {"name": …} with no id — exactly what a human
@@ -352,7 +352,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
 
   Scenario: A tag deleted from the file is removed from n8n and the pills
     Given the push timing is "sync"
-    And the tag state is n8n "flows,linux,old" / pills "flows,linux,old" / body "flows,linux,old" / agreed "flows,linux,old"
+    And the tag state starts as n8n "flows,linux,old" / pills "flows,linux,old" / body "flows,linux,old" / agreed "flows,linux,old"
     When the admin edits the file body's "tags" array to "flows" and "linux"
     Then the tag state is n8n "flows,linux" / pills "flows,linux" / body "flows,linux" / agreed "flows,linux"
     # The direction that was blocked twice. It is decidable only because a pill edit
@@ -376,7 +376,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
 
   Scenario: A save that did not touch the tags must not undo a pill edit
     Given the push timing is "sync"
-    And the tag state is n8n "flows,linux" / pills "flows,linux" / body "flows,linux" / agreed "flows,linux"
+    And the tag state starts as n8n "flows,linux" / pills "flows,linux" / body "flows,linux" / agreed "flows,linux"
     And the admin adds the Nextcloud system tag "prod" to the file
     And I note the current tag state
     When the admin edits the workflow's nodes and saves, leaving the tags array alone
@@ -485,7 +485,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
 
   @unbuilt
   Scenario: A pill edit keeps the file body in step
-    Given the tag state is n8n "a,b" / pills "a,b" / body "a,b" / agreed "a,b"
+    Given the tag state starts as n8n "a,b" / pills "a,b" / body "a,b" / agreed "a,b"
     When the admin adds the Nextcloud system tag "c" to the file
     Then the tag state is n8n "a,b,c" / pills "a,b,c" / body "a,b,c" / agreed "a,b,c"
     And the resulting file write does not push the workflow body to n8n
@@ -495,7 +495,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
 
   @unbuilt
   Scenario: With the body kept in step, a save that did not touch tags is free
-    Given the tag state is n8n "a,b,c" / pills "a,b,c" / body "a,b,c" / agreed "a,b,c"
+    Given the tag state starts as n8n "a,b,c" / pills "a,b,c" / body "a,b,c" / agreed "a,b,c"
     When the admin edits the workflow's nodes and saves, leaving the tags alone
     Then no tag call is made to n8n
     And the tag state is unchanged

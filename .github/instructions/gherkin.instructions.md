@@ -129,6 +129,14 @@ non-zero for *both* "no such thing" and "could not connect" makes the test go gr
 precisely when its fixture breaks. **Absence assertions must match the specific
 failure.**
 
+**The same sentence under `@Given` and `@Then`.** Keywords are ignored in matching, so
+one phrase registered twice is a DUPLICATE DEFINITION, not two steps — Behat refuses the
+second and **every scenario in the suite fails**, including ones that never mention it.
+The failure reads as "the app is broken", not "your step is wrong", which is why it costs
+a whole cycle to place. An arrange and an assertion need different sentences: *"the tag
+state **starts as** …"* vs *"the tag state **is** …"*. This rule is stated above and was
+still broken in the same PR that wrote it down.
+
 **A `Then` that only asks this app.** See the observable-outcome rule above.
 
 ## Scenario Outline: an input, or a different rule?

@@ -195,7 +195,14 @@ trait TagSyncSteps {
 	 *
 	 * The FIRST name is the mapping tag; it binds the workflow to the folder.
 	 *
-	 * @Given /^the tag state is n8n "([^"]*)" \/ pills "([^"]*)" \/ body "([^"]*)" \/ agreed "([^"]*)"$/
+	 * WORDED DIFFERENTLY FROM THE `Then` ON PURPOSE — "starts as" vs "is". Behat matches
+	 * a step by its TEXT and ignores the keyword, so an identical phrase under `@Given`
+	 * and `@Then` is one duplicated definition, not two steps: Behat refuses to register
+	 * the second and every scenario in the suite fails. That rule is written down in
+	 * `.github/instructions/gherkin.instructions.md`, and it still caught me — arranging
+	 * and asserting genuinely need different sentences.
+	 *
+	 * @Given /^the tag state starts as n8n "([^"]*)" \/ pills "([^"]*)" \/ body "([^"]*)" \/ agreed "([^"]*)"$/
 	 */
 	public function theTagStateIs(string $n8n, string $pills, string $body, string $agreed): void {
 		$names = self::tagList($n8n);
