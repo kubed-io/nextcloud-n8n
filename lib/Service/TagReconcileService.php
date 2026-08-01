@@ -207,22 +207,6 @@ final class TagReconcileService {
 	}
 
 	/**
-	 * Write n8n's canonical tag rows into the file's `tags` array so the body never
-	 * lags the pills — the lockstep that makes the third direction decidable.
-	 *
-	 * Rows are sorted by name for a stable on-disk order, and the file is written only
-	 * when the encoded body actually changed, so a pill toggle that resolves to the
-	 * same set never churns the file. The loop guard is a re-stamped
-	 * `n8n_syncedHash`: without it the next unrelated save would see a hash mismatch
-	 * and push a body that is already current.
-	 *
-	 * Caller must hold the {@see SyncGuard} — the write fires a NodeWrittenEvent that
-	 * both the writeback push and {@see \OCA\N8nSync\Listener\BodyTagListener} must
-	 * recognise as the app's own.
-	 *
-	 * @param list<array<string,mixed>> $rows n8n's canonical tag rows
-	 */
-	/**
 	 * The Nextcloud-local half of the lockstep, for a file with no live workflow to
 	 * consult: write the file's own pills into its `tags` array.
 	 *
@@ -243,25 +227,51 @@ final class TagReconcileService {
 		return true;
 	}
 
+	/**
+	 * Write n8n's canonical tag rows into the file's `tags` array so the body never
+	 * lags the pills — the lockstep that makes the third direction decidable.
+	 *
+	 * Rows are sorted by name for a stable on-disk order, and the file is written only
+	 * when the encoded body actually changed, so a pill toggle that resolves to the
+	 * same set never churns the file. The loop guard is a re-stamped
+	 * `n8n_syncedHash`: without it the next unrelated save would see a hash mismatch
+	 * and push a body that is already current.
+	 *
+	 * NEVER THROWS. Four things in here can — `getContent()`, `json_encode` (it carries
+	 * JSON_THROW_ON_ERROR), `putContent()` and the metadata write — and one call site is
+	 * inside the failure handler of {@see reconcileFile}, where an escaping exception
+	 * would replace a logged n8n failure with an unhandled one and break the user's
+	 * Files action. Keeping the body in step is best-effort by definition: the next pull
+	 * rewrites it regardless.
+	 *
+	 * Caller must hold the {@see SyncGuard} — the write fires a NodeWrittenEvent that
+	 * both the writeback push and {@see \OCA\N8nSync\Listener\BodyTagListener} must
+	 * recognise as the app's own.
+	 *
+	 * @param list<array<string,mixed>> $rows n8n's canonical tag rows
+	 */
 	private function syncBodyTags(File $node, array $rows): void {
 		try {
-			$wf = json_decode($node->getContent(), true);
-		} catch (\Throwable) {
-			return;
+			$content = $node->getContent();
+			$wf = json_decode($content, true);
+			if (!is_array($wf)) {
+				return; // a link pointer or a hand-mangled file — nothing to keep in step
+			}
+			usort($rows, static fn (array $a, array $b): int => strcmp((string)($a['name'] ?? ''), (string)($b['name'] ?? '')));
+			$wf['tags'] = $rows;
+			$new = json_encode($wf, N8nWorkflowBody::JSON_PRETTY);
+			if ($new === $content) {
+				return;
+			}
+			$node->putContent($new);
+			$this->metadata->write($node->getId(), [WorkflowMetadata::KEY_SYNCED_HASH => sha1($new)]);
+		} catch (\Throwable $e) {
+			$this->logger->warning('n8n_sync: could not keep the file body tags in step', [
+				'app' => Application::APP_ID,
+				'fileId' => $node->getId(),
+				'exception' => $e,
+			]);
 		}
-		if (!is_array($wf)) {
-			return; // a link pointer or a hand-mangled file — nothing to keep in step
-		}
-		usort($rows, static fn (array $a, array $b): int => strcmp((string)($a['name'] ?? ''), (string)($b['name'] ?? '')));
-		$wf['tags'] = $rows;
-		// JSON_PRETTY carries JSON_THROW_ON_ERROR, so json_encode returns a string
-		// (or throws) — never false; only the "unchanged" case yields no write.
-		$new = json_encode($wf, N8nWorkflowBody::JSON_PRETTY);
-		if ($new === $node->getContent()) {
-			return;
-		}
-		$node->putContent($new);
-		$this->metadata->write($node->getId(), [WorkflowMetadata::KEY_SYNCED_HASH => sha1($new)]);
 	}
 
 	/** True when two name lists are the same set (order/dupes ignored). */
