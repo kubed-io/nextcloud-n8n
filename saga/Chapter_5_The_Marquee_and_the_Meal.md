@@ -847,6 +847,42 @@ with their files gone — a quiet leak nobody goes looking for.
 is now a named trap in `.github/instructions/gherkin.instructions.md`, because the
 cost here was not the bug — it was the months the diagnosis sat unread.
 
+### It was dead THREE times over — and the third was a method that never ran
+
+The hook was correct, the predicate was correct, and the purge still did nothing. The
+log showed **no trace of the listener at all**, and the reason was not in any of the
+code that had been changed:
+
+`appinfo/info.xml` had **no `<types>` declaration.**
+
+`register()` runs for every enabled app during bootstrap, but `boot()` only runs when
+an app is actually **loaded** — and `remote.php`, the WebDAV entry point, loads a
+restricted set:
+
+```php
+$appManager->loadApps(['authentication']);
+$appManager->loadApps(['extended_authentication']);
+$appManager->loadApps(['filesystem', 'logging']);
+```
+
+With no `<types>`, this app was never in that set, so **`boot()` never ran on a DAV
+request.** Everything wired in `register()` — copy, move, rename, create, soft-delete
+— kept working perfectly, which is exactly what hid it: the ONE thing wired in
+`boot()` was the legacy purge hook. A correct hook, connected in a method that was
+never called on the only requests that mattered.
+
+`<types><filesystem/></types>` is the fix: `filesystem` is the type for apps that
+must be present when the filesystem is in play, which is what a file-event-driven
+mirror is.
+
+**`nextcloud-penpot` had already found and fixed this, with the explanation written
+out in its own `info.xml`, citing the same §C6.13.** The note that was ported into
+this chapter carried the *hook* half of that finding and not the *loading* half — so
+the port reproduced the bug's cure without its prerequisite. Two sibling apps, one
+finding, transcribed incompletely. **When porting a fix, port the whole diff, not the
+paragraph about it** — and check the sibling's `appinfo/info.xml` and `psalm.xml`,
+because config is where a fix hides in plain sight.
+
 ### Then the promoted test failed, and the second lesson was about SILENCE
 
 With the hook wired, the purge scenario still failed and the Nextcloud log had **no

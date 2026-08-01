@@ -32,6 +32,30 @@ identify the service this app integrates with.
   <namespace>N8nSync</namespace>
   <category>integration</category>
   <category>files</category>
+  <!--
+    DECLARED SO THE APP IS LOADED ON WEBDAV REQUESTS. This is the missing half of
+    the trash-purge bug (saga §5.7), and it is invisible until you look for it.
+
+    `register()` runs for every enabled app during bootstrap, but `boot()` only runs
+    when an app is actually LOADED — and remote.php, the WebDAV entry point, loads a
+    restricted set:
+
+        $appManager->loadApps(['authentication']);
+        $appManager->loadApps(['extended_authentication']);
+        $appManager->loadApps(['filesystem', 'logging']);
+
+    With no <types>, this app was never in that set, so boot() never ran on a DAV
+    request. Everything wired in register() — the copy, move, rename, create and
+    soft-delete listeners — kept working, which is exactly what made the gap so hard
+    to see: only the ONE thing wired in boot(), the legacy trash-purge hook, was
+    silently dead. A perfectly correct hook, connected in a method that never ran.
+
+    `filesystem` is the type for apps that must be present when the filesystem is in
+    play, which is what a file-event-driven mirror is.
+  -->
+  <types>
+    <filesystem/>
+  </types>
   <website>https://github.com/kubed-io/nextcloud-n8n</website>
   <bugs>https://github.com/kubed-io/nextcloud-n8n/issues</bugs>
   <repository type="git">https://github.com/kubed-io/nextcloud-n8n.git</repository>

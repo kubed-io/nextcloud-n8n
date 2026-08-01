@@ -210,6 +210,13 @@ final class Application extends App implements IBootstrap {
 			$purgeHook = $container->get(TrashPurgeHook::class);
 			/** @psalm-suppress DeprecatedMethod */
 			\OCP\Util::connectHook('\OCP\Trashbin', 'preDelete', $purgeHook, 'preDelete');
+			// Says that boot() ran AND the hook was connected, in this request. Without
+			// it, "the app never booted here" is indistinguishable from "it booted and
+			// the hook was never emitted" — and those need opposite fixes.
+			$container->get(\Psr\Log\LoggerInterface::class)->debug(
+				'n8n_sync: trash purge hook connected',
+				['app' => self::APP_ID],
+			);
 		}
 	}
 }

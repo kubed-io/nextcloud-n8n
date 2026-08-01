@@ -81,6 +81,16 @@ final class TrashPurgeHook {
 	 * @param array{path?: string} $params
 	 */
 	public function preDelete(array $params): void {
+		// FIRST LINE, BEFORE EVERY FILTER — deliberately. The previous attempt logged
+		// after the path filter, so "the hook never fired" and "the hook fired and the
+		// filter rejected the path" produced identical silence and cost a whole CI
+		// cycle to tell apart. Instrumentation that sits behind a condition cannot
+		// answer whether that condition was reached.
+		$this->logger->debug('n8n_sync purge: preDelete entered', [
+			'app' => Application::APP_ID,
+			'params' => $params,
+		]);
+
 		if ($this->guard->active()) {
 			return;
 		}
@@ -90,18 +100,17 @@ final class TrashPurgeHook {
 		// extension, so the extension is not last — `str_contains`, not
 		// `str_ends_with`. This is the whole bug in one line.
 		if ($path === '' || !str_contains($path, FilenameCodec::EXT)) {
+			$this->logger->debug('n8n_sync purge: path is not one of ours', [
+				'app' => Application::APP_ID,
+				'path' => $path,
+			]);
 			return;
 		}
 
 		// EVERY BAIL BELOW SAYS WHY. Each one is a legitimate reason to do nothing,
 		// which is exactly what makes them indistinguishable from "the hook never
-		// fired" when they are silent — and that ambiguity cost a full CI cycle
-		// while diagnosing this very listener. The integration workflow sets
-		// loglevel 0 so these reach the log it dumps on failure.
-		$this->logger->debug('n8n_sync purge: hook fired', [
-			'app' => Application::APP_ID,
-			'path' => $path,
-		]);
+		// fired" when they are silent. The integration workflow sets loglevel 0 so
+		// these reach the log it dumps on failure.
 
 		$uid = $this->resolveUid();
 		if ($uid === '') {
