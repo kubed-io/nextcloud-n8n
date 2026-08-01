@@ -13,7 +13,6 @@ use OCA\N8nSync\Service\N8nClient;
 use OCA\N8nSync\Settings\AdminTest;
 use OCP\AppFramework\Controller;
 use OCP\AppFramework\Http\Attribute\AuthorizedAdminSetting;
-use OCP\AppFramework\Http\Attribute\NoCSRFRequired;
 use OCP\AppFramework\Http\JSONResponse;
 use OCP\IRequest;
 
@@ -27,6 +26,13 @@ use OCP\IRequest;
  * {@see N8nClient::describeConnectionError()} — shared with the occ command so both
  * surfaces word failures identically — rather than here; deeper callers (Phase 3/4)
  * still get the raw typed exceptions to drive retry/backoff.
+ *
+ * No `#[NoCSRFRequired]`: it was here out of habit from read-only endpoints, but
+ * nothing needs it — the admin JS sends `requesttoken` on every request, so the
+ * check passes. Keeping the attribute meant any page an authenticated admin
+ * happened to visit could make this server probe the configured n8n and learn the
+ * outcome. {@see DebugController} already documented *not* having it as a
+ * deliberate protection; the two now agree.
  */
 final class ConfigController extends Controller {
 	public function __construct(
@@ -37,7 +43,6 @@ final class ConfigController extends Controller {
 		parent::__construct($appName, $request);
 	}
 
-	#[NoCSRFRequired]
 	#[AuthorizedAdminSetting(settings: AdminTest::class)]
 	public function testConnection(): JSONResponse {
 		try {
@@ -60,7 +65,6 @@ final class ConfigController extends Controller {
 		}
 	}
 
-	#[NoCSRFRequired]
 	#[AuthorizedAdminSetting(settings: AdminTest::class)]
 	public function testWebhook(): JSONResponse {
 		try {

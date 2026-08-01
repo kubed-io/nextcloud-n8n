@@ -796,83 +796,232 @@ unbuilt parts tagged as unbuilt rather than implied by a present-tense header.
 
 ---
 
+## §5.7 — Two bins, and the one that was never wired (the finding, confirmed and fixed)
+
+> This section opened as an **unverified claim dropped in from `nextcloud-penpot`**
+> while it built its own delete lifecycle. It is now confirmed against this app's
+> own source and CI, fixed, and rewritten as the outcome — because a warning left
+> standing after it has been acted on is the same doc drift it was warning about.
+
+### The claim, and it was right: `BeforeNodeDeletedEvent` does NOT fire on a purge
+
+`DeleteToN8nListener` used to say the same event fires for both lifecycle steps —
+the first delete at the file's normal path, the purge under
+`<uid>/files_trashbin/files/…` — *"discriminated by path prefix"*. It does not. The
+trashbin's `removeItem` emits nothing typed at all, so the hard branch never ran.
+
+Confirmed from Nextcloud's own `stable33` source rather than by inference:
+
+```
+DAV DELETE → AbstractTrash::delete() → ITrashManager::removeItem()
+           → LegacyTrashBackend::removeItem() → Trashbin::delete()
+           → \OC_Hook::emit('\OCP\Trashbin', 'preDelete', ['path' => …])
+```
+
+The legacy hook is the **only** entry point that exists, so its deprecation is
+unavoidable. `nextcloud-grafana` had this right in writing all along
+(*"proven live: the trashbin's removeItem fires nothing typed"*); `nextcloud-penpot`
+followed **this** repo's docblock into the bug. Two siblings disagreed in comments
+and the wrong one was believed, which is why the correction now lives loudly in
+`TrashPurgeHook` instead of quietly in a diff.
+
+### It was dead TWICE over, and the second half was ours alone
+
+Even with a working trigger the leg could not have run: the trashed node is renamed
+`<name>.n8n.json.d<timestamp>`, and the guard was
+`str_ends_with($name, '.n8n.json')` — **false at purge time**, several lines before
+the path was ever consulted. Hence `FilenameCodec::isTrashedWorkflowName()`, which
+requires the timestamp so a live file can never match a trash-only predicate.
+
+The sharp part: `WebDavTrait` in the integration harness had documented the `.dNNNN`
+suffix for a long time. **The knowledge was in the repo, on the test side only.**
+
+### The feature file had already guessed both causes
+
+`features/delete.feature` carried a skipped scenario whose comment named the
+trashbin's missing event *and* the extension gate, hedged as *"likely cause"*. Both
+were true. It sat there while purged `sync` workflows stayed alive in n8n forever
+with their files gone — a quiet leak nobody goes looking for.
+
+**A comment that says "likely cause" is an open investigation, not a status.** That
+is now a named trap in `.github/instructions/gherkin.instructions.md`, because the
+cost here was not the bug — it was the months the diagnosis sat unread.
+
+### It was dead THREE times over — and the third was a method that never ran
+
+The hook was correct, the predicate was correct, and the purge still did nothing. The
+log showed **no trace of the listener at all**, and the reason was not in any of the
+code that had been changed:
+
+`appinfo/info.xml` had **no `<types>` declaration.**
+
+`register()` runs for every enabled app during bootstrap, but `boot()` only runs when
+an app is actually **loaded** — and `remote.php`, the WebDAV entry point, loads a
+restricted set:
+
+```php
+$appManager->loadApps(['authentication']);
+$appManager->loadApps(['extended_authentication']);
+$appManager->loadApps(['filesystem', 'logging']);
+```
+
+With no `<types>`, this app was never in that set, so **`boot()` never ran on a DAV
+request.** Everything wired in `register()` — copy, move, rename, create, soft-delete
+— kept working perfectly, which is exactly what hid it: the ONE thing wired in
+`boot()` was the legacy purge hook. A correct hook, connected in a method that was
+never called on the only requests that mattered.
+
+`<types><filesystem/></types>` is the fix: `filesystem` is the type for apps that
+must be present when the filesystem is in play, which is what a file-event-driven
+mirror is.
+
+**`nextcloud-penpot` had already found and fixed this, with the explanation written
+out in its own `info.xml`, citing the same §C6.13.** The note that was ported into
+this chapter carried the *hook* half of that finding and not the *loading* half — so
+the port reproduced the bug's cure without its prerequisite. Two sibling apps, one
+finding, transcribed incompletely. **When porting a fix, port the whole diff, not the
+paragraph about it** — and check the sibling's `appinfo/info.xml` and `psalm.xml`,
+because config is where a fix hides in plain sight.
+
+### Then the promoted test failed, and the second lesson was about SILENCE
+
+With the hook wired, the purge scenario still failed and the Nextcloud log had **no
+trace of `TrashPurgeHook` at all**. That reads identically whether the hook never
+fired or fired and returned early — and every early return in it is a *legitimate*
+reason to do nothing, so silence was genuinely ambiguous.
+
+The fix was observability before diagnosis: CI now sets `loglevel 0` (the
+"Nextcloud log on failure" step is the only window into a failing run, and at the
+default level a listener that decides to do nothing writes nothing), and every bail
+in the hook states its reason. Guessing a patch against an unknown cause is how the
+second wrong fix gets shipped on top of the first.
+
+### THE MATRIX: two bins, asymmetric on purpose
+
+Both systems have a reversible bin and an irreversible purge, so a workflow has two
+lifecycles that only make sense read as a pair:
+
+```
+Nextcloud     live file  →  trash      →  purged
+n8n           live wf    →  archived   →  deleted
+```
+
+| Gesture | Nextcloud | n8n | Status |
+|---|---|---|---|
+| delete a synced file | → trash | → archived | live |
+| restore it from the trash | → live | → unarchived | live |
+| purge it from the trash | → gone | → **deleted** (best effort) | live (this fix) |
+| unarchive the workflow in n8n | *(nothing)* | → live | **gap** |
+| delete the workflow in n8n | *(nothing)* | → gone | correct, by accident |
+
+**Nextcloud drives; n8n does not drive back.** The bottom two rows are the
+asymmetry, and it is deliberate: Nextcloud's trash is the user's own undo history,
+and an n8n-side bin change is not permission to reach into it.
+
+### What that asymmetry costs — one blindness, two opposite verdicts
+
+`grep -n "trash" lib/Service/SyncService.php` returns **nothing**. The pull indexes
+`$folder->getDirectoryListing()`, and a trashed file is not in the folder, so a
+trashed mirror is invisible to a reconcile. Two consequences, and the interesting
+part is that the same fact is right once and wrong once:
+
+1. **Unarchive in n8n → the trashed file should come back. It does not.** The pull
+   finds no file for that id and writes a **brand-new** one, orphaning the trashed
+   copy. Restore that copy later and two files carry the same id — precisely the
+   duplicate the reconcile is otherwise careful to avoid. The fix is a trash-aware
+   reconcile: before creating a file for an unseen id, look for a trashed mirror
+   carrying it and restore that instead. `nextcloud-penpot` built exactly this
+   (penpot saga §6.37); n8n never got it.
+2. **Purge in n8n → the trashed file should stay put. It does** — but nothing
+   *decides* that; the pull simply cannot see it. A trash-aware reconcile has to
+   preserve this behaviour **deliberately** rather than lose it on the way to
+   fixing (1).
+
+### And a third gap, whose fix is already written twenty lines away
+
+`DeleteService::restore()` unarchives through `callIdempotent`, which treats **404
+as success**. Right everywhere else; wrong here. If the workflow was permanently
+deleted in n8n while its mirror sat in the trash, restoring the file brings it back
+carrying a **dead id** with nothing created — silently detached, no sign anything is
+wrong.
+
+`MotionService::moveIn()` handles the identical situation correctly — catch the 404,
+create from the file's content, stamp the fresh id — and that path is **live-tested**
+(`move.feature`, "Restoring when the n8n workflow was hard-deleted falls back to
+create"). Command spotted the equivalence unprompted: *"this smells similar to
+moving an unmapped workflow into a mapping."* It is not a resemblance; it is the
+same fallback, already written, simply not wired to the restore listener.
+
+All three gaps are now `@unbuilt` scenarios in `features/delete.feature` with the
+pre/post state spelled out, so the spec and the code finally agree about what is
+missing.
+
+> **Dr K, tapping the board twice:** *"You had two bins and you only ever watched
+> one door. Fine — you found the other one. But look at what actually cost you: not
+> the bug, the *note about* the bug that sat there hedging for months, and then a
+> station that said nothing when it decided to do nothing. Write down what you
+> refuse to do, and why, or the next cook reads silence as agreement."*
+
+## §5.8 — The apprentice cooked, and it was the best thing on the table
+
+This chapter opened with a table for two (§5.2): the master and a new apprentice
+still plating its base while we were serving. It closes with the apprentice cooking
+for **us** — and the meal being better than ours.
+
+`nextcloud-penpot` was forked from this app. So was `nextcloud-grafana`. That makes
+this repo the eldest, and for most of the year "alignment" meant the younger two
+catching up. This round it ran entirely the other way. Everything of substance in the
+alignment pass came from the youngest at the table:
+
+| What penpot fed back | What it fixed here |
+|---|---|
+| the legacy `preDelete` purge hook | a purged workflow left alive in n8n **forever** |
+| `<types><filesystem/></types>` | `boot()` never running on any WebDAV request |
+| `gherkin.instructions.md` + `features/README.md` | a 33-item "backlog" that was really 5 |
+| the session-less actor fallback | `occ tag:files:add` silently doing nothing |
+| dropping `#[NoCSRFRequired]` | an admin endpoint reachable cross-site |
+
+**And the sharpest part is that the debt travelled in a circle.** The purge bug did
+not originate in penpot — penpot walked into it *following this app's docblock*, which
+claimed `BeforeNodeDeletedEvent` fires twice. Penpot paid for the diagnosis, wrote it
+down, and sent it back as a note. We took the note, ported the cure, and missed its
+prerequisite — the `<types>` line penpot had already spelled out in its own
+`info.xml`. So this app shipped a wrong comment, was handed the correction twice, and
+still needed a third pass to receive it. The eldest was the slowest learner in the
+family.
+
+Why the youngest is the best cook is not a mystery, and it is worth stating because
+it will keep being true: **penpot was built after every lesson this app learned the
+hard way, so it started from the distilled version.** It never had to un-learn the
+path-discriminated purge, because it was born into a world where the trash purge was
+already known to be a legacy hook. Newest ≠ least mature when the lineage is written
+down. That is the whole return on keeping a saga.
+
+The concrete standing order that falls out of it:
+
+- **Alignment is bidirectional and the direction is not fixed by age.** Read the
+  sibling that shipped most recently, whichever one that is.
+- **When porting a fix, port the whole diff, not the paragraph about it.** Config is
+  where a fix hides in plain sight — `appinfo/info.xml` and `psalm.xml` are now part
+  of the checklist, because a correct listener in an app that never boots is
+  indistinguishable from no listener at all.
+- **A comment that another app might read is a load-bearing artefact.** The wrong one
+  here cost a sibling a full debugging cycle. Docblocks are an export surface.
+
+> **Dr K, pulling up a chair and not saying anything for a moment:** *"Well. The kid
+> plated that. And you three are cooking out of the same book now, so quit counting
+> who came in first — the newest station has the cleanest mise, that's all it means.
+> You wrote a bad ticket once and it went out to two other kitchens; that's the part
+> to sit with. Fix the ticket. Then eat, because that was a good dish and it's going
+> cold while you take notes."*
 
 ---
 
 Sources / cross-links:
 - [`n8n_sync` on the Nextcloud App Store](https://apps.nextcloud.com/apps/n8n_sync)
 - [`nextcloud-grafana` saga, Chapter 1 — Mise en Place](https://github.com/kubed-io/nextcloud-grafana/blob/main/saga/Chapter_1_Mise_en_Place.md) — the apprentice's side of the cameo.
-- This chapter's work: the connection-UX PR (missing-vs-rejected, "is a key stored?"), the Copilot instruction files (`.github/copilot-instructions.md` + `.github/instructions/*`), and the repo Security-&-Quality parity — all landed on the same branch as this chapter opened.
-
----
-
-## ⚠️ INCOMING FINDING FROM THE THIRD APP — UNVERIFIED HERE, NOT YET ACTIONED
-
-> Dropped in from `nextcloud-penpot` while building its delete lifecycle. **Nobody
-> has checked this against a running n8n yet.** It is written down here so it is
-> not lost, not because it has been confirmed on this app.
-
-### The claim: `BeforeNodeDeletedEvent` does NOT fire when a file is purged from the trash
-
-`DeleteToN8nListener`'s docblock says:
-
-> *"The same event fires for BOTH lifecycle steps: the user's first delete (file
-> is at its normal path, on its way to trash) → soft step … the final purge from
-> trash (file lives under `<uid>/files_trashbin/files/…`) → hard step …
-> Discriminated by path prefix."*
-
-**Two independent pieces of evidence say the second half never fires.**
-
-1. **`nextcloud-grafana` states the opposite, and says it was proven live.** Its
-   `TrashPurgeHook` docblock: *"unlike the move-to-trash step — Nextcloud does NOT
-   fire a typed `BeforeNodeDeletedEvent` when a file is purged from the trash
-   (proven live: the trashbin's `removeItem` fires nothing typed). It emits the
-   legacy `\OCP\Trashbin` `preDelete` hook instead."* Grafana therefore wires
-   `\OCP\Util::connectHook('\OCP\Trashbin', 'preDelete', …)` in `Application::boot()`.
-
-2. **`nextcloud-penpot` built the path-discriminating version — following THIS
-   app's docblock — and its integration test failed on the first run.** The soft
-   step worked; the purge never reached the app at all, and the design stayed in
-   the remote trash. Switching to the legacy hook is what fixed it.
-
-### Why this matters here specifically
-
-`grep -rn "connectHook\|preDelete" lib/` in this repo returns **nothing**. So the
-hard step has only ever had one trigger, and that trigger appears not to exist.
-
-If the claim holds, the consequence is:
-
-- **soft delete (→ NC trash)** works — the workflow is archived / untagged;
-- **emptying the trash** silently does nothing in n8n, so a `sync+two-way`
-  workflow that should have been `DELETE /workflows/{id}`-ed is **left alive in
-  n8n forever**, with its Nextcloud file gone.
-
-That is a quiet leak rather than data loss, which is exactly the kind of thing
-that survives a long time without being noticed — nobody goes looking in n8n for
-workflows whose files they deleted months ago.
-
-### What to actually check before acting
-
-1. Delete a `sync+two-way` `.n8n.json` in the Files app → confirm the soft step
-   ran (archived/untagged in n8n).
-2. Empty the Nextcloud trash → **does `DELETE /workflows/{id}` ever happen?**
-   Watch `nextcloud.log` for this app's delete messages, or just look in n8n.
-3. If it does not: port `TrashPurgeHook` from `nextcloud-grafana` (or from
-   `nextcloud-penpot`, which is the same shape), and note the two details both
-   learned the hard way —
-   - the retention background job (`Files_Trashbin`'s `ExpireTrash`) has **no
-     session user**, so the uid has to fall back to `\OC_User::getUser()`, or an
-     auto-expired mirror leaks the same way;
-   - `connectHook` **appends with no de-duplication**, so a second `boot()` in one
-     process stacks the handler and fires the purge twice per file — both siblings
-     guard it with a static flag.
-4. Whichever way it lands, fix `DeleteToN8nListener`'s docblock: right now two
-   sibling apps document contradictory behaviour for the same Nextcloud version,
-   and this one is what the third app followed into a bug.
-
-### Also worth a look while in there
-
-The trashed node is renamed on its way into the trash — `<name>.n8n.json.d<ts>` —
-so any check shaped like `str_ends_with($name, '.n8n.json')` is **false** at purge
-time. `WebDavTrait` in this repo's integration suite already documents the
-`.dNNNN` suffix; the listener side may or may not account for it.
+- This chapter's work: the connection-UX PR, the Copilot instruction files, the repo
+  Security-&-Quality parity, the tag-sync engine (§5.6), and the delete/purge fix (§5.7).
+- Nextcloud `stable33`: `apps/files_trashbin/lib/Trashbin.php`,
+  `lib/Trash/LegacyTrashBackend.php`, `lib/Sabre/AbstractTrash.php` — the purge chain
+  above, read rather than assumed.

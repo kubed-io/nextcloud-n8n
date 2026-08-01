@@ -13,12 +13,14 @@
 # create-workflow.feature / rename.feature / the bidirectional sync, not here.)
 #
 # Behat can't click the Files-app JS, so the integration steps assert the
-# server-observable backing the front-end keys off (the n8n_mode DAV value + the
+# server-observable the front-end keys off (the n8n_mode DAV value + the
 # live/archived workflow state + raw-JSON readability); the opener DECISION logic
-# itself is unit-tested in tests/js/files-helpers.test.js. Live for sync + unmapped
-# (saga §14.8 A). The `link` rows stay @todo (their decision logic is covered by the
-# JS unit tests) and the `ignored` rows wait on Copilot's reserved-tags / ignored
-# slice (§14.8 B) — both flip in this same PR once ready. CI skips @todo.
+# itself is unit-tested in tests/js/files-helpers.test.js.
+#
+# The `link` rows are @todo, NOT @blocked — nothing stops them. The harness can
+# arrange a link file (delete.feature and move.feature both do, live) and the
+# server-observable exists; only these assertions are unwritten. They are promotion
+# candidates, and calling them blocked would have parked them forever.
 
 Feature: Opening a workflow file (Open in n8n / Open with text editor)
   As a Nextcloud user
@@ -56,8 +58,9 @@ Feature: Opening a workflow file (Open in n8n / Open with text editor)
       | unmapped |
       | ignored  |
 
-  # link integration is uncertain (it has no create-on-land path); its opener
-  # logic is covered concretely by tests/js/files-helpers.test.js instead.
+  # Stale reason, corrected: this said link integration was uncertain. It is not —
+  # see the header. The decision logic is covered by tests/js/files-helpers.test.js;
+  # what is missing here is the server-observable assertion.
   @todo
   Scenario Outline: Open with text editor — link (covered by JS unit tests)
     Given a managed workflow file in "<mode>" mode

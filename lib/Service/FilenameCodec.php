@@ -51,6 +51,24 @@ final class FilenameCodec {
 	}
 
 	/**
+	 * True when $name is one of ours **as the trash renamed it**. Nextcloud appends
+	 * a deletion timestamp when a file is moved to the trash —
+	 * `Old Name.n8n.json.d1712345678` — so {@see isWorkflowName}'s `str_ends_with`
+	 * is FALSE for every trashed workflow file.
+	 *
+	 * That is not a hypothetical: it is half of why the trash-purge step never ran
+	 * (see {@see \OCA\N8nSync\Listener\TrashPurgeHook}). The integration harness had
+	 * documented the `.dNNNN` suffix for a long time; production code had not.
+	 *
+	 * The timestamp is required, not optional — a bare `.n8n.json` is
+	 * {@see isWorkflowName}'s job, and accepting both here would let a live file
+	 * match a trash-only predicate.
+	 */
+	public static function isTrashedWorkflowName(string $name): bool {
+		return (bool)preg_match('/' . preg_quote(self::EXT, '/') . '\.d\d+$/', $name);
+	}
+
+	/**
 	 * True when $node is a managed n8n workflow file: a {@see File} whose name
 	 * ends in {@see EXT}. The one predicate the listeners/services share instead
 	 * of open-coding `$node instanceof File && str_ends_with(...)` everywhere.

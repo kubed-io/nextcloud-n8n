@@ -84,6 +84,19 @@ final class DeleteService {
 	 * workflow for sync, or re-add the mapping tag for link. The caller is expected
 	 * to log + swallow failures here (don't abort a restore just because n8n is down).
 	 *
+	 * KNOWN GAP — NO CREATE-FALLBACK WHEN THE WORKFLOW IS GONE. The unarchive runs
+	 * through {@see callIdempotent}, which treats **404 as success**. That is right
+	 * for every other step but wrong here: if the workflow was permanently deleted in
+	 * n8n while its mirror sat in the trash, the file comes back carrying a DEAD id
+	 * and nothing is created — silently detached, with no sign anything is wrong.
+	 *
+	 * {@see MotionService::moveIn} already handles the identical situation correctly
+	 * (catch the 404, `createForFile()`, stamp the fresh id) and that path is
+	 * live-tested. Restoring a file whose workflow is gone and moving one in whose
+	 * workflow is gone are the same problem; only the move path knows it. Specced in
+	 * `features/delete.feature` ("Restoring a file whose workflow was deleted in n8n
+	 * gives it a new one").
+	 *
 	 * @throws N8nApiException on n8n failure (caller chooses to log+swallow)
 	 */
 	public function restore(string $id, string $mode, ?Mapping $mapping): void {

@@ -14,6 +14,7 @@ use OCA\N8nSync\Service\FilenameCodec;
 use OCA\N8nSync\Service\ModeChangeService;
 use OCA\N8nSync\Service\OwnershipTags;
 use OCA\N8nSync\Service\SyncGuard;
+use OCA\N8nSync\Service\TeamFolderService;
 use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
@@ -51,6 +52,7 @@ final class ModeTagListener implements IEventListener {
 		private IRootFolder $rootFolder,
 		private IUserSession $userSession,
 		private ISystemTagManager $tagManager,
+		private TeamFolderService $teamFolders,
 		private SyncGuard $guard,
 		private LoggerInterface $logger,
 	) {
@@ -106,7 +108,13 @@ final class ModeTagListener implements IEventListener {
 	/**
 	 * Resolve each tagged object id to a managed `*.n8n.json` file (for the acting user)
 	 * and run $action against it. Non-files, non-managed files, and unresolvable ids are
-	 * skipped; an unattributable tag change (no acting user) is a no-op.
+	 * skipped.
+	 *
+	 * THE ACTING USER MAY NOT BE A SESSION USER. `occ tag:files:add … n8n:ignore` is a
+	 * supported way to exclude a workflow, and it dispatches this event with nobody
+	 * logged in — so bailing on an empty session made the control tag silently inert on
+	 * the CLI (penpot saga §C6.18). Falls back to the sync actor, the same uid the pull
+	 * writes as; only "no session AND no resolvable actor" gives up.
 	 *
 	 * @param array<int|string> $objectIds
 	 * @param callable(File): void $action
@@ -114,9 +122,22 @@ final class ModeTagListener implements IEventListener {
 	private function forEachWorkflowFile(array $objectIds, callable $action): void {
 		$uid = $this->userSession->getUser()?->getUID() ?? '';
 		if ($uid === '') {
-			return; // tag change with no acting user — nothing to resolve against
+			try {
+				$uid = $this->teamFolders->resolveActorUid();
+			} catch (\Throwable) {
+				return;
+			}
 		}
-		$userFolder = $this->rootFolder->getUserFolder($uid);
+		try {
+			$userFolder = $this->rootFolder->getUserFolder($uid);
+		} catch (\Throwable $e) {
+			$this->logger->warning('n8n_sync mode-tag: could not open a Files view', [
+				'app' => Application::APP_ID,
+				'uid' => $uid,
+				'exception' => $e,
+			]);
+			return;
+		}
 
 		foreach ($objectIds as $objectId) {
 			try {

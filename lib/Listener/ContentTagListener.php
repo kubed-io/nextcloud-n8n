@@ -15,6 +15,7 @@ use OCA\N8nSync\Service\FilenameCodec;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\TagReconcileService;
 use OCA\N8nSync\Service\TagSyncService;
+use OCA\N8nSync\Service\TeamFolderService;
 use OCP\BackgroundJob\IJobList;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
@@ -56,6 +57,7 @@ final class ContentTagListener implements IEventListener {
 		private IRootFolder $rootFolder,
 		private IUserSession $userSession,
 		private ISystemTagManager $tagManager,
+		private TeamFolderService $teamFolders,
 		private SyncGuard $guard,
 		private IJobList $jobList,
 		private IAppConfig $config,
@@ -80,11 +82,26 @@ final class ContentTagListener implements IEventListener {
 			return;
 		}
 
-		$uid = $this->userSession->getUser()?->getUID() ?? '';
+		// A tag change does NOT always have a session. `occ tag:files:add`, and any
+		// other CLI or background caller, dispatches the same event with nobody
+		// logged in — and bailing there made this listener silently do nothing on a
+		// channel admins actually use (penpot saga §C6.18 hit exactly this and it
+		// changed their design). Fall back to the sync actor, which is the same uid
+		// the pull already writes as.
+		$uid = $this->actingUid();
 		if ($uid === '') {
-			return; // unattributable tag change — nothing to resolve a Files view against
+			return; // no session and no resolvable sync actor — nothing to act as
 		}
-		$userFolder = $this->rootFolder->getUserFolder($uid);
+		try {
+			$userFolder = $this->rootFolder->getUserFolder($uid);
+		} catch (\Throwable $e) {
+			$this->logger->warning('n8n_sync content-tag: could not open a Files view', [
+				'app' => Application::APP_ID,
+				'uid' => $uid,
+				'exception' => $e,
+			]);
+			return;
+		}
 		$timing = $this->config->getValueString(Application::APP_ID, 'timing', 'async');
 
 		foreach ($event->getObjectIds() as $objectId) {
@@ -108,6 +125,24 @@ final class ContentTagListener implements IEventListener {
 				// Background: enqueue and return fast; the job re-resolves + reconciles.
 				$this->jobList->add(ReconcileTagsJob::class, ['fileId' => $node->getId(), 'userId' => $uid]);
 			}
+		}
+	}
+
+	/**
+	 * The acting user: the session user when there is one, else the configured sync
+	 * actor ({@see \OCA\N8nSync\Service\TeamFolderService::resolveActorUid}) so an
+	 * `occ`-driven or background tag change still reconciles. Returns '' when
+	 * neither resolves, which is the only case worth giving up on.
+	 */
+	private function actingUid(): string {
+		$uid = $this->userSession->getUser()?->getUID() ?? '';
+		if ($uid !== '') {
+			return $uid;
+		}
+		try {
+			return $this->teamFolders->resolveActorUid();
+		} catch (\Throwable) {
+			return '';
 		}
 	}
 

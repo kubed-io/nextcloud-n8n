@@ -12,12 +12,20 @@
 #   NC_BASE_URL, NC_ADMIN_USER, NC_ADMIN_PASS, N8N_URL, OCC
 
 default:
-  # @todo scenarios are the documented spec for stages not yet wired (their step
-  # defs don't exist yet); skip them so CI runs only live scenarios. Drop the
-  # filter (or retag) as each stage's steps land.
+  # Four status tags, four reasons a scenario is not live — see features/README.md.
+  # All four are skipped here, so CI runs exactly the scenarios that claim to be
+  # live; splitting them changes NOTHING about what runs, and everything about
+  # whether "what is built but untested?" can be answered with a filter:
+  #
+  #   @todo     the code exists, only the test is missing  ← the work queue
+  #   @unbuilt  a spec awaiting code
+  #   @blocked  real behaviour this harness cannot reach (must name what is missing)
+  #   @decision a deliberate absence; there is no operation to test
+  #
+  # `behat --tags @todo` is therefore a real backlog rather than a junk drawer.
   gherkin:
     filters:
-      tags: '~@todo'
+      tags: '~@todo&&~@unbuilt&&~@blocked&&~@decision'
 
   suites:
     default:
