@@ -111,6 +111,10 @@ namespace OCP {
 		interface IAppConfig {
 			public function getValueString(string $app, string $key, string $default = '', bool $lazy = false, bool $sensitive = false): string;
 			public function setValueString(string $app, string $key, string $value, bool $lazy = false, bool $sensitive = false): bool;
+			// AutoSyncSettings stores `schedule_enabled` bool-typed so the scheduled
+			// job's primary getValueBool() read succeeds (see that class's docblock).
+			public function getValueBool(string $app, string $key, bool $default = false, bool $lazy = false): bool;
+			public function setValueBool(string $app, string $key, bool $value, bool $lazy = false): bool;
 		}
 	}
 	// LinkWriteGuardPlugin resolves the acting user for its notification; both are
@@ -148,6 +152,15 @@ namespace OCP\Settings {
 			public function getSchema(): array;
 		}
 	}
+	// AutoSyncSettings implements this (core `@since 31.0.0`) so it owns its own
+	// storage — the only way an ADMIN form can carry a CHECKBOX (see that class).
+	if (!interface_exists(IDeclarativeSettingsFormWithHandlers::class, false)) {
+		interface IDeclarativeSettingsFormWithHandlers extends IDeclarativeSettingsForm {
+			public function getValue(string $fieldId, \OCP\IUser $user): mixed;
+
+			public function setValue(string $fieldId, mixed $value, \OCP\IUser $user): void;
+		}
+	}
 	if (!class_exists(DeclarativeSettingsTypes::class, false)) {
 		// Mirror every DeclarativeSettingsTypes constant the app's forms reference
 		// (grep `DeclarativeSettingsTypes::` in lib/) so instantiating any settings
@@ -156,11 +169,61 @@ namespace OCP\Settings {
 		final class DeclarativeSettingsTypes {
 			public const SECTION_TYPE_ADMIN = 'admin';
 			public const STORAGE_TYPE_INTERNAL = 'internal';
+			public const STORAGE_TYPE_EXTERNAL = 'external';
 			public const TEXT = 'text';
 			public const PASSWORD = 'password';
 			public const URL = 'url';
 			public const CHECKBOX = 'checkbox';
 			public const RADIO = 'radio';
+		}
+	}
+}
+
+namespace OCP\SystemTag {
+	// TagSyncService reconciles a workflow's Nextcloud content tags through the
+	// system-tag manager + object mapper; both are mocked in TagSyncServiceTest, so
+	// these are declaration-only, naming just the surface the service calls.
+	if (!interface_exists(ISystemTag::class, false)) {
+		interface ISystemTag {
+			public function getId(): string;
+
+			public function getName(): string;
+		}
+	}
+	if (!interface_exists(ISystemTagManager::class, false)) {
+		interface ISystemTagManager {
+			/**
+			 * @param array<int|string> $tagIds tag ids (string or numeric, per NC events)
+			 * @return array<string, ISystemTag>
+			 */
+			public function getTagsByIds($tagIds): array;
+
+			public function getTag(string $tagName, bool $userVisible, bool $userAssignable): ISystemTag;
+
+			public function createTag(string $tagName, bool $userVisible, bool $userAssignable): ISystemTag;
+		}
+	}
+	if (!interface_exists(ISystemTagObjectMapper::class, false)) {
+		interface ISystemTagObjectMapper {
+			/**
+			 * @param list<string> $objIds
+			 * @return array<string, list<string>>
+			 */
+			public function getTagIdsForObjects($objIds, string $objectType): array;
+
+			public function assignTags(string $objId, string $objectType, $tagIds): void;
+
+			public function unassignTags(string $objId, string $objectType, $tagIds): void;
+
+			public function haveTag($objIds, string $objectType, string $tagId, bool $all = true): bool;
+		}
+	}
+	if (!class_exists(TagNotFoundException::class, false)) {
+		class TagNotFoundException extends \RuntimeException {
+		}
+	}
+	if (!class_exists(TagAlreadyExistsException::class, false)) {
+		class TagAlreadyExistsException extends \RuntimeException {
 		}
 	}
 }

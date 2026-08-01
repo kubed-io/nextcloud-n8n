@@ -176,10 +176,11 @@ The devcontainer is the supported path. Anything else, you're on your own.
 
 You still need a Nextcloud instance to deploy into — the integration stack
 (docker-compose with NC + n8n + db) is described in
-[saga/Chapter_2_Pretty_Package.md §4a](saga/Chapter_2_Pretty_Package.md) and is not yet
-wired up. In the meantime, the homelab cluster's `cloud` namespace is the canonical test
-target; deploy with `kubectl cp` (see [saga/Chapter_1_The_Vibe.md](saga/Chapter_1_The_Vibe.md)
-§15 for the deploy loop).
+[saga/Chapter_2_Pretty_Package.md §4a](saga/Chapter_2_Pretty_Package.md). For a full
+end-to-end smoke test, the homelab cluster's `cloud` namespace is the canonical target.
+That instance runs the **marketplace stable** build, so overlaying a branch is done
+through a guarded script rather than raw `kubectl cp` — see
+["Live smoke test on the cluster"](#live-smoke-test-on-the-cluster) below.
 
 ### Without the devcontainer
 
@@ -206,13 +207,33 @@ Repeat this loop until the thing works:
    ```
    Output lands in `dist/n8n_sync-files.js`.
 3. **Deploy into a running Nextcloud** (the app folder must appear under `custom_apps/`).
-   The cluster path is documented in [saga/Chapter_1_The_Vibe.md](saga/Chapter_1_The_Vibe.md) §15.
+   For the cluster, use the guarded script — see
+   ["Live smoke test on the cluster"](#live-smoke-test-on-the-cluster).
    **Do not bump `appinfo/info.xml` `<version>` during local dev** — NC will trigger an
-   upgrade flow and you'll waste a pod restart.
+   upgrade flow and you'll waste a pod restart (worse: a crash-loop against a stable install).
 4. **Verify in the UI / via `occ`.** Watch `data/nextcloud.log` (or the pod logs).
 
 The CLI commands documented in [README.md](README.md#cli-commands) are the fastest smoke
 test for the n8n REST client.
+
+### Live smoke test on the cluster
+
+The `cloud` namespace runs the **App Store stable** `n8n_sync`, so a naive file overlay
+of a branch (whose `info.xml` is a newer version) would trip Nextcloud's upgrade flow and
+can crash-loop the pod. The cluster repo ships a guarded loop that backs up the pristine
+build, **pins the staged `info.xml <version>` to the installed one**, overlays only the
+code, and never touches the live URL/API key:
+
+```sh
+# in the cluster repo
+bash apps/nextcloud/components/n8n/deploy-dev.sh            # pull branch, build, overlay
+SKIP_PULL=1 bash apps/nextcloud/components/n8n/deploy-dev.sh   # deploy local working tree
+bash apps/nextcloud/components/n8n/restore-stable.sh        # revert to the marketplace build
+```
+
+opcache auto-revalidates (~60s), so no pod restart. Then smoke-test in **Files** and
+**Settings → Administration → n8n Sync**. A live-pod smoke test is a standing pre-approval
+obligation (see `AGENTS.md`) — CI green is not a substitute.
 
 ---
 

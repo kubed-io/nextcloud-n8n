@@ -70,4 +70,36 @@ final class ManagedFileTest extends TestCase {
 		self::assertFalse($mf->isUnmapped());
 		self::assertFalse($mf->isIgnored());
 	}
+
+	public function testSyncedTagsDefaultsToEmptyList(): void {
+		// Every existing 5-arg call site keeps working: the tag baseline defaults
+		// to '' and decodes to an empty list.
+		$mf = new ManagedFile('wf-1', Mapping::MODE_SYNC, '', '', '');
+		self::assertSame('', $mf->syncedTags);
+		self::assertSame([], $mf->syncedTagList());
+	}
+
+	public function testSyncedTagListDecodesJson(): void {
+		$mf = new ManagedFile('wf-1', Mapping::MODE_SYNC, '', '', '', '["linux","prod"]');
+		self::assertSame(['linux', 'prod'], $mf->syncedTagList());
+	}
+
+	#[DataProvider('malformedTagCases')]
+	public function testSyncedTagListToleratesGarbage(string $raw): void {
+		$mf = new ManagedFile('wf-1', Mapping::MODE_SYNC, '', '', '', $raw);
+		self::assertSame([], $mf->syncedTagList());
+	}
+
+	/** @return iterable<string, array{string}> */
+	public static function malformedTagCases(): iterable {
+		yield 'not json' => ['nonsense'];
+		yield 'json object' => ['{"a":1}'];
+		yield 'json object with string values' => ['{"a":"prod"}'];
+		yield 'json scalar' => ['"linux"'];
+	}
+
+	public function testSyncedTagListDropsNonStringEntries(): void {
+		$mf = new ManagedFile('wf-1', Mapping::MODE_SYNC, '', '', '', '["ok",1,true,"fine"]');
+		self::assertSame(['ok', 'fine'], $mf->syncedTagList());
+	}
 }

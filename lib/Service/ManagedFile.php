@@ -31,7 +31,30 @@ final class ManagedFile {
 		public readonly string $versionId,
 		public readonly string $syncedHash,
 		public readonly string $mappingId,
+		/**
+		 * JSON array of the reserved-stripped content tag names agreed at the last
+		 * pull/push — the three-way tag merge baseline ({@see TagSyncService}).
+		 * Empty string when never stamped; decode with {@see syncedTagList()}.
+		 */
+		public readonly string $syncedTags = '',
 	) {
+	}
+
+	/**
+	 * The tag-sync baseline as a plain `list<string>`. A malformed or empty stamp
+	 * reads back as `[]`, so callers never juggle JSON errors or null.
+	 *
+	 * @return list<string>
+	 */
+	public function syncedTagList(): array {
+		if ($this->syncedTags === '') {
+			return [];
+		}
+		$decoded = json_decode($this->syncedTags, true);
+		if (!is_array($decoded) || !array_is_list($decoded)) {
+			return [];
+		}
+		return array_values(array_filter($decoded, 'is_string'));
 	}
 
 	/** True when the file carries an n8n workflow id — i.e. it is one of ours. */

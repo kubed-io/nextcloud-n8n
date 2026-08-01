@@ -24,6 +24,8 @@ use Psr\Log\LoggerInterface;
  *   n8n_versionId   — the n8n versionId we last reconciled (conflict detection).
  *   n8n_syncedHash  — sha1 of the file body at the last pull/push (loop guard).
  *   n8n_mapping     — id of the originating mapping. INDEXED.
+ *   n8n_syncedTags  — JSON list of the content tags agreed at the last sync
+ *                     (the three-way tag merge baseline).
  *
  * `n8n_writeback` was removed — mode is now the single source of truth (the old
  * `sync + two-way` is just `sync`).
@@ -54,6 +56,13 @@ final class WorkflowMetadata {
 	public const KEY_SYNCED_HASH = 'n8n_syncedHash';
 	/** Id of the originating mapping — INDEXED so files can be targeted by mapping. */
 	public const KEY_MAPPING = 'n8n_mapping';
+	/**
+	 * JSON array of the reserved-stripped content-tag names agreed at the last
+	 * pull/push — the baseline for the three-way tag merge ({@see TagSyncService}).
+	 * Lets the reconciler tell an added tag from a removed one when both NC and n8n
+	 * have drifted since the last sync. Not indexed (never queried by value).
+	 */
+	public const KEY_SYNCED_TAGS = 'n8n_syncedTags';
 
 	/** File-mode values not covered by {@see Mapping} (which only configures sync/link). */
 	public const MODE_UNMAPPED = 'unmapped';
@@ -73,6 +82,7 @@ final class WorkflowMetadata {
 		self::KEY_VERSION_ID,
 		self::KEY_SYNCED_HASH,
 		self::KEY_MAPPING,
+		self::KEY_SYNCED_TAGS,
 	];
 
 	/** Keys stored as searchable indexes (the rest are plain, read-only props). */
@@ -114,7 +124,8 @@ final class WorkflowMetadata {
 	 *     n8n_mode?:string,
 	 *     n8n_versionId?:string,
 	 *     n8n_syncedHash?:string,
-	 *     n8n_mapping?:string
+	 *     n8n_mapping?:string,
+	 *     n8n_syncedTags?:string
 	 * } $values
 	 */
 	public function write(int $fileId, array $values): void {
@@ -151,6 +162,32 @@ final class WorkflowMetadata {
 	}
 
 	/**
+	 * Stamp the tag-sync baseline: the reserved-stripped content-tag set that NC and
+	 * n8n agreed on at this pull/push. Written separately from {@see stampSynced}
+	 * because tags are reconciled after the body is written and, on n8n, travel on a
+	 * different API call than the workflow body ({@see N8nClient::setWorkflowTags}).
+	 * The set is de-duplicated and sorted so the stored baseline is canonical.
+	 *
+	 * @param list<string> $tags
+	 */
+	public function stampTags(int $fileId, array $tags): void {
+		$this->write($fileId, [self::KEY_SYNCED_TAGS => self::encodeTags($tags)]);
+	}
+
+	/**
+	 * Canonical JSON for a tag baseline: unique + sorted so equal sets always encode
+	 * to the same string (stable diffs, cheap equality). JSON — not a comma join —
+	 * because n8n tag names may contain commas, spaces, any character.
+	 *
+	 * @param list<string> $tags
+	 */
+	public static function encodeTags(array $tags): string {
+		$tags = array_values(array_unique(array_filter($tags, static fn (string $t): bool => $t !== '')));
+		sort($tags);
+		return json_encode($tags, JSON_THROW_ON_ERROR);
+	}
+
+	/**
 	 * Read the managed keys for a file as a typed {@see ManagedFile}.
 	 *
 	 * Returns null if the file has no metadata record at all. Otherwise a
@@ -172,6 +209,7 @@ final class WorkflowMetadata {
 			$value(self::KEY_VERSION_ID),
 			$value(self::KEY_SYNCED_HASH),
 			$value(self::KEY_MAPPING),
+			$value(self::KEY_SYNCED_TAGS),
 		);
 	}
 
