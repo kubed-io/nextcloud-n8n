@@ -257,17 +257,23 @@ final class TagReconcileService {
 			if (!is_array($wf)) {
 				return; // a link pointer or a hand-mangled file — nothing to keep in step
 			}
-				// STRIP THE RESERVED NAMESPACE BEFORE IT REACHES THE FILE. reconcilePush()
+			// STRIP THE RESERVED NAMESPACE BEFORE IT REACHES THE FILE. reconcilePush()
 			// returns n8n's canonical rows for the FINAL set, and that set deliberately
 			// re-sends any `n8n:*` marker the workflow already carried (setWorkflowTags is
 			// a full replace, so preserving them is the only way not to drop them).
 			// Correct for n8n; wrong for the body. The body is CONTENT, and it is also
 			// the one PORTABLE surface — a reserved marker written here would travel with
 			// the file and seed itself as a content tag on adoption somewhere else.
-			$rows = array_values(array_filter(
-				$rows,
-				static fn (array $r): bool => !str_starts_with((string)($r['name'] ?? ''), TagSyncService::RESERVED_PREFIX),
-			));
+			//
+			// Blank names are dropped in the same pass. Every current caller already
+			// guarantees non-empty (pushSourceTags filters them, readNcContentTags cannot
+			// produce one), so this is defence in depth — but the alternative is a
+			// nameless `{}` or a bare `{"id":…}` written into a user's file, and this
+			// method should not depend on all three of its callers staying careful.
+			$rows = array_values(array_filter($rows, static function (array $r): bool {
+				$name = (string)($r['name'] ?? '');
+				return $name !== '' && !str_starts_with($name, TagSyncService::RESERVED_PREFIX);
+			}));
 			usort($rows, static fn (array $a, array $b): int => strcmp((string)($a['name'] ?? ''), (string)($b['name'] ?? '')));
 			$wf['tags'] = $rows;
 			$new = json_encode($wf, N8nWorkflowBody::JSON_PRETTY);

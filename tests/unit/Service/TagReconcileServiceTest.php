@@ -234,6 +234,8 @@ final class TagReconcileServiceTest extends TestCase {
 		$this->tagSync->method('reconcilePush')->willReturn([
 			['id' => 't1', 'name' => 'prod'],
 			['id' => 't7', 'name' => 'n8n:ignore'],
+			['id' => 't8'],                       // malformed: no name at all
+			['id' => 't0', 'name' => ''],         // malformed: blank name
 			['id' => 't9', 'name' => 'flows'],
 		]);
 
@@ -243,7 +245,7 @@ final class TagReconcileServiceTest extends TestCase {
 
 		self::assertNotNull($written);
 		$names = array_column(json_decode($written, true)['tags'], 'name');
-		self::assertSame(['flows', 'prod'], $names, 'a reserved marker leaked into the file body');
+		self::assertSame(['flows', 'prod'], $names, 'a reserved or nameless row leaked into the file body');
 	}
 
 	/** A pill toggle resolving to the same set must not churn the file. */
