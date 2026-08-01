@@ -258,80 +258,77 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     # show exactly when that can happen.
 
     # ── DIRECTION 1: n8n → Nextcloud ────────────────────────────────────────────
-    # The only direction that is fully built and fully live. n8n is authoritative;
-    # a pull carries its tags to BOTH Nextcloud surfaces and re-stamps `agreed`.
+    # n8n is authoritative; a pull carries its tags to BOTH Nextcloud surfaces and
+    # re-stamps `agreed`.
 
-  @unbuilt
   Scenario: A tag added in n8n reaches both Nextcloud surfaces
-    Given the tag state is n8n "a,b" / pills "a,b" / body "a,b" / agreed "a,b"
-    When the tag "c" is added to the workflow in n8n
+    Given the tag state is n8n "flows,linux" / pills "flows,linux" / body "flows,linux" / agreed "flows,linux"
+    When the tag "prod" is added to the workflow in n8n
     And the "flows" mapping is pulled
-    Then the tag state is n8n "a,b,c" / pills "a,b,c" / body "a,b,c" / agreed "a,b,c"
-    # All four move together, so nothing is left disagreeing. This is what makes
-    # direction 1 the easy one: the pull rewrites the body wholesale, so it cannot
-    # leave a stale copy behind.
+    Then the tag state is n8n "flows,linux,prod" / pills "flows,linux,prod" / body "flows,linux,prod" / agreed "flows,linux,prod"
+    # All four move together, so nothing is left disagreeing.
 
-  @unbuilt
   Scenario: A tag removed in n8n is removed from both Nextcloud surfaces
-    Given the tag state is n8n "a,b,c" / pills "a,b,c" / body "a,b,c" / agreed "a,b,c"
-    When the tag "c" is removed from the workflow in n8n
+    Given the tag state is n8n "flows,linux,old" / pills "flows,linux,old" / body "flows,linux,old" / agreed "flows,linux,old"
+    When the tag "old" is removed from the workflow in n8n
     And the "flows" mapping is pulled
-    Then the tag state is n8n "a,b" / pills "a,b" / body "a,b" / agreed "a,b"
+    Then the tag state is n8n "flows,linux" / pills "flows,linux" / body "flows,linux" / agreed "flows,linux"
     # `agreed` is what makes this a REMOVE rather than "Nextcloud has an extra tag":
-    # `c` was in the baseline, so exactly one side dropped it, and that side wins.
+    # `old` was in the baseline, so exactly one side dropped it, and that side wins.
 
-    # ── DIRECTION 2: a pill → n8n (LIVE — and the one that creates the problem) ──
-    # Slice A. Adding or removing a pill on a managed `sync` file carries the change
-    # to n8n on its own. It deliberately does NOT touch the file body.
-
-  @unbuilt
-  Scenario: A pill added in Nextcloud reaches n8n and leaves the body behind
-    Given the tag state is n8n "a,b" / pills "a,b" / body "a,b" / agreed "a,b"
-    When the admin adds the Nextcloud system tag "c" to the file
-    Then the tag state is n8n "a,b,c" / pills "a,b,c" / body "a,b" / agreed "a,b,c"
-    #                                                   ^^^^^^^^^ THE STALE BODY.
-    # Three of four surfaces moved. The body did not, because Slice A's contract is
-    # "carry the pill, leave the body alone" and the body self-heals on the next
-    # pull. Everything downstream that is hard about tag sync starts on this line.
-
-  @unbuilt
-  Scenario: A pill removed in Nextcloud reaches n8n and leaves the body behind
-    Given the tag state is n8n "a,b,c" / pills "a,b,c" / body "a,b,c" / agreed "a,b,c"
-    When the admin removes the Nextcloud system tag "c" from the file
-    Then the tag state is n8n "a,b" / pills "a,b" / body "a,b,c" / agreed "a,b"
-    # Same shape, opposite direction: now the body carries a tag that no longer
-    # exists anywhere else.
-
-    # ── THE ONE THING THAT CAN MAKE THE BODY STALE ──────────────────────────────
+    # ── DIRECTION 2: a pill → n8n, AND the body follows ─────────────────────────
     #
-    # THIS IS THE SCENARIO TO READ IF NOTHING ELSE. The whole difficulty of the
-    # third direction is "we cannot tell a body edit from a stale body" — and that
-    # is only a problem if the body can BE stale. It can, and there is exactly ONE
-    # way to get there. Enumerating the alternatives is what proves it:
+    # THE BODY COLUMN IS THE POINT OF THESE TWO. A pill edit used to move n8n and the
+    # pills and leave the body behind, which made the body the only surface that could
+    # go stale — and staleness is what made a body edit undecidable (`body ≠ pills`
+    # could mean "the user removed a tag" or "a pill moved and the body lagged", the
+    # same state with opposite correct answers).
     #
-    #   a pull runs                → rewrites the body wholesale   → body is FRESH
-    #   the user edits the body    → the body is what they typed    → body is TRUTH
-    #   a tag changes in n8n alone → invisible until a pull, which  → body is FRESH
+    # A pill edit now writes the body too, so all four columns move together. That
+    # single column is what makes DIRECTION 3 possible at all.
+
+  Scenario: A pill added in Nextcloud reaches n8n and the file body
+    Given the push timing is "sync"
+    And the tag state is n8n "flows,linux" / pills "flows,linux" / body "flows,linux" / agreed "flows,linux"
+    When the admin adds the Nextcloud system tag "prod" to the file
+    Then the tag state is n8n "flows,linux,prod" / pills "flows,linux,prod" / body "flows,linux,prod" / agreed "flows,linux,prod"
+
+  Scenario: A pill removed in Nextcloud is removed from n8n and the file body
+    Given the push timing is "sync"
+    And the tag state is n8n "flows,linux,old" / pills "flows,linux,old" / body "flows,linux,old" / agreed "flows,linux,old"
+    When the admin removes the Nextcloud system tag "old" from the file
+    Then the tag state is n8n "flows,linux" / pills "flows,linux" / body "flows,linux" / agreed "flows,linux"
+
+    # ── THE INVARIANT THAT REPLACED THE PROBLEM ─────────────────────────────────
+    #
+    # This section used to hold a scenario proving that a pill edit was the ONLY way
+    # to make the body disagree with the pills. That enumeration is what solved the
+    # design — and it is kept here as reasoning, because the scenario that stated it
+    # would now FAIL, which is exactly the point:
+    #
+    #   a pull runs                → rewrites the body wholesale   → body FRESH
+    #   the user edits the body    → the body is what they typed    → body TRUTH
+    #   a tag changes in n8n alone → invisible until a pull, which  → body FRESH
     #                                rewrites the body
-    #   a PILL is toggled          → n8n and pills move, body does  → body is STALE
-    #                                not                              ↑ only cause
+    #   a pill is toggled          → n8n and pills moved, the body  → body was STALE
+    #                                did not                          ← the one cause
     #
-    # So staleness is not a fact of life about mirrors — it is a consequence of ONE
-    # design decision, taken in Slice A for a good reason at the time. Which means
-    # the ambiguity is not inherent to three-way sync at all, and it can be removed
-    # at the source instead of worked around downstream.
+    # One row, and it was our own contract rather than a fact about mirrors. Removing
+    # it turned a puzzle into an invariant, and the invariant is what gets asserted
+    # now: THE BODY NEVER DISAGREES WITH THE PILLS. Everything else in this file
+    # depends on that holding, so it is asserted across every trigger rather than
+    # trusted.
 
-  @unbuilt
-  Scenario: Only a pill edit can leave the body disagreeing with the pills
-    Given the tag state is n8n "a,b" / pills "a,b" / body "a,b" / agreed "a,b"
-    When a pull runs
+  Scenario: The body never disagrees with the pills, whatever moved
+    Given the push timing is "sync"
+    And the tag state is n8n "flows,linux" / pills "flows,linux" / body "flows,linux" / agreed "flows,linux"
+    When the admin adds the Nextcloud system tag "prod" to the file
     Then the body agrees with the pills
-    When the tag "c" is added to the workflow in n8n and a pull runs
+    When the tag "extra" is added to the workflow in n8n
+    And the "flows" mapping is pulled
     Then the body agrees with the pills
-    When the admin adds the Nextcloud system tag "d" to the file
-    Then the body does not agree with the pills
-    # Three triggers, one divergence. Fix that one and `body ≠ pills` becomes an
-    # unambiguous signal rather than a puzzle.
+    When the admin removes the Nextcloud system tag "prod" from the file
+    Then the body agrees with the pills
 
     # ── DIRECTION 3: the body → n8n (the goal, and what blocks it) ──────────────
     #
@@ -345,34 +342,29 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     # typed. The next pull rewrites the array with n8n's canonical `{id,name}` rows.
     # So the file is briefly "wrong" in a way that self-corrects, deliberately.
 
-  @unbuilt
   Scenario: A tag typed into the file reaches n8n and the pills
-    Given the tag state is n8n "a,b" / pills "a,b" / body "a,b" / agreed "a,b"
-    When the admin adds the tag "c" to the file body and saves
-    Then the tag state is n8n "a,b,c" / pills "a,b,c" / body "a,b,c" / agreed "a,b,c"
+    Given the push timing is "sync"
+    And the tag state is n8n "flows,linux" / pills "flows,linux" / body "flows,linux" / agreed "flows,linux"
+    When the admin edits the file body's "tags" array to "flows", "linux", and "prod"
+    Then the tag state is n8n "flows,linux,prod" / pills "flows,linux,prod" / body "flows,linux,prod" / agreed "flows,linux,prod"
+    # The body edit is written as a BARE {"name": …} with no id — exactly what a human
+    # types — so this also proves the name-only shorthand works end to end.
 
-  @unbuilt
-  Scenario: A tag typed into the file by name alone is accepted
-    Given the tag state is n8n "a,b" / pills "a,b" / body "a,b" / agreed "a,b"
-    And the admin adds the tag "c" to the file body with no id
-    When the file is saved
-    Then the tag state is n8n "a,b,c" / pills "a,b,c" / body "a,b,c" / agreed "a,b,c"
-    And the file body still carries "c" exactly as it was typed
-    # The convenience that makes the body worth editing at all. The id arrives on
-    # the next pull; until then the file is readable and the sync is correct.
-
-  @unbuilt
   Scenario: A tag deleted from the file is removed from n8n and the pills
-    Given the tag state is n8n "a,b,c" / pills "a,b,c" / body "a,b,c" / agreed "a,b,c"
-    When the admin removes the tag "c" from the file body and saves
-    Then the tag state is n8n "a,b" / pills "a,b" / body "a,b" / agreed "a,b"
-    # THE ONE THAT CANNOT BE BUILT SAFELY TODAY, and the reason is the next
-    # scenario, not this one.
+    Given the push timing is "sync"
+    And the tag state is n8n "flows,linux,old" / pills "flows,linux,old" / body "flows,linux,old" / agreed "flows,linux,old"
+    When the admin edits the file body's "tags" array to "flows" and "linux"
+    Then the tag state is n8n "flows,linux" / pills "flows,linux" / body "flows,linux" / agreed "flows,linux"
+    # The direction that was blocked twice. It is decidable only because a pill edit
+    # now keeps the body in step, so a body that disagrees with the pills can only be
+    # a deliberate edit.
 
     # ── THE AMBIGUITY, WRITTEN OUT ──────────────────────────────────────────────
     #
-    # Put the stale body from direction 2 next to the removal from direction 3 and
-    # they become the SAME on-disk state with two opposite correct answers:
+    # THIS IS WHAT THE LOCKSTEP BOUGHT, and it is worth keeping written down because
+    # the scenario below is the only guard against it coming back. Before a pill edit
+    # wrote the body, the stale body from direction 2 and the removal from direction 3
+    # were the SAME on-disk state with two opposite correct answers:
     #
     #     pills "a,b,c"  body "a,b"   → the user deleted `c` from the file  (remove)
     #     pills "a,b,c"  body "a,b"   → a pill was added, body not rewritten (ignore)
@@ -382,18 +374,19 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     # apart. A baseline tells you WHO MOVED — but `agreed` is the baseline for the
     # n8n↔pills pair, and it says nothing about what the BODY last held.
 
-  @unbuilt
   Scenario: A save that did not touch the tags must not undo a pill edit
-    Given the tag state is n8n "a,b" / pills "a,b" / body "a,b" / agreed "a,b"
-    And the admin adds the Nextcloud system tag "c" to the file
-    When the admin edits the workflow's nodes and saves, leaving the tags alone
-    Then the tag state is n8n "a,b,c" / pills "a,b,c" / body "a,b" / agreed "a,b,c"
-    # NOTHING MAY HAPPEN HERE. The body reads "a,b" and disagrees with everything,
-    # but the user did not touch a tag — they edited nodes. Reading the body as
-    # truth on this save pushes a removal of the `c` they added seconds ago.
-    #
-    # This scenario is the acceptance test for the whole third direction. Any design
-    # that cannot pass it is wrong regardless of how well it handles the happy path.
+    Given the push timing is "sync"
+    And the tag state is n8n "flows,linux" / pills "flows,linux" / body "flows,linux" / agreed "flows,linux"
+    And the admin adds the Nextcloud system tag "prod" to the file
+    And I note the current tag state
+    When the admin edits the workflow's nodes and saves, leaving the tags array alone
+    Then the tag state is unchanged
+    # THE ACCEPTANCE TEST FOR THE WHOLE THIRD DIRECTION, and the reason the lockstep
+    # exists. Before it, the body still read "flows,linux" while the pills read
+    # "flows,linux,prod" — so this save looked exactly like a deliberate removal of
+    # `prod`, and reading the body as truth would have destroyed a pill edit made
+    # seconds earlier. Any design that cannot pass this is wrong however well it
+    # handles the happy path.
 
     # ── RULE: THE NEXTCLOUD PAIR IS LOCAL; ONLY THE n8n LEG NEEDS A MAPPING ─────
     #

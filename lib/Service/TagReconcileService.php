@@ -23,9 +23,11 @@ use Psr\Log\LoggerInterface;
  * It does three things the raw {@see TagSyncService::reconcilePush} can't do on its
  * own, and nothing else:
  *
- *  1. **Gates.** Only a managed **sync** file reconciles — a `link` file's pills are a
- *     read-only projection of n8n (pull-only), and an `unmapped`/`ignored` file is a
- *     plain Nextcloud file the tag machinery must not touch (§5.6 scope).
+ *  1. **Gates.** Only a managed **sync** file reaches n8n. An `unmapped`/`ignored`/
+ *     untracked file still keeps its own two Nextcloud surfaces in step, because that
+ *     pair needs no remote system (§5.10) — that is what lets a tag survive until the
+ *     file is moved into a mapping. A `link` is the one full exclusion: its body is a
+ *     POINTER, not the workflow, and its pills are a read-only projection of n8n.
  *  2. **Resolves the protected set.** n8n binds a workflow to its folder BY TAG, so the
  *     mapping's own tag is force-kept on both sides; we look it up from the file's
  *     recorded `n8n_mapping`. A file whose mapping has vanished protects nothing.
@@ -80,12 +82,18 @@ final class TagReconcileService {
 		$fileId = $node->getId();
 		$managed = $this->metadata->read($fileId);
 		if (!$managed?->isManaged() || !$managed->isSync()) {
-			// NOT A DEAD END — the n8n leg needs a mapping, the Nextcloud pair does not.
-			// A `.n8n.json` outside any mapping still has pills and still has a `tags`
-			// array, and keeping those two in step is a purely local concern. Doing it
-			// here is what makes the transport case work: tags added while a file sits
-			// outside a mapping survive in the body, and are carried into n8n when the
-			// file is later moved or copied in (saga §5.10).
+			// A LINK IS THE ONE EXCLUSION, and it is not an oversight. A link's body is a
+			// POINTER (id, name, url, tags), not the workflow, and its pills are a
+			// read-only projection of n8n that the next pull overwrites — so writing
+			// either from the other would fabricate agreement that n8n never asked for.
+			if ($managed?->isLink() === true) {
+				return false;
+			}
+			// Otherwise NOT A DEAD END — the n8n leg needs a mapping, the Nextcloud pair
+			// does not. A `.n8n.json` outside any mapping still has pills and still has a
+			// `tags` array, and keeping those two in step is purely local. This is what
+			// makes the transport case work: tags added while a file sits outside a
+			// mapping survive in the body and reach n8n when it is moved in (saga §5.10).
 			return $this->syncBodyFromPills($node);
 		}
 		$protected = $this->protectedTagsFor($managed);
@@ -165,6 +173,11 @@ final class TagReconcileService {
 		}
 
 		$managed = $this->metadata->read($fileId);
+		if ($managed?->isLink() === true) {
+			// See reconcileFile(): a link's pills are a read-only projection of n8n, so a
+			// hand-edit of its pointer body must not move them.
+			return false;
+		}
 		if (!$managed?->isManaged() || !$managed->isSync()) {
 			// Nextcloud-local only: converge the pills on what the body says and stop.
 			// There is no workflow to tell, and nothing here needs one (saga §5.10).

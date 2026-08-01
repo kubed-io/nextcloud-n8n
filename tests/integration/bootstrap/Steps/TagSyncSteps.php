@@ -45,6 +45,8 @@ trait TagSyncSteps {
 	private array $tagCatalogBefore = [];
 	/** Snapshot of the n8n tag catalog names, for the "no new definition" check. */
 	private array $tagN8nBefore = [];
+	/** All four surfaces as of the last "I note the current tag state", for "unchanged". */
+	private ?array $tagStateSnapshot = null;
 
 	// ── Given: seed an n8n-only workflow (pull will create the file) ───────────
 
@@ -153,6 +155,155 @@ trait TagSyncSteps {
 		$this->davPut($path, 'not a workflow');
 		$this->assignSystemTag($path, $tag);
 		$this->tagUnrelatedFile = $path;
+	}
+
+	/**
+	 * Edit the workflow body WITHOUT touching its `tags` array, then save — the
+	 * ordinary case, and the one the acceptance test turns on. Changes a node name so
+	 * the content genuinely differs (a byte-identical PUT would not exercise the
+	 * writeback at all), leaves `tags` exactly as it found them, and drains the push.
+	 *
+	 * @When the admin edits the workflow's nodes and saves, leaving the tags array alone
+	 */
+	public function theAdminEditsTheNodesLeavingTagsAlone(): void {
+		$path = $this->tagLocateFile();
+		$wf = json_decode($this->davGet($path), true);
+		Assert::assertIsArray($wf, "managed file at $path is not JSON");
+		$before = $wf['tags'] ?? null;
+
+		$wf['nodes'] = [[
+			'name' => 'Touched-' . bin2hex(random_bytes(3)),
+			'type' => 'n8n-nodes-base.noOp',
+			'typeVersion' => 1,
+			'position' => [0, 0],
+			'parameters' => new \stdClass(),
+		]];
+		Assert::assertSame($before, $wf['tags'] ?? null, 'this step must not alter the tags array');
+
+		$this->davPut($path, json_encode($wf, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+		$this->drainJobs();
+	}
+
+	// ── the four-surface tag state: one step for the whole picture ──────────────
+
+	/**
+	 * Arrange the WHOLE tag state at once. Every `Given` in the direction scenarios
+	 * starts from a converged state (all four columns equal), which is exactly what a
+	 * managed file plus a pull produces — so this asserts the four columns match rather
+	 * than trying to force them apart. If they diverge, the arrange is wrong and the
+	 * scenario would be testing a fiction.
+	 *
+	 * The FIRST name is the mapping tag; it binds the workflow to the folder.
+	 *
+	 * @Given /^the tag state is n8n "([^"]*)" \/ pills "([^"]*)" \/ body "([^"]*)" \/ agreed "([^"]*)"$/
+	 */
+	public function theTagStateIs(string $n8n, string $pills, string $body, string $agreed): void {
+		$names = self::tagList($n8n);
+		Assert::assertSame(
+			[$names, $names, $names],
+			[self::tagList($pills), self::tagList($body), self::tagList($agreed)],
+			'a Given tag state must be converged — all four columns equal. Use a When to diverge them.',
+		);
+		Assert::assertNotEmpty($names, 'the first tag binds the folder, so the set cannot be empty');
+		$this->tagArrangeManagedFile('sync', $names[0], $names, true);
+		$this->assertTagState($n8n, $pills, $body, $agreed);
+	}
+
+	/**
+	 * Assert the WHOLE tag state — the payoff step. Naming all four surfaces in one
+	 * line is what makes a scenario readable as pre/post state instead of a list of
+	 * pokes, and it means a regression in ANY surface fails the scenario that cares.
+	 *
+	 * @Then /^the tag state is n8n "([^"]*)" \/ pills "([^"]*)" \/ body "([^"]*)" \/ agreed "([^"]*)"$/
+	 */
+	public function theTagStateBecomes(string $n8n, string $pills, string $body, string $agreed): void {
+		$this->assertTagState($n8n, $pills, $body, $agreed);
+	}
+
+	/**
+	 * THE INVARIANT the whole third direction rests on: the file body's `tags` array
+	 * never disagrees with the pills. Asserted on its own so a scenario can check it
+	 * after each of several triggers without restating the full set every time.
+	 *
+	 * @Then the body agrees with the pills
+	 */
+	public function theBodyAgreesWithThePills(): void {
+		$path = $this->tagLocateFile();
+		$pills = $this->tagContentPills($path);
+		sort($pills);
+		$this->assertBodyTagArray($pills);
+	}
+
+	/** @Then the tag state is unchanged */
+	public function theTagStateIsUnchanged(): void {
+		Assert::assertNotNull($this->tagStateSnapshot, 'nothing was snapshotted to compare against');
+		Assert::assertSame($this->tagStateSnapshot, $this->readTagState(), 'the tag state changed when it should not have');
+	}
+
+	/** @Given I note the current tag state */
+	public function iNoteTheCurrentTagState(): void {
+		$this->tagStateSnapshot = $this->readTagState();
+	}
+
+	/**
+	 * Read all four surfaces. `agreed` comes off the DAV metadata property rather than
+	 * the database, so the assertion goes through the same surface a client sees.
+	 *
+	 * @return array{n8n: list<string>, pills: list<string>, body: list<string>, agreed: list<string>}
+	 */
+	private function readTagState(): array {
+		$path = $this->tagLocateFile();
+
+		$n8n = $this->tagN8nContent($this->tagWfId);
+		sort($n8n);
+		$pills = $this->tagContentPills($path);
+		sort($pills);
+
+		$wf = json_decode($this->davGet($path), true);
+		Assert::assertIsArray($wf, "managed file at $path is not JSON");
+		$body = [];
+		foreach ((array)($wf['tags'] ?? []) as $tag) {
+			$name = is_array($tag) ? (string)($tag['name'] ?? '') : '';
+			if ($name !== '' && !str_starts_with($name, 'n8n:')) {
+				$body[] = $name;
+			}
+		}
+		$body = array_values(array_unique($body));
+		sort($body);
+
+		$raw = $this->davReadMetadata($path, 'n8n_syncedTags') ?? '';
+		$decoded = $raw === '' ? [] : json_decode($raw, true);
+		$agreed = [];
+		foreach (is_array($decoded) ? $decoded : [] as $name) {
+			if (is_string($name) && $name !== '' && !str_starts_with($name, 'n8n:')) {
+				$agreed[] = $name;
+			}
+		}
+		sort($agreed);
+
+		return ['n8n' => $n8n, 'pills' => $pills, 'body' => $body, 'agreed' => $agreed];
+	}
+
+	private function assertTagState(string $n8n, string $pills, string $body, string $agreed): void {
+		$want = [
+			'n8n' => self::tagList($n8n),
+			'pills' => self::tagList($pills),
+			'body' => self::tagList($body),
+			'agreed' => self::tagList($agreed),
+		];
+		$got = $this->readTagState();
+		// One assertion over all four so a failure reports the whole picture — which
+		// column drifted is the first thing you want to know, and asserting them one by
+		// one hides the other three behind the first failure.
+		Assert::assertSame($want, $got, 'tag state mismatch (want vs got shown above)');
+	}
+
+	/** Split a comma list into a sorted, de-duplicated name list. "" → []. */
+	private static function tagList(string $csv): array {
+		$names = array_values(array_filter(array_map('trim', explode(',', $csv)), static fn (string $s): bool => $s !== ''));
+		$names = array_values(array_unique($names));
+		sort($names);
+		return $names;
 	}
 
 	// ── When ───────────────────────────────────────────────────────────────────
