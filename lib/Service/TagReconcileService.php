@@ -81,12 +81,12 @@ final class TagReconcileService {
 	public function reconcileFile(File $node): bool {
 		$fileId = $node->getId();
 		$managed = $this->metadata->read($fileId);
-		if (!$managed?->isManaged() || !$managed->isSync()) {
+		if ($managed === null || !$managed->isManaged() || !$managed->isSync()) {
 			// A LINK IS THE ONE EXCLUSION, and it is not an oversight. A link's body is a
 			// POINTER (id, name, url, tags), not the workflow, and its pills are a
 			// read-only projection of n8n that the next pull overwrites — so writing
 			// either from the other would fabricate agreement that n8n never asked for.
-			if ($managed?->isLink() === true) {
+			if ($managed !== null && $managed->isLink()) {
 				return false;
 			}
 			// Otherwise NOT A DEAD END — the n8n leg needs a mapping, the Nextcloud pair
@@ -172,13 +172,17 @@ final class TagReconcileService {
 			return false; // tags untouched by this save — the common case, and free
 		}
 
+		// Null-checked explicitly rather than with `?->`: mixing a nullsafe call into the
+		// mode gate left Psalm unable to narrow $managed afterwards, and it reported the
+		// managed branch as dead code. Being explicit costs a line and keeps the analyser
+		// able to prove the branch is reachable.
 		$managed = $this->metadata->read($fileId);
-		if ($managed?->isLink() === true) {
+		if ($managed !== null && $managed->isLink()) {
 			// See reconcileFile(): a link's pills are a read-only projection of n8n, so a
 			// hand-edit of its pointer body must not move them.
 			return false;
 		}
-		if (!$managed?->isManaged() || !$managed->isSync()) {
+		if ($managed === null || !$managed->isManaged() || !$managed->isSync()) {
 			// Nextcloud-local only: converge the pills on what the body says and stop.
 			// There is no workflow to tell, and nothing here needs one (saga §5.10).
 			$this->guard->run(fn () => $this->tagSync->writeNcContentTags($fileId, $bodyContent));
