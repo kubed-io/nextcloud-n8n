@@ -73,8 +73,29 @@ so review them as claims.
 | Axis | Tags | Rule |
 |---|---|---|
 | **Origin** | `@in-nextcloud` · `@in-n8n` | **Exactly one, or neither. Never both.** |
-| **Channel** | `@gesture` · `@occ` · `@admin` · `@scheduled` | Several is normal. |
+| **Channel** | `@ui` · `@gesture` · `@occ` · `@admin` · `@scheduled` | Several is normal and expected. |
 | **Status** | `@todo` · `@unbuilt` · `@blocked` · `@decision` | At most one. |
+
+`@ui` and `@occ` deliberately overlap — most of this app is reachable both ways, and
+the edges are what you want to query: `@occ&&~@ui` is CLI-only (scriptable but
+undiscoverable), `@ui&&~@occ` cannot be automated. **Channel describes the FEATURE's
+surfaces, not how the harness drove the scenario** — a test that runs `occ` is still
+`@ui` if the admin panel has a button for the same thing. Flag a channel tag that
+records the test rather than the behaviour.
+
+### Actors: name them in the prose, tag only what you cannot infer
+
+Four things drive behaviour — **user**, **admin**, **n8n**, **time** — but only
+`@admin` and `@scheduled` are tags. `user` is `@in-nextcloud` without `@admin`, and
+`n8n` is `@in-n8n`, so tagging those repeats what the line already says.
+
+**A tag earns its place by being unguessable from the rest of the scenario.** Flag a
+proposed tag that is derivable from the ones already there; it costs a word on every
+line and answers nothing.
+
+Where the actor genuinely varies, prefer an `Examples` column or a step parameter
+(*"the admin adds…"* vs *"the user adds…"*) over a tag, so one scenario covers both
+and the difference is legible in the table.
 
 ### Origin is decided by the WHEN, and it is exclusive
 

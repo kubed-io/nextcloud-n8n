@@ -58,7 +58,7 @@ Feature: Deleting a workflow file
     Given the app is connected to n8n
     And a folder mapped as "sync" to the n8n tag "nextcloud:alpha"
 
-  @in-nextcloud @gesture
+  @in-nextcloud @gesture @ui
   Scenario: Trashing a sync-mode file archives the workflow
     Given a managed "sync" workflow file
     When I move it to the trash
@@ -73,26 +73,26 @@ Feature: Deleting a workflow file
   # The purge now runs off the legacy `\OCP\Trashbin` `preDelete` hook
   # (TrashPurgeHook) and matches the trashed name with its timestamp suffix
   # (FilenameCodec::isTrashedWorkflowName). Live from here on.
-  @in-nextcloud @gesture
+  @in-nextcloud @gesture @ui
   Scenario: Purging a sync-mode file permanently deletes the workflow
     Given a trashed "sync" workflow file
     When I purge it from the trash
     Then the workflow is permanently deleted in n8n
 
-  @in-nextcloud @gesture
+  @in-nextcloud @gesture @ui
   Scenario: Restoring a sync-mode file unarchives the workflow
     Given a trashed "sync" workflow file
     When I restore it from the trash
     Then the workflow is unarchived in n8n
 
-  @in-nextcloud @gesture
+  @in-nextcloud @gesture @ui
   Scenario: Trashing a link only strips the mapping tag
     Given a managed "link" workflow file
     When I move it to the trash
     Then the mapping tag is stripped from the workflow in n8n
     And the workflow itself is not archived or deleted
 
-  @in-nextcloud @gesture
+  @in-nextcloud @gesture @ui
   Scenario: Deleting an untracked workflow file touches nothing in n8n
     Given an untracked ".n8n.json" file
     When I delete it
@@ -103,7 +103,7 @@ Feature: Deleting a workflow file
   # archived and has no live mapping, so trash and restore are both n8n no-ops:
   # softDelete/restore fall to the link branch with mapping=null and skip the call.
   # The "left as-is" assertion proves it — the workflow stays present and archived.
-  @in-nextcloud @gesture
+  @in-nextcloud @gesture @ui
   Scenario: Trashing an unmapped file is a no-op in n8n (already archived)
     Given an unmapped workflow file that still carries its "n8n_id"
     When I move it to the trash
@@ -120,13 +120,13 @@ Feature: Deleting a workflow file
   # already archived and belongs to no mapping — purging the last Nextcloud copy is
   # arguably the user saying "done with this", but it is also the one case where
   # Nextcloud destroys an n8n object it no longer owns. Not a bug to fix quietly.
-  @in-nextcloud @gesture @unbuilt
+  @in-nextcloud @gesture @ui @unbuilt
   Scenario: Purging an unmapped file permanently deletes the archived workflow
     Given a trashed unmapped workflow file that still carries its "n8n_id"
     When I purge it from the trash
     Then the (archived) workflow is permanently deleted in n8n
 
-  @in-nextcloud @gesture
+  @in-nextcloud @gesture @ui
   Scenario: Restoring an unmapped file from trash touches nothing in n8n
     Given a trashed unmapped workflow file that still carries its "n8n_id"
     When I restore it from the trash
@@ -147,7 +147,7 @@ Feature: Deleting a workflow file
     # The fix is a trash-aware reconcile: before creating a file for an unseen id,
     # look for a trashed mirror carrying it and restore that instead. The sibling
     # app built exactly this (penpot saga §6.37); it is the piece n8n never got.
-  @in-n8n @occ @unbuilt
+  @in-n8n @ui @occ @unbuilt
   Scenario: Unarchiving a workflow in n8n brings its file back out of the trash
     Given a trashed "sync" workflow file
     When the workflow is unarchived in n8n
@@ -166,7 +166,7 @@ Feature: Deleting a workflow file
     # move.feature ("Restoring when the n8n workflow was hard-deleted falls back to
     # create"). Restoring a file whose workflow is gone and moving one in whose
     # workflow is gone are the same problem; only the move path knows it.
-  @in-nextcloud @gesture @unbuilt
+  @in-nextcloud @gesture @ui @unbuilt
   Scenario: Restoring a file whose workflow was deleted in n8n gives it a new one
     Given a trashed "sync" workflow file
     And the workflow has been permanently deleted in n8n
@@ -181,7 +181,7 @@ Feature: Deleting a workflow file
     # trash-aware reconcile must keep this behaviour deliberately rather than lose
     # it, because Nextcloud's trash is the user's undo history and an n8n-side purge
     # is not permission to empty it.
-  @in-n8n @occ @unbuilt
+  @in-n8n @ui @occ @unbuilt
   Scenario: Deleting a workflow in n8n leaves an already-trashed file where it is
     Given a trashed "sync" workflow file
     And the workflow has been permanently deleted in n8n
@@ -193,7 +193,7 @@ Feature: Deleting a workflow file
     # restores in Nextcloud before a reconcile has run. Unarchiving an already-live
     # workflow must be a no-op, not an error — the same idempotency every other
     # write in this app relies on.
-  @in-nextcloud @gesture @unbuilt
+  @in-nextcloud @gesture @ui @unbuilt
   Scenario: Restoring a file whose workflow is already live again is not a conflict
     Given a trashed "sync" workflow file
     And the workflow is already live in n8n again
@@ -207,7 +207,7 @@ Feature: Deleting a workflow file
   # of one request — that is the missing capability, and naming it is what keeps
   # this out of the @todo work queue. A unit test against a mocked N8nClient is
   # the cheaper home if it is ever wanted.
-  @in-nextcloud @gesture @blocked
+  @in-nextcloud @gesture @ui @blocked
   Scenario: A delete is aborted if n8n is unreachable
     Given a managed "sync" workflow file
     And n8n is unreachable

@@ -16,7 +16,7 @@ Feature: Copying a workflow file always makes a new instance
     Given the app is connected to n8n
     And a folder mapped as "sync" to the n8n tag "nextcloud:alpha"
 
-  @in-nextcloud @gesture
+  @in-nextcloud @gesture @ui
   Scenario: Copy within a mapped sync folder becomes a new workflow in n8n
     Given a managed "sync" workflow file in the "nextcloud:alpha" folder
     When I copy the file within the "nextcloud:alpha" folder
@@ -25,7 +25,7 @@ Feature: Copying a workflow file always makes a new instance
     And the original file and workflow are unchanged
     And there are now two distinct workflows in n8n
 
-  @in-nextcloud @gesture
+  @in-nextcloud @gesture @ui
   Scenario: Copy to outside any mapping is a plain untracked file
     Given a managed "sync" workflow file in the "nextcloud:alpha" folder
     When I copy the file to a folder that is not mapped
@@ -33,14 +33,14 @@ Feature: Copying a workflow file always makes a new instance
     And no workflow is created in n8n for the copy
     And the copy is treated as a plain document
 
-  @in-nextcloud @gesture
+  @in-nextcloud @gesture @ui
   Scenario: Copy of an unmapped file strips its metadata wherever it lands
     Given an unmapped workflow file that still carries its "n8n_id"
     When I copy the file to a folder that is not mapped
     Then the copy has no n8n metadata
     And the original unmapped file keeps its "n8n_id"
 
-  @in-nextcloud @gesture
+  @in-nextcloud @gesture @ui
   Scenario: Copy of an unmapped file into a mapping becomes a new workflow
     Given an unmapped workflow file that still carries its "n8n_id"
     When I copy the file into the "nextcloud:alpha" folder

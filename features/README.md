@@ -54,6 +54,34 @@ The point is that `behat --tags` becomes a query. *"Everything a user can do fro
 Files app"*, *"everything that starts in n8n"*, *"everything the scheduled job does"* —
 each is one filter rather than a grep and a guess.
 
+### Actors — a concept to write with, mostly not a tag
+
+Four things can drive behaviour in this app, and naming them keeps scenarios honest
+about *who* is doing something:
+
+| Actor | Who | Where it shows up |
+|---|---|---|
+| **user** | An ordinary Nextcloud user working in the Files app | the step text: *"I move…"*, *"I create…"* |
+| **admin** | Someone with the settings panel and the `occ` commands | `@admin`, and *"the admin…"* in the step |
+| **n8n** | A person or client acting in n8n, mirrored by a reconcile | `@in-n8n` |
+| **time** | The scheduled job, with no human present | `@scheduled` |
+
+**Only `admin` and `time` are tags, deliberately.** The other two are already visible:
+`user` is `@in-nextcloud` without `@admin`, and `n8n` is `@in-n8n` — so tagging them
+adds a word to every line and tells you nothing the line did not already say. A tag
+earns its place by being *unguessable* from the rest of the scenario.
+
+Where the actor genuinely varies, make it a **variable rather than a tag** — an
+`Examples` column, or a parameter in the step (*"the admin adds…"* vs *"the user
+adds…"*), so one scenario covers both and the difference is visible in the table
+instead of buried in a tag.
+
+**`@scheduled` is currently zero, and that is a real gap rather than a tagging
+oversight.** The timed pull is the one actor with no scenario of its own: everything
+it does is exercised through a manual `occ` reconcile, which is not the same thing —
+a job that reads its own config, self-gates on `schedule_enabled` and re-reads its
+interval has behaviour a manual invocation never touches.
+
 ### Origin — where the action happened
 
 | Tag | Meaning |
@@ -69,13 +97,24 @@ do not invent an origin to fill the column.
 
 | Tag | Meaning |
 |---|---|
-| `@gesture` | A Files-app action: create, rename, move, copy, delete, restore, upload, toggling a pill. Driven over WebDAV, which is what a browser sends. |
-| `@occ` | A CLI command. |
-| `@admin` | The admin settings panel. |
+| `@ui` | The behaviour has a user-interface surface at all. |
+| `@gesture` | Specifically a Files-app action: create, rename, move, copy, delete, restore, upload, toggling a pill. Driven over WebDAV, which is what a browser sends. Always also `@ui`. |
+| `@occ` | Reachable from the CLI. |
+| `@admin` | Needs the admin settings panel or an admin-only command. |
 | `@scheduled` | The timed job, with no human present. |
 
-More than one is normal and correct: a scenario that toggles a pill and then runs a
-push is `@gesture @occ`. Tag what the scenario actually does, not what it is "about".
+**`@ui` and `@occ` are not exclusive, and the overlap is the point.** Most of this app
+is reachable both ways, and the interesting queries are the edges:
+
+```
+--tags '@ui&&@occ'    both surfaces — changing one means changing the other
+--tags '@occ&&~@ui'   CLI only      — no button exists; scriptable, undiscoverable
+--tags '@ui&&~@occ'   UI only       — cannot be automated or done headlessly
+```
+
+These describe the FEATURE's surfaces, not how the harness drove it. A scenario the
+test runs via `occ` is still `@ui` if the admin panel has a button for it — otherwise
+the index answers "how do we test this", which nobody needs to ask.
 
 ### `sync` vs `link` is NOT an axis
 

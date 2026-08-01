@@ -24,7 +24,7 @@ Feature: Purge the app's restorable files from Nextcloud
     Given the app is connected to n8n
     And a folder mapped as "sync" to the n8n tag "nextcloud:alpha"
 
-  @occ
+  @ui @occ
   Scenario: Purge deletes the synced file but leaves its workflow in n8n and the mapping intact
     Given a managed "sync" workflow file in the "nextcloud:alpha" folder
     When the admin purges the Nextcloud files
@@ -32,7 +32,7 @@ Feature: Purge the app's restorable files from Nextcloud
     And the workflow still exists in n8n
     And the "nextcloud:alpha" mapping is still configured
 
-  @occ
+  @ui @occ
   Scenario: Purge keeps an unmapped file — a standalone copy is never lost
     Given an unmapped workflow file that still carries its "n8n_id"
     And I remember the unmapped file
@@ -41,7 +41,7 @@ Feature: Purge the app's restorable files from Nextcloud
     Then no managed workflow files remain in the "nextcloud:alpha" folder
     And the remembered file is left in place
 
-  @occ
+  @ui @occ
   Scenario: Sync from n8n brings the file back after a purge
     Given a managed "sync" workflow file in the "nextcloud:alpha" folder
     And the admin purges the Nextcloud files
@@ -53,7 +53,7 @@ Feature: Purge the app's restorable files from Nextcloud
   # arrange existed all along, it just silently ignored the mode it was handed and
   # produced a `sync` file, which would have made this scenario assert the opposite
   # of its own Given.
-  @occ
+  @ui @occ
   Scenario: Purge keeps an ignored file
     Given a managed "ignored" workflow file in the "nextcloud:alpha" folder
     When the admin purges the Nextcloud files
