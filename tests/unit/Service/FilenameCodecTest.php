@@ -134,6 +134,32 @@ final class FilenameCodecTest extends TestCase {
 		yield 'empty' => ['', false];
 	}
 
+	/**
+	 * The trash renames what it takes. Half the reason the purge step never ran was
+	 * that {@see FilenameCodec::isWorkflowName} is FALSE for every trashed workflow
+	 * file — the deletion timestamp lands after the extension, so `str_ends_with`
+	 * misses. These pin the predicate that fixed it.
+	 */
+	#[DataProvider('trashedNameCases')]
+	public function testIsTrashedWorkflowName(string $name, bool $expected): void {
+		self::assertSame($expected, FilenameCodec::isTrashedWorkflowName($name));
+	}
+
+	/** @return iterable<string, array{string, bool}> */
+	public static function trashedNameCases(): iterable {
+		yield 'trashed clean shape' => ['My Workflow.n8n.json.d1712345678', true];
+		yield 'trashed id-suffixed shape' => ['My Workflow.w0TtomB3I8dCHSXW.n8n.json.d1712345678', true];
+		yield 'trashed collision suffix' => ['My Workflow (2).n8n.json.d1', true];
+		// A LIVE file is isWorkflowName()'s job. Matching it here too would let a
+		// trash-only predicate fire on a file that was never deleted.
+		yield 'live file is not trashed' => ['My Workflow.n8n.json', false];
+		yield 'timestamp must be digits' => ['My Workflow.n8n.json.dABC', false];
+		yield 'timestamp must be present' => ['My Workflow.n8n.json.d', false];
+		yield 'suffix must follow the extension' => ['My Workflow.d1712345678.n8n.json', false];
+		yield 'wrong extension' => ['notes.json.d1712345678', false];
+		yield 'empty' => ['', false];
+	}
+
 	public function testIsWorkflowFileTrueForManagedFile(): void {
 		$file = $this->createMock(File::class);
 		$file->method('getName')->willReturn('Daily Report.n8n.json');

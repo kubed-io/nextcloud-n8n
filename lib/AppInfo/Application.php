@@ -26,6 +26,7 @@ use OCA\N8nSync\Listener\NameSyncListener;
 use OCA\N8nSync\Listener\NodeWrittenListener;
 use OCA\N8nSync\Listener\RegisterDavPluginsListener;
 use OCA\N8nSync\Listener\RestoreFromTrashListener;
+use OCA\N8nSync\Listener\TrashPurgeHook;
 use OCA\N8nSync\Notification\Notifier;
 use OCA\N8nSync\Service\WorkflowMetadata;
 use OCA\N8nSync\Settings\AdminSettings;
@@ -50,6 +51,9 @@ use OCP\SystemTag\TagUnassignedEvent;
  */
 final class Application extends App implements IBootstrap {
 	public const APP_ID = 'n8n_sync';
+
+	/** Guards against connectHook stacking the purge handler on a repeat boot(). */
+	private static bool $purgeHookRegistered = false;
 
 	public function __construct(array $params = []) {
 		parent::__construct(self::APP_ID, $params);
@@ -189,5 +193,23 @@ final class Application extends App implements IBootstrap {
 		// so calling it every boot just ensures the TimedJob exists; the job
 		// self-gates on `schedule_enabled` and reads its interval from app config.
 		$container->get(\OCP\BackgroundJob\IJobList::class)->add(ScheduledPullJob::class);
+
+		// EMPTYING THE TRASH IS NOT AN EVENT. Nextcloud fires no typed event when a
+		// file is purged from the trash — the trashbin emits the legacy
+		// `\OCP\Trashbin` `preDelete` hook just before it unlinks the node, and that
+		// is the only entry point there is, so the deprecation is unavoidable.
+		// Connecting the handler INSTANCE because the legacy hook calls
+		// object+method. See {@see TrashPurgeHook} for why this was missing for so
+		// long and what it cost a sibling app.
+		//
+		// connectHook APPENDS with no de-duplication, so a second boot() in the same
+		// process (tests, repeated loadApp) would stack the handler and delete twice
+		// per file. Guarded.
+		if (!self::$purgeHookRegistered) {
+			self::$purgeHookRegistered = true;
+			$purgeHook = $container->get(TrashPurgeHook::class);
+			/** @psalm-suppress DeprecatedMethod */
+			\OCP\Util::connectHook('\OCP\Trashbin', 'preDelete', $purgeHook, 'preDelete');
+		}
 	}
 }

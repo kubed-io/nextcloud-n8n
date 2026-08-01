@@ -5,6 +5,19 @@
 # of its mapping that still carries its id + an archived n8n workflow).
 # LIVE: delete/purge/restore go over WebDAV (incl. the trashbin DAV endpoint);
 # DeleteToN8nListener runs synchronously, and the n8n side is asserted over REST.
+#
+# THE TWO STEPS ARRIVE THROUGH TWO DIFFERENT DOORS, and that is not a style choice:
+#   - trash-move (soft) → `BeforeNodeDeletedEvent`, a typed event → DeleteToN8nListener
+#   - purge     (hard)  → the legacy `\OCP\Trashbin` `preDelete` hook → TrashPurgeHook
+# Nextcloud dispatches NO typed event for a purge. Assuming it did — and
+# discriminating the two steps by path prefix — is what left purged workflows alive
+# in n8n; see TrashPurgeHook's docblock for the full autopsy.
+#
+# A TRASH-BYPASSED DELETE ARCHIVES, IT DOES NOT DELETE. With the trashbin disabled
+# (or `X-NC-Skip-Trashbin`) only the soft step ever fires, so a `sync` workflow is
+# left archived. Deliberate: nothing at that point can tell "on its way to the
+# trash" from "gone for good", and an archive that should have been a delete is
+# recoverable while the reverse is not.
 
 Feature: Deleting a workflow file
   As a Nextcloud user
@@ -20,14 +33,15 @@ Feature: Deleting a workflow file
     When I move it to the trash
     Then the workflow is archived (hidden, preserved) in n8n
 
-  # Purge → permanent delete doesn't fire over the trashbin DAV endpoint in CI:
-  # the workflow stays in n8n (archived) after the purge. Likely cause — a manual
-  # trashbin DAV DELETE goes through Sabre's trashbin nodes (Trashbin::delete),
-  # which may not dispatch the Files BeforeNodeDeletedEvent the hard-delete leg
-  # hangs off; the trash entry's ".dNNNN" suffix can also defeat the ".n8n.json"
-  # gate. Archive (soft) + restore + tag-strip all pass, so the meaningful
-  # contract is covered; this leg needs a real listener-side investigation.
-  @todo
+  # FIXED — AND THE @todo ABOVE HAD ALREADY NAMED BOTH CAUSES. This scenario sat
+  # skipped behind a comment that guessed exactly right, twice: the trashbin
+  # dispatches no typed Files event, AND the ".dNNNN" suffix defeats the
+  # ".n8n.json" gate. Both were true, and either alone was enough to kill the leg.
+  # Left as a guess for months, it meant a purged `sync` workflow stayed alive in
+  # n8n forever with its file gone — a leak nobody goes looking for.
+  # The purge now runs off the legacy `\OCP\Trashbin` `preDelete` hook
+  # (TrashPurgeHook) and matches the trashed name with its timestamp suffix
+  # (FilenameCodec::isTrashedWorkflowName). Live from here on.
   Scenario: Purging a sync-mode file permanently deletes the workflow
     Given a trashed "sync" workflow file
     When I purge it from the trash
@@ -60,10 +74,16 @@ Feature: Deleting a workflow file
     Then the trash move succeeds
     And the archived workflow in n8n is left as-is
 
-  # @todo for the same reason the sync purge is @todo: a trashbin-DAV purge doesn't
-  # fire BeforeNodeDeletedEvent in CI, so the hard step never runs. On top of that,
-  # hardDelete is a non-sync no-op today, so even if it fired it wouldn't delete the
-  # archived workflow — this leg needs both a listener-side fix and a backend rule.
+  # The listener half of this is now fixed (the purge fires — see the sync purge
+  # above), but this leg still needs a DECISION, which is why it stays skipped:
+  # `DeleteService::hardDelete` is a no-op for anything that is not `sync`, and an
+  # unmapped file's mode is `unmapped`. So the hook reaches n8n and then declines
+  # to act.
+  #
+  # The open question is whether it SHOULD act. An unmapped file's workflow is
+  # already archived and belongs to no mapping — purging the last Nextcloud copy is
+  # arguably the user saying "done with this", but it is also the one case where
+  # Nextcloud destroys an n8n object it no longer owns. Not a bug to fix quietly.
   @todo
   Scenario: Purging an unmapped file permanently deletes the archived workflow
     Given a trashed unmapped workflow file that still carries its "n8n_id"

@@ -29,17 +29,38 @@ use Psr\Log\LoggerInterface;
  * which sets `arguments['run']=false` and prevents the delete — exactly the
  * "abort if n8n is unreachable" semantics we want.
  *
- * The same event fires for BOTH lifecycle steps:
- *   - The user's first delete (file is at its normal path, on its way to trash)
- *     → **soft step**: archive in n8n (sync+two-way) or untag (reference / sync+readonly).
- *   - The final purge from trash (file lives under `<uid>/files_trashbin/files/…`)
- *     → **hard step**: `DELETE /workflows/{id}` for sync+two-way (the others are
- *     no-ops because their tag was already stripped on the soft step).
+ * THIS LISTENER OWNS THE **SOFT** STEP ONLY — the user's first delete, with the
+ * file still at its normal path on its way to the trash: archive in n8n (`sync`)
+ * or strip the mapping tag (`link`).
  *
- * Discriminated by path prefix. A "trash-bypassed" direct delete (admin
- * disabled trash, or `X-NC-Skip-Trashbin` header, or another listener called
- * `MoveToTrashEvent::disableTrashBin()`) bypasses the soft step entirely — we
- * treat it like the hard step so a `sync+two-way` workflow still gets removed.
+ * ## THE HARD STEP IS NOT THIS EVENT, AND THE COMMENT THAT SAID IT WAS DID DAMAGE
+ *
+ * This docblock used to claim the same event fires again on the final purge, with
+ * the node under `<uid>/files_trashbin/files/…`, discriminated by path prefix. It
+ * does not. The trashbin's `removeItem` emits nothing typed, so that branch never
+ * ran and a `sync` workflow whose file was purged stayed alive in n8n forever —
+ * a quiet leak nobody goes looking for.
+ *
+ * It was in fact dead twice over: the trashed node is renamed
+ * `<name>.n8n.json.d<timestamp>`, so {@see FilenameCodec::isWorkflowFile}'s
+ * `str_ends_with` guard rejected it several lines earlier, before the path was
+ * ever consulted.
+ *
+ * `nextcloud-penpot` followed this comment into the same bug (penpot saga §C6.13)
+ * while `nextcloud-grafana` had it right all along. The purge now has its own
+ * entry point, {@see TrashPurgeHook}, on the legacy `\OCP\Trashbin` `preDelete`
+ * hook — the only signal Nextcloud offers.
+ *
+ * ## KNOWN GAP: A TRASH-BYPASSED DELETE ARCHIVES RATHER THAN DELETES
+ *
+ * When the trash is skipped entirely (admin disabled the trashbin, the
+ * `X-NC-Skip-Trashbin` header, or another listener called
+ * `MoveToTrashEvent::disableTrashBin()`) this event fires at the normal path and
+ * no purge ever follows, so a `sync` workflow is left **archived** instead of
+ * deleted. That is the deliberate choice: nothing here can tell "on its way to the
+ * trash" from "gone for good", and archiving something that should have been
+ * deleted is recoverable, while deleting something that was only trashed is not.
+ * Recorded in `features/delete.feature`.
  *
  * Restore is handled by {@see RestoreFromTrashListener}.
  *
@@ -76,39 +97,16 @@ final class DeleteToN8nListener implements IEventListener {
 			? $this->mappings->getById($managed->mappingId)
 			: null;
 
-		$isHardStep = $this->isInTrashbin($node->getPath());
 		try {
-			if ($isHardStep) {
-				$this->deleteService->hardDelete($id, $mode);
-			} else {
-				$this->deleteService->softDelete($id, $mode, $mapping);
-			}
+			$this->deleteService->softDelete($id, $mode, $mapping);
 		} catch (\Throwable $e) {
-			$this->logger->warning('n8n_sync ' . ($isHardStep ? 'hard' : 'soft') . '-delete failed; aborting NC delete', [
+			$this->logger->warning('n8n_sync soft-delete failed; aborting NC delete', [
 				'app' => Application::APP_ID,
 				'fileId' => $node->getId(),
 				'workflowId' => $id,
 				'exception' => $e,
 			]);
-			throw new AbortedEventException(
-				($isHardStep
-					? 'Couldn’t delete the workflow in n8n: '
-					: 'Couldn’t sync delete to n8n: ')
-				. $e->getMessage()
-			);
+			throw new AbortedEventException('Couldn’t sync delete to n8n: ' . $e->getMessage());
 		}
-	}
-
-	/**
-	 * True when the node path is inside the user's trashbin
-	 * (`/<uid>/files_trashbin/files/...`). NC node paths are slash-rooted at
-	 * the storage root so a prefix match on the second segment is enough; we
-	 * don't try to pin the uid (which we'd have to guess anyway).
-	 */
-	private function isInTrashbin(string $path): bool {
-		$segments = explode('/', ltrim($path, '/'));
-		return count($segments) >= 3
-			&& $segments[1] === 'files_trashbin'
-			&& $segments[2] === 'files';
 	}
 }

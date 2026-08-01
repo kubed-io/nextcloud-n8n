@@ -32,6 +32,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **Emptying the trash now really deletes the workflow in n8n.** Purging a synced workflow file used to leave its workflow alive in n8n forever, archived, with the Nextcloud file gone — a silent leak. Nextcloud fires no event for a trash purge (the step was listening for one that never comes), and the trashed file is renamed with a deletion timestamp that also defeated the "is this one of ours?" check. Both are fixed.
+- **Tag changes made from the command line now reach n8n.** `occ tag:files:add` and background tag changes run with nobody logged in, and the tag listeners gave up at that point — so adding or removing a tag (including `n8n:ignore`) outside the web UI silently did nothing. They now fall back to the same sync account the scheduled pull uses.
+- The admin "Test connection" and "Test webhook" buttons are now CSRF-protected like the rest of the admin surface. Previously any page an admin visited could make their Nextcloud probe the configured n8n and learn the result.
+
 - **Scheduled n8n → Nextcloud sync can be turned on again** — the "scheduled sync" checkbox in Sync Settings now actually saves, so the background pull runs. Ticking it used to do nothing at all: Nextcloud's built-in storage for declarative settings cannot round-trip a checkbox in an admin form (it rejects the boolean on the way in *and* on the way back out), so the Sync Settings panel now reads and writes its own values. The stored settings are unchanged — `occ config:app:get n8n_sync schedule_enabled` reads exactly what it always did.
 - Corrupted tag-baseline metadata (a JSON object where a list was expected) can no longer turn into real tags — only a proper list of strings is honoured.
 
