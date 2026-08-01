@@ -17,10 +17,11 @@
 # live/archived workflow state + raw-JSON readability); the opener DECISION logic
 # itself is unit-tested in tests/js/files-helpers.test.js.
 #
-# The `link` rows are @todo, NOT @blocked — nothing stops them. The harness can
-# arrange a link file (delete.feature and move.feature both do, live) and the
-# server-observable exists; only these assertions are unwritten. They are promotion
-# candidates, and calling them blocked would have parked them forever.
+# `link` is a ROW, not a separate scenario. It sat in its own @todo outline for
+# "link integration is uncertain" while two other files were arranging a link file
+# and running green — a stale reason nobody re-checked. It is one rule over four
+# modes, so it belongs in the Examples table with the rest; splitting it hid that
+# the only thing missing was the row.
 
 Feature: Opening a workflow file (Open in n8n / Open with text editor)
   As a Nextcloud user
@@ -55,21 +56,9 @@ Feature: Opening a workflow file (Open in n8n / Open with text editor)
     Examples:
       | mode     |
       | sync     |
+      | link     |
       | unmapped |
       | ignored  |
-
-  # Stale reason, corrected: this said link integration was uncertain. It is not —
-  # see the header. The decision logic is covered by tests/js/files-helpers.test.js;
-  # what is missing here is the server-observable assertion.
-  @todo
-  Scenario Outline: Open with text editor — link (covered by JS unit tests)
-    Given a managed workflow file in "<mode>" mode
-    When I choose "Open with text editor" from its context menu
-    Then the file's raw JSON opens in the text editor
-
-    Examples:
-      | mode |
-      | link |
 
   # ── Default click action follows the mode ───────────────────────────────────────
 
@@ -81,16 +70,6 @@ Feature: Opening a workflow file (Open in n8n / Open with text editor)
     Examples:
       | mode     | opener      |
       | sync     | n8n         |
+      | link     | n8n         |
       | unmapped | text editor |
       | ignored  | text editor |
-
-  # link: covered by the JS unit tests (see note above).
-  @todo
-  Scenario Outline: The default click — link (covered by JS unit tests)
-    Given a managed workflow file in "<mode>" mode
-    When I click the file in the Files app
-    Then it opens with "<opener>" by default
-
-    Examples:
-      | mode | opener |
-      | link | n8n    |

@@ -45,10 +45,11 @@ Feature: Purge the app's restorable files from Nextcloud
     When the admin clicks "Sync from n8n" for the "nextcloud:alpha" mapping
     Then the workflow appears again as a file in the "nextcloud:alpha" folder
 
-  # The in-folder mode-check (ignored stays put) and the untracked-file case are
-  # covered by the SyncServiceTest unit test; their integration arrange (tagging
-  # n8n:ignore / a never-tracked file) is left @todo to keep this suite lean.
-  @todo
+  # An `ignored` file is one the user excluded ON PURPOSE — it keeps its id and its
+  # place — so the purge must walk past it. Was @todo for want of an arrange; the
+  # arrange existed all along, it just silently ignored the mode it was handed and
+  # produced a `sync` file, which would have made this scenario assert the opposite
+  # of its own Given.
   Scenario: Purge keeps an ignored file
     Given a managed "ignored" workflow file in the "nextcloud:alpha" folder
     When the admin purges the Nextcloud files

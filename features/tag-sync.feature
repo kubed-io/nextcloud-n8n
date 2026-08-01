@@ -797,18 +797,22 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     And the file still carries the "flows" system tag
     And the workflow in n8n still carries the "flows" tag
 
-  # An unmapped file is just a Nextcloud file. Tag sync is a MAPPED-folder feature, so
-  # the auto-trigger listener and the push/pull tag reconcile must all no-op on an
-  # unmapped (or ignored) file — editing its pills is a plain Nextcloud tag change with
-  # NO n8n side effect. This keeps the mapped-folder tag machinery from leaking onto
-  # files it no longer owns.
-  @todo
-  Scenario: Editing tags on an unmapped file has no n8n tag-sync side effect
-    Given a workflow file that has become "unmapped"
+  # An unmapped file has no workflow to tell, so NOTHING reaches n8n — no push, no
+  # queued job. Its own two Nextcloud surfaces still track each other, because that
+  # pair needs no remote system (saga §5.10); that is what lets a tag applied out here
+  # survive until the file is moved back into a mapping.
+  #
+  # THIS SCENARIO USED TO SAY LESS THAN IT SHOULD. It asserted only "the tag is just a
+  # plain Nextcloud system tag on the file", which stayed technically true when the
+  # local pair landed while quietly missing the half that changed. An assertion that
+  # survives a behaviour change unaltered is not necessarily a good one.
+  Scenario: Editing tags on an unmapped file keeps Nextcloud in step and leaves n8n alone
+    Given the push timing is "sync"
+    And a workflow file that has become "unmapped"
     When the admin adds the Nextcloud system tag "urgent" to the file
     Then no tag push to n8n is triggered
     And no tag-push job is queued
-    And the tag is just a plain Nextcloud system tag on the file
+    And the body agrees with the pills
 
   Scenario: Ejecting via n8n:ignore keeps the file instead of pruning it
     Given a managed "sync" workflow file in "flows" tagged "flows" and "linux"

@@ -426,6 +426,42 @@ trait TagSyncSteps {
 		$this->currentFilePath = $to;
 	}
 
+	/**
+	 * A managed sync file moved OUT of its mapping: still carries its n8n id, but the
+	 * workflow is archived and no mapping owns it. Composed from the existing arrange
+	 * and move-out rather than re-implemented, so it cannot drift from them.
+	 *
+	 * @Given a workflow file that has become "unmapped"
+	 */
+	public function aWorkflowFileThatHasBecomeUnmapped(): void {
+		$this->tagArrangeManagedFile('sync', 'flows', ['flows', 'linux'], true);
+		$this->theFileIsMovedOut('flows');
+		$this->tagN8nBefore = $this->tagN8nContent($this->tagWfId);
+	}
+
+	/**
+	 * Nothing reached n8n. Compares the workflow's tag set against the snapshot taken
+	 * when the file became unmapped — asserting on the SET rather than on "no request
+	 * was made", because the observable that matters is n8n being unchanged, and a
+	 * request-counting assertion would pass just as happily if we sent a no-op write.
+	 *
+	 * @Then no tag push to n8n is triggered
+	 */
+	public function noTagPushToN8nIsTriggered(): void {
+		$before = $this->tagN8nBefore;
+		$after = $this->tagN8nContent($this->tagWfId);
+		sort($before);
+		sort($after);
+		Assert::assertSame($before, $after, "n8n's tags changed for an unmapped file");
+	}
+
+	/** @Then no tag-push job is queued */
+	public function noTagPushJobIsQueued(): void {
+		$res = $this->occ('background-job:list --class=' . escapeshellarg(self::RECONCILE_TAGS_JOB) . ' --output=json');
+		$jobs = json_decode($res['output'], true);
+		Assert::assertSame([], is_array($jobs) ? $jobs : [], 'a tag-reconcile job was queued for an unmapped file');
+	}
+
 	// ── Then: Nextcloud pills ───────────────────────────────────────────────────
 
 	/** @Then the workflow's file has the Nextcloud system tags :a and :b */
