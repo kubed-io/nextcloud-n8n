@@ -50,6 +50,7 @@ Feature: Uninstall reverts the system and reinstall reconnects the data
     And a ".n8n.json" file resolves to "application/json" again
 
   # ── data is orphaned, never deleted ───────────────────────────────────────────
+  @admin @ui
   Scenario: Disabling the app leaves the workflow files (and their identity) in place
     Given the "nextcloud:alpha" folder has managed sync workflow files
     When the admin disables the app
@@ -57,6 +58,7 @@ Feature: Uninstall reverts the system and reinstall reconnects the data
     And each file still carries its "n8n_id" metadata
 
   # ── reinstall reconnects with no duplicates (the headline) ────────────────────
+  @admin @ui @occ
   Scenario: Re-enabling and syncing reconciles the existing files without duplicates
     Given the "nextcloud:alpha" folder has managed sync workflow files
     And the admin disables and then re-enables the app

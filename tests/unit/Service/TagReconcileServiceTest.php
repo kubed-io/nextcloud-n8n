@@ -12,6 +12,7 @@ namespace OCA\N8nSync\Tests\Unit\Service;
 use OCA\N8nSync\Service\ManagedFile;
 use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\MappingService;
+use OCA\N8nSync\Service\N8nWorkflowBody;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\TagReconcileService;
 use OCA\N8nSync\Service\TagSyncService;
@@ -23,15 +24,22 @@ use Psr\Log\NullLogger;
 
 /**
  * Unit tests for {@see TagReconcileService} — the orchestrator behind the reactive
- * tag triggers (saga Ch5 §5.6.2). The **pill** path ({@see reconcileFile}) is LIVE: it
- * gates on managed+sync, resolves the mapping's protected tag, and runs
- * {@see TagSyncService::reconcilePush} inside the {@see SyncGuard} — carrying the pill
- * to n8n and leaving the file body untouched (the body mirror self-heals on pull). The
- * **body** path ({@see reconcileFromBody}) is the DORMANT Slice B engine (saga
- * §5.6.2.3): unwired in production but unit-tested here — it treats the file's JSON
- * `tags` as truth, fast-path-skips an unchanged set, and writes n8n's `{id,name}` back
- * so a bare `{"name":…}` gains its id. The merge algebra itself lives (and is tested)
- * in {@see TagSyncServiceTest}; here we pin the orchestration.
+ * tag triggers. Both directions are LIVE (saga §5.9):
+ *
+ *  - the **pill** path ({@see reconcileFile}) gates on managed+sync, resolves the
+ *    mapping's protected tag, runs {@see TagSyncService::reconcilePush} inside the
+ *    {@see SyncGuard}, and then WRITES the file's `tags` array so the body cannot lag;
+ *  - the **body** path ({@see reconcileFromBody}) treats the file's JSON `tags` as the
+ *    Nextcloud-side truth for that save, and leaves the file exactly as typed.
+ *
+ * The two tests worth reading first are `testPillEditWritesTheCanonicalRowsIntoTheBody`
+ * and `testReconcileFromBodyIsFreeWhenTheBodyAgreesWithThePills`. Together they are the
+ * whole design: the lockstep removes the only cause of a stale body, which is what lets
+ * the body path compare against the PILLS instead of the baseline — and comparing
+ * against the baseline is what made this feature undecidable twice.
+ *
+ * The merge algebra itself lives (and is tested) in {@see TagSyncServiceTest}; here we
+ * pin the orchestration.
  *
  * `final` collaborators are doubled via the unit bootstrap's `dg/bypass-finals`.
  */
@@ -184,49 +192,176 @@ final class TagReconcileServiceTest extends TestCase {
 		self::assertFalse($this->guard->active(), 'the guard leaked after a failing reconcile');
 	}
 
-	// ── body path (Slice B) ─────────────────────────────────────────────────────
+	// ── the lockstep: a pill edit keeps the body in step ────────────────────────
+
+	/**
+	 * THE CHANGE THAT MAKES THE THIRD DIRECTION POSSIBLE. A pill edit used to leave
+	 * the file body alone, which made the body the only surface that could go stale —
+	 * and the only cause of it. That staleness is what made a body-tag edit
+	 * undecidable, so the fix removes the cause rather than tracking it (saga §5.9).
+	 */
+	public function testPillEditWritesTheCanonicalRowsIntoTheBody(): void {
+		$this->metadata->method('read')->willReturn($this->managed(Mapping::MODE_SYNC));
+		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
+		$this->tagSync->method('reconcilePush')->willReturn([
+			['id' => 't1', 'name' => 'prod'],
+			['id' => 't9', 'name' => 'flows'],
+		]);
+
+		$written = null;
+		$node = $this->fileWith(5, '{"name":"WF","tags":[]}', $written);
+		self::assertTrue($this->service->reconcileFile($node));
+
+		self::assertNotNull($written, 'a pill edit must keep the body in step');
+		$decoded = json_decode($written, true);
+		self::assertSame(
+			[['id' => 't9', 'name' => 'flows'], ['id' => 't1', 'name' => 'prod']],
+			$decoded['tags'],
+			'the body should carry n8n rows with ids, sorted by name for a stable diff',
+		);
+	}
+
+	/**
+	 * RESERVED MARKERS MUST NOT REACH THE BODY. `reconcilePush()` returns the final n8n
+	 * set, which deliberately re-sends any `n8n:*` marker the workflow already had —
+	 * correct for n8n (setWorkflowTags is a full replace) and wrong for the file. The
+	 * body is CONTENT, and it is the one portable surface: a reserved marker written
+	 * here would travel with the file and seed itself as a content tag on adoption.
+	 */
+	public function testPillEditNeverWritesReservedTagsIntoTheBody(): void {
+		$this->metadata->method('read')->willReturn($this->managed(Mapping::MODE_SYNC));
+		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
+		$this->tagSync->method('reconcilePush')->willReturn([
+			['id' => 't1', 'name' => 'prod'],
+			['id' => 't7', 'name' => 'n8n:ignore'],
+			['id' => 't8'],                       // malformed: no name at all
+			['id' => 't0', 'name' => ''],         // malformed: blank name
+			['id' => 't9', 'name' => 'flows'],
+		]);
+
+		$written = null;
+		$node = $this->fileWith(5, '{"name":"WF","tags":[]}', $written);
+		$this->service->reconcileFile($node);
+
+		self::assertNotNull($written);
+		$names = array_column(json_decode($written, true)['tags'], 'name');
+		self::assertSame(['flows', 'prod'], $names, 'a reserved or nameless row leaked into the file body');
+	}
+
+	/** A pill toggle resolving to the same set must not churn the file. */
+	public function testPillEditDoesNotRewriteAnUnchangedBody(): void {
+		$this->metadata->method('read')->willReturn($this->managed(Mapping::MODE_SYNC));
+		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
+		$this->tagSync->method('reconcilePush')->willReturn([['id' => 't9', 'name' => 'flows']]);
+
+		$body = json_encode(['name' => 'WF', 'tags' => [['id' => 't9', 'name' => 'flows']]], N8nWorkflowBody::JSON_PRETTY);
+		$written = null;
+		$node = $this->fileWith(5, $body, $written);
+		$this->service->reconcileFile($node);
+
+		self::assertNull($written, 'an unchanged tag set must not rewrite the file');
+	}
+
+	/** A link pointer is not a workflow body; there is nothing to keep in step. */
+	public function testPillEditToleratesANonObjectBody(): void {
+		$this->metadata->method('read')->willReturn($this->managed(Mapping::MODE_SYNC));
+		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
+		$this->tagSync->method('reconcilePush')->willReturn([['id' => 't9', 'name' => 'flows']]);
+
+		$written = null;
+		$node = $this->fileWith(5, 'not json at all', $written);
+		self::assertTrue($this->service->reconcileFile($node));
+		self::assertNull($written);
+	}
+
+	// ── body path: the third direction ──────────────────────────────────────────
 
 	public function testReconcileFromBodySkipsUnmanaged(): void {
 		$this->metadata->method('read')->willReturn(null);
 		$this->tagSync->expects(self::never())->method('reconcilePushFromBody');
 
-		$content = '{"name":"WF","tags":[{"name":"foo"}]}';
-		self::assertSame($content, $this->service->reconcileFromBody($this->node(), $content));
+		self::assertFalse($this->service->reconcileFromBody($this->node(), '{"name":"WF","tags":[{"name":"foo"}]}'));
 	}
 
-	public function testReconcileFromBodyFastPathWhenTagsMatchBaseline(): void {
-		// Body carries exactly the baseline set → nothing NC-side changed; no n8n hit.
+	/**
+	 * THE ACCEPTANCE TEST FOR THE WHOLE DIRECTION. A save that did not touch the tags
+	 * must cost nothing and must not push anything — and the comparison is against
+	 * the PILLS, not the `n8n_syncedTags` baseline. Comparing to the baseline is what
+	 * made this feature undecidable twice: the baseline moves on a pill edit while
+	 * the body does not, so an ordinary nodes-only save looked exactly like a
+	 * deliberate removal (saga §5.9).
+	 */
+	public function testReconcileFromBodyIsFreeWhenTheBodyAgreesWithThePills(): void {
 		$managed = $this->managed(Mapping::MODE_SYNC, 'map-a', '["foo"]');
 		$this->metadata->method('read')->willReturn($managed);
 		$this->tagSync->method('contentTagsFromWorkflow')->willReturn(['foo']);
+		$this->tagSync->method('readNcContentTags')->willReturn(['foo']);
 		$this->tagSync->expects(self::never())->method('reconcilePushFromBody');
 
-		$content = '{"name":"WF","tags":[{"id":"t1","name":"foo"}]}';
-		self::assertSame($content, $this->service->reconcileFromBody($this->node(), $content));
+		self::assertFalse($this->service->reconcileFromBody($this->node(), '{"name":"WF","tags":[{"id":"t1","name":"foo"}]}'));
 	}
 
-	public function testReconcileFromBodyPushesAndFillsTagIds(): void {
-		// User added a bare {"name":"foo"} that isn't in the (empty) baseline.
-		$managed = $this->managed(Mapping::MODE_SYNC, 'map-a', '');
+	/**
+	 * The stale-body regression, pinned from the other side: the baseline can disagree
+	 * with the body while the PILLS agree with it, and that combination must still be
+	 * free. Under the old baseline comparison this pushed a bogus tag set.
+	 */
+	public function testReconcileFromBodyIgnoresTheBaselineEntirely(): void {
+		$managed = $this->managed(Mapping::MODE_SYNC, 'map-a', '["foo","added-by-a-pill"]');
+		$this->metadata->method('read')->willReturn($managed);
+		$this->tagSync->method('contentTagsFromWorkflow')->willReturn(['foo']);
+		$this->tagSync->method('readNcContentTags')->willReturn(['foo']);
+		$this->tagSync->expects(self::never())->method('reconcilePushFromBody');
+
+		self::assertFalse($this->service->reconcileFromBody($this->node(), '{"name":"WF","tags":[{"name":"foo"}]}'));
+	}
+
+	public function testReconcileFromBodyPushesWhenTheBodyDisagreesWithThePills(): void {
+		$managed = $this->managed(Mapping::MODE_SYNC, 'map-a', '["foo"]');
 		$this->metadata->method('read')->willReturn($managed);
 		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
-		$this->tagSync->method('contentTagsFromWorkflow')->willReturn(['foo']);
+		// The user typed a bare {"name":"prod"} into the array; the pills lack it.
+		$this->tagSync->method('contentTagsFromWorkflow')->willReturn(['foo', 'prod']);
+		$this->tagSync->method('readNcContentTags')->willReturn(['foo']);
 
 		$this->tagSync->expects(self::once())
 			->method('reconcilePushFromBody')
-			->with(5, $managed, ['foo'], ['flows'])
-			->willReturn([['id' => 't1', 'name' => 'foo'], ['id' => 't9', 'name' => 'flows']]);
+			->with(5, $managed, ['foo', 'prod'], ['flows'])
+			->willReturn([['id' => 't1', 'name' => 'foo'], ['id' => 't2', 'name' => 'prod']]);
+
+		self::assertTrue($this->service->reconcileFromBody($this->node(5), '{"name":"WF","tags":[{"id":"t1","name":"foo"},{"name":"prod"}]}'));
+	}
+
+	/**
+	 * The body is left EXACTLY as typed — a bare `{"name":"prod"}` is not "corrected"
+	 * into n8n's `{id,name}` row on save. The ids arrive on the next pull. Rewriting a
+	 * file the user is actively editing is hostile, and it would re-introduce the
+	 * re-entrant write this path is built without.
+	 */
+	public function testReconcileFromBodyNeverRewritesTheFile(): void {
+		$managed = $this->managed(Mapping::MODE_SYNC, 'map-a', '["foo"]');
+		$this->metadata->method('read')->willReturn($managed);
+		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
+		$this->tagSync->method('contentTagsFromWorkflow')->willReturn(['foo', 'prod']);
+		$this->tagSync->method('readNcContentTags')->willReturn(['foo']);
+		$this->tagSync->method('reconcilePushFromBody')->willReturn([['id' => 't2', 'name' => 'prod']]);
 
 		$written = null;
-		$node = $this->fileWith(5, '{"name":"WF","tags":[{"name":"foo"}]}', $written);
-		$final = $this->service->reconcileFromBody($node, '{"name":"WF","tags":[{"name":"foo"}]}');
+		$node = $this->fileWith(5, '{"name":"WF","tags":[{"name":"prod"}]}', $written);
+		$this->service->reconcileFromBody($node, '{"name":"WF","tags":[{"name":"prod"}]}');
 
-		self::assertNotNull($written, 'the body was not rewritten with the canonical rows');
-		$decoded = json_decode($final, true);
-		self::assertSame(
-			[['id' => 't9', 'name' => 'flows'], ['id' => 't1', 'name' => 'foo']],
-			$decoded['tags'],
-			'body should carry n8n rows (with ids), sorted by name',
-		);
+		self::assertNull($written, 'the body path must not write the file');
+	}
+
+	public function testReconcileFromBodySwallowsAnN8nFailure(): void {
+		$managed = $this->managed(Mapping::MODE_SYNC, 'map-a', '["foo"]');
+		$this->metadata->method('read')->willReturn($managed);
+		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
+		$this->tagSync->method('contentTagsFromWorkflow')->willReturn(['foo', 'prod']);
+		$this->tagSync->method('readNcContentTags')->willReturn(['foo']);
+		$this->tagSync->method('reconcilePushFromBody')->willThrowException(new \RuntimeException('n8n 500'));
+
+		self::assertTrue($this->service->reconcileFromBody($this->node(5), '{"name":"WF","tags":[{"name":"prod"}]}'));
+		self::assertFalse($this->guard->active(), 'the guard leaked after a failing body reconcile');
 	}
 }

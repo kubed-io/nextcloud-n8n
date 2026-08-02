@@ -20,6 +20,7 @@ Feature: Manual per-mapping sync (Sync from / Sync to n8n)
     Given the app is connected to n8n
     And a folder mapped as "sync" to the n8n tag "nextcloud:alpha"
 
+  @admin @ui @occ
   Scenario: Sync from n8n pulls the tagged workflows into the mapped folder
     Given n8n has workflows tagged "nextcloud:alpha"
     And an unmapped workflow file exists outside every mapping
@@ -29,6 +30,7 @@ Feature: Manual per-mapping sync (Sync from / Sync to n8n)
     And a mapped file whose workflow no longer carries the tag is pruned from the folder
     And the unmapped file is left untouched (it is outside the mapping's scope)
 
+  @admin @ui @occ
   Scenario: Sync to n8n pushes the mapping's sync files up to n8n
     Given the "nextcloud:alpha" folder has sync workflow files with local changes
     And an unmapped workflow file exists outside every mapping

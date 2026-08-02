@@ -60,6 +60,84 @@ dead; check for it.
 A `@todo` that fails because of a **defect** is legitimate — but it must say so in
 a comment, or it is indistinguishable from an unwritten one.
 
+## Tags are an index — treat them as data, not decoration
+
+Tags go on **one line, directly above `Scenario:`** — axis tags first, status last:
+`@in-nextcloud @gesture @unbuilt`. A tag separated from its scenario by a comment
+binds to the *next* one.
+
+The payoff is that `behat --tags` becomes a query: *"everything a user can do from the
+Files app"*, *"everything that starts in n8n"*. That only holds if the tags are true,
+so review them as claims.
+
+| Axis | Tags | Rule |
+|---|---|---|
+| **Origin** | `@in-nextcloud` · `@in-n8n` | **Exactly one, or neither. Never both.** |
+| **Channel** | `@ui` · `@gesture` · `@occ` · `@admin` · `@scheduled` | Several is normal and expected. |
+| **Status** | `@todo` · `@unbuilt` · `@blocked` · `@decision` | At most one. |
+
+`@ui` and `@occ` deliberately overlap — most of this app is reachable both ways, and
+the edges are what you want to query: `@occ&&~@ui` is CLI-only (scriptable but
+undiscoverable), `@ui&&~@occ` cannot be automated. **Channel describes the FEATURE's
+surfaces, not how the harness drove the scenario** — a test that runs `occ` is still
+`@ui` if the admin panel has a button for the same thing. Flag a channel tag that
+records the test rather than the behaviour.
+
+### Actor — exactly one, in the UML sense
+
+Every scenario is a use case, so it has a **primary actor**: `@user`, `@admin`,
+`@n8n`, or `@time`. Exactly one. Flag a scenario with two — it means the actor was
+read off the whole scenario instead of off whoever *initiates* it.
+
+| Tag | Starts the behaviour by |
+|---|---|
+| `@user` | working in the Files app |
+| `@admin` | the settings panel or an admin-only `occ` command |
+| `@n8n` | changing a workflow in n8n, mirrored by a reconcile |
+| `@time` | the scheduled job firing, no human present |
+
+`@user` and `@n8n` are derivable from origin and are tagged anyway. That is a
+deliberate exception to "a tag should be unguessable": *"everything an end user can
+do"* deserves one filter rather than `@in-nextcloud&&~@admin`, and the actor is the
+first thing a reader of a use-case model looks for.
+
+`@time` is currently unused, and that is a **gap in the specs**, not a tagging miss —
+the scheduled job's own behaviour (self-gating on `schedule_enabled`, re-reading its
+interval) is never exercised by the manual `occ` reconcile that stands in for it.
+
+### Origin is decided by the WHEN, and it is exclusive
+
+**A behaviour happens from one side or the other — never both.** A `Given` that
+mentions n8n is *arranging state*; it does not make the scenario n8n-origin. Read the
+`When`: whoever performed the action under test owns the scenario.
+
+The giveaway is the title. *"A tag added **in Nextcloud** since the last sync is added
+in n8n"* is `@in-nextcloud` however much n8n appears in its steps — the user acted in
+Nextcloud and the payoff is what reached n8n.
+
+Flag any scenario carrying both. It is not "thorough", it means the origin was
+inferred from the whole scenario rather than from its action.
+
+### `@in-n8n` means the RECONCILE mirrors it
+
+Use it only where the change happened in n8n **and the payoff is what the reconcile
+brings into Nextcloud**. A pull or a sync run is implied and usually explicit.
+
+That is narrower than "the scenario mentions n8n". Nextcloud drives; n8n does not
+drive back except through a reconcile — so if no sync run is what makes the outcome
+observable, the scenario is not `@in-n8n`.
+
+**Neither tag** is a real answer, and a common one: configuration, a refusal, or a
+local-only surface (the mimetype, the opener menu, a DAV property) never crosses the
+boundary. Do not invent an origin to fill the column.
+
+### `sync` vs `link` is not an axis
+
+`@in-n8n` scenarios are mode-agnostic — a change in n8n reaches Nextcloud the same way
+either way, and a `link` simply has no bytes to update. Only `@in-nextcloud` scenarios
+branch, because a link is a read-only projection. Flag a scenario written twice per
+mode when the outcome does not differ.
+
 ## Community standards this project follows
 
 From [Cucumber's own guidance](https://cucumber.io/docs/bdd/better-gherkin/):
@@ -128,6 +206,14 @@ file's own Background before assuming a path resolves.
 non-zero for *both* "no such thing" and "could not connect" makes the test go green
 precisely when its fixture breaks. **Absence assertions must match the specific
 failure.**
+
+**The same sentence under `@Given` and `@Then`.** Keywords are ignored in matching, so
+one phrase registered twice is a DUPLICATE DEFINITION, not two steps — Behat refuses the
+second and **every scenario in the suite fails**, including ones that never mention it.
+The failure reads as "the app is broken", not "your step is wrong", which is why it costs
+a whole cycle to place. An arrange and an assertion need different sentences: *"the tag
+state **starts as** …"* vs *"the tag state **is** …"*. This rule is stated above and was
+still broken in the same PR that wrote it down.
 
 **A `Then` that only asks this app.** See the observable-outcome rule above.
 

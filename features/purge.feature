@@ -24,6 +24,7 @@ Feature: Purge the app's restorable files from Nextcloud
     Given the app is connected to n8n
     And a folder mapped as "sync" to the n8n tag "nextcloud:alpha"
 
+  @admin @ui @occ
   Scenario: Purge deletes the synced file but leaves its workflow in n8n and the mapping intact
     Given a managed "sync" workflow file in the "nextcloud:alpha" folder
     When the admin purges the Nextcloud files
@@ -31,6 +32,7 @@ Feature: Purge the app's restorable files from Nextcloud
     And the workflow still exists in n8n
     And the "nextcloud:alpha" mapping is still configured
 
+  @admin @ui @occ
   Scenario: Purge keeps an unmapped file — a standalone copy is never lost
     Given an unmapped workflow file that still carries its "n8n_id"
     And I remember the unmapped file
@@ -39,16 +41,19 @@ Feature: Purge the app's restorable files from Nextcloud
     Then no managed workflow files remain in the "nextcloud:alpha" folder
     And the remembered file is left in place
 
+  @admin @ui @occ
   Scenario: Sync from n8n brings the file back after a purge
     Given a managed "sync" workflow file in the "nextcloud:alpha" folder
     And the admin purges the Nextcloud files
     When the admin clicks "Sync from n8n" for the "nextcloud:alpha" mapping
     Then the workflow appears again as a file in the "nextcloud:alpha" folder
 
-  # The in-folder mode-check (ignored stays put) and the untracked-file case are
-  # covered by the SyncServiceTest unit test; their integration arrange (tagging
-  # n8n:ignore / a never-tracked file) is left @todo to keep this suite lean.
-  @todo
+  # An `ignored` file is one the user excluded ON PURPOSE — it keeps its id and its
+  # place — so the purge must walk past it. Was @todo for want of an arrange; the
+  # arrange existed all along, it just silently ignored the mode it was handed and
+  # produced a `sync` file, which would have made this scenario assert the opposite
+  # of its own Given.
+  @admin @ui @occ
   Scenario: Purge keeps an ignored file
     Given a managed "ignored" workflow file in the "nextcloud:alpha" folder
     When the admin purges the Nextcloud files

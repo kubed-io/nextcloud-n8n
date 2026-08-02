@@ -13,6 +13,7 @@ Feature: Admin configures folder mappings
   Background:
     Given the app is enabled
 
+  @admin @ui
   Scenario: Add the full storage × mode matrix
     When the admin adds these mappings:
       | n8n tag           | folder  | storage     | mode |
@@ -27,6 +28,7 @@ Feature: Admin configures folder mappings
     And the mapping for tag "nextcloud:delta" is a "admin" folder in "link" mode
 
   # New-model invariant (saga Chapter 3 §14): a mapping's mode is exactly sync or link.
+  @admin @ui @occ
   Scenario: A mapping mode must be sync or link
     When the admin adds a mapping with an unknown mode for tag "nextcloud:bad"
     Then the mapping is rejected

@@ -58,11 +58,15 @@ trait RenameSteps {
 	/** @When I edit the file and change the JSON :field field to :value */
 	public function iEditTheJsonField(string $field, string $value): void {
 		$body = (string)$this->davGet($this->currentFilePath);
-		$wf = json_decode($body, true);
-		if (!is_array($wf)) {
-			$wf = [];
+		// Object decode, because this PUTs the whole body back: an assoc round-trip
+		// turns the managed file's empty `connections`/`settings` objects into `[]`,
+		// which n8n rejects on the next push. Editing the name must not reshape the
+		// rest of the workflow.
+		$wf = json_decode($body, false, 512, JSON_THROW_ON_ERROR);
+		if (!$wf instanceof \stdClass) {
+			$wf = new \stdClass();
 		}
-		$wf[$field] = $value;
+		$wf->{$field} = $value;
 		$this->davPut($this->currentFilePath, json_encode($wf, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT));
 		// The save's writeback push (async) and the filename reconcile both run as
 		// jobs; drain push first so n8n has the new name, then the rename job.

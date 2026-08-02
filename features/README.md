@@ -44,6 +44,90 @@ apart, and nobody reads two files to answer one question.
 **A scenario describing a behaviour another file owns is a defect**, even when it
 passes. Move it.
 
+## Tags are an index, not decoration
+
+A scenario carries tags on **one line, directly above `Scenario:`** — axis tags first,
+status last: `@in-nextcloud @gesture @unbuilt`. A tag on its own line separated by
+comments binds to the wrong scenario, so keep them together.
+
+The point is that `behat --tags` becomes a query. *"Everything a user can do from the
+Files app"*, *"everything that starts in n8n"*, *"everything the scheduled job does"* —
+each is one filter rather than a grep and a guess.
+
+### Actor — who initiates, in the UML sense
+
+Every scenario is a use case, and a use case has a **primary actor**: the stick figure
+who starts it. Exactly one per scenario.
+
+| Tag | Actor | Starts the behaviour by |
+|---|---|---|
+| `@user` | An ordinary Nextcloud user | working in the Files app |
+| `@admin` | An administrator | the settings panel or an admin-only `occ` command |
+| `@n8n` | A person or client acting **in n8n** | changing a workflow, mirrored by a reconcile |
+| `@time` | The clock | the scheduled job firing, with no human present |
+
+`@user` and `@n8n` are strictly derivable from origin (`@in-nextcloud` minus `@admin`,
+and `@in-n8n`), and they are tagged anyway — deliberately. *"Everything an end user can
+do"* is a question worth one filter rather than a boolean expression, and an actor is
+the first thing a reader of a use-case model looks for. Redundancy that answers the
+primary question is not redundancy.
+
+**`@time` is currently zero, and that is a real gap rather than a tagging oversight.**
+The scheduled pull is the one actor with no scenario of its own: everything it does is
+exercised through a manual `occ` reconcile, which is not the same thing — a job that
+self-gates on `schedule_enabled` and re-reads its interval on every instantiation has
+behaviour a manual invocation never reaches.
+
+Where the actor genuinely *varies* across otherwise identical scenarios, prefer an
+`Examples` column or a step parameter (*"the admin adds…"* vs *"the user adds…"*) over
+writing the scenario twice.
+
+### Origin — where the action happened
+
+| Tag | Meaning |
+|---|---|
+| `@in-nextcloud` | Someone acted in Nextcloud. The payoff is what reached n8n. |
+| `@in-n8n` | The workflow changed in n8n (a human, another client, n8n itself). The payoff is what reached Nextcloud, and a sync is implied. |
+
+A scenario with **neither** never crosses the boundary: configuration, a refusal, or a
+local-only surface like the mimetype or the opener menu. That absence is information —
+do not invent an origin to fill the column.
+
+### Channel — how it was triggered
+
+| Tag | Meaning |
+|---|---|
+| `@ui` | The behaviour has a user-interface surface at all. |
+| `@gesture` | Specifically a Files-app action: create, rename, move, copy, delete, restore, upload, toggling a pill. Driven over WebDAV, which is what a browser sends. Always also `@ui`. |
+| `@occ` | Reachable from the CLI. |
+| `@admin` | Needs the admin settings panel or an admin-only command. |
+| `@scheduled` | The timed job, with no human present. |
+
+**`@ui` and `@occ` are not exclusive, and the overlap is the point.** Most of this app
+is reachable both ways, and the interesting queries are the edges:
+
+```
+--tags '@ui&&@occ'    both surfaces — changing one means changing the other
+--tags '@occ&&~@ui'   CLI only      — no button exists; scriptable, undiscoverable
+--tags '@ui&&~@occ'   UI only       — cannot be automated or done headlessly
+```
+
+These describe the FEATURE's surfaces, not how the harness drove it. A scenario the
+test runs via `occ` is still `@ui` if the admin panel has a button for it — otherwise
+the index answers "how do we test this", which nobody needs to ask.
+
+### `sync` vs `link` is NOT an axis
+
+The tempting move is to write every behaviour twice, once per mode. Don't — the modes
+only diverge in one direction. An `@in-n8n` scenario is mode-agnostic: a workflow
+renamed or deleted in n8n reaches Nextcloud the same way either way, and a `link`
+simply has no bytes to update. Only `@in-nextcloud` scenarios branch, because a link is
+a read-only projection.
+
+The test: can you write the restriction as a sentence starting *"A link…"*? If yes it
+is a rule and deserves its own scenario. If the mode makes no difference to the
+outcome, leave it out.
+
 ## Status tags — four of them, and only one is a backlog
 
 The most useful question you can ask a spec is **"what is built but untested?"**.

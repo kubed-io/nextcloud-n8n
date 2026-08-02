@@ -45,6 +45,10 @@ trait TagSyncSteps {
 	private array $tagCatalogBefore = [];
 	/** Snapshot of the n8n tag catalog names, for the "no new definition" check. */
 	private array $tagN8nBefore = [];
+	/** All four surfaces as of the last "I note the current tag state", for "unchanged". */
+	private ?array $tagStateSnapshot = null;
+	/** Queued ReconcileTagsJob count before the gesture under test (the list is global). */
+	private int $tagJobsBefore = 0;
 
 	// ── Given: seed an n8n-only workflow (pull will create the file) ───────────
 
@@ -147,12 +151,208 @@ trait TagSyncSteps {
 		$this->tagSetN8n($names);
 	}
 
+	/**
+	 * Add ONE tag to the workflow in n8n, leaving the rest alone.
+	 *
+	 * Shares its body with the `now also has` phrasing above — Behat ignores the
+	 * keyword when matching, so one function can honestly answer to both: `Given the
+	 * workflow in n8n now also has "x"` sets a precondition, `When the tag "x" is added
+	 * to the workflow in n8n` is the action under test. Same operation, two readings.
+	 *
+	 * @When the tag :tag is added to the workflow in n8n
+	 */
+	public function theTagIsAddedInN8n(string $tag): void {
+		$this->theWorkflowNowAlsoHas($tag);
+	}
+
+	/**
+	 * Remove ONE tag from the workflow in n8n, leaving the rest alone. The existing
+	 * n8n-side steps all restate the WHOLE set ("now has only x and y"), which is fine
+	 * for arranging but wrong for an action: a scenario about removing one tag should
+	 * say that, not list what survives.
+	 *
+	 * @When the tag :tag is removed from the workflow in n8n
+	 */
+	public function theTagIsRemovedInN8n(string $tag): void {
+		$names = array_values(array_filter(
+			$this->tagN8nContent($this->tagWfId),
+			static fn (string $n): bool => $n !== $tag,
+		));
+		$this->tagSetN8n($names);
+	}
+
 	/** @Given the Nextcloud system tag :tag is also pinned on an unrelated non-workflow file */
 	public function aSharedTagPinnedOnAnUnrelatedFile(string $tag): void {
 		$path = 'unrelated-' . bin2hex(random_bytes(3)) . '.txt';
 		$this->davPut($path, 'not a workflow');
 		$this->assignSystemTag($path, $tag);
 		$this->tagUnrelatedFile = $path;
+	}
+
+	/**
+	 * Edit the workflow body WITHOUT touching its `tags` array, then save — the
+	 * ordinary case, and the one the acceptance test turns on. Changes a node name so
+	 * the content genuinely differs (a byte-identical PUT would not exercise the
+	 * writeback at all), leaves `tags` exactly as it found them, and drains the push.
+	 *
+	 * @When the admin edits the workflow's nodes and saves, leaving the tags array alone
+	 */
+	public function theAdminEditsTheNodesLeavingTagsAlone(): void {
+		$path = $this->tagLocateFile();
+		// Decode as OBJECTS, not assoc. `putManagedFile()` writes `connections` and
+		// `settings` as empty JSON objects; an assoc decode turns those into PHP arrays
+		// and re-encodes them as `[]`, which n8n rejects on the next push — the same
+		// object-vs-array pitfall `PushService::pushViaApi` is documented against. A
+		// step that arranges "an edit that leaves tags alone" must not quietly reshape
+		// the rest of the body while it is at it.
+		$wf = json_decode($this->davGet($path), false, 512, JSON_THROW_ON_ERROR);
+		Assert::assertInstanceOf(\stdClass::class, $wf, "managed file at $path is not a JSON object");
+		$before = $wf->tags ?? null;
+
+		$wf->nodes = [(object)[
+			'name' => 'Touched-' . bin2hex(random_bytes(3)),
+			'type' => 'n8n-nodes-base.noOp',
+			'typeVersion' => 1,
+			'position' => [0, 0],
+			'parameters' => new \stdClass(),
+		]];
+		Assert::assertSame($before, $wf->tags ?? null, 'this step must not alter the tags array');
+
+		$this->davPut($path, json_encode($wf, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
+		// drainJobs() takes the class to drain — calling it bare was a fatal, not a
+		// no-op. Both jobs a save can enqueue are drained so the step behaves the same
+		// under either `timing`, rather than only under the one the caller happens to set.
+		$this->drainJobs('OCA\\N8nSync\\BackgroundJob\\PushWorkflowJob');
+		$this->drainJobs(self::RECONCILE_TAGS_JOB);
+	}
+
+	// ── the four-surface tag state: one step for the whole picture ──────────────
+
+	/**
+	 * Arrange the WHOLE tag state at once. Every `Given` in the direction scenarios
+	 * starts from a converged state (all four columns equal), which is exactly what a
+	 * managed file plus a pull produces — so this asserts the four columns match rather
+	 * than trying to force them apart. If they diverge, the arrange is wrong and the
+	 * scenario would be testing a fiction.
+	 *
+	 * The FIRST name is the mapping tag; it binds the workflow to the folder.
+	 *
+	 * WORDED DIFFERENTLY FROM THE `Then` ON PURPOSE — "starts as" vs "is". Behat matches
+	 * a step by its TEXT and ignores the keyword, so an identical phrase under `@Given`
+	 * and `@Then` is one duplicated definition, not two steps: Behat refuses to register
+	 * the second and every scenario in the suite fails. That rule is written down in
+	 * `.github/instructions/gherkin.instructions.md`, and it still caught me — arranging
+	 * and asserting genuinely need different sentences.
+	 *
+	 * @Given /^the tag state starts as n8n "([^"]*)" \/ pills "([^"]*)" \/ body "([^"]*)" \/ agreed "([^"]*)"$/
+	 */
+	public function theTagStateIs(string $n8n, string $pills, string $body, string $agreed): void {
+		$names = self::tagList($n8n);
+		Assert::assertSame(
+			[$names, $names, $names],
+			[self::tagList($pills), self::tagList($body), self::tagList($agreed)],
+			'a Given tag state must be converged — all four columns equal. Use a When to diverge them.',
+		);
+		Assert::assertNotEmpty($names, 'the first tag binds the folder, so the set cannot be empty');
+		$this->tagArrangeManagedFile('sync', $names[0], $names, true);
+		$this->assertTagState($n8n, $pills, $body, $agreed);
+	}
+
+	/**
+	 * Assert the WHOLE tag state — the payoff step. Naming all four surfaces in one
+	 * line is what makes a scenario readable as pre/post state instead of a list of
+	 * pokes, and it means a regression in ANY surface fails the scenario that cares.
+	 *
+	 * @Then /^the tag state is n8n "([^"]*)" \/ pills "([^"]*)" \/ body "([^"]*)" \/ agreed "([^"]*)"$/
+	 */
+	public function theTagStateBecomes(string $n8n, string $pills, string $body, string $agreed): void {
+		$this->assertTagState($n8n, $pills, $body, $agreed);
+	}
+
+	/**
+	 * THE INVARIANT the whole third direction rests on: the file body's `tags` array
+	 * never disagrees with the pills. Asserted on its own so a scenario can check it
+	 * after each of several triggers without restating the full set every time.
+	 *
+	 * @Then the body agrees with the pills
+	 */
+	public function theBodyAgreesWithThePills(): void {
+		$path = $this->tagLocateFile();
+		$pills = $this->tagContentPills($path);
+		sort($pills);
+		$this->assertBodyTagArray($pills);
+	}
+
+	/** @Then the tag state is unchanged */
+	public function theTagStateIsUnchanged(): void {
+		Assert::assertNotNull($this->tagStateSnapshot, 'nothing was snapshotted to compare against');
+		Assert::assertSame($this->tagStateSnapshot, $this->readTagState(), 'the tag state changed when it should not have');
+	}
+
+	/** @Given I note the current tag state */
+	public function iNoteTheCurrentTagState(): void {
+		$this->tagStateSnapshot = $this->readTagState();
+	}
+
+	/**
+	 * Read all four surfaces. `agreed` comes off the DAV metadata property rather than
+	 * the database, so the assertion goes through the same surface a client sees.
+	 *
+	 * @return array{n8n: list<string>, pills: list<string>, body: list<string>, agreed: list<string>}
+	 */
+	private function readTagState(): array {
+		$path = $this->tagLocateFile();
+
+		$n8n = $this->tagN8nContent($this->tagWfId);
+		sort($n8n);
+		$pills = $this->tagContentPills($path);
+		sort($pills);
+
+		$wf = json_decode($this->davGet($path), true);
+		Assert::assertIsArray($wf, "managed file at $path is not JSON");
+		$body = [];
+		foreach ((array)($wf['tags'] ?? []) as $tag) {
+			$name = is_array($tag) ? (string)($tag['name'] ?? '') : '';
+			if ($name !== '' && !str_starts_with($name, 'n8n:')) {
+				$body[] = $name;
+			}
+		}
+		$body = array_values(array_unique($body));
+		sort($body);
+
+		$raw = $this->davReadMetadata($path, 'n8n_syncedTags') ?? '';
+		$decoded = $raw === '' ? [] : json_decode($raw, true);
+		$agreed = [];
+		foreach (is_array($decoded) ? $decoded : [] as $name) {
+			if (is_string($name) && $name !== '' && !str_starts_with($name, 'n8n:')) {
+				$agreed[] = $name;
+			}
+		}
+		sort($agreed);
+
+		return ['n8n' => $n8n, 'pills' => $pills, 'body' => $body, 'agreed' => $agreed];
+	}
+
+	private function assertTagState(string $n8n, string $pills, string $body, string $agreed): void {
+		$want = [
+			'n8n' => self::tagList($n8n),
+			'pills' => self::tagList($pills),
+			'body' => self::tagList($body),
+			'agreed' => self::tagList($agreed),
+		];
+		$got = $this->readTagState();
+		// One assertion over all four so a failure reports the whole picture — which
+		// column drifted is the first thing you want to know, and asserting them one by
+		// one hides the other three behind the first failure.
+		Assert::assertSame($want, $got, 'tag state mismatch (want vs got shown above)');
+	}
+
+	/** Split a comma list into a sorted, de-duplicated name list. "" → []. */
+	private static function tagList(string $csv): array {
+		$names = array_values(array_filter(array_map('trim', explode(',', $csv)), static fn (string $s): bool => $s !== ''));
+		$names = array_values(array_unique($names));
+		sort($names);
+		return $names;
 	}
 
 	// ── When ───────────────────────────────────────────────────────────────────
@@ -232,6 +432,71 @@ trait TagSyncSteps {
 		$this->davMove($from, $to);
 		$this->tagFilePath = $to;
 		$this->currentFilePath = $to;
+	}
+
+	/**
+	 * A managed sync file moved OUT of its mapping: still carries its n8n id, but the
+	 * workflow is archived and no mapping owns it. Composed from the existing arrange
+	 * and move-out rather than re-implemented, so it cannot drift from them.
+	 *
+	 * @Given a workflow file that has become "unmapped"
+	 */
+	public function aWorkflowFileThatHasBecomeUnmapped(): void {
+		$this->tagArrangeManagedFile('sync', 'flows', ['flows', 'linux'], true);
+		$this->theFileIsMovedOut('flows');
+		// Snapshot AFTER the move-out: the unmap archives and untags the workflow in n8n,
+		// so a snapshot taken before it would attribute the unmap's own side effects to
+		// the pill edit under test.
+		$this->tagN8nBefore = $this->tagN8nContent($this->tagWfId);
+		$this->tagJobsBefore = $this->tagReconcileJobCount();
+	}
+
+	/**
+	 * Nothing reached n8n. Compares the workflow's tag set against the snapshot taken
+	 * when the file became unmapped — asserting on the SET rather than on "no request
+	 * was made", because the observable that matters is n8n being unchanged, and a
+	 * request-counting assertion would pass just as happily if we sent a no-op write.
+	 *
+	 * @Then no tag push to n8n is triggered
+	 */
+	public function noTagPushToN8nIsTriggered(): void {
+		$before = $this->tagN8nBefore;
+		$after = $this->tagN8nContent($this->tagWfId);
+		sort($before);
+		sort($after);
+		Assert::assertSame($before, $after, "n8n's tags changed for an unmapped file");
+	}
+
+	/**
+	 * No NEW tag-reconcile job appeared — measured against a snapshot, not against an
+	 * empty list.
+	 *
+	 * The job list is GLOBAL. Asserting it is empty made this scenario depend on every
+	 * scenario that ran before it: the async-timing one queues a job on purpose, so the
+	 * assertion failed on a leftover that was nobody's bug. That is the "assertion about
+	 * the whole system inside a one-file scenario" trap in the Gherkin instructions,
+	 * committed by the person who wrote the instructions.
+	 *
+	 * Plain throw rather than a PHPUnit assert: a failing assert here surfaces as
+	 * `Registry::get(): … null returned`, which hides the reason (see WebDavTrait).
+	 *
+	 * @Then no tag-push job is queued
+	 */
+	public function noTagPushJobIsQueued(): void {
+		$after = $this->tagReconcileJobCount();
+		if ($after > $this->tagJobsBefore) {
+			throw new \RuntimeException(
+				'a tag-reconcile job was queued for an unmapped file '
+				. "(before: {$this->tagJobsBefore}, after: {$after})",
+			);
+		}
+	}
+
+	/** How many ReconcileTagsJob entries are currently queued, across the instance. */
+	private function tagReconcileJobCount(): int {
+		$res = $this->occ('background-job:list --class=' . escapeshellarg(self::RECONCILE_TAGS_JOB) . ' --output=json');
+		$jobs = json_decode($res['output'], true);
+		return is_array($jobs) ? count($jobs) : 0;
 	}
 
 	// ── Then: Nextcloud pills ───────────────────────────────────────────────────
@@ -473,9 +738,12 @@ trait TagSyncSteps {
 	 */
 	private function editBodyTagArray(array $names): void {
 		$path = $this->tagLocateFile();
-		$wf = json_decode($this->davGet($path), true);
-		Assert::assertIsArray($wf, "managed file at $path is not JSON");
-		$wf['tags'] = array_map(static fn (string $n): array => ['name' => $n], array_values($names));
+		// Object decode: this rewrites the whole body, and an assoc round-trip would
+		// flatten the empty `connections`/`settings` objects to `[]`. See
+		// theAdminEditsTheNodesLeavingTagsAlone() for the full note.
+		$wf = json_decode($this->davGet($path), false, 512, JSON_THROW_ON_ERROR);
+		Assert::assertInstanceOf(\stdClass::class, $wf, "managed file at $path is not a JSON object");
+		$wf->tags = array_map(static fn (string $n): object => (object)['name' => $n], array_values($names));
 		$this->davPut($path, json_encode($wf, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT));
 		// The save fires NodeWrittenEvent → PushWorkflowJob (async default). Draining
 		// runs PushService::push → reconcileFromBody: body tags become the truth,

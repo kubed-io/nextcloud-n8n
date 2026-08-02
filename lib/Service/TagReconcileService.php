@@ -23,9 +23,11 @@ use Psr\Log\LoggerInterface;
  * It does three things the raw {@see TagSyncService::reconcilePush} can't do on its
  * own, and nothing else:
  *
- *  1. **Gates.** Only a managed **sync** file reconciles — a `link` file's pills are a
- *     read-only projection of n8n (pull-only), and an `unmapped`/`ignored` file is a
- *     plain Nextcloud file the tag machinery must not touch (§5.6 scope).
+ *  1. **Gates.** Only a managed **sync** file reaches n8n. An `unmapped`/`ignored`/
+ *     untracked file still keeps its own two Nextcloud surfaces in step, because that
+ *     pair needs no remote system (§5.10) — that is what lets a tag survive until the
+ *     file is moved into a mapping. A `link` is the one full exclusion: its body is a
+ *     POINTER, not the workflow, and its pills are a read-only projection of n8n.
  *  2. **Resolves the protected set.** n8n binds a workflow to its folder BY TAG, so the
  *     mapping's own tag is force-kept on both sides; we look it up from the file's
  *     recorded `n8n_mapping`. A file whose mapping has vanished protects nothing.
@@ -35,17 +37,31 @@ use Psr\Log\LoggerInterface;
  *     listener) and best-effort logs a failure instead of surfacing it (a tag hiccup
  *     must never break the user's Files action).
  *
- * Two reactive surfaces were designed to converge here (saga Ch5 §5.6.2):
+ * Two reactive surfaces, both LIVE (saga §5.9):
  *
- *  - **Pills** ({@see reconcileFile}) — a system-tag pill toggle. NC pills are truth,
- *    and this path is LIVE (wired by the ContentTagListener). It carries the pill to
- *    n8n and leaves the file body untouched; the body's `tags` mirror self-heals on
- *    the next pull.
- *  - **Body** ({@see reconcileFromBody}) — a hand-edit of the file's JSON `tags` array.
- *    This is the deferred Slice B: the engine below is built and unit-tested but has
- *    **no production caller** (the writeback push does not invoke it). See saga
- *    §5.6.2.3 for why body-tag input was deferred and the shape it must take when
- *    picked up (a dedicated body-write trigger, never a refactor of the pill merge).
+ *  - **Pills** ({@see reconcileFile}) — a system-tag pill toggle, wired by
+ *    {@see \OCA\N8nSync\Listener\ContentTagListener}. Carries the pill to n8n AND
+ *    writes the file's `tags` array so the body never lags.
+ *  - **Body** ({@see reconcileFromBody}) — a hand-edit of the file's JSON `tags`
+ *    array, wired by {@see \OCA\N8nSync\Listener\BodyTagListener}. The body is the
+ *    NC-side truth for that save; the pills converge to the merged result.
+ *
+ * ## WHY THE LOCKSTEP IS LOAD-BEARING, NOT COSMETIC
+ *
+ * The body was the only surface that could go stale, and a pill edit was the ONLY
+ * thing that could make it stale (enumerated in `features/tag-sync.feature`). That
+ * mattered because it made a body edit *undecidable*: `body ≠ pills` could mean "the
+ * user removed a tag" or "a pill was added and the body lagged" — the same on-disk
+ * state with opposite correct answers, so no precedence rule could tell them apart.
+ *
+ * Rather than track staleness with a fourth stamp, {@see reconcileFile} removes its
+ * only cause. After that, `body != pills` can only mean a body edit, and the third
+ * direction needs no extra state at all.
+ *
+ * The two paths share the merge ENGINE but not their entry points, and that is
+ * deliberate: an earlier attempt refactored `reconcilePush` so both went through one
+ * "read the NC side" step and regressed the shipping pill path (saga §5.6.2.3).
+ * {@see TagSyncService::reconcilePush} must stay untouched by the body path.
  */
 final class TagReconcileService {
 	public function __construct(
@@ -63,25 +79,124 @@ final class TagReconcileService {
 	 * swallowed failure). Safe to call from an event handler or a background job.
 	 */
 	public function reconcileFile(File $node): bool {
-		$managed = $this->metadata->read($node->getId());
-		if (!$managed?->isManaged() || !$managed->isSync()) {
-			return false; // link/unmapped/ignored/foreign → not a reactive push surface
+		$fileId = $node->getId();
+		$managed = $this->metadata->read($fileId);
+		if ($managed === null || !$managed->isManaged() || !$managed->isSync()) {
+			// A LINK IS THE ONE EXCLUSION, and it is not an oversight. A link's body is a
+			// POINTER (id, name, url, tags), not the workflow, and its pills are a
+			// read-only projection of n8n that the next pull overwrites — so writing
+			// either from the other would fabricate agreement that n8n never asked for.
+			if ($managed !== null && $managed->isLink()) {
+				return false;
+			}
+			// Otherwise NOT A DEAD END — the n8n leg needs a mapping, the Nextcloud pair
+			// does not. A `.n8n.json` outside any mapping still has pills and still has a
+			// `tags` array, and keeping those two in step is purely local. This is what
+			// makes the transport case work: tags added while a file sits outside a
+			// mapping survive in the body and reach n8n when it is moved in (saga §5.10).
+			return $this->syncBodyFromPills($node);
 		}
 		$protected = $this->protectedTagsFor($managed);
-		$fileId = $node->getId();
 		$this->guard->run(function () use ($fileId, $managed, $protected, $node): void {
 			try {
-				$this->tagSync->reconcilePush($fileId, $managed, $protected);
-				// Slice A only: the pill is carried to n8n and the pills converge.
-				// We deliberately do NOT rewrite the file body `tags` array here — that
-				// (body ⇆ pills projection) is the deferred Slice B (saga §5.6.2.3). The
-				// body is a derived mirror and self-heals on the next pull, so a briefly
-				// stale on-disk `tags` array reverts nothing.
+				$rows = $this->tagSync->reconcilePush($fileId, $managed, $protected);
+				// THE LOCKSTEP, AND IT IS THE WHOLE POINT (saga §5.9). A pill edit used to
+				// carry the tag to n8n and leave the file body alone, which made the body
+				// the ONE surface that could go stale — and the only cause of it. That
+				// staleness is what made a body-tag edit undecidable: `body ≠ pills` could
+				// mean "the user removed a tag" or "a pill was added and the body lagged",
+				// two identical states with opposite correct answers.
+				//
+				// Writing the body here removes the cause instead of tracking it. After
+				// this, `body ≠ pills` can ONLY mean the user edited the body, which is
+				// what makes {@see reconcileFromBody} decidable at all.
+				$this->syncBodyTags($node, $rows);
 			} catch (\Throwable $e) {
 				// The user's pill click already landed in Nextcloud; a failure to carry
 				// it to n8n is logged and retried by the next sync, never surfaced as a
 				// broken Files action.
 				$this->logger->warning('n8n_sync reactive tag reconcile failed', [
+					'app' => Application::APP_ID,
+					'fileId' => $fileId,
+					'exception' => $e,
+				]);
+				// STILL KEEP THE TWO NEXTCLOUD SURFACES TOGETHER. n8n being unreachable is
+				// no reason to let the body disagree with the pills — that disagreement is
+				// the ambiguity the whole design exists to prevent, and it must not be
+				// reachable through an outage either. The pills are what the user just
+				// changed, so the body follows them; ids fill in on the next pull.
+				$this->syncBodyTags($node, array_map(
+					static fn (string $name): array => ['name' => $name],
+					$this->tagSync->readNcContentTags($fileId),
+				));
+			}
+		});
+		return true;
+	}
+
+	/**
+	 * Reconcile one file's **body** `tags` array to n8n and the pills — the third
+	 * direction, and the one "full sync" means (saga §5.9).
+	 *
+	 * ## THE FAST PATH COMPARES THE BODY TO THE **PILLS**, AND THAT IS THE DESIGN
+	 *
+	 * It used to compare the body to `n8n_syncedTags` (the agreed baseline), which
+	 * cannot work: the baseline moves on a pill edit while the body does not, so an
+	 * ordinary nodes-only save looked exactly like a deliberate tag removal. That is
+	 * the ambiguity that deferred this feature twice.
+	 *
+	 * With {@see reconcileFile} now keeping the body in step, the body can no longer
+	 * lag the pills — so `body == pills` means *the user did not touch the tags* and
+	 * costs nothing (no `getWorkflow`, no `setWorkflowTags`), and `body != pills`
+	 * means *the user edited the body*, unambiguously. The decidability comes from
+	 * the lockstep, not from a cleverer comparison here.
+	 *
+	 * ## THE BODY IS LEFT EXACTLY AS TYPED
+	 *
+	 * A human may write `{"name": "prod"}` with no id. We resolve the name for n8n
+	 * and converge the pills, but we do NOT rewrite the file: the array stays as the
+	 * user typed it and gains its canonical `{id,name}` rows on the next pull. That
+	 * is deliberate — rewriting a file the user is actively editing to "correct" it
+	 * is hostile, and it re-introduces the re-entrant write this path exists without.
+	 *
+	 * Returns true when a reconcile was attempted.
+	 */
+	public function reconcileFromBody(File $node, string $content): bool {
+		$wf = json_decode($content, true);
+		if (!is_array($wf)) {
+			return false; // not a JSON object — leave the file untouched
+		}
+		$fileId = $node->getId();
+		$bodyContent = $this->tagSync->contentTagsFromWorkflow($wf);
+		if (self::sameSet($bodyContent, $this->tagSync->readNcContentTags($fileId))) {
+			return false; // tags untouched by this save — the common case, and free
+		}
+
+		// Null-checked explicitly rather than with `?->`: mixing a nullsafe call into the
+		// mode gate left Psalm unable to narrow $managed afterwards, and it reported the
+		// managed branch as dead code. Being explicit costs a line and keeps the analyser
+		// able to prove the branch is reachable.
+		$managed = $this->metadata->read($fileId);
+		if ($managed !== null && $managed->isLink()) {
+			// See reconcileFile(): a link's pills are a read-only projection of n8n, so a
+			// hand-edit of its pointer body must not move them.
+			return false;
+		}
+		if ($managed === null || !$managed->isManaged() || !$managed->isSync()) {
+			// Nextcloud-local only: converge the pills on what the body says and stop.
+			// There is no workflow to tell, and nothing here needs one (saga §5.10).
+			$this->guard->run(fn () => $this->tagSync->writeNcContentTags($fileId, $bodyContent));
+			return true;
+		}
+
+		$protected = $this->protectedTagsFor($managed);
+		$this->guard->run(function () use ($fileId, $managed, $bodyContent, $protected): void {
+			try {
+				$this->tagSync->reconcilePushFromBody($fileId, $managed, $bodyContent, $protected);
+			} catch (\Throwable $e) {
+				// The user's save already landed; a failure to carry its tags to n8n is
+				// logged and retried by the next sync, never surfaced as a broken save.
+				$this->logger->warning('n8n_sync reactive body-tag reconcile failed', [
 					'app' => Application::APP_ID,
 					'fileId' => $fileId,
 					'exception' => $e,
@@ -92,79 +207,96 @@ final class TagReconcileService {
 	}
 
 	/**
-	 * Reconcile one file's **body** `tags` array to n8n and the pills (Slice B).
+	 * The Nextcloud-local half of the lockstep, for a file with no live workflow to
+	 * consult: write the file's own pills into its `tags` array.
 	 *
-	 * DORMANT / NOT WIRED. This is the deferred Slice B engine (saga §5.6.2.3): it is
-	 * fully built and unit-tested but has **no production caller**. The writeback push
-	 * ({@see PushService}) intentionally does NOT invoke it, because the REST `PUT` body
-	 * omits tags and driving a body-tag push through the shared merge regressed the
-	 * live pill path. When body-tag input is picked up it must run from a dedicated
-	 * body-write trigger that leaves the pill merge alone — see saga §5.6.2.3.
+	 * Rows carry a `name` and NOTHING ELSE, and that is correct rather than lazy — n8n
+	 * has never seen these tags, so there is no id to write. A bare `{"name": "foo"}`
+	 * is exactly what the file should hold until n8n mints an id for it, which happens
+	 * when the file is adopted into a mapping and the pull writes canonical rows back.
 	 *
-	 * When wired, the body tags are the NC-side truth. A user may add a bare
-	 * `{"name":"foo"}` to the array; we ensure/set it on n8n and then rewrite the body
-	 * with n8n's canonical `{id,name}` object, so the id is filled in from the source.
-	 * Returns the file's final content so the caller can stamp the loop-guard hash
-	 * against what is actually on disk; returns `$content` unchanged when nothing
-	 * reconciled. A no-op fast path skips the n8n round-trip entirely when the body's
-	 * tags still match the baseline.
+	 * Returns true when a reconcile was attempted.
 	 */
-	public function reconcileFromBody(File $node, string $content): string {
-		$managed = $this->metadata->read($node->getId());
-		if (!$managed?->isManaged() || !$managed->isSync()) {
-			return $content;
+	private function syncBodyFromPills(File $node): bool {
+		if (!FilenameCodec::isWorkflowFile($node)) {
+			return false;
 		}
-		$wf = json_decode($content, true);
-		if (!is_array($wf)) {
-			return $content; // not a JSON object — leave the file untouched
-		}
-		$bodyContent = $this->tagSync->contentTagsFromWorkflow($wf);
-		// Fast path: the body's tags are unchanged vs the last agreed baseline, so
-		// there is nothing NC-side to push. n8n-side drift is the pull's job. This
-		// keeps an ordinary nodes-only save from a pointless getWorkflow + setTags.
-		if (self::sameSet($bodyContent, $managed->syncedTagList())) {
-			return $content;
-		}
-		$protected = $this->protectedTagsFor($managed);
-		$fileId = $node->getId();
-		$final = $content;
-		$this->guard->run(function () use (&$final, $fileId, $managed, $bodyContent, $protected, $node, $wf, $content): void {
-			try {
-				$rows = $this->tagSync->reconcilePushFromBody($fileId, $managed, $bodyContent, $protected);
-				$final = $this->rewriteBodyTags($node, $wf, $content, $rows) ?? $content;
-			} catch (\Throwable $e) {
-				$this->logger->warning('n8n_sync reactive body-tag reconcile failed', [
-					'app' => Application::APP_ID,
-					'fileId' => $fileId,
-					'exception' => $e,
-				]);
-			}
-		});
-		return $final;
+		$pills = $this->tagSync->readNcContentTags($node->getId());
+		$rows = array_map(static fn (string $name): array => ['name' => $name], $pills);
+		$this->guard->run(fn () => $this->syncBodyTags($node, $rows));
+		return true;
 	}
 
 	/**
-	 * Set the decoded workflow's `tags` to n8n's canonical rows (content + reserved
-	 * markers, each carrying the real tag id), sorted by name for a stable on-disk
-	 * order, and write the re-encoded body only when it actually changed — so a bare
-	 * `{"name":"foo"}` gains its id, a removed tag disappears, and an unchanged set
-	 * never churns the file. Returns the new content when written, else null.
-	 * Guard-scoped (the write fires a guarded, ignored NodeWrittenEvent).
+	 * Write n8n's canonical tag rows into the file's `tags` array so the body never
+	 * lags the pills — the lockstep that makes the third direction decidable.
 	 *
-	 * @param array<string,mixed> $wf decoded body
+	 * Rows are sorted by name for a stable on-disk order, and the file is written only
+	 * when the encoded body actually changed, so a pill toggle that resolves to the
+	 * same set never churns the file. The loop guard is a re-stamped
+	 * `n8n_syncedHash`: without it the next unrelated save would see a hash mismatch
+	 * and push a body that is already current.
+	 *
+	 * NEVER THROWS. Four things in here can — `getContent()`, `json_encode` (it carries
+	 * JSON_THROW_ON_ERROR), `putContent()` and the metadata write — and one call site is
+	 * inside the failure handler of {@see reconcileFile}, where an escaping exception
+	 * would replace a logged n8n failure with an unhandled one and break the user's
+	 * Files action. Keeping the body in step is best-effort by definition: the next pull
+	 * rewrites it regardless.
+	 *
+	 * Caller must hold the {@see SyncGuard} — the write fires a NodeWrittenEvent that
+	 * both the writeback push and {@see \OCA\N8nSync\Listener\BodyTagListener} must
+	 * recognise as the app's own.
+	 *
 	 * @param list<array<string,mixed>> $rows n8n's canonical tag rows
 	 */
-	private function rewriteBodyTags(File $node, array $wf, string $original, array $rows): ?string {
-		usort($rows, static fn (array $a, array $b): int => strcmp((string)($a['name'] ?? ''), (string)($b['name'] ?? '')));
-		$wf['tags'] = $rows;
-		// JSON_PRETTY carries JSON_THROW_ON_ERROR, so json_encode returns a string
-		// (or throws) — never false; only the "unchanged" case yields no write.
-		$new = json_encode($wf, N8nWorkflowBody::JSON_PRETTY);
-		if ($new === $original) {
-			return null;
+	private function syncBodyTags(File $node, array $rows): void {
+		try {
+			$content = $node->getContent();
+			// DECODE AS OBJECTS, NOT ARRAYS. n8n's schema is strict about JSON *types*:
+			// `connections`/`settings`/`staticData` must be objects, and an empty `{}`
+			// round-tripped through an assoc array re-encodes as `[]`, which earns a
+			// `400 … must be object` on the next push. PushService::pushViaApi already
+			// carries this lesson; re-encoding the body here without it would have
+			// quietly corrupted every workflow whose settings or connections were empty.
+			$wf = json_decode($content, false);
+			if (!$wf instanceof \stdClass) {
+				return; // a link pointer or a hand-mangled file — nothing to keep in step
+			}
+			// STRIP THE RESERVED NAMESPACE BEFORE IT REACHES THE FILE. reconcilePush()
+			// returns n8n's canonical rows for the FINAL set, and that set deliberately
+			// re-sends any `n8n:*` marker the workflow already carried (setWorkflowTags is
+			// a full replace, so preserving them is the only way not to drop them).
+			// Correct for n8n; wrong for the body. The body is CONTENT, and it is also
+			// the one PORTABLE surface — a reserved marker written here would travel with
+			// the file and seed itself as a content tag on adoption somewhere else.
+			//
+			// Blank names are dropped in the same pass. Every current caller already
+			// guarantees non-empty (pushSourceTags filters them, readNcContentTags cannot
+			// produce one), so this is defence in depth — but the alternative is a
+			// nameless `{}` or a bare `{"id":…}` written into a user's file, and this
+			// method should not depend on all three of its callers staying careful.
+			$rows = array_values(array_filter($rows, static function (array $r): bool {
+				$name = (string)($r['name'] ?? '');
+				return $name !== '' && !str_starts_with($name, TagSyncService::RESERVED_PREFIX);
+			}));
+			usort($rows, static fn (array $a, array $b): int => strcmp((string)($a['name'] ?? ''), (string)($b['name'] ?? '')));
+			// `tags` is a LIST, so an array of arrays encodes correctly as a JSON array
+			// of objects — only the surrounding body needed to stay stdClass.
+			$wf->tags = array_map(static fn (array $r): object => (object)$r, $rows);
+			$new = json_encode($wf, N8nWorkflowBody::JSON_PRETTY);
+			if ($new === $content) {
+				return;
+			}
+			$node->putContent($new);
+			$this->metadata->write($node->getId(), [WorkflowMetadata::KEY_SYNCED_HASH => sha1($new)]);
+		} catch (\Throwable $e) {
+			$this->logger->warning('n8n_sync: could not keep the file body tags in step', [
+				'app' => Application::APP_ID,
+				'fileId' => $node->getId(),
+				'exception' => $e,
+			]);
 		}
-		$node->putContent($new);
-		return $new;
 	}
 
 	/** True when two name lists are the same set (order/dupes ignored). */

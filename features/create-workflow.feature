@@ -12,6 +12,7 @@ Feature: Create a workflow from Nextcloud
   Background:
     Given the app is connected to n8n
 
+  @user @in-nextcloud @gesture @ui
   Scenario: New file in a mapped sync folder becomes a real workflow
     Given a folder mapped as "sync" to the n8n tag "nextcloud:demo"
     When I create a new ".n8n.json" file in that folder via the Files "New" menu
@@ -19,6 +20,7 @@ Feature: Create a workflow from Nextcloud
     And the workflow carries the "nextcloud:demo" tag
     And the file is stamped with the workflow's "n8n_id"
 
+  @user @in-nextcloud @gesture @ui
   Scenario: A workflow file created outside any mapped folder stays unmanaged
     Given a folder that is not mapped
     When I create a ".n8n.json" file in that folder
@@ -51,7 +53,7 @@ Feature: Create a workflow from Nextcloud
     #
     # Nothing caught it because adoption's tag behaviour had never been written down.
 
-  @unbuilt
+  @user @in-nextcloud @gesture @ui @unbuilt
   Scenario: A file that arrives with tags in its body carries them into n8n
     Given a folder mapped as "sync" to the n8n tag "nextcloud:demo"
     And a ".n8n.json" file whose body carries the tags "prod", "billing", and "critical"
@@ -61,7 +63,7 @@ Feature: Create a workflow from Nextcloud
     And the file has the Nextcloud system tags "prod", "billing", and "critical"
     # The mapping tag JOINS them — adoption is additive, never a replace.
 
-  @unbuilt
+  @user @in-nextcloud @gesture @ui @unbuilt
   Scenario: A file that arrives with no tags adopts with only the mapping tag
     Given a folder mapped as "sync" to the n8n tag "nextcloud:demo"
     And a ".n8n.json" file whose body carries no tags
@@ -69,7 +71,7 @@ Feature: Create a workflow from Nextcloud
     Then the workflow carries only the "nextcloud:demo" tag
     # Nothing to seed. A missing `tags` array is not an error.
 
-  @unbuilt
+  @user @in-nextcloud @gesture @ui @unbuilt
   Scenario: A round trip out of Nextcloud and back keeps the workflow's tags
     Given a folder mapped as "sync" to the n8n tag "nextcloud:demo"
     And a managed workflow file tagged "prod" and "billing"
@@ -80,7 +82,7 @@ Feature: Create a workflow from Nextcloud
     # no longer holds the workflow. The body is the only carrier left — and it is
     # enough, which is the whole reason adoption reads it.
 
-  @unbuilt
+  @user @in-nextcloud @gesture @ui @unbuilt
   Scenario: Adoption takes the tags from the body alone
     Given a folder mapped as "sync" to the n8n tag "nextcloud:demo"
     And a ".n8n.json" file whose body carries the tag "prod"

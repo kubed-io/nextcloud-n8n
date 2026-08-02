@@ -65,6 +65,27 @@ trait PurgeSteps {
 		Assert::assertStringContainsString($tag, $res['output'], "the $tag mapping is gone after a purge");
 	}
 
+	/**
+	 * The purge deletes files this app CREATED, and an `ignored` file is deliberately
+	 * not one of them: it kept its id and its place, and the user excluded it on
+	 * purpose. Asserted by the file still being readable at its path with its metadata
+	 * intact — a purge that removed it would 404 here.
+	 *
+	 * @Then that ignored file is left in place
+	 */
+	public function thatIgnoredFileIsLeftInPlace(): void {
+		Assert::assertNotSame('', $this->currentFilePath, 'no current file to check');
+		Assert::assertTrue(
+			$this->davExists($this->currentFilePath),
+			"the purge deleted the ignored file at {$this->currentFilePath}",
+		);
+		Assert::assertSame(
+			'ignored',
+			$this->davReadMetadata($this->currentFilePath, 'n8n_mode'),
+			'the file survived but is no longer `ignored`',
+		);
+	}
+
 	/** @Then the remembered file is left in place */
 	public function theRememberedFileIsLeftInPlace(): void {
 		Assert::assertNotSame('', $this->purgeKeepPath, 'no file was remembered');

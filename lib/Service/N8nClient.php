@@ -328,12 +328,44 @@ final class N8nClient {
 				return $tag['id'];
 			}
 		}
-		$created = $this->decode($this->request('POST', '/api/v1/tags', [], ['name' => $name]));
-		$id = $created['id'] ?? null;
-		if (!is_string($id) || $id === '') {
-			throw new \RuntimeException('n8n create-tag did not return an id');
+		return $this->createTagIdempotently($name);
+	}
+
+	/**
+	 * POST a tag, and treat "already exists" as success by resolving the name again.
+	 *
+	 * `list → create` is NOT atomic, and n8n rejects a duplicate name outright. Any
+	 * caller ensuring more than one tag can therefore lose the race with a concurrent
+	 * reconcile, a background job, or simply a name that appeared between the listing
+	 * and the POST — and the whole call then fails, taking the tag write with it.
+	 *
+	 * Found by the adoption path: it only ever ensured the mapping tag, which always
+	 * exists and so never POSTed, and the gap surfaced the moment a file's own tags
+	 * were ensured alongside it.
+	 */
+	private function createTagIdempotently(string $name): string {
+		try {
+			$created = $this->decode($this->request('POST', '/api/v1/tags', [], ['name' => $name]));
+			$id = $created['id'] ?? null;
+			if (is_string($id) && $id !== '') {
+				return $id;
+			}
+		} catch (\Throwable $e) {
+			// Fall through to the re-read: somebody else may have just created it.
+			foreach ($this->listTags() as $tag) {
+				if ($tag['name'] === $name) {
+					return $tag['id'];
+				}
+			}
+			throw $e;
 		}
-		return $id;
+		// A 2xx with no id: re-read before giving up, for the same reason.
+		foreach ($this->listTags() as $tag) {
+			if ($tag['name'] === $name) {
+				return $tag['id'];
+			}
+		}
+		throw new \RuntimeException('n8n create-tag did not return an id for "' . $name . '"');
 	}
 
 	/**
@@ -358,12 +390,7 @@ final class N8nClient {
 		$ids = [];
 		foreach ($names as $name) {
 			if (!isset($byName[$name])) {
-				$created = $this->decode($this->request('POST', '/api/v1/tags', [], ['name' => $name]));
-				$id = $created['id'] ?? null;
-				if (!is_string($id) || $id === '') {
-					throw new \RuntimeException('n8n create-tag did not return an id');
-				}
-				$byName[$name] = $id;
+				$byName[$name] = $this->createTagIdempotently($name);
 			}
 			$ids[] = $byName[$name];
 		}

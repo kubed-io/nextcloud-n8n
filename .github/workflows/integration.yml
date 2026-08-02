@@ -119,13 +119,14 @@ jobs:
         # WebDAV scenarios reach NC over HTTP at localhost:8080 (see below), so
         # that host:port must be trusted too.
         ./occ config:system:set trusted_domains 2 --value=localhost:8080
-        # Log at DEBUG. The "Nextcloud log on failure" step below is the only
-        # window into a failing integration run, and at the default level (2 =
-        # Warning) a listener that decides to do nothing writes nothing — so a
-        # silent bail and a listener that never fired look identical. That cost a
-        # full diagnostic cycle on the trash-purge hook.
         ./occ config:system:set loglevel --type=integer --value=0
 
+    # loglevel 0 above is deliberate: the "Nextcloud log on failure" step is the only
+    # window into a failing integration run, and at the default level (2 = Warning) a
+    # listener that decides to do nothing writes nothing — so a silent bail and a
+    # listener that never fired look identical. That cost a full diagnostic cycle on
+    # the trash-purge hook.
+    #
     # ── Serve: occ-only scenarios need no HTTP, but the WebDAV channel (file
     # create/PROPFIND, the create/delete/rename listeners) does. PHP's built-in
     # server is enough for DAV; no nginx/fpm needed. Backgrounded, then waited on.
@@ -205,9 +206,40 @@ jobs:
           apps/${{ env.APP_ID }}/tests/integration/junit/*.xml
         if-no-files-found: warn
 
+    # Prints a READABLE SLICE, not the whole file. The suite runs at loglevel 0, which
+    # is what makes a silent listener bail visible at all — but it also means
+    # `cat nextcloud.log` is ~18k lines of JSON that takes minutes to render and buries
+    # the failure it exists to reveal. Diagnostics nobody can read are not diagnostics.
+    #
+    # So: this app's own entries and anything at warning-or-worse, one line each, most
+    # recent last. The complete log is uploaded as an artifact below for the rare case
+    # the slice is not enough.
     - name: Nextcloud log on failure
       if: failure()
       run: |
-        if [ -f data/nextcloud.log ]; then cat data/nextcloud.log; else echo "no nextcloud.log"; fi
-        echo "── php built-in server log ──"
-        if [ -f /tmp/nc-web.log ]; then cat /tmp/nc-web.log; else echo "no nc-web.log"; fi
+        if [ ! -f data/nextcloud.log ]; then
+          echo "no nextcloud.log"
+        else
+          echo "── n8n_sync entries (last 60) ──"
+          grep -F '"app":"n8n_sync"' data/nextcloud.log \
+            | tail -60 \
+            | jq -r '"\(.time) [\(.level)] \(.message) \(.exception.Message // "")"' \
+            || echo "(none)"
+          echo
+          echo "── warning-or-worse from any app (last 40) ──"
+          jq -c -r 'select(.level >= 2) | "\(.time) [\(.level)] \(.app): \(.message) \(.exception.Message // "")"' \
+            data/nextcloud.log 2>/dev/null | tail -40 || echo "(none)"
+          echo
+          echo "── full log: see the nextcloud-log artifact ($(wc -l < data/nextcloud.log) lines) ──"
+        fi
+        echo "── php built-in server log (last 40) ──"
+        if [ -f /tmp/nc-web.log ]; then tail -40 /tmp/nc-web.log; else echo "no nc-web.log"; fi
+
+    - name: Upload full Nextcloud log on failure
+      if: failure()
+      uses: actions/upload-artifact@v4
+      with:
+        name: nextcloud-log
+        path: data/nextcloud.log
+        if-no-files-found: ignore
+        retention-days: 7

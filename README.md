@@ -58,16 +58,19 @@ Sometimes you want to keep a workflow file **in** its mapped folder but stop syn
 
 A workflow's **tags** are part of the object, so a full sync keeps them in step too. n8n holds tags on the workflow; Nextcloud has its own first-class **system tags** (the searchable coloured pills in Files). n8n Sync keeps the two the same set, so **the mirror is as searchable as n8n itself** — filter "every `prod` workflow" the Nextcloud-native way.
 
-There are **two** places to edit a workflow's tags, kept in agreement:
+There are **three** places to edit a workflow's tags, and all three are kept in agreement:
 
 - **Edit in n8n** → a pull brings the tags into the Nextcloud file and onto its pills.
 - **Edit the file's pills** → the change pushes back to n8n on its own (no "Sync to n8n" click), following the same instant/background timing as the rest of the writeback.
+- **Edit the `tags` array inside the `.n8n.json`** → saving the file pushes the change to n8n and updates the pills.
 
-The **pills are the authoritative Nextcloud tag surface.** The `tags` array *inside* the `.n8n.json` body is a **derived mirror** — a pull writes it so it's searchable and diff-able, but a hand-edit to that array is **not** pushed to n8n and is overwritten on the next pull. To re-tag from Nextcloud, use the pills. (Projecting hand-edits of the body's `tags` array back to n8n is a planned surface — see `features/tag-sync.feature`.)
+You can add a tag by **name alone** — write `{"name": "prod"}` and save. n8n assigns the real tag id, and the next pull fills it in for you; until then the file keeps exactly what you typed. Nothing rewrites a file you're editing.
+
+A tag change **outside** any mapped folder still keeps the file's pills and its `tags` array in step — that pair is purely local, so it works whether or not n8n is involved. This is what makes tags survive travel: pills belong to a file id and are lost on a copy, but the `tags` array is part of the file. Tag an untracked `.n8n.json`, move it into a mapped folder later, and the workflow n8n creates for it arrives **with those tags already on it**.
 
 Two rules keep it safe. The app's own control tags (the reserved `n8n:` namespace, e.g. `n8n:sync`, `n8n:ignore`) are **never** mixed into your workflow's tags in either direction. And when tags have changed on **both** sides since the last sync, a three-way merge (against the last-synced set the app remembers) tells an *add* apart from a *remove* so nothing is lost.
 
-Tag sync runs in **both** `sync` and `link` mappings for searchability, but they differ in direction. A **sync** file is bidirectional (edit the pills → push). A **link** file is a **read-only projection**: n8n is the only writer, so its tags flow one way (n8n → Nextcloud) purely to make the pointer searchable. You *can* click a pill on a link, but it isn't pushed and it's wiped on the next pull — to re-tag a linked workflow, edit it in n8n.
+Tag sync runs in **both** `sync` and `link` mappings for searchability, but they differ in direction. A **sync** file is bidirectional (edit the pills or the `tags` array → push). A **link** file is a **read-only projection**: n8n is the only writer, so its tags flow one way (n8n → Nextcloud) purely to make the pointer searchable. You *can* click a pill on a link, but it isn't pushed and it's wiped on the next pull — to re-tag a linked workflow, edit it in n8n.
 
 > **One n8n-specific caveat:** because a folder mapping is keyed **by tag**, the tag that binds a workflow to its folder is itself a content tag. n8n Sync shows it as a pill for visibility but will **not** unbind a workflow just because you remove that pill — to take a workflow out of a mapping, move its file out (the *unmapped* path) rather than stripping the mapping tag. (Grafana Sync, which maps by real folders, has no such caveat.)
 

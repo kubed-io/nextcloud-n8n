@@ -74,3 +74,24 @@ namespace OCA\DAV\Events {
 		}
 	}
 }
+
+namespace {
+	/**
+	 * Private core class, shipped in a real Nextcloud but in neither `nextcloud/ocp`
+	 * nor Composer. {@see \OCA\N8nSync\Listener\TrashPurgeHook} calls it to learn whose
+	 * trash is being expired when the retention job runs with no session.
+	 *
+	 * A DECLARATION rather than a `psalm.xml` suppression, on review: suppressing
+	 * `UndefinedClass` for `OC_User` would also hide every FUTURE unintended reach into
+	 * private core APIs under the same name. Stubbing keeps Psalm strict and narrows the
+	 * exemption to the one method actually used.
+	 */
+	if (!class_exists(OC_User::class, false)) {
+		class OC_User {
+			/** @return string|false the uid the filesystem is set up for, or false. */
+			public static function getUser() {
+				return false;
+			}
+		}
+	}
+}
