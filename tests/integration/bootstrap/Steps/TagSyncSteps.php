@@ -199,18 +199,24 @@ trait TagSyncSteps {
 	 */
 	public function theAdminEditsTheNodesLeavingTagsAlone(): void {
 		$path = $this->tagLocateFile();
-		$wf = json_decode($this->davGet($path), true);
-		Assert::assertIsArray($wf, "managed file at $path is not JSON");
-		$before = $wf['tags'] ?? null;
+		// Decode as OBJECTS, not assoc. `putManagedFile()` writes `connections` and
+		// `settings` as empty JSON objects; an assoc decode turns those into PHP arrays
+		// and re-encodes them as `[]`, which n8n rejects on the next push — the same
+		// object-vs-array pitfall `PushService::pushViaApi` is documented against. A
+		// step that arranges "an edit that leaves tags alone" must not quietly reshape
+		// the rest of the body while it is at it.
+		$wf = json_decode($this->davGet($path), false, 512, JSON_THROW_ON_ERROR);
+		Assert::assertInstanceOf(\stdClass::class, $wf, "managed file at $path is not a JSON object");
+		$before = $wf->tags ?? null;
 
-		$wf['nodes'] = [[
+		$wf->nodes = [(object)[
 			'name' => 'Touched-' . bin2hex(random_bytes(3)),
 			'type' => 'n8n-nodes-base.noOp',
 			'typeVersion' => 1,
 			'position' => [0, 0],
 			'parameters' => new \stdClass(),
 		]];
-		Assert::assertSame($before, $wf['tags'] ?? null, 'this step must not alter the tags array');
+		Assert::assertSame($before, $wf->tags ?? null, 'this step must not alter the tags array');
 
 		$this->davPut($path, json_encode($wf, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 		// drainJobs() takes the class to drain — calling it bare was a fatal, not a
@@ -732,9 +738,12 @@ trait TagSyncSteps {
 	 */
 	private function editBodyTagArray(array $names): void {
 		$path = $this->tagLocateFile();
-		$wf = json_decode($this->davGet($path), true);
-		Assert::assertIsArray($wf, "managed file at $path is not JSON");
-		$wf['tags'] = array_map(static fn (string $n): array => ['name' => $n], array_values($names));
+		// Object decode: this rewrites the whole body, and an assoc round-trip would
+		// flatten the empty `connections`/`settings` objects to `[]`. See
+		// theAdminEditsTheNodesLeavingTagsAlone() for the full note.
+		$wf = json_decode($this->davGet($path), false, 512, JSON_THROW_ON_ERROR);
+		Assert::assertInstanceOf(\stdClass::class, $wf, "managed file at $path is not a JSON object");
+		$wf->tags = array_map(static fn (string $n): object => (object)['name' => $n], array_values($names));
 		$this->davPut($path, json_encode($wf, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT));
 		// The save fires NodeWrittenEvent → PushWorkflowJob (async default). Draining
 		// runs PushService::push → reconcileFromBody: body tags become the truth,

@@ -143,7 +143,10 @@ final class PushService {
 		if ($path === '') {
 			throw new \RuntimeException('Webhook writeback is enabled but no webhook path is configured.');
 		}
-		$wf = json_decode($content, true);
+		// Object decode, same as the API path above: the receiving workflow is very
+		// likely to feed this straight into an n8n update node, and an assoc decode
+		// would hand it `connections: []` where the file said `{}`.
+		$wf = json_decode($content, false, 512, JSON_THROW_ON_ERROR);
 		$this->n8n->callWebhook($path, [
 			'n8n_id' => $id,
 			'path' => $node->getPath(),
