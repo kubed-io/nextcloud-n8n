@@ -43,7 +43,7 @@ final class MirrorTimesTest extends TestCase {
 		self::assertSame(
 			strtotime('2026-07-24T16:25:42Z'),
 			MirrorTimes::parse('2026-07-24T16:25:42.986Z'),
-			"n8n sends milliseconds; they round down to the second rather than failing",
+			'n8n sends milliseconds; they round down to the second rather than failing',
 		);
 	}
 
