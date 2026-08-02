@@ -47,6 +47,10 @@ trait TagSyncSteps {
 	private array $tagN8nBefore = [];
 	/** All four surfaces as of the last "I note the current tag state", for "unchanged". */
 	private ?array $tagStateSnapshot = null;
+	/** The mirror's DAV etag before the pull under test — "was it rewritten?". */
+	private string $tagEtagBefore = '';
+	/** The mirror's body before the pull under test — "what part of it changed?". */
+	private string $tagBodyBefore = '';
 	/** Queued ReconcileTagsJob count before the gesture under test (the list is global). */
 	private int $tagJobsBefore = 0;
 
@@ -122,6 +126,150 @@ trait TagSyncSteps {
 		$this->tagArrangeManagedFile($mode, $a, [$a, $b, $c], true);
 	}
 
+	// ── Given/Then: pull change-detection (saga Ch5 §5.11) ────────────────────
+	//
+	// A pull runs on a timer, so an unconditional write is a write that happens
+	// forever. These steps pin the mirror's etag and body BEFORE the pull so the
+	// Thens can say which of the two a pull actually touched — Nextcloud mints a
+	// fresh etag on every write, so an unchanged etag is proof no write occurred.
+
+	/**
+	 * A managed sync file that is already a faithful mirror: seeded, tagged with the
+	 * mapping tag, pulled once, and then noted — so the pull under test starts from a
+	 * file whose bytes, pills, and baseline all already agree with n8n.
+	 *
+	 * @Given a managed :mode workflow file in :tag whose body and tags match n8n
+	 */
+	public function aManagedFileMatchingN8n(string $mode, string $tag): void {
+		$this->tagArrangeManagedFile($mode, $tag, [$tag], true);
+		$this->tagNoteMirror();
+	}
+
+	/**
+	 * Change the workflow's CONTENT in n8n — its nodes, not its name (a rename also
+	 * renames the file, which is a different behaviour, owned by `rename.feature`) and
+	 * not its tags (that is the tags-only branch below). The one thing that must make
+	 * the pull rewrite the body, and nothing else.
+	 *
+	 * @Given the workflow's nodes changed in n8n since the last sync
+	 */
+	public function theWorkflowNodesChangedInN8n(): void {
+		$wf = $this->n8nGetWorkflow($this->tagWfId);
+		Assert::assertIsArray($wf, "workflow {$this->tagWfId} is gone from n8n");
+		$this->n8nUpdateWorkflow($this->tagWfId, [
+			'name' => (string)($wf['name'] ?? 'Tagged'),
+			'nodes' => [(object)[
+				// Uniquely named, so the edit is a genuine difference rather than a
+				// re-PUT of what n8n already held.
+				'name' => 'Changed-' . bin2hex(random_bytes(3)),
+				'type' => 'n8n-nodes-base.noOp',
+				'typeVersion' => 1,
+				'position' => [0, 0],
+				'parameters' => new \stdClass(),
+			]],
+			'connections' => new \stdClass(),
+			'settings' => new \stdClass(),
+		]);
+	}
+
+	/**
+	 * The mirror WAS written. Etag inequality is the assertion: Nextcloud mints a fresh
+	 * etag on every write, so this is the direct counterpart of reconcile.feature's
+	 * "no file was rewritten" — and the reason that one means anything, since a pull
+	 * that had stopped writing altogether would satisfy it and fail this.
+	 *
+	 * @Then the file is rewritten
+	 */
+	public function theFileIsRewritten(): void {
+		Assert::assertNotSame('', $this->tagEtagBefore, 'no mirror etag was noted before the pull');
+		Assert::assertNotSame(
+			$this->tagEtagBefore,
+			$this->davReadEtag($this->tagLocateFile()),
+			'the pull did not rewrite a mirror whose workflow had changed in n8n',
+		);
+	}
+
+	/** @Then the file body is updated from n8n */
+	public function theFileBodyIsUpdatedFromN8n(): void {
+		$path = $this->tagLocateFile();
+		Assert::assertNotSame($this->tagBodyBefore, $this->davGet($path), 'the pull did not write the changed workflow body');
+		$wf = $this->n8nGetWorkflow($this->tagWfId);
+		Assert::assertIsArray($wf, "workflow {$this->tagWfId} is gone from n8n");
+		$mirrored = json_decode($this->davGet($path), true);
+		Assert::assertIsArray($mirrored, "managed file at $path is not JSON");
+		Assert::assertSame(
+			$this->nodeNames($wf),
+			$this->nodeNames($mirrored),
+			'the mirrored body does not carry n8n\'s current nodes',
+		);
+	}
+
+	/** @Then the file's Nextcloud system tags match the workflow's n8n tags */
+	public function theFileTagsMatchN8n(): void {
+		Assert::assertSame(
+			$this->tagN8nContent($this->tagWfId),
+			$this->tagContentPills($this->tagLocateFile()),
+			'the pills and the n8n tags disagree after the pull',
+		);
+	}
+
+	/** @Then the file body's :field array includes :tag */
+	public function theBodyArrayIncludes(string $field, string $tag): void {
+		Assert::assertSame('tags', $field, "only the 'tags' array is readable this way, got '$field'");
+		Assert::assertContains($tag, $this->readTagState()['body'], "the body's tags array is missing '$tag'");
+	}
+
+	/**
+	 * Everything except the tags array is byte-identical to what was there before the
+	 * pull. A tags-only change in n8n must not smuggle in other edits — and comparing
+	 * the tag-stripped bodies says that without caring how the tags themselves are
+	 * shaped (n8n fills ids in, the file may have carried bare names).
+	 *
+	 * @Then the rest of the body is unchanged
+	 */
+	public function theRestOfTheBodyIsUnchanged(): void {
+		Assert::assertNotSame('', $this->tagBodyBefore, 'no mirror body was noted before the pull');
+		Assert::assertSame(
+			self::bodyWithoutTags($this->tagBodyBefore),
+			self::bodyWithoutTags($this->davGet($this->tagLocateFile())),
+			'the pull changed more than the tags array',
+		);
+	}
+
+	/** Pin the mirror's etag, body, and full tag state as the pull's "before". */
+	private function tagNoteMirror(): void {
+		$path = $this->tagLocateFile();
+		$this->tagEtagBefore = $this->davReadEtag($path);
+		$this->tagBodyBefore = $this->davGet($path);
+		$this->tagStateSnapshot = $this->readTagState();
+	}
+
+	/**
+	 * A workflow body's node names, sorted — the cheapest stable fingerprint of "the
+	 * content n8n currently holds", and enough to tell one node set from another.
+	 *
+	 * @param array<string,mixed> $wf
+	 * @return list<string>
+	 */
+	private function nodeNames(array $wf): array {
+		$names = [];
+		foreach ((array)($wf['nodes'] ?? []) as $node) {
+			if (is_array($node) && is_string($node['name'] ?? null)) {
+				$names[] = $node['name'];
+			}
+		}
+		sort($names);
+		return $names;
+	}
+
+	/** A decoded workflow body with its `tags` array dropped, re-encoded canonically. */
+	private static function bodyWithoutTags(string $json): string {
+		$wf = json_decode($json, true);
+		Assert::assertIsArray($wf, 'workflow body is not JSON');
+		unset($wf['tags']);
+		return json_encode($wf, JSON_THROW_ON_ERROR);
+	}
+
 	// ── Given: mutate the two sides between the baseline and the reconcile ─────
 
 	/** @Given the file now also has the Nextcloud system tag :tag */
@@ -144,7 +292,10 @@ trait TagSyncSteps {
 		$this->tagSetN8n([$a, $b, $c]);
 	}
 
-	/** @Given the workflow in n8n now also has :tag */
+	/**
+	 * @Given the workflow in n8n now also has :tag
+	 * @Given the workflow in n8n gained the tag :tag since the last sync
+	 */
 	public function theWorkflowNowAlsoHas(string $tag): void {
 		$names = $this->tagN8nContent($this->tagWfId);
 		$names[] = $tag;

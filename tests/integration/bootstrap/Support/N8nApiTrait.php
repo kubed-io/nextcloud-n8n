@@ -43,6 +43,26 @@ trait N8nApiTrait {
 		return is_array($decoded) ? $decoded : null;
 	}
 
+	/**
+	 * PUT an n8n workflow body — the n8n-side edit an `@in-n8n` scenario arranges.
+	 * Only the writable fields are accepted (the schema is `additionalProperties:
+	 * false` and `tags` is `readOnly`, saga §5.6.3), so callers pass exactly those:
+	 * `name`, `nodes`, `connections`, `settings`, `staticData`.
+	 *
+	 * @param array<string,mixed> $body
+	 */
+	private function n8nUpdateWorkflow(string $id, array $body): void {
+		$res = $this->n8nClient()->request('PUT', 'workflows/' . rawurlencode($id), [
+			'headers' => ['Content-Type' => 'application/json'],
+			'body' => json_encode($body, JSON_THROW_ON_ERROR),
+		]);
+		Assert::assertContains(
+			$res->getStatusCode(),
+			[200, 201],
+			"PUT n8n workflow $id failed: " . (string)$res->getBody(),
+		);
+	}
+
 	/** Hard-delete an n8n workflow by id. 204/200 = gone; 404 = already gone. */
 	private function n8nDeleteWorkflow(string $id): void {
 		$res = $this->n8nClient()->request('DELETE', 'workflows/' . rawurlencode($id));

@@ -30,6 +30,37 @@ Feature: Manual per-mapping sync (Sync from / Sync to n8n)
     And a mapped file whose workflow no longer carries the tag is pruned from the folder
     And the unmapped file is left untouched (it is outside the mapping's scope)
 
+  # ── RULE: a run that changes nothing changes nothing ──────────────────────────
+  # Two things are NOT behaviours, and both were nearly written up as if they were.
+  #
+  # A file's "modified" time is a RESULT, not a gesture. Editing, moving, copying and
+  # renaming all move it, each already owned by the file that owns the gesture. A
+  # scenario asserting "the mtime moved after an edit" specifies Nextcloud, not this
+  # app, and has to invent an actor to do it.
+  #
+  # The RECONCILER is likewise the *how*, not the *what*. The scheduled pull is a
+  # machine that makes n8n-origin behaviours show up in Nextcloud; "renamed in n8n"
+  # is the behaviour, the reconciler is merely how it arrives — which is why those
+  # scenarios live with their behaviour and carry `@in-n8n`, not here.
+  #
+  # What is left is genuinely this file's, and genuinely not automatic: the admin
+  # presses the button when nothing has changed, and the run must leave every file
+  # exactly as it found it. It matters because the same run is what the schedule
+  # fires — a write performed unconditionally is performed forever, and a folder
+  # where everything was modified seconds ago says nothing about what changed.
+  #
+  # The negative control lives with the behaviour that supplies it: "a content change
+  # in n8n DOES rewrite the mirror" is tag-sync.feature's, so this rule cannot be
+  # satisfied by a pull that has simply stopped writing.
+
+  @admin @ui @occ
+  Scenario: Sync from n8n with nothing changed rewrites nothing and says so
+    Given n8n has workflows tagged "nextcloud:alpha"
+    And the "nextcloud:alpha" mapping has already been pulled
+    When the admin clicks "Sync from n8n" for the "nextcloud:alpha" mapping
+    Then the run reports every file as unchanged
+    And no file in the mapped folder was rewritten
+
   @admin @ui @occ
   Scenario: Sync to n8n pushes the mapping's sync files up to n8n
     Given the "nextcloud:alpha" folder has sync workflow files with local changes

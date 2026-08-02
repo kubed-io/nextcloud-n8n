@@ -188,6 +188,26 @@ trait WebDavTrait {
 		return $this->davReadMetadata($path, self::META_ID);
 	}
 
+	/**
+	 * The file's DAV etag — the sharpest "was this written?" observable a client has.
+	 * Nextcloud mints a fresh etag on **every** write, even one that stores identical
+	 * bytes, so an unchanged etag proves no write happened. Preferred over
+	 * `getlastmodified` for exactly that reason: mtime has one-second resolution, so
+	 * two writes inside the same second are invisible to it.
+	 */
+	private function davReadEtag(string $path): string {
+		$res = $this->davClient()->request('PROPFIND', $this->davEncode($path), [
+			'headers' => ['Depth' => '0', 'Content-Type' => 'application/xml'],
+			'body' => '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getetag/></d:prop></d:propfind>',
+		]);
+		Assert::assertSame(207, $res->getStatusCode(), "PROPFIND etag $path failed: " . (string)$res->getBody());
+		$doc = new \SimpleXMLElement((string)$res->getBody());
+		$doc->registerXPathNamespace('d', 'DAV:');
+		$node = $doc->xpath('//d:prop/d:getetag');
+		Assert::assertNotEmpty($node, "no etag returned for $path");
+		return trim((string)$node[0], " \t\n\r\0\x0B\"");
+	}
+
 	/** Percent-encode each path segment but keep the slashes. */
 	private function davEncode(string $path): string {
 		return implode('/', array_map('rawurlencode', explode('/', ltrim($path, '/'))));

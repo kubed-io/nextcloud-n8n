@@ -89,24 +89,27 @@
 # next push carries the change to n8n. This is NOT wired today (the attempt regressed
 # the pill path and was reverted); the body is a derived mirror for now.
 #
-# PULL CHANGE-DETECTION — NOT BUILT (saga §5.6.3). Stated here as the target, and
-# every scenario for it below is `@todo`. TODAY `SyncService::writeWorkflow` calls
-# `putContent($body)` UNCONDITIONALLY for every workflow on every pull, so an hourly
-# pull rewrites every mirrored file and bumps its mtime every hour. This is also why
-# a pill added in Nextcloud only reaches the file's `tags` array when the next pull
-# rewrites the WHOLE body — the tags-only branch below is what fixes both.
+# PULL CHANGE-DETECTION — LIVE (saga §5.11). A pull writes the body only when the
+# mirror's bytes actually differ from what n8n would write. It used to call
+# `putContent($body)` UNCONDITIONALLY for every workflow on every pull, so every
+# mirrored file was reported as modified after every tick — on a 5-minute schedule
+# that is a folder where nothing is ever older than five minutes, and a real edit is
+# indistinguishable from the sweep that ran past it.
 #
-# The target: only write what actually changed. Per workflow, compare n8n against the
-# local file and take ONE branch:
-#   • body identical AND tags identical → SKIP: nothing to do, next workflow.
-#   • body differs                      → write the new body (it already carries
-#                                         n8n's `tags`), then reconcile the pills.
-#   • only the tags differ              → run the tag path only: update the pills and
-#                                         ensure the body `tags` array carries them,
-#                                         re-stamp the baseline — WITHOUT rewriting an
-#                                         otherwise-identical body.
-# "Different" is measured against the stamped `n8n_syncedHash` (body) and
-# `n8n_syncedTags` (baseline), the same markers the three-way merge already keeps.
+# One branch per workflow, and only the first is new:
+#   • body identical → SKIP the write. The pills and the baseline are still
+#                      reconciled — those writes are diff-based and already cost
+#                      nothing when nothing changed — so a skipped body never means
+#                      a skipped repair.
+#   • body differs   → write it (it already carries n8n's `tags`), then reconcile
+#                      the pills. A tags-only change in n8n IS a body difference,
+#                      because the body is the n8n row verbatim: the write lands on
+#                      the `tags` array and leaves the rest byte-identical.
+#
+# "Differs" is measured against the FILE'S OWN BYTES, not the stamped
+# `n8n_syncedHash`. The stamp only records what the last sync agreed on; a mirror
+# that drifted since (a failed push, a hand edit, a partial write) still has to be
+# healed by the pull, and only comparing the real bytes sees that.
 
 #
 # SEARCHABILITY IS MODE-INDEPENDENT: the pull-side systemtag reconcile runs for
@@ -634,30 +637,31 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     When the "flows" mapping is pulled
     Then the file's Nextcloud system tags are exactly "flows" and "linux"
 
-  # ── pull change-detection: only write what changed ─────────────────────────────
-  # PLANNED: an hourly pull must not churn every file — it takes exactly one branch
-  # per workflow based on what actually differs from the stamped baseline.
-
-  @user @ui @occ @unbuilt
-  Scenario: An unchanged workflow is skipped by the pull
-    Given a managed "sync" workflow file in "flows" whose body and tags match n8n
-    When the "flows" mapping is pulled
-    Then the file is not rewritten
-    And its Nextcloud system tags are unchanged
-
-  @user @ui @occ @unbuilt
+  # ── RULE: a change in n8n reaches the mirror, and nothing else moves ───────────
+  # Both scenarios are `@in-n8n` BEHAVIOURS — someone changed a workflow's content, or
+  # its tags — and the pull is merely how the change arrives. The third case, "nobody
+  # changed anything", is not a behaviour at all: it is what a RUN does, and it lives
+  # in reconcile.feature.
+  #
+  # The first is also the negative control for that rule: a pull that had simply
+  # stopped writing would satisfy "a quiet run rewrites nothing" and fail this.
+  @n8n @in-n8n @ui @occ
   Scenario: A content change pulls the new body and then reconciles the tags
-    Given a managed "sync" workflow file in "flows" whose workflow body changed in n8n
+    Given a managed "sync" workflow file in "flows" whose body and tags match n8n
+    But the workflow's nodes changed in n8n since the last sync
     When the "flows" mapping is pulled
-    Then the file body is updated from n8n
+    Then the file is rewritten
+    And the file body is updated from n8n
     And the file's Nextcloud system tags match the workflow's n8n tags
 
-  @user @ui @occ @unbuilt
-  Scenario: A tags-only change in n8n updates the pills and the body without rewriting it
-    Given a managed "sync" workflow file in "flows" whose body matches n8n
+  # A tags-only change still writes the body — the body IS the n8n row, so the new
+  # tag lands in its `tags` array. What matters is that nothing ELSE moved with it.
+  @n8n @in-n8n @ui @occ
+  Scenario: A tags-only change in n8n reaches the pills and the tags array, and nothing else
+    Given a managed "sync" workflow file in "flows" whose body and tags match n8n
     But the workflow in n8n gained the tag "prod" since the last sync
     When the "flows" mapping is pulled
-    Then the file's Nextcloud system tags include "prod"
+    Then the file's Nextcloud system tags still include "prod"
     And the file body's "tags" array includes "prod"
     And the rest of the body is unchanged
 
