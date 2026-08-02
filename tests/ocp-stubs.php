@@ -67,6 +67,14 @@ namespace OCP\Files {
 			public function delete(): void;
 
 			public function move(string $targetPath): Node;
+
+			/**
+			 * Upstream this lives on `FileInfo`, which the real `Node` extends; the stub
+			 * has no FileInfo, so it is declared here — the same place in the hierarchy.
+			 * Widened to `int|float` like the real signature, because the filecache size
+			 * of a very large file exceeds PHP's int range on 32-bit.
+			 */
+			public function getSize(bool $includeMounts = true): int|float;
 		}
 	}
 	if (!interface_exists(File::class, false)) {
