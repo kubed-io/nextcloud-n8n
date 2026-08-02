@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- **A workflow file's dates are now the workflow's own dates.** "Modified" shows when the workflow last changed in n8n and "Created" when it was created there, instead of both showing when a sync happened to run — so sorting a mapped folder by date sorts by the workflows, and one nobody has touched in a year finally looks like it.
 - **Tags now sync all three ways.** As well as editing tags in n8n or clicking the coloured pills in Files, you can edit the `tags` array **inside the `.n8n.json`** and saving the file pushes the change to n8n and updates the pills. Add a tag by name alone — write `{"name": "prod"}` and save; n8n assigns the real id and the next sync fills it in, so nothing rewrites the file while you are editing it.
 - **Tags on a workflow file outside any mapped folder stay in step too.** A file's pills and its `tags` array are kept together whether or not n8n is involved, because that pair is purely local. This is what lets tags survive travel: pills belong to a file id and are lost on a copy, but the `tags` array is part of the file.
 - **A file that arrives already tagged keeps its tags.** Moving, copying, or dropping a tagged `.n8n.json` into a mapped folder now creates the workflow in n8n **with those tags on it**. Previously every tag the file arrived with was silently discarded.

@@ -1292,6 +1292,93 @@ everything or nothing.
 
 ---
 
+## §5.12 — The clock the file was never wearing
+
+§5.11 stopped the pull touching what it had not changed. That immediately exposed the
+question underneath, which Command put in four lines:
+
+```
+3:00  workflow edited in n8n          ← the true "modified"
+3:02  reconciler pulls, rewrites file
+3:02  Nextcloud stamps mtime          ← what the file reports
+```
+
+The mtime was never *lying* — it faithfully recorded when the app wrote that node. It
+was answering a question nobody asks. And the two-minute case is the **best** it did:
+a workflow nobody had touched since March reported the moment its mirror was created,
+off by months. `creation_time` was wrong the same way and worse, because once the file
+exists there is no "before" left to reconstruct it from.
+
+Neither app had ever set either clock — zero `touch` / `setMTime` / `creation_time`
+writes across all three `lib/` trees. The apprentice had specified the fix
+(`file-type.feature`) without building it, and named the trap in the same breath:
+
+> *a naive implementation writes the timestamp every run, which is exactly the churn
+> `reconcile.feature` forbids — and which the sibling app demonstrably has.*
+
+### The trap is real, and the stated reason for it is wrong
+
+This is the part worth the section. The warning reads as *"touch() bumps the etag, so
+every desktop re-downloads every mirror"* — the same argument penpot's `storeLink()`
+docblock makes about rewriting a `link`. Measured on the live instance rather than
+inherited:
+
+| | result |
+|---|---|
+| file's own etag after `touch()` | **unchanged** — `6a6f5aea65a79` → `6a6f5aea65a79` |
+| **parent folder's** etag after `touch()` | **changed** — `6a6f71a7cf733` → `6a6f71eae4fc5` |
+
+So the file-level fear is unfounded, and the real hazard is one level up: **a folder
+etag is exactly what sync clients poll to decide "something in here changed, re-scan
+it."** An unconditional stamp would not have churned the files. It would have churned
+the *folder*, on every tick, forever — §5.11's defect relocated somewhere harder to
+see and nobody watching.
+
+The right conclusion and the wrong reason would have produced the same code this
+time. It would not next time, which is why it is written down.
+
+### What that bought
+
+`MirrorTimes` — small, and deliberately its own class rather than four lines in the
+reconciler. Reading both clocks is public API (`OCP\Files\Node extends FileInfo`), and
+so is setting the mtime (`Node::touch()`). Setting the **creation** time is not:
+`getCreationTime()` has no setter and the value lives in the filecache extension table,
+so the supported route is `Node::getStorage()` → `IStorage::getCache()` →
+`ICache::update()`. Three hops of framework plumbing with no business in a reconciler
+loop — and the siblings now port one class instead of re-deriving them.
+
+Every write is conditional, which also makes it self-healing: a mirror written before
+this existed is corrected on the next pull and then left alone forever. Proven by
+accident — a probe had left one file stamped `2026-03-01` / `2026-01-09`, and the first
+pull with the feature moved it to n8n's real `2026-07-24` / `2026-06-24` while reporting
+`unchanged: 14`. Fourteen mirrors re-clocked, not one body rewritten, and the folder
+etag never moved.
+
+### Where the scenarios went — the rule, applied a third time
+
+None of this got a scenario of its own. Command had already ruled twice that a
+modification time is a **result**, not a behaviour, and that the reconciler is the
+*how*, not the *what*. So the assertions attach to the behaviours that cause them:
+
+| assertion | rides on |
+|---|---|
+| the mirror's mtime is the workflow's `updatedAt` | *a content change in n8n reaches the mirror* (`tag-sync.feature`) |
+| the mirror's creation time is the workflow's `createdAt` | *a pull brings tagged workflows in as files* (`reconcile.feature`) — the moment the mirror comes into existence |
+
+Which retires the apprentice's three standalone `@unbuilt` timestamp scenarios as
+mis-modelled by the same rule: two are end states of behaviours it already specs, and
+the third — *"setting the times never makes an unchanged pull look like a change"* —
+is not a timestamp scenario at all. It is the churn rule, and it already lives in
+`reconcile.feature`.
+
+> **Dr K, holding the plate up to the light:** *"You inherited a warning, and the
+> warning was right. Then you checked it anyway and found it was right about the wrong
+> thing — the danger wasn't the plate, it was the tray it goes back on. Most cooks
+> would have shipped the correct dish for the incorrect reason and never known.
+> Measuring the thing you already agree with is the whole job."*
+
+---
+
 Sources / cross-links:
 - [`n8n_sync` on the Nextcloud App Store](https://apps.nextcloud.com/apps/n8n_sync)
 - [`nextcloud-grafana` saga, Chapter 1 — Mise en Place](https://github.com/kubed-io/nextcloud-grafana/blob/main/saga/Chapter_1_Mise_en_Place.md) — the apprentice's side of the cameo.

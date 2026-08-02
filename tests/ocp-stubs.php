@@ -69,12 +69,22 @@ namespace OCP\Files {
 			public function move(string $targetPath): Node;
 
 			/**
-			 * Upstream this lives on `FileInfo`, which the real `Node` extends; the stub
-			 * has no FileInfo, so it is declared here — the same place in the hierarchy.
-			 * Widened to `int|float` like the real signature, because the filecache size
-			 * of a very large file exceeds PHP's int range on 32-bit.
+			 * The next four live on `FileInfo` upstream, which the real `Node` extends;
+			 * the stub has no FileInfo, so they are declared here — the same place in
+			 * the hierarchy. `getSize` is widened to `int|float` like the real
+			 * signature, because the filecache size of a very large file exceeds PHP's
+			 * int range on 32-bit.
 			 */
 			public function getSize(bool $includeMounts = true): int|float;
+
+			public function getMTime(): int;
+
+			public function getCreationTime(): int;
+
+			public function getStorage(): \OCP\Files\Storage\IStorage;
+
+			/** Sets the modification time — `$mtime` null means "now". */
+			public function touch($mtime = null): void;
 		}
 	}
 	if (!interface_exists(File::class, false)) {
@@ -99,6 +109,25 @@ namespace OCP\Files {
 			public function getId(string $mimetype): int;
 
 			public function updateFilecache(string $ext, int $mimetypeId): int;
+		}
+	}
+}
+
+namespace OCP\Files\Storage {
+	// The first of the two hops {@see OCA\N8nSync\Service\MirrorTimes} takes to set a
+	// creation time — there is no OCP setter for it, so the public cache API is the
+	// supported route (Node::getStorage → IStorage::getCache → ICache::update).
+	if (!interface_exists(IStorage::class, false)) {
+		interface IStorage {
+			public function getCache(string $path = '', ?IStorage $storage = null): \OCP\Files\Cache\ICache;
+		}
+	}
+}
+
+namespace OCP\Files\Cache {
+	if (!interface_exists(ICache::class, false)) {
+		interface ICache {
+			public function update($id, array $data);
 		}
 	}
 }

@@ -58,6 +58,7 @@ final class SyncService {
 		private IAppConfig $config,
 		private ReservedTagResolver $reservedTags,
 		private TagSyncService $tagSync,
+		private MirrorTimes $times,
 		private LoggerInterface $logger,
 	) {
 	}
@@ -524,6 +525,7 @@ final class SyncService {
 			$this->metadata->stampSynced($fileId, $id, $effectiveMode, $versionId, $body, $mapping->id);
 			$this->tags->apply($fileId, $effectiveMode);
 			$this->reconcileTagsOnPull($fileId, $workflow, $mapping);
+			$this->applySourceTimes($existing, $workflow, $wrote);
 			return $wrote;
 		}
 
@@ -545,7 +547,27 @@ final class SyncService {
 		$this->metadata->stampSynced($file->getId(), $id, $effectiveMode, $versionId, $body, $mapping->id);
 		$this->tags->apply($file->getId(), $effectiveMode);
 		$this->reconcileTagsOnPull($file->getId(), $workflow, $mapping);
+		$this->applySourceTimes($file, $workflow, true);
 		return true;
+	}
+
+	/**
+	 * Hand the mirror n8n's own clocks — `updatedAt` → modification time, `createdAt` →
+	 * creation time — so "Modified" answers *when the workflow changed* rather than
+	 * *when the reconciler last wrote this node*. {@see MirrorTimes} owns the framework
+	 * plumbing and the write-only-what-differs rule; this is just the field mapping.
+	 *
+	 * @param array<string,mixed> $workflow the n8n row (carries `updatedAt` / `createdAt`)
+	 * @param bool $justWrote true when the body was (re)written in this pass, so the
+	 *                        file's mtime is unavoidably `now` and must be restamped
+	 */
+	private function applySourceTimes(\OCP\Files\File $file, array $workflow, bool $justWrote): void {
+		$this->times->apply(
+			$file,
+			MirrorTimes::parse($workflow['updatedAt'] ?? null),
+			MirrorTimes::parse($workflow['createdAt'] ?? null),
+			$justWrote,
+		);
 	}
 
 	/**

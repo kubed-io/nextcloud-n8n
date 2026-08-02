@@ -208,6 +208,39 @@ trait WebDavTrait {
 		return trim((string)$node[0], " \t\n\r\0\x0B\"");
 	}
 
+	/**
+	 * A DAV timestamp property on a file, as a Unix second. `getlastmodified` is
+	 * RFC-1123; `{nc:}creation_time` is a Unix second already. Returns null when the
+	 * property is absent (an unset creation time reads as 0 or is simply missing).
+	 *
+	 * NB this is the surface a CLIENT sees, which is the point — these two clocks only
+	 * matter because a person sorting a folder in Files, or a desktop client deciding
+	 * what to re-download, reads exactly these properties.
+	 */
+	private function davReadTime(string $path, string $property): ?int {
+		$nc = 'http://nextcloud.org/ns';
+		$prop = $property === 'creation_time' ? '<nc:creation_time/>' : '<d:' . $property . '/>';
+		$res = $this->davClient()->request('PROPFIND', $this->davEncode($path), [
+			'headers' => ['Depth' => '0', 'Content-Type' => 'application/xml'],
+			'body' => '<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:nc="' . $nc . '">'
+				. '<d:prop>' . $prop . '</d:prop></d:propfind>',
+		]);
+		Assert::assertSame(207, $res->getStatusCode(), "PROPFIND $property $path failed: " . (string)$res->getBody());
+		$doc = new \SimpleXMLElement((string)$res->getBody());
+		$doc->registerXPathNamespace('d', 'DAV:');
+		$doc->registerXPathNamespace('nc', $nc);
+		$node = $doc->xpath($property === 'creation_time' ? '//nc:creation_time' : '//d:' . $property);
+		if (!$node) {
+			return null;
+		}
+		$raw = trim((string)$node[0]);
+		if ($raw === '' || $raw === '0') {
+			return null;
+		}
+		$ts = ctype_digit($raw) ? (int)$raw : strtotime($raw);
+		return $ts === false ? null : $ts;
+	}
+
 	/** Percent-encode each path segment but keep the slashes. */
 	private function davEncode(string $path): string {
 		return implode('/', array_map('rawurlencode', explode('/', ltrim($path, '/'))));

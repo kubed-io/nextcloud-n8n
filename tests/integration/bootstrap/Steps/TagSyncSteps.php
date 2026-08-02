@@ -189,6 +189,33 @@ trait TagSyncSteps {
 		);
 	}
 
+	/**
+	 * The mirror's "Modified" is the workflow's own `updatedAt`. Asserted to the second
+	 * against what n8n reports, and that is the whole assertion.
+	 *
+	 * There is deliberately NO "and it is not the time the pull ran" companion here,
+	 * because this harness cannot tell those apart: the scenario edits the workflow and
+	 * pulls immediately, so `updatedAt` and the pull clock are within a second or two of
+	 * each other by construction. A negative assertion would be asserting the scheduling
+	 * of the test, not the behaviour, and would flake either way.
+	 *
+	 * The gap the two clocks being far apart would prove is covered where it can be:
+	 * {@see \OCA\N8nSync\Tests\Unit\Service\MirrorTimesTest} drives them arbitrarily far
+	 * apart, and the live smoke test showed mirrors carrying June/July dates after an
+	 * August pull.
+	 *
+	 * @Then the file's modification time is when the workflow last changed in n8n
+	 */
+	public function theFileModificationTimeIsTheWorkflowUpdatedAt(): void {
+		$wf = $this->n8nGetWorkflow($this->tagWfId);
+		Assert::assertIsArray($wf, "workflow {$this->tagWfId} is gone from n8n");
+		$updatedAt = strtotime((string)($wf['updatedAt'] ?? ''));
+		Assert::assertIsInt($updatedAt, 'n8n did not report an updatedAt to compare against');
+
+		$mtime = $this->davReadTime($this->tagLocateFile(), 'getlastmodified');
+		Assert::assertSame($updatedAt, $mtime, "the mirror's modification time is not the workflow's updatedAt");
+	}
+
 	/** @Then the file body is updated from n8n */
 	public function theFileBodyIsUpdatedFromN8n(): void {
 		$path = $this->tagLocateFile();

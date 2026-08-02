@@ -122,6 +122,30 @@ trait ReconcileSteps {
 		}
 	}
 
+	/**
+	 * Each mirror's creation time is its workflow's `createdAt` in n8n, not the moment
+	 * the pull that created the file ran. The one clock a later sync could never
+	 * reconstruct — once the file exists there is no "before" left to read it from.
+	 *
+	 * @Then each file's creation time is when its workflow was created in n8n
+	 */
+	public function eachFileCreationTimeIsTheWorkflowCreatedAt(): void {
+		Assert::assertNotEmpty($this->seededWorkflows, 'no seeded workflows to check');
+		$byId = $this->mappedFilesByWorkflowId($this->folderNameForTag($this->currentTag));
+		foreach ($this->seededWorkflows as $name => $id) {
+			$href = $byId[$id] ?? null;
+			Assert::assertNotNull($href, "workflow '$name' ($id) has no mirror to check");
+
+			$wf = $this->n8nGetWorkflow($id);
+			Assert::assertIsArray($wf, "workflow $id is gone from n8n");
+			$createdAt = strtotime((string)($wf['createdAt'] ?? ''));
+			Assert::assertIsInt($createdAt, "n8n reported no createdAt for $id");
+
+			$actual = $this->davReadTime($this->hrefToFilesPath((string)$href), 'creation_time');
+			Assert::assertSame($createdAt, $actual, "the mirror for '$name' does not carry the workflow's creation time");
+		}
+	}
+
 	/** @Then existing files are updated in place — matched by workflow id, never duplicated */
 	public function existingFilesAreUpdatedInPlaceNeverDuplicated(): void {
 		$folder = $this->folderNameForTag($this->currentTag);

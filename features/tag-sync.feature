@@ -406,7 +406,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     # remote system involved — so it happens for every workflow file, mapped or not.
     # Only the third participant, n8n, requires a mapping.
     #
-    #     pills  ⇄  body        always, for any .n8n.json
+    #     pills  ⇄  body        always, for any .n8n.json file
     #     pills/body  →  n8n    only for a managed `sync` file
     #     n8n  →  pills/body    only for a mapped folder, on a pull
     #
@@ -653,6 +653,10 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     Then the file is rewritten
     And the file body is updated from n8n
     And the file's Nextcloud system tags match the workflow's n8n tags
+    # An end state of the same behaviour, not a feature of its own: the mirror's
+    # "Modified" is when the WORKFLOW changed, not when the reconcile that carried
+    # the change happened to run.
+    And the file's modification time is when the workflow last changed in n8n
 
   # A tags-only change still writes the body — the body IS the n8n row, so the new
   # tag lands in its `tags` array. What matters is that nothing ELSE moved with it.
