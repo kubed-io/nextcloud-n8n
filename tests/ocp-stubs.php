@@ -83,7 +83,7 @@ namespace OCP\Files {
 
 			public function getStorage(): \OCP\Files\Storage\IStorage;
 
-			/** Sets the mtime (and mints a fresh etag) — `$mtime` null means "now". */
+			/** Sets the modification time — `$mtime` null means "now". */
 			public function touch($mtime = null): void;
 		}
 	}

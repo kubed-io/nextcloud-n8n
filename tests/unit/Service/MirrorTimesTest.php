@@ -133,14 +133,35 @@ final class MirrorTimesTest extends TestCase {
 		// The body, the metadata and the tags are already committed by the time a
 		// caller reaches this, so a storage that refuses must not turn a good pull
 		// into a failed one. The next pull retries.
+		//
+		// The mock expectation IS the assertion: `once()` proves the write was really
+		// attempted (so a silently-skipped touch cannot pass this test by doing
+		// nothing), and reaching the end proves the throw did not escape.
 		$file = $this->createMock(File::class);
 		$file->method('getMTime')->willReturn(1000);
 		$file->method('getName')->willReturn('Flow.n8n.json');
-		$file->method('touch')->willThrowException(new \RuntimeException('read-only storage'));
+		$file->expects(self::once())
+			->method('touch')
+			->with(2000)
+			->willThrowException(new \RuntimeException('read-only storage'));
 
 		$this->times->apply($file, 2000, null);
+	}
 
-		$this->expectNotToPerformAssertions();
+	public function testACreationTimeThatWillNotSetIsSwallowedToo(): void {
+		// Same contract on the other clock — and the mtime written just before it must
+		// still stand, so one failing clock never rolls back the one that worked.
+		$cache = $this->createMock(ICache::class);
+		$cache->expects(self::once())
+			->method('update')
+			->willThrowException(new \RuntimeException('cache is read-only'));
+
+		$file = $this->fileWithCache($cache, creationTime: 100);
+		$file->method('getMTime')->willReturn(1000);
+		$file->method('getName')->willReturn('Flow.n8n.json');
+		$file->expects(self::once())->method('touch')->with(2000);
+
+		$this->times->apply($file, 2000, 900);
 	}
 
 	/** A File whose storage hands back $cache, and whose creation time is $creationTime. */
