@@ -189,6 +189,24 @@ trait TagSyncSteps {
 		);
 	}
 
+	/**
+	 * The mirror's "Modified" is the workflow's own `updatedAt`, not the moment the
+	 * pull ran. Asserted to the second against what n8n reports, and separately
+	 * asserted NOT to be the pull's own clock — a naive implementation passes the
+	 * first check by accident whenever the two happen to be close.
+	 *
+	 * @Then the file's modification time is when the workflow last changed in n8n
+	 */
+	public function theFileModificationTimeIsTheWorkflowUpdatedAt(): void {
+		$wf = $this->n8nGetWorkflow($this->tagWfId);
+		Assert::assertIsArray($wf, "workflow {$this->tagWfId} is gone from n8n");
+		$updatedAt = strtotime((string)($wf['updatedAt'] ?? ''));
+		Assert::assertIsInt($updatedAt, 'n8n did not report an updatedAt to compare against');
+
+		$mtime = $this->davReadTime($this->tagLocateFile(), 'getlastmodified');
+		Assert::assertSame($updatedAt, $mtime, "the mirror's modification time is not the workflow's updatedAt");
+	}
+
 	/** @Then the file body is updated from n8n */
 	public function theFileBodyIsUpdatedFromN8n(): void {
 		$path = $this->tagLocateFile();

@@ -26,7 +26,7 @@
 Feature: Opening a workflow file (Open in n8n / Open with text editor)
   As a Nextcloud user
   I want the right openers for a workflow file, defaulting to the right one for its mode
-  So that I'm never sent to a workflow that isn't there, and can always edit the JSON
+  So that I'm never sent to a workflow that isn't there and can always edit the "json"
 
   Background:
     Given the app is connected to n8n

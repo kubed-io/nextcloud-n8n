@@ -13,6 +13,7 @@ use OCA\N8nSync\Service\FilenameCodec;
 use OCA\N8nSync\Service\ManagedFile;
 use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\MappingService;
+use OCA\N8nSync\Service\MirrorTimes;
 use OCA\N8nSync\Service\N8nClient;
 use OCA\N8nSync\Service\N8nWorkflowBody;
 use OCA\N8nSync\Service\OwnershipTags;
@@ -57,6 +58,7 @@ final class SyncServiceTest extends TestCase {
 	private PushService $push;
 	private MappingService $mappings;
 	private TagSyncService $tagSync;
+	private MirrorTimes $times;
 	private SyncService $service;
 
 	protected function setUp(): void {
@@ -75,6 +77,9 @@ final class SyncServiceTest extends TestCase {
 
 		$this->mappings = $this->createStub(MappingService::class);
 		$this->tagSync = $this->createMock(TagSyncService::class);
+		// MirrorTimes reaches into the storage/cache stack, so it is mocked here and
+		// covered on its own in MirrorTimesTest — the reconciler only owes the mapping.
+		$this->times = $this->createMock(MirrorTimes::class);
 		$this->service = new SyncService(
 			$this->mappings,
 			$this->n8n,
@@ -89,6 +94,7 @@ final class SyncServiceTest extends TestCase {
 			$this->createStub(IAppConfig::class),
 			new ReservedTagResolver(),
 			$this->tagSync,
+			$this->times,
 			new NullLogger(),
 		);
 	}
@@ -409,6 +415,70 @@ final class SyncServiceTest extends TestCase {
 		$this->n8n->method('eachWorkflow')->willReturn([$workflow]);
 
 		return $this->service->pullOne($this->mapping(Mapping::MODE_SYNC, 'map-alpha'));
+	}
+
+	// ── source timestamps on the mirror ─────────────────────────────────────────
+	//
+	// The reconciler owes exactly one thing here: map n8n's field names onto the two
+	// clocks and say whether the body was just rewritten. The write-only-what-differs
+	// rule, and the framework plumbing, are MirrorTimes' — see MirrorTimesTest.
+
+	public function testPullHandsN8nsOwnTimestampsToTheClockStamper(): void {
+		$workflow = [
+			'id' => 'wf-keep',
+			'name' => 'Keep',
+			'versionId' => 'v1',
+			'updatedAt' => '2026-07-24T16:25:42.986Z',
+			'createdAt' => '2026-06-17T21:53:20.580Z',
+		];
+		$body = $this->syncBody($workflow);
+
+		$keep = $this->createMock(File::class);
+		$keep->method('getId')->willReturn(10);
+		$keep->method('getName')->willReturn(FilenameCodec::format('Keep', 'wf-keep', false, 0));
+		$keep->method('getSize')->willReturn(strlen($body));
+		$keep->method('getContent')->willReturn($body);
+
+		// Unchanged body → $force is false, so MirrorTimes gets to decide by comparison.
+		$this->times->expects(self::once())
+			->method('apply')
+			->with($keep, strtotime('2026-07-24T16:25:42Z'), strtotime('2026-06-17T21:53:20Z'), false);
+
+		self::assertSame(1, $this->pullWith($keep, $workflow)['unchanged']);
+	}
+
+	public function testAJustWrittenMirrorForcesTheClockRestamp(): void {
+		// The body was rewritten, so the file's mtime is `now` — comparing would read a
+		// value we already know is wrong. The reconciler says so with $force = true.
+		$workflow = ['id' => 'wf-keep', 'name' => 'Keep', 'versionId' => 'v2', 'updatedAt' => '2026-07-24T16:25:42Z'];
+
+		$keep = $this->createMock(File::class);
+		$keep->method('getId')->willReturn(10);
+		$keep->method('getName')->willReturn(FilenameCodec::format('Keep', 'wf-keep', false, 0));
+		$keep->method('getSize')->willReturn(1); // differs → rewritten
+
+		$this->times->expects(self::once())
+			->method('apply')
+			->with($keep, strtotime('2026-07-24T16:25:42Z'), null, true);
+
+		self::assertSame(0, $this->pullWith($keep, $workflow)['unchanged']);
+	}
+
+	public function testAWorkflowWithNoTimestampsLeavesBothClocksAlone(): void {
+		// n8n renaming or dropping the fields must degrade to Nextcloud's own clock,
+		// not to a mirror dated 1970 — the reconciler passes null and MirrorTimes bails.
+		$workflow = ['id' => 'wf-keep', 'name' => 'Keep', 'versionId' => 'v1'];
+		$body = $this->syncBody($workflow);
+
+		$keep = $this->createMock(File::class);
+		$keep->method('getId')->willReturn(10);
+		$keep->method('getName')->willReturn(FilenameCodec::format('Keep', 'wf-keep', false, 0));
+		$keep->method('getSize')->willReturn(strlen($body));
+		$keep->method('getContent')->willReturn($body);
+
+		$this->times->expects(self::once())->method('apply')->with($keep, null, null, false);
+
+		$this->pullWith($keep, $workflow);
 	}
 
 	// ── reserved-tag ignore + ignored mode (saga §14.8) ─────────────────────────
