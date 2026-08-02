@@ -47,6 +47,8 @@ trait TagSyncSteps {
 	private array $tagN8nBefore = [];
 	/** All four surfaces as of the last "I note the current tag state", for "unchanged". */
 	private ?array $tagStateSnapshot = null;
+	/** Queued ReconcileTagsJob count before the gesture under test (the list is global). */
+	private int $tagJobsBefore = 0;
 
 	// ── Given: seed an n8n-only workflow (pull will create the file) ───────────
 
@@ -436,7 +438,11 @@ trait TagSyncSteps {
 	public function aWorkflowFileThatHasBecomeUnmapped(): void {
 		$this->tagArrangeManagedFile('sync', 'flows', ['flows', 'linux'], true);
 		$this->theFileIsMovedOut('flows');
+		// Snapshot AFTER the move-out: the unmap archives and untags the workflow in n8n,
+		// so a snapshot taken before it would attribute the unmap's own side effects to
+		// the pill edit under test.
 		$this->tagN8nBefore = $this->tagN8nContent($this->tagWfId);
+		$this->tagJobsBefore = $this->tagReconcileJobCount();
 	}
 
 	/**
@@ -455,11 +461,36 @@ trait TagSyncSteps {
 		Assert::assertSame($before, $after, "n8n's tags changed for an unmapped file");
 	}
 
-	/** @Then no tag-push job is queued */
+	/**
+	 * No NEW tag-reconcile job appeared — measured against a snapshot, not against an
+	 * empty list.
+	 *
+	 * The job list is GLOBAL. Asserting it is empty made this scenario depend on every
+	 * scenario that ran before it: the async-timing one queues a job on purpose, so the
+	 * assertion failed on a leftover that was nobody's bug. That is the "assertion about
+	 * the whole system inside a one-file scenario" trap in the Gherkin instructions,
+	 * committed by the person who wrote the instructions.
+	 *
+	 * Plain throw rather than a PHPUnit assert: a failing assert here surfaces as
+	 * `Registry::get(): … null returned`, which hides the reason (see WebDavTrait).
+	 *
+	 * @Then no tag-push job is queued
+	 */
 	public function noTagPushJobIsQueued(): void {
+		$after = $this->tagReconcileJobCount();
+		if ($after > $this->tagJobsBefore) {
+			throw new \RuntimeException(
+				"a tag-reconcile job was queued for an unmapped file "
+				. "(before: {$this->tagJobsBefore}, after: {$after})",
+			);
+		}
+	}
+
+	/** How many ReconcileTagsJob entries are currently queued, across the instance. */
+	private function tagReconcileJobCount(): int {
 		$res = $this->occ('background-job:list --class=' . escapeshellarg(self::RECONCILE_TAGS_JOB) . ' --output=json');
 		$jobs = json_decode($res['output'], true);
-		Assert::assertSame([], is_array($jobs) ? $jobs : [], 'a tag-reconcile job was queued for an unmapped file');
+		return is_array($jobs) ? count($jobs) : 0;
 	}
 
 	// ── Then: Nextcloud pills ───────────────────────────────────────────────────
