@@ -1155,6 +1155,143 @@ honest state, not a defect to paper over. **Write down what you do not know yet.
 
 ---
 
+## §5.11 — Slice C: the churn, measured, and the one line that caused it
+
+§5.6.3 named this by reading: *"`SyncService::writeWorkflow` calls `putContent($body)`
+**unconditionally**, for every workflow, on every pull."* It was filed as Slice C and
+left. Command then hit it in production, with the schedule turned down to five minutes:
+
+> *"the last updated changes on every single round … every 5 minutes it says every
+> single n8n file has been updated. i did not change anything in n8n in between."*
+
+### Measured on the live instance before touching any code
+
+The prediction was worth checking rather than trusting, because the interesting
+question is not *"does it write?"* — the code plainly does — but **whether n8n was
+handing back a different body each round.** If it were, the bug would be a
+normalisation problem, not a write problem, and skipping the write would be wrong.
+
+Two consecutive pulls, five minutes apart, over the live mapping:
+
+| | before | after |
+|---|---|---|
+| filecache `mtime` | `14:38:41` | `14:43:42` |
+| `n8n_syncedHash` | `550017e1482c…` | `550017e1482c…` |
+| `n8n_versionId` | `7b83daf0…` | `7b83daf0…` |
+
+All 14 mirrors, one second apart each round — the pull loop, ticking. **The stamped
+hash is `sha1($body)` of the body the pull just wrote, so an unchanged hash across two
+rounds is proof the bytes were identical and written anyway.** n8n's rows are stable;
+only our write was not. That single table is the entire diagnosis, and it also
+retired the alternative theory (a volatile field in n8n's response) without a debate.
+
+### The fix is smaller than the branch table §5.6.3 imagined
+
+The plan was three branches — skip / body / tags-only. It collapses to **one**
+question, because a tags-only change in n8n *is* a body difference: the mirror is the
+n8n row verbatim, so a new tag arrives inside the `tags` array and the "tags-only"
+branch is just the body branch landing on a smaller diff. What remained:
+
+```php
+$wrote = $this->bodyDiffers($existing, $body);
+if ($wrote) { $existing->putContent($body); }
+```
+
+### The half of the change that turned out to be already done
+
+The first draft also made `stampSynced` conditional, with a `sameStamp()` comparison
+of the five metadata keys. Reading Nextcloud core deleted that code:
+
+- `FilesMetadata::setString()` — *"we ignore if value and index have not changed"*, and
+  never sets the `updated` flag;
+- `FilesMetadataManager::saveMetadata()` — returns immediately on `!$filesMetadata->updated()`.
+
+So the metadata layer had been silently no-oping unchanged writes all along, and the
+tag reconcile is diff-based for the same reason. **`putContent` was the only write in
+the method without a guard of its own**, which is precisely why it was the only one
+anybody noticed. The lesson is the recurring one: check whether the platform already
+solved it before adding a second mechanism that says the same thing.
+
+### Compare bytes, not the stamp
+
+`n8n_syncedHash` is the obvious change-detector and it is the wrong one. It records
+what the last sync *agreed on*, not what is on disk now — so a mirror that drifted
+since (a push that failed, a hand edit, a half-written file) would compare equal to
+n8n's body and be left broken forever, and the pull would have quietly stopped being
+able to heal anything. Comparing the file's real bytes keeps "n8n is authoritative"
+exactly as it was. The filecache `size` is a free pre-check that can only ever answer
+*differs*, so a genuinely-changed workflow never pays for the read.
+
+An unreadable mirror answers "differs" too. Degrade toward the old behaviour, never
+toward silence.
+
+### Where the scenarios go — "modified" is a result, not a use case
+
+The first draft of the specs got this wrong in an instructive way. Having written *"a
+quiet pull rewrites nothing"*, the obvious next move looked like its mirror image: a
+scenario per direction — *a user edits a file → its mtime moves*, *a workflow changes
+in n8n → its mirror's mtime moves*. Command stopped it:
+
+> *"'updated at' changing is not a behavior that is necessarily performed by a user.
+> The metadata for updated and created is more like end results to different changes —
+> move and copy and rename and edit would all result in the updated changing. Then we
+> would just need to verify that when nothing changes between reconciles the meta is
+> not updated."*
+
+That is the `features/README.md` rule (*a feature is a BEHAVIOUR*) applied to a field
+rather than to a file, and it cuts cleanly. **A modification time has no primary
+actor.** It is the shared *outcome* of four gestures that already own their own
+files — so a scenario asserting the mtime moved after an edit is not specifying this
+app at all; it is specifying Nextcloud, in the wrong file, with an invented actor.
+
+Command then named the second half of it, an argument already had once with the
+apprentice on `nextcloud-penpot`:
+
+> *"There is only one behavior that directly results in a pull, and that is an admin
+> button that syncs from n8n. The scheduled reconcile is a machine that does a bunch
+> of things and is not a behavioral feature — it is a state machine that makes the end
+> result of 'n8n origin' behaviors be reflected in Nextcloud. So 'rename in n8n' is
+> just handled by reconciler sync-from-n8n, but the RENAMING is the behavior and the
+> reconciler is the HOW."*
+
+Two rules, and together they place every scenario in this area without further debate:
+
+| Not a behaviour | Because | So it is specified as |
+|---|---|---|
+| a modification time changing | it is the shared *result* of edit / move / copy / rename | nothing — the gesture's own file already owns it |
+| the reconciler running | it is the *mechanism* an `@in-n8n` behaviour arrives by | the behaviour, tagged `@in-n8n`; the pull is just the `When` |
+
+Which leaves exactly one thing that IS a behaviour here: **the admin presses "Sync
+from n8n" and nothing has changed.** One scenario, in `reconcile.feature` — the file
+that owns what a run does *as a run*. That claim is ours and it is not automatic.
+
+The one thing that must not be lost is the negative control — "rewrites nothing" is
+also satisfied by a pull that has stopped writing entirely. So it lives with the
+behaviour that already supplies it: `tag-sync.feature`'s content-change scenario
+(`@n8n @in-n8n` — a workflow's nodes changed in n8n) gained a single line, `Then the
+file is rewritten`. No new actor, no new file, and the two claims fail in opposite
+directions.
+
+The draft that got binned had five scenarios across two files, two of them with
+invented actors. The rule that killed them is one line of `features/README.md` —
+*a feature is a BEHAVIOUR, not a mechanism* — applied to a **field** and to a **job**
+rather than to a file.
+
+### What a run reports
+
+`pullOne` now also returns `unchanged`, a subset of `succeeded`, surfaced in the Sync
+Actions panel. The counter is the point, not decoration: a run that inspected 14 files
+and reported "14 synced" was telling an admin the same number whether it had done
+everything or nothing.
+
+> **Dr K, unimpressed by the ceremony:** *"You wrote a three-branch plan for a
+> one-branch problem, and half the branch you did keep was already handled by the
+> house. Next time read the manual before you write the memo. But you measured before
+> you cut — before, not after — and that is the only part of this I would put on a
+> plate."*
+
+---
+
 Sources / cross-links:
 - [`n8n_sync` on the Nextcloud App Store](https://apps.nextcloud.com/apps/n8n_sync)
 - [`nextcloud-grafana` saga, Chapter 1 — Mise en Place](https://github.com/kubed-io/nextcloud-grafana/blob/main/saga/Chapter_1_Mise_en_Place.md) — the apprentice's side of the cameo.

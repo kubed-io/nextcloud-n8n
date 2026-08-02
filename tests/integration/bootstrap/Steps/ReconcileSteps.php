@@ -42,6 +42,12 @@ trait ReconcileSteps {
 	/** The mapping folder + sync files (path ⇒ n8n id) a push scenario set up. */
 	private array $reconcileSyncFiles = [];
 
+	/** The decoded JSON the last `occ n8n_sync:sync` run printed — what the run reports. */
+	private array $lastSyncResult = [];
+
+	/** Mirror etags (files-root path ⇒ etag) as of the last "has already been pulled". */
+	private array $reconcileEtagsBefore = [];
+
 	// ── Given ─────────────────────────────────────────────────────────────────
 
 	/** @Given n8n has workflows tagged :tag */
@@ -145,6 +151,65 @@ trait ReconcileSteps {
 		Assert::assertSame($this->reconcileUnmappedBody, $this->davGet($this->reconcileUnmappedPath), 'the unmapped file was rewritten by a mapping-scoped sync');
 	}
 
+	// ── Given/Then: the run writes (and reports) only what changed ────────────
+
+	/**
+	 * Bring the folder fully in step with n8n, then pin every mirror's etag. The pull
+	 * under test therefore starts from a folder where there is genuinely nothing to do.
+	 *
+	 * @Given the :tag mapping has already been pulled
+	 */
+	public function theMappingHasAlreadyBeenPulled(string $tag): void {
+		$this->currentTag = $tag;
+		$this->currentFolder = $this->folderNameForTag($tag);
+		$this->runMappingSync('pull', $tag);
+		$this->reconcileEtagsBefore = $this->mirrorEtags($this->currentFolder);
+		Assert::assertNotEmpty($this->reconcileEtagsBefore, 'the first pull mirrored no files, so a second one proves nothing');
+	}
+
+	/**
+	 * Every file the run succeeded on was one it did NOT have to rewrite. `unchanged`
+	 * is a subset of `succeeded`, so equality is the strongest available statement of
+	 * "this run wrote nothing" — and it is a number, which is what an admin reads.
+	 *
+	 * @Then the run reports every file as unchanged
+	 */
+	public function theRunReportsEveryFileAsUnchanged(): void {
+		Assert::assertArrayHasKey('unchanged', $this->lastSyncResult, 'the run reported no `unchanged` count: ' . json_encode($this->lastSyncResult));
+		Assert::assertSame(
+			(int)($this->lastSyncResult['succeeded'] ?? -1),
+			(int)$this->lastSyncResult['unchanged'],
+			'the run rewrote files even though nothing changed in n8n',
+		);
+	}
+
+	/** @Then no file in the mapped folder was rewritten */
+	public function noFileInTheMappedFolderWasRewritten(): void {
+		Assert::assertNotEmpty($this->reconcileEtagsBefore, 'no mirror etags were pinned before the run');
+		Assert::assertSame(
+			$this->reconcileEtagsBefore,
+			$this->mirrorEtags($this->folderNameForTag($this->currentTag)),
+			'a pull rewrote mirrors whose bodies already matched n8n',
+		);
+	}
+
+	/**
+	 * Every managed mirror under $folder as `path ⇒ etag`, sorted by path so two
+	 * snapshots compare as whole maps. Nextcloud mints a fresh etag on every write, so
+	 * an identical map means nothing under the folder was written.
+	 *
+	 * @return array<string,string>
+	 */
+	private function mirrorEtags(string $folder): array {
+		$etags = [];
+		foreach ($this->propfindWorkflowIds($folder) as $href => $_id) {
+			$path = $this->hrefToFilesPath((string)$href);
+			$etags[$path] = $this->davReadEtag($path);
+		}
+		ksort($etags);
+		return $etags;
+	}
+
 	// ── Then (push) ───────────────────────────────────────────────────────────
 
 	/** @Then each sync file in the folder is pushed to its workflow in n8n */
@@ -176,6 +241,24 @@ trait ReconcileSteps {
 		if ($res['exit'] !== 0) {
 			throw new \RuntimeException("sync $direction for $tag failed (exit {$res['exit']}):\n{$res['output']}");
 		}
+		$this->lastSyncResult = self::decodeSyncReport((string)$res['output']);
+	}
+
+	/**
+	 * Pull the run's JSON report out of the command's stdout. `occ` may prefix its own
+	 * lines (deprecations, warnings), so we decode from the first `{` rather than
+	 * assuming the whole stream is JSON. An undecodable stream yields `[]` — the
+	 * counters are then absent, and the Then that wanted them says so.
+	 *
+	 * @return array<string,mixed>
+	 */
+	private static function decodeSyncReport(string $output): array {
+		$start = strpos($output, '{');
+		if ($start === false) {
+			return [];
+		}
+		$decoded = json_decode(substr($output, $start), true);
+		return is_array($decoded) ? $decoded : [];
 	}
 
 	// ── helpers: n8n REST seeding/inspection ──────────────────────────────────

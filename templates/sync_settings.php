@@ -21,6 +21,10 @@ $summary = static function (array $rec) use ($l): string {
 	if (empty($rec) || empty($rec['finished_at'])) {
 		$last = $l->t('last: never');
 	} else {
+		// "synced" is every file reconciled; "unchanged" is the subset that already
+		// matched n8n and so was not rewritten. Shown separately because a pull that
+		// touched nothing is the normal, healthy result and used to read as N updates.
+		$unchanged = (int)($rec['unchanged'] ?? 0);
 		$counters = sprintf(
 			'%d %s · %d %s',
 			(int)($rec['succeeded'] ?? 0),
@@ -28,6 +32,9 @@ $summary = static function (array $rec) use ($l): string {
 			(int)($rec['failed'] ?? 0),
 			$l->t('errors'),
 		);
+		if ($unchanged > 0) {
+			$counters .= sprintf(' · %d %s', $unchanged, $l->t('unchanged'));
+		}
 		$last = $l->t('last: %1$s · %2$s', [(string)$rec['finished_at'], $counters]);
 		if (!empty($rec['message'])) {
 			$last .= ' · ' . (string)$rec['message'];

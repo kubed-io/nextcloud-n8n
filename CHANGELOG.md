@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- **A sync no longer marks every workflow file as modified.** Each scheduled sync rewrote every mirrored file whether or not anything had changed in n8n, so the whole folder read "Modified a few seconds ago" after every run and a file you had actually touched was impossible to spot — a pull now writes only the files whose workflow really changed, and the Sync Actions panel reports the rest as "unchanged".
 - **Emptying the trash now really deletes the workflow in n8n.** Purging a synced workflow file used to leave its workflow alive in n8n forever, archived, with the Nextcloud file gone — a silent leak. Nextcloud fires no event for a trash purge (the step was listening for one that never comes), and the trashed file is renamed with a deletion timestamp that also defeated the "is this one of ours?" check. Both are fixed.
 - **Tag changes made from the command line now reach n8n.** `occ tag:files:add` and background tag changes run with nobody logged in, and the tag listeners gave up at that point — so adding or removing a tag (including `n8n:ignore`) outside the web UI silently did nothing. They now fall back to the same sync account the scheduled pull uses.
 - The admin "Test connection" and "Test webhook" buttons are now CSRF-protected like the rest of the admin surface. Previously any page an admin visited could make their Nextcloud probe the configured n8n and learn the result.

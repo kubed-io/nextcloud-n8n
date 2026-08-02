@@ -37,6 +37,11 @@ use Psr\Log\LoggerInterface;
  * we disambiguate with NC-style "(2)", "(3)", … via {@see FilenameCodec}. We
  * update in place by `n8n_id` (rename-stable) and fall back to the canonical
  * filename for fresh writes.
+ *
+ * **A pull writes only what actually changed** (saga Ch5 §5.11): a mirror whose
+ * bytes already match n8n is not rewritten, so a pull over a quiet folder leaves
+ * every mtime alone. Without that, a 5-minutely scheduled pull reported every
+ * mirrored file as modified every 5 minutes — see {@see writeWorkflow}.
  */
 final class SyncService {
 	public function __construct(
@@ -136,12 +141,12 @@ final class SyncService {
 	/**
 	 * Pull every mapping in order. Used by the bulk "Sync from n8n" button.
 	 *
-	 * @return array{processed:int, succeeded:int, failed:int, status:string, message:?string}
+	 * @return array{processed:int, succeeded:int, failed:int, unchanged:int, status:string, message:?string}
 	 */
 	public function pullAll(): array {
 		// Backend availability is now per-mapping (Team Folder vs admin-owned),
 		// checked in pullOne.
-		$total = ['processed' => 0, 'succeeded' => 0, 'failed' => 0];
+		$total = ['processed' => 0, 'succeeded' => 0, 'failed' => 0, 'unchanged' => 0];
 		$errors = [];
 		foreach ($this->mappings->list() as $mapping) {
 			try {
@@ -149,6 +154,7 @@ final class SyncService {
 				$total['processed'] += $res['processed'];
 				$total['succeeded'] += $res['succeeded'];
 				$total['failed'] += $res['failed'];
+				$total['unchanged'] += $res['unchanged'];
 			} catch (\Throwable $e) {
 				$errors[] = $mapping->teamFolder . ': ' . $e->getMessage();
 				$total['failed']++;
@@ -162,6 +168,7 @@ final class SyncService {
 			'processed' => $total['processed'],
 			'succeeded' => $total['succeeded'],
 			'failed' => $total['failed'],
+			'unchanged' => $total['unchanged'],
 			'status' => $errors === [] ? 'ok' : 'error',
 			'message' => $errors === [] ? null : implode('; ', $errors),
 		];
@@ -177,7 +184,11 @@ final class SyncService {
 	 * deletes only the local mirror — the workflow in n8n merely lost this tag —
 	 * so it runs inside the SyncGuard this method already holds.
 	 *
-	 * @return array{processed:int, succeeded:int, failed:int, pruned:int}
+	 * `unchanged` counts the succeeded files whose body already matched n8n and so
+	 * were NOT rewritten — a subset of `succeeded`, not a separate outcome. On a
+	 * quiet folder it equals `succeeded`, which is what "nothing to do" looks like.
+	 *
+	 * @return array{processed:int, succeeded:int, failed:int, pruned:int, unchanged:int}
 	 */
 	public function pullOne(Mapping $mapping): array {
 		if ($mapping->ncGroups === []) {
@@ -187,14 +198,14 @@ final class SyncService {
 				'app' => Application::APP_ID,
 				'teamFolder' => $mapping->teamFolder,
 			]);
-			return ['processed' => 0, 'succeeded' => 0, 'failed' => 0, 'pruned' => 0];
+			return ['processed' => 0, 'succeeded' => 0, 'failed' => 0, 'pruned' => 0, 'unchanged' => 0];
 		}
 		if (!$this->storage->isAvailable($mapping)) {
 			$this->logger->warning('skipping mapping: storage backend unavailable (Team Folder selected but groupfolders disabled?)', [
 				'app' => Application::APP_ID,
 				'teamFolder' => $mapping->teamFolder,
 			]);
-			return ['processed' => 0, 'succeeded' => 0, 'failed' => 0, 'pruned' => 0];
+			return ['processed' => 0, 'succeeded' => 0, 'failed' => 0, 'pruned' => 0, 'unchanged' => 0];
 		}
 
 		// Guard our own writes: writeWorkflow's putContent fires NodeWrittenEvent,
@@ -207,6 +218,7 @@ final class SyncService {
 			$processed = 0;
 			$succeeded = 0;
 			$failed = 0;
+			$unchanged = 0;
 
 			$ignoredIds = [];
 			$existingById = $this->indexByN8nId($targetFolder, $mapping, $ignoredIds);
@@ -233,7 +245,9 @@ final class SyncService {
 				}
 				$seenIds[(string)$workflow['id']] = true;
 				try {
-					$this->writeWorkflow($targetFolder, $mapping, $workflow, $effectiveMode, $existingById, $nameCounts);
+					if (!$this->writeWorkflow($targetFolder, $mapping, $workflow, $effectiveMode, $existingById, $nameCounts)) {
+						$unchanged++;
+					}
 					$succeeded++;
 				} catch (\Throwable $e) {
 					$failed++;
@@ -249,7 +263,13 @@ final class SyncService {
 			$pruned = $this->pruneStale($existingById, $seenIds, $mapping);
 
 			$this->fixupFilecacheMimetype();
-			return ['processed' => $processed, 'succeeded' => $succeeded, 'failed' => $failed, 'pruned' => $pruned];
+			return [
+				'processed' => $processed,
+				'succeeded' => $succeeded,
+				'failed' => $failed,
+				'pruned' => $pruned,
+				'unchanged' => $unchanged,
+			];
 		} finally {
 			$this->guard->leave();
 		}
@@ -442,6 +462,15 @@ final class SyncService {
 	 * mode written is the mapping's mode (or `null`/skip for an n8n:ignore'd
 	 * workflow — saga §14.8), resolved by the caller into $effectiveMode.
 	 *
+	 * **Change-detected** (saga Ch5 §5.11): an existing mirror is rewritten only when
+	 * its bytes actually differ from what n8n would write. This used to be an
+	 * unconditional `putContent`, which bumped the mtime of every mirrored file on
+	 * every scheduled tick — a folder-wide "Modified a few seconds ago" every 5
+	 * minutes that buried the files a human had really touched.
+	 *
+	 * Returns **true when the body was written** (created or updated), false when the
+	 * mirror already matched n8n — the caller's `unchanged` counter.
+	 *
 	 * @param array<string,mixed> $workflow
 	 * @param string $effectiveMode Mapping::MODE_SYNC|MODE_LINK for this workflow
 	 * @param array<string,\OCP\Files\Node> $existingById
@@ -454,7 +483,7 @@ final class SyncService {
 		string $effectiveMode,
 		array $existingById,
 		array &$nameCounts,
-	): void {
+	): bool {
 		$id = (string)$workflow['id'];
 		$displayName = (string)($workflow['name'] ?? $id);
 		$versionId = (string)($workflow['versionId'] ?? '');
@@ -480,11 +509,22 @@ final class SyncService {
 					]);
 				}
 			}
-			$existing->putContent($body);
-			$this->metadata->stampSynced($existing->getId(), $id, $effectiveMode, $versionId, $body, $mapping->id);
-			$this->tags->apply($existing->getId(), $effectiveMode);
-			$this->reconcileTagsOnPull($existing->getId(), $workflow, $mapping);
-			return;
+			$fileId = $existing->getId();
+			// THE fix: the body is the only write here that is not already
+			// self-suppressing. Core's metadata layer no-ops an unchanged value
+			// (`FilesMetadata::setString` returns early, `saveMetadata` skips when
+			// nothing was updated) and the tag writes are diff-based, so stamping and
+			// re-tagging an untouched mirror costs nothing and stays unconditional —
+			// they also self-heal a mirror whose stamp drifted. `putContent` has no
+			// such guard: it rewrote the file, and the mtime, every single tick.
+			$wrote = $this->bodyDiffers($existing, $body);
+			if ($wrote) {
+				$existing->putContent($body);
+			}
+			$this->metadata->stampSynced($fileId, $id, $effectiveMode, $versionId, $body, $mapping->id);
+			$this->tags->apply($fileId, $effectiveMode);
+			$this->reconcileTagsOnPull($fileId, $workflow, $mapping);
+			return $wrote;
 		}
 
 		$basename = $displayName === '' ? $id : $displayName;
@@ -505,6 +545,36 @@ final class SyncService {
 		$this->metadata->stampSynced($file->getId(), $id, $effectiveMode, $versionId, $body, $mapping->id);
 		$this->tags->apply($file->getId(), $effectiveMode);
 		$this->reconcileTagsOnPull($file->getId(), $workflow, $mapping);
+		return true;
+	}
+
+	/**
+	 * Does the mirror on disk differ from the body n8n would write?
+	 *
+	 * The size check is a free, EXACT "differs" signal — it reads the filecache, not
+	 * the storage, so a genuinely changed workflow never costs a download. Only when
+	 * the sizes agree do we read the bytes; that read is the price of not writing,
+	 * and it is strictly cheaper than the unconditional write it replaces (on object
+	 * storage a GET beats a PUT, and a skipped write is also a skipped etag/mtime
+	 * bump and a skipped `NodeWrittenEvent`).
+	 *
+	 * A read we cannot perform answers **true** — writing is the old behaviour, so an
+	 * unreadable mirror degrades to "always rewrite" rather than to "never repair".
+	 */
+	private function bodyDiffers(\OCP\Files\File $file, string $body): bool {
+		if ((int)$file->getSize() !== strlen($body)) {
+			return true;
+		}
+		try {
+			return $file->getContent() !== $body;
+		} catch (\Throwable $e) {
+			$this->logger->warning('n8n_sync: could not read mirror for change detection; rewriting it', [
+				'app' => Application::APP_ID,
+				'file' => $file->getName(),
+				'exception' => $e,
+			]);
+			return true;
+		}
 	}
 
 	/**

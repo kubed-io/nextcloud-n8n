@@ -31,6 +31,8 @@ use OCP\IAppConfig;
  *   processed    : int   (files seen / candidates)
  *   succeeded    : int   (files actually synced)
  *   failed       : int
+ *   unchanged    : int   (pull only — succeeded files whose body already matched
+ *                         n8n, so they were not rewritten; a subset of succeeded)
  *   message      : string (one-line summary, useful when status=error)
  */
 final class SyncStatusService {
