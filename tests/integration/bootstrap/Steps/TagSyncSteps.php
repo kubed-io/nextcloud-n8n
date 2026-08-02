@@ -480,7 +480,7 @@ trait TagSyncSteps {
 		$after = $this->tagReconcileJobCount();
 		if ($after > $this->tagJobsBefore) {
 			throw new \RuntimeException(
-				"a tag-reconcile job was queued for an unmapped file "
+				'a tag-reconcile job was queued for an unmapped file '
 				. "(before: {$this->tagJobsBefore}, after: {$after})",
 			);
 		}
