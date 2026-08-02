@@ -253,8 +253,14 @@ final class TagReconcileService {
 	private function syncBodyTags(File $node, array $rows): void {
 		try {
 			$content = $node->getContent();
-			$wf = json_decode($content, true);
-			if (!is_array($wf)) {
+			// DECODE AS OBJECTS, NOT ARRAYS. n8n's schema is strict about JSON *types*:
+			// `connections`/`settings`/`staticData` must be objects, and an empty `{}`
+			// round-tripped through an assoc array re-encodes as `[]`, which earns a
+			// `400 … must be object` on the next push. PushService::pushViaApi already
+			// carries this lesson; re-encoding the body here without it would have
+			// quietly corrupted every workflow whose settings or connections were empty.
+			$wf = json_decode($content, false);
+			if (!$wf instanceof \stdClass) {
 				return; // a link pointer or a hand-mangled file — nothing to keep in step
 			}
 			// STRIP THE RESERVED NAMESPACE BEFORE IT REACHES THE FILE. reconcilePush()
@@ -275,7 +281,9 @@ final class TagReconcileService {
 				return $name !== '' && !str_starts_with($name, TagSyncService::RESERVED_PREFIX);
 			}));
 			usort($rows, static fn (array $a, array $b): int => strcmp((string)($a['name'] ?? ''), (string)($b['name'] ?? '')));
-			$wf['tags'] = $rows;
+			// `tags` is a LIST, so an array of arrays encodes correctly as a JSON array
+			// of objects — only the surrounding body needed to stay stdClass.
+			$wf->tags = array_map(static fn (array $r): object => (object)$r, $rows);
 			$new = json_encode($wf, N8nWorkflowBody::JSON_PRETTY);
 			if ($new === $content) {
 				return;
