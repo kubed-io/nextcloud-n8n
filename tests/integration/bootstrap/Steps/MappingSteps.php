@@ -33,6 +33,30 @@ use PHPUnit\Framework\Assert;
  * the wrong thing.
  */
 trait MappingSteps {
+	/**
+	 * Fail with a message that SURVIVES.
+	 *
+	 * PHPUnit's assertions are unusable for diagnosis inside Behat: when one
+	 * fails, its formatter reaches for `PHPUnit\TextUI\Configuration\Registry`,
+	 * which Behat never bootstraps, and the run reports
+	 *
+	 *     Type error: Registry::get(): Return value must be of type
+	 *     Configuration, null returned
+	 *
+	 * INSTEAD OF THE ASSERTION MESSAGE. The failure looks like a tooling
+	 * incompatibility, the actual cause is invisible, and every diagnosis costs a
+	 * full CI cycle — it cost three on this change alone, including one where the
+	 * message it ate said exactly what was wrong ("no Team Folder mounted at ...").
+	 *
+	 * So the steps whose message IS the diagnosis throw plainly instead. The
+	 * sibling penpot app arrived at the same thing for the same reason.
+	 *
+	 * @throws \RuntimeException
+	 */
+	private function fail(string $message): never {
+		throw new \RuntimeException($message);
+	}
+
 	/** @var array<string,string> the last form submitted, for the post-condition */
 	private array $lastMappingForm = [];
 
@@ -47,7 +71,9 @@ trait MappingSteps {
 				$this->occ('n8n_sync:remove-mapping ' . escapeshellarg($id));
 			}
 		}
-		Assert::assertSame([], $this->listMappings(), 'the mapping store did not empty');
+		if ($this->listMappings() !== []) {
+			$this->fail('the mapping store did not empty');
+		}
 	}
 
 	/**
@@ -80,7 +106,9 @@ trait MappingSteps {
 		$tag = $form['tag'] ?? '';
 		unset($form['tag']);
 		$res = $this->addMappingFromForm($tag, $form);
-		Assert::assertSame(0, $res['exit'], "the pre-state mapping could not be created:\n{$res['output']}");
+		if ($res['exit'] !== 0) {
+			$this->fail("the pre-state mapping could not be created:\n{$res['output']}");
+		}
 	}
 
 	/** @When the admin maps the tag :tag with: */
@@ -146,7 +174,9 @@ trait MappingSteps {
 	/** @When the admin changes that mapping's groups to :groups */
 	public function theAdminChangesThatMappingsGroupsTo(string $groups): void {
 		$id = (string)($this->listMappings()[0]['id'] ?? '');
-		Assert::assertNotSame('', $id, 'no mapping to change');
+		if ($id === '') {
+			$this->fail('no mapping to change');
+		}
 		$this->occ('n8n_sync:set-groups ' . escapeshellarg($id) . ' ' . escapeshellarg($groups));
 	}
 
@@ -174,23 +204,33 @@ trait MappingSteps {
 
 		$res = $this->occ('groupfolders:list --output=json');
 		$folders = json_decode($res['output'], true);
-		Assert::assertIsArray($folders, "groupfolders:list did not return JSON:\n{$res['output']}");
+		if (!is_array($folders)) {
+			$this->fail("groupfolders:list did not return JSON:\n{$res['output']}");
+		}
 
 		$id = null;
 		foreach ($folders as $f) {
-			if (($f['mount_point'] ?? null) === $folder) {
+			if (($f['mountPoint'] ?? null) === $folder) {
 				$id = (string)($f['id'] ?? '');
 				break;
 			}
 		}
-		Assert::assertNotNull($id, "no Team Folder mounted at '$folder'");
+		if ($id === null) {
+			$this->fail(sprintf(
+				"no Team Folder mounted at '%s'. groupfolders:list reported: %s",
+				$folder,
+				implode(', ', array_map(static fn (array $f): string => (string)($f['mountPoint'] ?? '?'), $folders)) ?: '(none)',
+			));
+		}
 
 		$res = $this->occ(sprintf(
 			'groupfolders:group %s %s read write delete',
 			escapeshellarg((string)$id),
 			escapeshellarg($group),
 		));
-		Assert::assertSame(0, $res['exit'], "could not share $folder with $group:\n{$res['output']}");
+		if ($res['exit'] !== 0) {
+			$this->fail("could not share $folder with $group:\n{$res['output']}");
+		}
 	}
 
 	/**
@@ -204,7 +244,13 @@ trait MappingSteps {
 		$got = array_values(array_map('strval', (array)($this->listMappings()[0]['nc_groups'] ?? [])));
 		sort($want);
 		sort($got);
-		Assert::assertSame($want, $got, 'the mapped folder is not shared with the expected groups');
+		if ($want !== $got) {
+			$this->fail(sprintf(
+				'expected the mapped folder to be shared with [%s]; it reports [%s]',
+				implode(', ', $want),
+				implode(', ', $got) ?: '(none)',
+			));
+		}
 	}
 
 	/** @Then the mapping is rejected */
