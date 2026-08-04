@@ -36,6 +36,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Pushing tags to n8n now resolves the whole set with a single tag-list fetch instead of one per tag, so a workflow with many tags no longer triggers a burst of API calls on each push.
 - CI: the integration suite is split into four Behat suites (`admin`, `workflow`, `tags`, `core`) run as parallel matrix legs, with one aggregated result comment instead of one per leg.
 - CI: two second-long quality checks guard the split — every feature file is in exactly one suite, and every step a live scenario uses actually resolves.
+- Spec: the mapping specification now describes a mapping as one fact with a table of its values, so a scenario can state an existing mapping and perform the action that would have created it in the same words. Records an unbuilt gap: two mappings may currently target the same folder.
 
 ### Fixed
 

@@ -13,34 +13,103 @@ use Behat\Gherkin\Node\TableNode;
 use PHPUnit\Framework\Assert;
 
 /**
- * Mapping steps: the feature describes mappings in plain English (titled table
- * columns); the step translates "storage"/"mode" words into the data model and
- * adds them. Owns `modeToModel`, which the create/move/setup traits also call.
+ * Mapping steps: the feature describes a mapping in plain English (a table of
+ * the fields the creation form takes); these translate those words into the data
+ * model. Owns `modeToModel`, which the create/move/setup traits also call.
  * Composed into {@see \OCA\N8nSync\Tests\Integration\FeatureContext}.
+ *
+ * ## ONE VOCABULARY FOR THE PRE-STATE AND THE ACTION
+ *
+ * `a mapping with the following values:` and `the admin maps the tag :tag with:`
+ * take the SAME table, because they describe the same object — one as something
+ * that is already true, one as something being done. That is what lets a
+ * uniqueness scenario put a mapping in the pre-state and then perform the very
+ * action that created it, with the difference visible in the table rather than
+ * hidden in two differently-worded steps.
+ *
+ * A blank cell means "the admin left this field alone", so it is dropped from
+ * the payload entirely and the app applies its own default. That is the only way
+ * an Examples row can say "unset" — an empty string is a value, and would test
+ * the wrong thing.
  */
 trait MappingSteps {
-	/** @When the admin adds these mappings: */
-	public function theAdminAddsTheseMappings(TableNode $table): void {
-		foreach ($table->getHash() as $row) {
-			$res = $this->addMapping(
-				$row['n8n tag'],
-				$row['folder'],
-				$row['storage'],
-				$row['mode'],
-			);
-			Assert::assertSame(0, $res['exit'], "adding mapping {$row['n8n tag']} failed:\n{$res['output']}");
+	/** @var array<string,string> the last form submitted, for the post-condition */
+	private array $lastMappingForm = [];
+
+	/** @var array<string,string> what an unset field is expected to become */
+	private array $mappingDefaults = [];
+
+	/** @Given no n8n tags are mapped */
+	public function noN8nTagsAreMapped(): void {
+		foreach ($this->listMappings() as $m) {
+			$id = (string)($m['id'] ?? '');
+			if ($id !== '') {
+				$this->occ('n8n_sync:remove-mapping ' . escapeshellarg($id));
+			}
 		}
+		Assert::assertSame([], $this->listMappings(), 'the mapping store did not empty');
 	}
 
-	/** @When the admin adds a mapping with an unknown mode for tag :tag */
-	public function theAdminAddsAMappingWithAnUnknownMode(string $tag): void {
-		// The mode model is exactly sync|link (saga Ch2 §14); anything else must be
-		// rejected by Mapping::fromArray validation.
-		$json = json_encode([
-			'n8n_tag' => $tag, 'team_folder' => 'x', 'nc_groups' => ['admin'],
-			'mode' => 'bogus', 'use_team_folder' => true,
-		], JSON_THROW_ON_ERROR);
-		$this->occ('n8n_sync:add-mapping ' . escapeshellarg($json));
+	/** @Given an unset field on the mapping form defaults to: */
+	public function anUnsetFieldDefaultsTo(TableNode $table): void {
+		$this->mappingDefaults = $this->formValues($table);
+	}
+
+	/**
+	 * @Given a mapping with the following values:
+	 *
+	 * The pre-state twin of `the admin maps the tag :tag with:`. It resets the
+	 * store first, so a scenario opening with it starts from a known count rather
+	 * than inheriting whatever the previous scenario left behind.
+	 */
+	public function aMappingWithTheFollowingValues(TableNode $table): void {
+		$this->noN8nTagsAreMapped();
+		$form = $this->formValues($table);
+		$tag = $form['tag'] ?? '';
+		unset($form['tag']);
+		$res = $this->addMappingFromForm($tag, $form);
+		Assert::assertSame(0, $res['exit'], "the pre-state mapping could not be created:\n{$res['output']}");
+	}
+
+	/** @When the admin maps the tag :tag with: */
+	public function theAdminMapsTheTagWith(string $tag, TableNode $table): void {
+		$form = $this->formValues($table);
+		$this->lastMappingForm = ['tag' => $tag] + $form;
+		$this->addMappingFromForm($tag, $form);
+	}
+
+	/**
+	 * @Then the mapping matches the form, unset fields at their defaults
+	 *
+	 * Reads back what was stored and compares it against the submitted form,
+	 * substituting the declared default for every field the form left blank. One
+	 * assertion for the whole object, so a scenario says "it saved what I typed"
+	 * rather than listing the fields one at a time.
+	 */
+	public function theMappingMatchesTheForm(): void {
+		$tag = $this->lastMappingForm['tag'] ?? '';
+		$m = $this->findMapping($tag);
+		Assert::assertNotNull($m, "no mapping was stored for tag $tag");
+
+		$expected = $this->lastMappingForm + $this->mappingDefaults;
+
+		Assert::assertSame($expected['folder'] ?? '', (string)($m['team_folder'] ?? ''), 'folder');
+		Assert::assertSame(
+			$this->modeToModel($expected['mode'] ?? 'sync'),
+			(string)($m['mode'] ?? ''),
+			'mode',
+		);
+		Assert::assertSame(
+			$this->storageToModel($expected['storage'] ?? ''),
+			(bool)($m['use_team_folder'] ?? false),
+			'storage',
+		);
+
+		$wanted = $this->groupList($expected['groups'] ?? '');
+		$stored = array_values(array_map('strval', (array)($m['nc_groups'] ?? [])));
+		sort($wanted);
+		sort($stored);
+		Assert::assertSame($wanted, $stored, 'groups');
 	}
 
 	/** @Then the mapping is rejected */
@@ -48,18 +117,27 @@ trait MappingSteps {
 		Assert::assertNotSame(0, $this->lastExit, "the mapping was unexpectedly accepted:\n{$this->lastOutput}");
 	}
 
-	/** @Then there are :count configured mappings */
-	public function thereAreNConfiguredMappings(int $count): void {
-		Assert::assertCount($count, $this->listMappings(), "expected $count mappings");
+	/**
+	 * @Then the refusal explains :fragment
+	 *
+	 * A FRAGMENT, NOT THE WHOLE MESSAGE. The scenario's job is to prove the
+	 * refusal names the field at fault so an admin knows what to change; pinning
+	 * the exact sentence would make every wording improvement a test failure.
+	 */
+	public function theRefusalExplains(string $fragment): void {
+		Assert::assertStringContainsString(
+			$fragment,
+			$this->lastOutput,
+			"the refusal did not mention '$fragment':\n{$this->lastOutput}",
+		);
 	}
 
-	/** @Then the mapping for tag :tag is a :storage folder in :mode mode */
-	public function theMappingForTagIs(string $tag, string $storage, string $mode): void {
-		$m = $this->findMapping($tag);
-		Assert::assertNotNull($m, "no mapping for tag $tag");
-		// storage: "team" → use_team_folder true; "admin" → false.
-		Assert::assertSame(str_contains($storage, 'team'), (bool)($m['use_team_folder'] ?? false), "tag $tag storage");
-		Assert::assertSame($this->modeToModel($mode), $m['mode'], "tag $tag mode");
+	/**
+	 * @Then there are exactly :count configured mappings
+	 * @Then there is exactly :count configured mapping
+	 */
+	public function thereAreExactlyNConfiguredMappings(int $count): void {
+		Assert::assertCount($count, $this->listMappings(), "expected $count mappings");
 	}
 
 	/** Translate a UI mode word to the stored mode (sync|link; saga Ch2 §14). */
@@ -71,15 +149,72 @@ trait MappingSteps {
 		};
 	}
 
-	/** Build + run an add-mapping from plain-English storage/mode words. */
-	private function addMapping(string $tag, string $folder, string $storage, string $mode): array {
-		$data = [
-			'n8n_tag' => $tag,
-			'team_folder' => $folder,
-			'nc_groups' => ['admin'],
-			'mode' => $this->modeToModel($mode),
-			'use_team_folder' => str_contains($storage, 'team'),
-		];
+	/** "team folder" → true, "admin folder" → false. */
+	private function storageToModel(string $storage): bool {
+		return str_contains($storage, 'team');
+	}
+
+	/**
+	 * A table of `| field | value |` rows as an array, with BLANK VALUES DROPPED.
+	 *
+	 * A blank cell in an Examples row means the admin left the field alone, which
+	 * is not the same as submitting an empty string — so it must not reach the
+	 * payload at all, or the app would validate the empty value instead of
+	 * applying its default.
+	 *
+	 * @return array<string,string>
+	 */
+	private function formValues(TableNode $table): array {
+		$out = [];
+		foreach ($table->getRowsHash() as $field => $value) {
+			$value = trim((string)$value);
+			if ($value !== '') {
+				$out[(string)$field] = $value;
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * Group ids from a comma-separated cell.
+	 *
+	 * @return list<string>
+	 */
+	private function groupList(string $value): array {
+		$out = [];
+		foreach (explode(',', $value) as $g) {
+			$g = trim($g);
+			if ($g !== '' && !in_array($g, $out, true)) {
+				$out[] = $g;
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * Submit a mapping form over occ.
+	 *
+	 * Only the keys the form actually supplied are sent, so the app's own
+	 * defaults apply to the rest — which is the whole point of the blank cell.
+	 *
+	 * @param array<string,string> $form
+	 * @return array{exit: int, output: string}
+	 */
+	private function addMappingFromForm(string $tag, array $form): array {
+		$data = ['n8n_tag' => $tag];
+		if (array_key_exists('folder', $form)) {
+			$data['team_folder'] = $form['folder'];
+		}
+		if (array_key_exists('mode', $form)) {
+			$data['mode'] = $form['mode'];
+		}
+		if (array_key_exists('groups', $form)) {
+			$data['nc_groups'] = $this->groupList($form['groups']);
+		}
+		if (array_key_exists('storage', $form)) {
+			$data['use_team_folder'] = $this->storageToModel($form['storage']);
+		}
+
 		return $this->occ('n8n_sync:add-mapping ' . escapeshellarg(json_encode($data, JSON_THROW_ON_ERROR)));
 	}
 
