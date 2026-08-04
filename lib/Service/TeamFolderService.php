@@ -129,9 +129,9 @@ final class TeamFolderService {
 		}
 
 		$keep = array_merge([self::ADMIN_GROUP], $contentGroups);
-		foreach (array_keys($this->appliedGroups($folderId)) as $gid) {
-			if (!in_array($gid, $keep, true)) {
-				$fm->removeApplicableGroup($folderId, $gid);
+		foreach ($this->appliedGroups($folderId) as $row) {
+			if (!in_array($row['gid'], $keep, true)) {
+				$fm->removeApplicableGroup($folderId, $row['gid']);
 			}
 		}
 
@@ -157,11 +157,11 @@ final class TeamFolderService {
 		}
 
 		$out = [];
-		foreach ($this->appliedGroups($folderId) as $gid => $permissions) {
-			if ($gid === self::ADMIN_GROUP && $permissions === Constants::PERMISSION_ALL) {
+		foreach ($this->appliedGroups($folderId) as $row) {
+			if ($row['gid'] === self::ADMIN_GROUP && $row['permissions'] === Constants::PERMISSION_ALL) {
 				continue;
 			}
-			$out[] = $gid;
+			$out[] = $row['gid'];
 		}
 
 		return $out;
@@ -218,14 +218,27 @@ final class TeamFolderService {
 	}
 
 	/**
-	 * Group ids currently applied to the folder, mapped to their permission
-	 * bitmask (excludes Circles, which store an empty group_id).
+	 * Group ids currently applied to the folder, with their permission bitmask
+	 * (excludes Circles, which store an empty group_id).
 	 *
 	 * THE PERMISSIONS ARE LOAD-BEARING, not diagnostic: they are the only thing
 	 * that tells the app's own actor assignment apart from an `admin` group the
 	 * admin chose as a content group. See {@see contentGroups()}.
 	 *
-	 * @return array<string, int> group id => permission bitmask
+	 * ## A LIST OF ROWS, NOT A MAP KEYED ON THE GROUP ID
+	 *
+	 * The obvious shape is `array<string, int>` — gid => permissions — and it is
+	 * WRONG for exactly the reason it was wrong in {@see StorageService}: PHP casts
+	 * a numeric-string array KEY to an int, so a group called "2024" comes back as
+	 * `int(2024)`. `in_array($gid, $keep, true)` then fails against the string, so
+	 * the prune would remove and re-add that group on every save forever — and
+	 * `contentGroups()` would return an int inside a `list<string>`.
+	 *
+	 * This shape has no keys to coerce. Caught in review, one file away from the
+	 * identical bug being fixed in the same change: the map really is the tempting
+	 * shape, which is why this note is here rather than in a commit message.
+	 *
+	 * @return list<array{gid: string, permissions: int}>
 	 */
 	private function appliedGroups(int $folderId): array {
 		$qb = $this->db->getQueryBuilder();
@@ -236,7 +249,7 @@ final class TeamFolderService {
 		$res = $qb->executeQuery();
 		$out = [];
 		foreach ($res->fetchAll() as $row) {
-			$out[(string)$row['group_id']] = (int)$row['permissions'];
+			$out[] = ['gid' => (string)$row['group_id'], 'permissions' => (int)$row['permissions']];
 		}
 		$res->closeCursor();
 		return $out;

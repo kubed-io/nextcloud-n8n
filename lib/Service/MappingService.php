@@ -186,7 +186,6 @@ final class MappingService {
 		return $mapping->toArray() + ['nc_groups' => $this->groupsOf($mapping)];
 	}
 
-
 	public function delete(string $id): void {
 		$all = $this->list();
 		$filtered = array_values(array_filter($all, fn (Mapping $m) => $m->id !== $id));

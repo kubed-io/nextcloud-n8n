@@ -25,9 +25,11 @@ use OCP\IRequest;
  *
  * Routes (see appinfo/routes.php):
  *   GET    /apps/n8n_sync/mappings           → list
- *   POST   /apps/n8n_sync/mappings           → add   { n8n_tag, team_folder, nc_groups, mode }
- *   PUT    /apps/n8n_sync/mappings/{id}      → re-share { nc_groups } — the ONLY edit
- *   PUT    /apps/n8n_sync/mappings/{id}      → update
+ *   POST   /apps/n8n_sync/mappings           → add { n8n_tag, team_folder, mode,
+ *                                              use_team_folder, nc_groups }
+ *   PUT    /apps/n8n_sync/mappings/{id}      → re-share { nc_groups } — the ONLY
+ *                                              edit a mapping has. Everything
+ *                                              else is fixed at create.
  *   DELETE /apps/n8n_sync/mappings/{id}      → delete; ?purge=1 also deletes the
  *                                              integration's managed files (those
  *                                              with n8n_id metadata). The Team
