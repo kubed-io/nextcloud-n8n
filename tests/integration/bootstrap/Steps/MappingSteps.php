@@ -50,9 +50,21 @@ trait MappingSteps {
 		Assert::assertSame([], $this->listMappings(), 'the mapping store did not empty');
 	}
 
-	/** @Given an unset field on the mapping form defaults to: */
+	/**
+	 * @Given an unset field on the mapping form defaults to:
+	 *
+	 * KEEPS BLANK CELLS, unlike every other table here. This one DECLARES what a
+	 * default is rather than submitting a form, so `| groups | |` is the assertion
+	 * "the default is nothing" — dropping it would leave the row decorative and the
+	 * scenario would keep passing if the app started defaulting groups to
+	 * something. The two tables look alike and mean opposite things.
+	 */
 	public function anUnsetFieldDefaultsTo(TableNode $table): void {
-		$this->mappingDefaults = $this->formValues($table);
+		$out = [];
+		foreach ($table->getRowsHash() as $field => $value) {
+			$out[(string)$field] = trim((string)$value);
+		}
+		$this->mappingDefaults = $out;
 	}
 
 	/**

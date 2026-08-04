@@ -7,20 +7,26 @@ Feature: Admin configures folder mappings
 
   Background:
     Given the app is enabled
+    # WHAT AN UNSET FIELD BECOMES IS A FACT ABOUT THE FORM, not about one
+    # scenario, so it is declared once here. Stated per-scenario it was silently
+    # optional: a scenario asserting "unset fields at their defaults" without
+    # declaring any would compare against whatever the step happened to assume.
+    #
+    # The tag and the folder are the only required fields — leaving either out is
+    # a refusal, not a default, and the outline below proves it for each.
+    And an unset field on the mapping form defaults to:
+      | mode    | link        |
+      | groups  |             |
+      | storage | team folder |
 
     # A mapping is one fact, so it is one sentence plus a table of what is in it —
     # the same table whether it is pre-state or the action. A blank cell means the
     # admin left that field alone, so the app's own default applies.
     # notes: AGENTS.md#the-preconditions
 
+  @admin @occ @ui
   Scenario Outline: Creating a mapping saves the form
     Given no n8n tags are mapped
-    And an unset field on the mapping form defaults to:
-      | mode    | link        |
-      | groups  |             |
-      | storage | team folder |
-    # The tag and the folder are the only required fields — leaving either out is
-    # a refusal, not a default, and the outline below proves it for each.
     When the admin maps the tag "nextcloud:alpha" with:
       | folder  | <folder>  |
       | mode    | <mode>    |
@@ -44,6 +50,7 @@ Feature: Admin configures folder mappings
 
     # notes: AGENTS.md#creating-a-mapping-saves-the-form
 
+  @admin @occ @ui
   Scenario Outline: A mapping the app cannot honour is refused, and says why
     Given no n8n tags are mapped
     When the admin maps the tag "<tag>" with:
@@ -65,6 +72,7 @@ Feature: Admin configures folder mappings
     # the occ argument.
     # notes: AGENTS.md#a-mapping-the-app-cannot-honour-is-refused-and-says-why
 
+  @admin @occ @ui
   Scenario: An n8n tag may only be mapped once
     Given a mapping with the following values:
       | tag    | nextcloud:alpha |
@@ -78,7 +86,7 @@ Feature: Admin configures folder mappings
     # the same thing and every workflow carrying it would belong to both.
     # notes: AGENTS.md#an-n8n-tag-may-only-be-mapped-once
 
-  @unbuilt
+  @admin @occ @ui @unbuilt
   Scenario Outline: What a mapping locks, it locks for a reason
     Given a mapping with the following values:
       | tag    | nextcloud:alpha |
@@ -95,7 +103,7 @@ Feature: Admin configures folder mappings
 
     # notes: AGENTS.md#what-a-mapping-locks-it-locks-for-a-reason
 
-  @unbuilt
+  @admin @occ @ui @unbuilt
   Scenario: Two mappings may not target the same folder
     Given a mapping with the following values:
       | tag    | nextcloud:alpha |
