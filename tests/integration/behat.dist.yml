@@ -27,18 +27,70 @@ default:
     filters:
       tags: '~@todo&&~@unbuilt&&~@blocked&&~@decision'
 
+  # FOUR SUITES, AND THEY ARE A PARTITION — every feature file belongs to exactly
+  # one. `bin/check-suites.sh` enforces that mechanically, because the failure
+  # mode of getting it wrong is SILENT: a file in no suite is simply never run,
+  # and a green build says so confidently.
+  #
+  # Running plain `behat` runs all four in sequence, which is exactly the old
+  # single-suite coverage — the split is inert until something selects a suite.
+  # That is deliberate: it lets CI prove the partition covers everything BEFORE
+  # the workflow starts depending on it (`behat --suite=tags` per matrix leg).
+  #
+  # THE AXIS IS THE FILENAME, NOT A TAG. Tags look like the obvious split and are
+  # the wrong tool: `@occ`, `@ui` and `@in-n8n` are carried by some scenarios and
+  # not others, so any tag partition leaks — the untagged ones would match no leg
+  # and quietly stop running, with every leg still green. A path partition cannot
+  # leak, because `ls features/*.feature` minus the union must be empty and that
+  # is one line to check.
+  #
+  #   admin     the settings surface — the connection and the mapping list.
+  #             Grouped because admin work is a different SESSION from user work,
+  #             not merely a different tag; it never interleaves with a gesture.
+  #   workflow  the verbs a user performs on a workflow FILE: create, copy, move,
+  #             rename, delete.
+  #   tags      the tag is n8n's only grouping construct — it is what a mapping
+  #             binds to and what decides a workflow's membership. Everything
+  #             about the tag vocabulary and the three-way sync lives here, and it
+  #             is the largest single body of scenarios in the repo.
+  #   core      what is not a verb on a file and not about tags: identity, file
+  #             type, the manual sync buttons, purge, and the app lifecycle.
   suites:
-    default:
+    admin:
       paths:
-        # Gherkin lives at the repo root (features/) so the human-readable use
-        # cases are prominent and linkable from docs; behat.dist.yml stays under
-        # tests/integration/ with the rest of the test plumbing.
-        - '%paths.base%/../../features'
-      contexts:
-        # Context class lives with the test code (tests/integration/bootstrap/),
-        # loaded via the integration composer autoload — features/ stays pure
-        # Gherkin.
-        - OCA\N8nSync\Tests\Integration\FeatureContext
+      - '%paths.base%/../../features/admin-connection.feature'
+      - '%paths.base%/../../features/admin-mapping.feature'
+      # Context class lives with the test code (tests/integration/bootstrap/),
+      # loaded via the integration composer autoload — features/ stays pure
+      # Gherkin.
+      contexts: &contexts
+      - OCA\N8nSync\Tests\Integration\FeatureContext
+
+    workflow:
+      paths:
+      - '%paths.base%/../../features/create-workflow.feature'
+      - '%paths.base%/../../features/copy.feature'
+      - '%paths.base%/../../features/delete.feature'
+      - '%paths.base%/../../features/move.feature'
+      - '%paths.base%/../../features/rename.feature'
+      contexts: *contexts
+
+    tags:
+      paths:
+      - '%paths.base%/../../features/tag-sync.feature'
+      - '%paths.base%/../../features/reserved-tags.feature'
+      contexts: *contexts
+
+    core:
+      paths:
+      - '%paths.base%/../../features/reconcile.feature'
+      - '%paths.base%/../../features/mapping-membership.feature'
+      - '%paths.base%/../../features/file-type.feature'
+      - '%paths.base%/../../features/open-with.feature'
+      - '%paths.base%/../../features/purge.feature'
+      - '%paths.base%/../../features/lifecycle.feature'
+      - '%paths.base%/../../features/uninstall.feature'
+      contexts: *contexts
 
   formatters:
     # Human-readable progress in the log…

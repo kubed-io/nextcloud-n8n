@@ -34,6 +34,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **BREAKING:** minimum Nextcloud version is now **31** (was 30). Fixing the scheduled-sync checkbox requires a settings API introduced in 31; Nextcloud 30 reached end of life in 2025.
 - REST API card now shows whether an API key is **currently stored** (the field itself always looks empty because the key is sensitive/encrypted), so you can tell "not set yet" from "already saved" at a glance.
 - Pushing tags to n8n now resolves the whole set with a single tag-list fetch instead of one per tag, so a workflow with many tags no longer triggers a burst of API calls on each push.
+- CI: the integration suite is split into four Behat suites (`admin`, `workflow`, `tags`, `core`) run as parallel matrix legs, with one aggregated result comment instead of one per leg.
+- CI: two second-long quality checks guard the split — every feature file is in exactly one suite, and every step a live scenario uses actually resolves.
 
 ### Fixed
 

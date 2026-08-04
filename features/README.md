@@ -44,6 +44,29 @@ apart, and nobody reads two files to answer one question.
 **A scenario describing a behaviour another file owns is a defect**, even when it
 passes. Move it.
 
+## The files are also a partition — four Behat suites
+
+Every file above belongs to **exactly one** of four Behat suites, declared in
+`tests/integration/behat.dist.yml`, and the integration matrix runs one suite per
+leg:
+
+| suite | what it holds |
+|---|---|
+| `admin` | the settings surface — the connection and the mapping list |
+| `workflow` | the verbs a user performs on a workflow file: create, copy, move, rename, delete |
+| `tags` | the tag vocabulary and the three-way sync — n8n's only grouping construct |
+| `core` | identity, file type, the manual sync buttons, purge, and the app lifecycle |
+
+**The axis is the filename, not a tag.** A tag partition leaks: `@occ`, `@ui` and
+`@in-n8n` are carried by some scenarios and not others, so an untagged scenario
+would match no leg and quietly stop running — with every leg still green. A path
+partition cannot leak, because `ls features/*.feature` minus the union must be
+empty. `tests/integration/bin/check-suites.sh` checks exactly that, in the quality
+job, in about a second.
+
+Running plain `behat` still runs all four in sequence, so a local run is
+unaffected by the split.
+
 ## Tags are an index, not decoration
 
 A scenario carries tags on **one line, directly above `Scenario:`** — axis tags first,
