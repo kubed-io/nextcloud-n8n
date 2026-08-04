@@ -37,6 +37,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - CI: the integration suite is split into four Behat suites (`admin`, `workflow`, `tags`, `core`) run as parallel matrix legs, with one aggregated result comment instead of one per leg.
 - CI: two second-long quality checks guard the split — every feature file is in exactly one suite, and every step a live scenario uses actually resolves.
 - Spec: the mapping specification now describes a mapping as one fact with a table of its values, so a scenario can state an existing mapping and perform the action that would have created it in the same words. Records an unbuilt gap: two mappings may currently target the same folder.
+- **A mapping's mode now defaults to `link` when you don't set one**, instead of the whole mapping being refused — so `occ n8n_sync:add-mapping` needs only a tag and a folder. `link` downloads nothing, so a mapping made without thinking about mode cannot cost you anything.
 
 ### Fixed
 

@@ -91,7 +91,18 @@ final class Mapping implements JsonSerializable {
 
 		// Mode, with legacy normalisation. `writeback` is read only to be ignored
 		// (the old sync+readonly "backup" collapses into sync); `reference` → link.
-		$mode = (string)($data['mode'] ?? '');
+		//
+		// DEFAULTS TO `link`, WHICH IT DID NOT USED TO. An omitted mode was a hard
+		// refusal, so the shortest useful add-mapping — a tag and a folder — could
+		// not be written at all, and every caller had to name a mode it had no
+		// opinion about. `link` is the conservative choice: it downloads nothing
+		// and mirrors nothing back, so a mapping made without thinking about mode
+		// cannot cost anything. Individual files are promoted afterwards.
+		//
+		// Matches the Penpot sibling, which has always defaulted this way. The gap
+		// here and in nextcloud-grafana was found by writing the admin-mapping
+		// spec's defaults table and having no value to put in the `mode` row.
+		$mode = (string)($data['mode'] ?? self::MODE_LINK);
 		if ($mode === 'reference') {
 			$mode = self::MODE_LINK;
 		}

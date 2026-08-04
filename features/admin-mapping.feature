@@ -16,8 +16,11 @@ Feature: Admin configures folder mappings
   Scenario Outline: Creating a mapping saves the form
     Given no n8n tags are mapped
     And an unset field on the mapping form defaults to:
+      | mode    | link        |
       | groups  |             |
       | storage | team folder |
+    # The tag and the folder are the only required fields — leaving either out is
+    # a refusal, not a default, and the outline below proves it for each.
     When the admin maps the tag "nextcloud:alpha" with:
       | folder  | <folder>  |
       | mode    | <mode>    |
@@ -36,7 +39,7 @@ Feature: Admin configures folder mappings
 
     Examples: and the two fields that have a default
       | folder  | mode | groups | storage |
-      | echo    | sync |        |         |
+      | echo    |      |        |         |
       | foxtrot | sync | admin  |         |
 
     # notes: AGENTS.md#creating-a-mapping-saves-the-form
@@ -55,7 +58,6 @@ Feature: Admin configures folder mappings
       |                 | alpha  | sync  | n8n_tag is required       |
       | one,two         | alpha  | sync  | must not contain commas   |
       | nextcloud:alpha |        | sync  | team_folder is required   |
-      | nextcloud:alpha | alpha  |       | mode must be              |
       | nextcloud:alpha | alpha  | bogus | mode must be              |
 
     # One scenario, not five: the behaviour is identical every time and the rules
@@ -75,6 +77,23 @@ Feature: Admin configures folder mappings
     # A tag is what a mapping IS, so mapping it twice would make two mappings mean
     # the same thing and every workflow carrying it would belong to both.
     # notes: AGENTS.md#an-n8n-tag-may-only-be-mapped-once
+
+  @unbuilt
+  Scenario Outline: What a mapping locks, it locks for a reason
+    Given a mapping with the following values:
+      | tag    | nextcloud:alpha |
+      | folder | alpha           |
+    When the admin changes that mapping's <field> to "<value>"
+    Then the change is rejected as immutable
+
+    Examples: everything a mapping is, is fixed once it exists
+      | field   | value           |
+      | tag     | nextcloud:bravo |
+      | folder  | elsewhere       |
+      | mode    | sync            |
+      | storage | admin folder    |
+
+    # notes: AGENTS.md#what-a-mapping-locks-it-locks-for-a-reason
 
   @unbuilt
   Scenario: Two mappings may not target the same folder

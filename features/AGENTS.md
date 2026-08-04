@@ -98,13 +98,28 @@ to know which field broke reads the failure, not the spec.
 scenario** rather than hiding them in a step definition, so the two rows that
 exercise them are legible without opening PHP.
 
-**The defaults are only two.** `team_folder` and `mode` are required by
-`Mapping::fromArray()`, so they have no default to test; `nc_groups` defaults to
-empty and `use_team_folder` defaults to **true**. That last one is worth
-flagging: the Penpot sibling deliberately defaults it to **false**, because
-groupfolders is an optional app and a default that fails on a stock Nextcloud is
-not a default. This app has not made that change, and the divergence is real
-rather than accidental — see the sibling's §C6.35.
+**Only two fields have a default, and the table says so.** `n8n_tag`,
+`team_folder` and `mode` are all required by `Mapping::fromArray()` — omitting
+any of them is a refusal, not a default, and the refusal outline carries a row
+proving it for each. `nc_groups` defaults to empty; `use_team_folder` defaults to
+true.
+
+Two of those are DIVERGENCES from the Penpot sibling, and both are real rather
+than accidental:
+
+- **`mode` is required here; Penpot defaults it to `link`.** Penpot's reasoning
+  is that `link` is the conservative choice — it downloads nothing — so the
+  overwhelmingly common `occ` call can name a tag and nothing else. Grafana also
+  requires it, so this app is with the majority, but the majority is not
+  obviously right and the question is open.
+- **`use_team_folder` defaults to true here; Penpot changed its equivalent to
+  false.** groupfolders is an OPTIONAL app, so the old default asked for a
+  backend that is simply absent on a stock Nextcloud — and a default that cannot
+  be provisioned is not a default (the sibling's §C6.35).
+
+Both are behaviour changes and neither belongs in a specification-only change.
+They are written down here so the next person decides deliberately instead of
+discovering the difference from a failing test.
 
 ### A mapping the app cannot honour is refused, and says why
 
@@ -128,6 +143,37 @@ A tag is what a mapping IS — it decides which workflows the mapping owns — s
 mapping it twice would make two mappings mean the same thing, and every workflow
 carrying that tag would belong to both. Enforced by
 `MappingService::assertTagUnique()`.
+
+### What a mapping locks, it locks for a reason
+
+`@unbuilt`, and this is the widest gap in the file.
+
+**THE STANDARD, taken from the Penpot sibling: a mapping is immutable except for
+its groups.** Not enforced by a list of guards but by the API SHAPE — Penpot's
+`MappingController::update()` takes an id and `ncGroups`, and nothing else, so no
+caller can express a change to anything else. That is stronger than checking,
+because there is no path to check.
+
+**What this app does today is much weaker.** `MappingService::update()` takes a
+whole Mapping and guards exactly one field — `use_team_folder`. The n8n tag, the
+folder and the mode can all be changed on an existing mapping, and the admin
+card PUTs all of them on every save. Changing the tag silently re-points which
+workflows the mapping owns; changing the folder orphans everything already
+mirrored into the old one.
+
+Each field is locked for the same reason it is in the siblings: the change would
+force a live migration nobody asked for. Re-pointing the tag or the folder moves
+a whole tree of already-synced files; switching the storage backend migrates the
+provisioned folder and all its shares. Delete the mapping and add a new one —
+which makes the migration cost visible instead of hiding it behind a dropdown.
+
+Written here as one outline whose Examples are the fields, so adding a field to a
+mapping means adding a row rather than writing a fifth scenario.
+
+**Groups are the exception, and will stop being an edit at all.** Once groups
+become a pass-through to the folder (the change this app has not taken yet, see
+the Penpot sibling's §C6.35), "editing a mapping" stops existing as a concept:
+the groups live on the folder and the mapping is wholly immutable.
 
 ### Two mappings may not target the same folder
 
