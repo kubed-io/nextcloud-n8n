@@ -1,18 +1,4 @@
-# The custom mimetype makes a workflow a first-class FILE TYPE: its own mimetype,
-# its own icon, DAV-exposed (and read-only) metadata, and — because n8n_mode is
-# indexed — it's queryable. (What happens when you OPEN one is the related but
-# separate "open with" concern; see open-with.feature.)
-#
-# Live for the WebDAV-observable surface (saga §14.9): the custom mimetype, the
-# four nc:metadata-* props exposed in PROPFIND, the descriptive n8n_mode value for
-# sync/unmapped/ignored, and the read-only (PROPPATCH-rejected) guarantee.
-#
-# Two rows are not live, for two DIFFERENT reasons — which is the whole point of
-# having more than one status tag (features/README.md):
-#   - the `link` row is @todo — the code exists and other files exercise a link
-#     file live; only this assertion is unwritten.
-#   - the REPORT-by-indexed-mode query is @blocked — the DAV search plumbing for
-#     `nc:metadata-*` is unproven, and that is a capability, not a missing test.
+# Notes, decisions and history for this feature: AGENTS.md#file-type
 
 Feature: n8n workflow is a first-class file type
   As a Nextcloud user

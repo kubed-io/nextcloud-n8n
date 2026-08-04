@@ -1,11 +1,4 @@
-# Folder mappings are metadata on the folder, so membership is resolved by where
-# a file lives. (How the app reacts when you MOVE a file across that boundary is
-# in move.feature — a sync file moved out becomes "unmapped"; a link can't leave.)
-#
-# Live (saga §14.9): the resolver matches the deepest mapped folder that encloses
-# a file, so nested mappings work and the nearest enclosing one wins. Each scenario
-# lands a real file over WebDAV and reads the resulting n8n_mapping stamp back, so
-# these are server-observable assertions of MappingService::resolveForPath.
+# Notes, decisions and history for this feature: AGENTS.md#mapping-membership
 
 Feature: Mapping membership is resolved by folder
   As a Nextcloud admin

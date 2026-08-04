@@ -1,27 +1,4 @@
-# "Open with" — the openers offered for a managed workflow file, and which one is
-# the default click. RELATED to the file type (file-type.feature: it's *because*
-# `.n8n.json` is a first-class type that we get custom openers) but a distinct
-# concern, because the opener set + default depend on the file's MODE, not its type.
-#
-# Two openers:
-#   - "Open in n8n"          — jumps to the live workflow in n8n. Only meaningful for
-#                              sync/link; hidden for unmapped/ignored (nothing to open).
-#   - "Open with text editor" — edits the raw JSON. ALWAYS available on any workflow
-#                              file; it's the default for unmapped/ignored.
-# Default click: sync/link → Open in n8n; unmapped/ignored → text editor.
-# (Whether editing+saving pushes to n8n follows the file's mode — see
-# create-workflow.feature / rename.feature / the bidirectional sync, not here.)
-#
-# Behat can't click the Files-app JS, so the integration steps assert the
-# server-observable the front-end keys off (the n8n_mode DAV value + the
-# live/archived workflow state + raw-JSON readability); the opener DECISION logic
-# itself is unit-tested in tests/js/files-helpers.test.js.
-#
-# `link` is a ROW, not a separate scenario. It sat in its own @todo outline for
-# "link integration is uncertain" while two other files were arranging a link file
-# and running green — a stale reason nobody re-checked. It is one rule over four
-# modes, so it belongs in the Examples table with the rest; splitting it hid that
-# the only thing missing was the row.
+# Notes, decisions and history for this feature: AGENTS.md#open-with
 
 Feature: Opening a workflow file (Open in n8n / Open with text editor)
   As a Nextcloud user

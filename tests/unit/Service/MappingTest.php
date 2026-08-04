@@ -77,9 +77,22 @@ final class MappingTest extends TestCase {
 		Mapping::fromArray(['n8n_tag' => 't', 'team_folder' => 'f', 'mode' => 'backup']);
 	}
 
-	public function testMissingModeRejected(): void {
-		$this->expectException(\InvalidArgumentException::class);
-		Mapping::fromArray(['n8n_tag' => 't', 'team_folder' => 'f']);
+	/**
+	 * An omitted mode is the DEFAULT, not a refusal — this test used to assert the
+	 * opposite, and it was the only thing depending on the old behaviour.
+	 *
+	 * `link` is the conservative choice: it downloads nothing and pushes nothing
+	 * back, so a mapping made without an opinion about mode cannot cost anything.
+	 * It also makes the shortest useful call expressible — a tag and a folder —
+	 * which is what `occ n8n_sync:add-mapping` overwhelmingly gets asked to do.
+	 *
+	 * An UNKNOWN mode is still a refusal ({@see testUnknownModeRejected()}): the
+	 * admin said something, and the app cannot honour it. Saying nothing and
+	 * saying nonsense are different inputs and get different answers.
+	 */
+	public function testMissingModeDefaultsToLink(): void {
+		$m = Mapping::fromArray(['n8n_tag' => 't', 'team_folder' => 'f']);
+		$this->assertSame(Mapping::MODE_LINK, $m->mode);
 	}
 
 	public function testCommaInTagRejected(): void {

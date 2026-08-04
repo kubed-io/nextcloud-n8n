@@ -1,14 +1,4 @@
-# Three-way name agreement: filename stem ⇄ JSON "name" ⇄ n8n name.
-# The stable link is the workflow ID, so none of these break the connection — which is
-# what lets a rename be propagated rather than treated as a delete plus a create.
-#
-# BOTH DIRECTIONS. A rename that starts in Nextcloud is carried to n8n by the listener;
-# a rename that starts in n8n reaches Nextcloud on the next reconcile, because nothing
-# in n8n calls us. The scenarios are grouped by which side moved first, since that is
-# the only thing that changes about them.
-# LIVE: rename/edit go over WebDAV; the file-locked reconcile runs in
-# ReconcileNameJob, so the steps drain that job class with the occ worker before
-# asserting both the file (PROPFIND/GET) and n8n (REST) sides.
+# Notes, decisions and history for this feature: AGENTS.md#rename
 
 Feature: Renaming keeps file, JSON, and n8n in agreement
   As a Nextcloud user
@@ -38,12 +28,7 @@ Feature: Renaming keeps file, JSON, and n8n in agreement
     When the file is renamed by any of the above means
     Then the "n8n_id" metadata is unchanged
 
-    # ══ RENAMED IN n8n ═════════════════════════════════════════════════════════
-    #
-    # The direction with no listener: n8n cannot tell Nextcloud anything, so every one
-    # of these needs a reconcile to become observable. The pull matches by ID and moves
-    # the existing file rather than writing a second one — matching by NAME is exactly
-    # what a rename would defeat.
+    # notes: AGENTS.md#renaming-a-workflow-in-n8n-renames-the-mirrored-file
 
   @n8n @in-n8n @occ @todo
   Scenario: Renaming a workflow in n8n renames the mirrored file
