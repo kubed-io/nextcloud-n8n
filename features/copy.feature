@@ -1,11 +1,4 @@
-# Copying a workflow file. Where a MOVE is "the same workflow" (see move.feature),
-# a COPY is ALWAYS a brand-new instance. A copy never inherits the original's n8n
-# identity — its metadata (n8n_id, versionId, mapping, mode) is stripped the moment
-# it is copied. Copy is therefore the single safest point to strip metadata:
-# whatever the source was (sync, link, unmapped), the copy starts clean.
-#
-# Nextcloud distinguishes copy from move at the event layer (NodeCopiedEvent vs
-# NodeRenamedEvent), which is what lets us treat them oppositely.
+# Notes, decisions and history for this feature: AGENTS.md#copy
 
 Feature: Copying a workflow file always makes a new instance
   As a Nextcloud user

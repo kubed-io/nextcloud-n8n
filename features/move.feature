@@ -1,21 +1,4 @@
-# How the app reacts to every move a Nextcloud user can make on a workflow file.
-# A MOVE mirrors as the SAME workflow moving in n8n — never a duplicate. The
-# stable link is the workflow id, so a move out and back in is an archive then a
-# restore, not a delete then a create. (COPY is the opposite — always a new
-# instance; see copy.feature.)
-#
-# Model (saga Chapter 3 §14): modes are sync / link / unmapped. "unmapped" is the
-# state a sync file enters when moved OUT of its mapped folder: NC keeps the full
-# JSON + the workflow id + versionId, clears the mapping, and the workflow is
-# archived in n8n. Moving it back into any mapping restores (unarchives) it.
-#
-# LIVE (saga §14.2, Phase 2): the sync move-out → unmapped + archive, the
-# unmapped move-in → restore, within-mapping moves, link move-out refusal, and
-# unmapped relocation are wired (MoveGuardListener + MotionListener +
-# MotionService) and asserted here over WebDAV (MOVE) + the n8n REST API. The
-# hard-deleted restore-fallback and brand-new move-in create are now live too;
-# the lone remaining edge is merge-on-collision (an unmapped copy moved in over an
-# already-synced file with the same id), which still needs a metadata-by-id lookup.
+# Notes, decisions and history for this feature: AGENTS.md#move
 
 Feature: Moving a workflow file is the same workflow leaving and returning
   As a Nextcloud user
@@ -77,16 +60,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
     Then a new workflow is created in n8n from the file
     And the file's mode becomes "sync" in the "nextcloud:beta" mapping
 
-  # Move-in duplicate (saga §14.19). A file carrying an id is moved into a mapping
-  # where that workflow is ALREADY synced — e.g. an admin restored it in n8n and it
-  # synced back into the folder while an unmapped copy still existed. This is not the
-  # same file relocating; it's a duplicate. Nextcloud's own rules lead the behaviour:
-  #   • same name → the move is refused (WebDAV Overwrite:F → 412), exactly like any
-  #                 NC same-name move. The existing synced file is the source of truth.
-  #   • diff name → the incoming is minted as a BRAND-NEW workflow (copy semantics,
-  #                 §14.5): MotionService::moveIn sees a sibling already carrying the
-  #                 id and hands the file to CreateService, which strips the carried id
-  #                 and creates a fresh workflow — the existing file is left untouched.
+  # notes: AGENTS.md#moving-a-duplicate-in-under-the-same-name-is-refused-the-workflow-is-already-synced-here
   @user @in-nextcloud @gesture @ui
   Scenario: Moving a duplicate in under the same name is refused (the workflow is already synced here)
     Given a managed "sync" workflow file in the "nextcloud:alpha" folder
@@ -132,13 +106,4 @@ Feature: Moving a workflow file is the same workflow leaving and returning
     And its "n8n_id" and "n8n_versionId" are unchanged
     And nothing changes in n8n
 
-  # ── decision cases (saga Chapter 3 §14.2 a–d): documented, not yet designed ─────────
-  # These need a design decision before they get concrete Then-steps:
-  #   a. sync moved directly mapping→mapping (different tag): re-tag in place vs
-  #      eject+reattach vs block. (Currently blocked by MoveGuardListener.)
-  #   b. moving into a nested subfolder owned by a different mapping (nearest
-  #      enclosing wins) — interaction with case a.
-  #   c. link rename within its mapping — does the filename matter, or is the n8n
-  #      name authoritative?
-  #   d. deleting an unmapped file (it has an id + an archived workflow) — see
-  #      delete.feature.
+  # notes: AGENTS.md#moving-an-unmapped-file-between-unmapped-locations-changes-nothing

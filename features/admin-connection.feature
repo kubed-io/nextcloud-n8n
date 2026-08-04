@@ -1,10 +1,4 @@
-# The "admin makes the n8n connection" use case — the app's "I'm logged in" gate,
-# a prerequisite to every other feature. The admin points the app at n8n (base
-# URL), provides the API key, enables the REST API, and tests the connection to
-# confirm the URL + key are valid and n8n is reachable.
-#
-# (Obtaining the API key is out of the app's scope — that's the n8n admin's job;
-# in the tests it's provided as setup.)
+# Notes, decisions and history for this feature: AGENTS.md#admin-connection
 
 Feature: Admin configures the n8n connection
   As a Nextcloud admin

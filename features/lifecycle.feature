@@ -1,5 +1,4 @@
-# Stage 0 (saga §5): the app installs and uninstalls cleanly on a real Nextcloud.
-# A clean uninstall is also an app-store rule. No n8n contact.
+# Notes, decisions and history for this feature: AGENTS.md#lifecycle
 
 Feature: App install lifecycle
   As a Nextcloud admin

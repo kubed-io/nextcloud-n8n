@@ -1,35 +1,5 @@
-# Uninstall lifecycle — what happens to the SYSTEM and to the user's DATA when the
-# app is removed, and that a reinstall reconnects cleanly.
-#
-#   - SYSTEM: removing the app runs the <uninstall> repair step (UnregisterMimetype),
-#     which REVERTS the custom-mimetype registration the install wrote into the
-#     Nextcloud core tree (config/mimetype*.json, core/img/filetypes/n8n.svg,
-#     core/js/mimetypelist.js) and re-stamps the .n8n.json filecache rows back to
-#     application/json. The store's clean-uninstall rule is about this shared state.
-#   - DATA: the app ORPHANS the user's data — it never deletes the .n8n.json files,
-#     never clears their Files-Metadata, never deletes Team Folders, never touches
-#     n8n. A sync folder is a full backup, so deleting it would be data loss. To wipe
-#     the Nextcloud side deliberately, an admin uses Purge first (see purge.feature).
-#
-# Because the files keep their n8n_id, a reinstall + pull RECONCILES them in place
-# (matched by id, never duplicated) — the reconnect is free, by design.
-#
-# The <uninstall> system leg needs a full app remove on a live pod (CI can't drive
-# it), so it stays skipped; the data-orphan + reinstall-reconnect legs are provable
-# via disable/re-enable + a pull, which exercises the same metadata-keyed reconcile.
+# Notes, decisions and history for this feature: AGENTS.md#uninstall
 
-# @blocked, NOT @todo, and the missing capability is named: the CI harness can only
-# disable and enable the app, never remove and reinstall it. No test anyone writes
-# will pass until that exists, which is exactly the distinction the tag makes.
-#
-# NOTE THE TAG IS ON THE `Feature:`, so it excludes EVERY scenario below, including
-# the data-orphan ones a disable/enable could genuinely prove. That is deliberate
-# but easy to misread: the DATA promise — reinstall reconciles existing files in
-# place by id with NO duplicates — is already proven LIVE by reconcile.feature
-# ("existing files are updated in place — matched by workflow id, never
-# duplicated"), and a disable/enable changes nothing about that reconcile, so
-# re-proving it here would be duplicate coverage of one behaviour in two files.
-# If this file is ever un-blocked, delete those scenarios rather than run them.
 @blocked
 Feature: Uninstall reverts the system and reinstall reconnects the data
   As a Nextcloud admin

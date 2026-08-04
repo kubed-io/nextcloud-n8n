@@ -1,30 +1,4 @@
-# Reserved n8n tag — the optional, per-workflow EXCLUDE switch.
-#
-# A mapping binds ONE n8n tag (ANY name — e.g. "team:flows", "myfoobarflows"; the
-# "nextcloud:" prefix some examples use is just a convention, NOT required) to a
-# folder + a mode (`sync` / `link`). That mode is AUTHORITATIVE for every workflow
-# in the mapping — there is no per-workflow sync/link override. The only reserved
-# tag the app honours is the exclude:
-#
-#   n8n:ignore  — exclude this one. Two facets:
-#                 • never-pulled workflow → no Nextcloud file at all;
-#                 • a file already IN a mapped folder → "ignored" mode (it stays put,
-#                   keeps its id, is archived in n8n, and the sync skips it).
-#
-# Authority is one-directional. The app NEVER writes n8n:ignore onto workflows in
-# n8n; it only READS it (if present) as a per-workflow exclude at pull time. You add
-# it yourself when you want the exception. The Nextcloud-side `n8n:sync` / `n8n:link`
-# system tags the app stamps on managed files are AUTHORITATIVE + automatic and just
-# mirror each file's mode (see the Tagging feature / file-type.feature) — they are
-# not an override mechanism.
-#
-# So n8n:ignore is 100% optional: the mapping does everything on its own; the
-# n8n-side ignore tag is just the escape hatch to leave one workflow out.
-#
-# The never-pulled ignore and the in-folder `ignored` mode are live (saga §14.8 B).
-# The un-tag RESTORE — removing n8n:ignore unarchives the workflow and returns the
-# file to the mapping's mode — is live too (saga §14.18), driven by a
-# TagUnassignedEvent listener.
+# Notes, decisions and history for this feature: AGENTS.md#reserved-tags
 
 Feature: The n8n:ignore reserved tag excludes individual workflows
   As an n8n admin

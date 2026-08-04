@@ -1,8 +1,4 @@
-# Creating workflows from Nextcloud. These scenarios are the human-readable spec
-# for the "author in NC, live in n8n" flow. LIVE: a .n8n.json written over WebDAV
-# into a mapped folder fires NodeWrittenEvent → CreateInN8nListener → the workflow
-# appears in n8n. The n8n side is asserted over its REST API; the NC stamp over
-# DAV PROPFIND of nc:metadata-n8n_id.
+# Notes, decisions and history for this feature: AGENTS.md#create-workflow
 
 Feature: Create a workflow from Nextcloud
   As a Nextcloud user
@@ -28,30 +24,7 @@ Feature: Create a workflow from Nextcloud
     And the file has no "n8n_id" metadata
     And the file is treated as a plain document (unmapped state)
 
-    # ══ ADOPTION: A FILE THAT ARRIVES ALREADY CARRYING ITS TAGS ════════════════
-    #
-    # A workflow can come into existence from a file that was authored elsewhere —
-    # exported from another n8n, copied from a sibling, or carried out of Nextcloud
-    # and back. Creation is creation, so it lives here rather than in
-    # tag-sync.feature; what tag-sync.feature owns is what happens to tags AFTER a
-    # file is managed.
-    #
-    # THE BODY IS THE ONLY SURFACE THAT SURVIVES THE TRIP. Nextcloud's system-tag
-    # pills are bound to a file id, so they do not survive an export or a copy; the
-    # `tags` array is bytes inside the file. At the moment of adoption there are no
-    # pills, no baseline, and no workflow — the body is the ONLY record of what this
-    # thing was tagged. That is why it wins here and nowhere else (saga §5.6.3).
-    #
-    # THIS IS A DEFECT TODAY, NOT MERELY UNBUILT. `CreateService` sends
-    # `N8nWorkflowBody::toCreateBody`, whose writable whitelist omits `tags`, so
-    # `$created['tags']` is ALWAYS empty and the "additive merge" merges the mapping
-    # tag into nothing. Every tag the file arrived with is silently discarded. The
-    # docblock claiming "POST /workflows preserves tags the body declared" was wrong
-    # twice over: we never declare them, and n8n's schema marks `tags` readOnly on
-    # create AND update anyway (`workflowCreate.yml`, `additionalProperties: false`).
-    # `PUT /workflows/{id}/tags` is the only writer that exists.
-    #
-    # Nothing caught it because adoption's tag behaviour had never been written down.
+    # notes: AGENTS.md#a-file-that-arrives-with-tags-in-its-body-carries-them-into-n8n
 
   @user @in-nextcloud @gesture @ui @unbuilt
   Scenario: A file that arrives with tags in its body carries them into n8n
