@@ -259,7 +259,7 @@ final class ModeChangeServiceTest extends TestCase {
 		// The workflow is unarchived, then re-moded to the mapping's default (link).
 		$this->n8n->expects(self::once())->method('unarchiveWorkflow')->with('w1');
 		$this->mappings->method('resolveForPath')->willReturn(
-			new Mapping('m1', 'team:links', 'links', ['admin'], Mapping::MODE_LINK, false),
+			new Mapping('m1', 'team:links', 'links', Mapping::MODE_LINK, false),
 		);
 		$this->n8n->expects(self::once())->method('getWorkflow')->with('w1')->willReturn([
 			'id' => 'w1', 'name' => 'My Flow', 'versionId' => 'v9', 'nodes' => [['x' => 1]], 'connections' => [],

@@ -93,7 +93,7 @@ final class TagReconcileServiceTest extends TestCase {
 	}
 
 	private function mapping(string $tag): Mapping {
-		return new Mapping('map-a', $tag, 'folder', ['admin'], Mapping::MODE_SYNC, false);
+		return new Mapping('map-a', $tag, 'folder', Mapping::MODE_SYNC, false);
 	}
 
 	// ── gating (pill path) ─────────────────────────────────────────────────────

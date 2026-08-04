@@ -89,6 +89,7 @@ identify the service this app integrates with.
     <command>OCA\N8nSync\Command\AddMapping</command>
     <command>OCA\N8nSync\Command\ListMappings</command>
     <command>OCA\N8nSync\Command\RemoveMapping</command>
+    <command>OCA\N8nSync\Command\SetGroups</command>
     <command>OCA\N8nSync\Command\Reconcile</command>
     <command>OCA\N8nSync\Command\Purge</command>
   </commands>

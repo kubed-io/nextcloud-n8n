@@ -192,15 +192,12 @@ final class SyncService {
 	 * @return array{processed:int, succeeded:int, failed:int, pruned:int, unchanged:int}
 	 */
 	public function pullOne(Mapping $mapping): array {
-		if ($mapping->ncGroups === []) {
-			// A Team Folder with no groups is invisible to everyone — skip with
-			// a clear warning rather than create dead storage.
-			$this->logger->warning('skipping mapping with no groups; Team Folder would be invisible', [
-				'app' => Application::APP_ID,
-				'teamFolder' => $mapping->teamFolder,
-			]);
-			return ['processed' => 0, 'succeeded' => 0, 'failed' => 0, 'pruned' => 0, 'unchanged' => 0];
-		}
+		// NO "SKIP A MAPPING WITH NO GROUPS" GUARD ANY MORE. It read
+		// $mapping->ncGroups, which no longer exists — the groups are the folder's
+		// (see Mapping's class docblock). It was also the wrong call: an unshared
+		// folder is the admin's business, visible to them in the mapping card and in
+		// Files, and refusing to sync into it turned a sharing question into a
+		// mysteriously empty folder.
 		if (!$this->storage->isAvailable($mapping)) {
 			$this->logger->warning('skipping mapping: storage backend unavailable (Team Folder selected but groupfolders disabled?)', [
 				'app' => Application::APP_ID,

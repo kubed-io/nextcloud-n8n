@@ -239,3 +239,19 @@
 		grid-area: auto;
 	}
 }
+
+/* An immutable field on a saved card. Rendered as TEXT, not as a disabled
+ * input: a disabled input still looks like a control, invites a click, and
+ * implies the value might be saveable under some condition. Matches both
+ * sibling apps. */
+.n8n-sync-fixed {
+	display: inline-block;
+	padding-top: 6px;
+	font-family: monospace;
+}
+
+.n8n-sync-hint {
+	font-family: var(--font-face, sans-serif);
+	color: var(--color-text-maxcontrast);
+	font-size: 0.9em;
+}

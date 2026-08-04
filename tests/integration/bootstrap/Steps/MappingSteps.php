@@ -33,6 +33,30 @@ use PHPUnit\Framework\Assert;
  * the wrong thing.
  */
 trait MappingSteps {
+	/**
+	 * Fail with a message that SURVIVES.
+	 *
+	 * PHPUnit's assertions are unusable for diagnosis inside Behat: when one
+	 * fails, its formatter reaches for `PHPUnit\TextUI\Configuration\Registry`,
+	 * which Behat never bootstraps, and the run reports
+	 *
+	 *     Type error: Registry::get(): Return value must be of type
+	 *     Configuration, null returned
+	 *
+	 * INSTEAD OF THE ASSERTION MESSAGE. The failure looks like a tooling
+	 * incompatibility, the actual cause is invisible, and every diagnosis costs a
+	 * full CI cycle — it cost three on this change alone, including one where the
+	 * message it ate said exactly what was wrong ("no Team Folder mounted at ...").
+	 *
+	 * So the steps whose message IS the diagnosis throw plainly instead. The
+	 * sibling penpot app arrived at the same thing for the same reason.
+	 *
+	 * @throws \RuntimeException
+	 */
+	private function fail(string $message): never {
+		throw new \RuntimeException($message);
+	}
+
 	/** @var array<string,string> the last form submitted, for the post-condition */
 	private array $lastMappingForm = [];
 
@@ -47,7 +71,9 @@ trait MappingSteps {
 				$this->occ('n8n_sync:remove-mapping ' . escapeshellarg($id));
 			}
 		}
-		Assert::assertSame([], $this->listMappings(), 'the mapping store did not empty');
+		if ($this->listMappings() !== []) {
+			$this->fail('the mapping store did not empty');
+		}
 	}
 
 	/**
@@ -80,7 +106,9 @@ trait MappingSteps {
 		$tag = $form['tag'] ?? '';
 		unset($form['tag']);
 		$res = $this->addMappingFromForm($tag, $form);
-		Assert::assertSame(0, $res['exit'], "the pre-state mapping could not be created:\n{$res['output']}");
+		if ($res['exit'] !== 0) {
+			$this->fail("the pre-state mapping could not be created:\n{$res['output']}");
+		}
 	}
 
 	/** @When the admin maps the tag :tag with: */
@@ -122,6 +150,107 @@ trait MappingSteps {
 		sort($wanted);
 		sort($stored);
 		Assert::assertSame($wanted, $stored, 'groups');
+	}
+
+	/**
+	 * @Given the Nextcloud groups :groups exist
+	 *
+	 * THE GROUPS HAVE TO REALLY EXIST. Nextcloud cannot share a folder with a group
+	 * that is not there, so a scenario that just names one and asserts it comes
+	 * back would be asserting nothing — which is precisely how the old stored-list
+	 * model passed: it echoed its own stored intent back without ever touching a
+	 * share.
+	 */
+	public function theNextcloudGroupsExist(string $groups): void {
+		foreach (explode(',', $groups) as $gid) {
+			$gid = trim($gid);
+			if ($gid !== '') {
+				// Idempotent: an existing group makes this a non-zero no-op.
+				$this->occ('group:add ' . escapeshellarg($gid));
+			}
+		}
+	}
+
+	/** @When the admin changes that mapping's groups to :groups */
+	public function theAdminChangesThatMappingsGroupsTo(string $groups): void {
+		$id = (string)($this->listMappings()[0]['id'] ?? '');
+		if ($id === '') {
+			$this->fail('no mapping to change');
+		}
+		$this->occ('n8n_sync:set-groups ' . escapeshellarg($id) . ' ' . escapeshellarg($groups));
+	}
+
+	/**
+	 * @When the Team Folder :folder is shared with the group :group outside this app
+	 *
+	 * Uses groupfolders' OWN occ command, so the share is made exactly the way an
+	 * admin would make it in the Files admin UI — by something that is not this
+	 * app. That is the whole point: the next read has to report the FOLDER's
+	 * sharing rather than this app's memory of it.
+	 *
+	 * There is no core `occ` command that creates a plain group share (checked
+	 * against a live Nextcloud: core ships `sharing:cleanup-remote-storages`,
+	 * `delete-orphan-shares`, `expiration-notification` and `fix-share-owners`,
+	 * and nothing that shares). So this scenario is written on a Team Folder,
+	 * where groupfolders gives us one.
+	 *
+	 * `read write delete` rather than the default read-only, so the group is
+	 * assigned at the same permissions the app itself grants — otherwise the app
+	 * would fix them on the next explicit set and the difference would look like
+	 * churn.
+	 */
+	public function theTeamFolderIsSharedWithTheGroupOutsideThisApp(string $folder, string $group): void {
+		$this->theNextcloudGroupsExist($group);
+
+		$res = $this->occ('groupfolders:list --output=json');
+		$folders = json_decode($res['output'], true);
+		if (!is_array($folders)) {
+			$this->fail("groupfolders:list did not return JSON:\n{$res['output']}");
+		}
+
+		$id = null;
+		foreach ($folders as $f) {
+			if (($f['mountPoint'] ?? null) === $folder) {
+				$id = (string)($f['id'] ?? '');
+				break;
+			}
+		}
+		if ($id === null) {
+			$this->fail(sprintf(
+				"no Team Folder mounted at '%s'. groupfolders:list reported: %s",
+				$folder,
+				implode(', ', array_map(static fn (array $f): string => (string)($f['mountPoint'] ?? '?'), $folders)) ?: '(none)',
+			));
+		}
+
+		$res = $this->occ(sprintf(
+			'groupfolders:group %s %s read write delete',
+			escapeshellarg((string)$id),
+			escapeshellarg($group),
+		));
+		if ($res['exit'] !== 0) {
+			$this->fail("could not share $folder with $group:\n{$res['output']}");
+		}
+	}
+
+	/**
+	 * @Then the mapping's groups are :groups
+	 *
+	 * Compared as a SET, not a list: which groups the folder is shared with is the
+	 * fact, and the order Nextcloud happens to return them in is not.
+	 */
+	public function theMappingsGroupsAre(string $groups): void {
+		$want = $this->groupList($groups);
+		$got = array_values(array_map('strval', (array)($this->listMappings()[0]['nc_groups'] ?? [])));
+		sort($want);
+		sort($got);
+		if ($want !== $got) {
+			$this->fail(sprintf(
+				'expected the mapped folder to be shared with [%s]; it reports [%s]',
+				implode(', ', $want),
+				implode(', ', $got) ?: '(none)',
+			));
+		}
 	}
 
 	/** @Then the mapping is rejected */

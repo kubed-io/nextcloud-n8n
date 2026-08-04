@@ -104,7 +104,6 @@ final class SyncServiceTest extends TestCase {
 			'id' => $id,
 			'n8n_tag' => 'nextcloud:alpha',
 			'team_folder' => 'alpha',
-			'nc_groups' => ['admin'],
 			'mode' => $mode,
 			'use_team_folder' => false,
 		]);

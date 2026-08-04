@@ -52,9 +52,17 @@ final class AddMapping extends Command {
 			return 1;
 		}
 		try {
-			$saved = $this->service->add(Mapping::fromArray($data));
+			// nc_groups travels ALONGSIDE the mapping, not inside it: they are
+			// applied to the provisioned folder and read back from it, never stored.
+			$saved = $this->service->add(Mapping::fromArray($data), $data['nc_groups'] ?? []);
 		} catch (\InvalidArgumentException $e) {
 			$output->writeln('<error>' . $e->getMessage() . '</error>');
+			return 1;
+		} catch (\RuntimeException $e) {
+			// The mapping was valid; its FOLDER could not be provisioned — most
+			// likely a Team Folder on an instance without groupfolders. Nothing was
+			// stored, which is the point of provisioning before persisting.
+			$output->writeln('<error>Could not provision the mapped folder: ' . $e->getMessage() . '</error>');
 			return 1;
 		}
 		$output->writeln('<info>Added mapping ' . $saved->id . ' (' . $saved->n8nTag . ' → ' . $saved->teamFolder . ').</info>');
