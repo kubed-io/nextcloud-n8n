@@ -267,7 +267,7 @@ jobs:
 
     - name: Upload full Nextcloud log on failure
       if: failure()
-      uses: actions/upload-artifact@v4
+      uses: actions/upload-artifact@v7
       with:
         name: nextcloud-log-${{ matrix.suite }}
         path: data/nextcloud.log
