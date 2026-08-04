@@ -36,7 +36,13 @@ final class ListMappings extends Command {
 
 	#[\Override]
 	protected function execute(InputInterface $input, OutputInterface $output): int {
-		$mappings = array_map(static fn ($m) => $m->toArray(), $this->service->list());
+		// describe(), not toArray(): the stored shape no longer carries groups, and
+		// "what is this mapping shared with" is the question anyone reading this
+		// list is asking. They are read from the folder as this runs.
+		$mappings = array_map(
+			fn ($m) => $this->service->describe($m),
+			$this->service->list(),
+		);
 		$output->writeln(json_encode($mappings, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT | JSON_UNESCAPED_SLASHES));
 		return 0;
 	}

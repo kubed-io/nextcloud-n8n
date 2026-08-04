@@ -38,6 +38,7 @@ final class MappingService {
 
 	public function __construct(
 		private IAppConfig $config,
+		private StorageService $storage,
 	) {
 	}
 
@@ -104,7 +105,8 @@ final class MappingService {
 
 	/** @param array<string,mixed> $entry */
 	private static function isLegacyRow(array $entry): bool {
-		return (array_key_exists('n8n_path', $entry) && !array_key_exists('n8n_tag', $entry))
+		return array_key_exists('nc_groups', $entry)
+			|| (array_key_exists('n8n_path', $entry) && !array_key_exists('n8n_tag', $entry))
 			|| (array_key_exists('nc_path', $entry) && !array_key_exists('team_folder', $entry))
 			|| ($entry['mode'] ?? null) === 'reference'
 			|| array_key_exists('writeback', $entry);
@@ -120,48 +122,70 @@ final class MappingService {
 		return null;
 	}
 
-	public function add(Mapping $mapping): Mapping {
+	/**
+	 * Store a new mapping, and provision its folder.
+	 *
+	 * `$groups` is passed alongside the mapping rather than being part of it: they
+	 * are applied to the folder and read back from it, never stored.
+	 *
+	 * THE FOLDER IS MADE BEFORE THE MAPPING IS PERSISTED, so a mapping that cannot
+	 * be provisioned is not saved at all. A mapping asking for a Team Folder on an
+	 * instance without groupfolders used to save happily and then fail on every
+	 * sync afterwards, which reads as "the sync is broken" rather than "that
+	 * backend is not installed".
+	 *
+	 * @param array<array-key, mixed>|string $groups
+	 */
+	public function add(Mapping $mapping, array|string $groups = []): Mapping {
 		$all = $this->list();
 		$this->assertTagUnique($all, $mapping->n8nTag, null);
+		$this->storage->ensureFolder($mapping, $groups);
 		$all[] = $mapping;
 		$this->persist($all);
 		return $mapping;
 	}
 
-	public function update(string $id, Mapping $mapping): Mapping {
-		$all = $this->list();
-		$this->assertTagUnique($all, $mapping->n8nTag, $id);
-		$updated = null;
-		foreach ($all as $i => $existing) {
-			if ($existing->id === $id) {
-				// The storage backend is immutable (spec §14.1): switching moves
-				// bytes between stores. Reject a change; the user must remove +
-				// re-add (the purge option exists for exactly this).
-				if ($existing->useTeamFolder !== $mapping->useTeamFolder) {
-					throw new \InvalidArgumentException(
-						'The storage backend (Team Folder vs admin-owned) cannot be changed after a mapping '
-						. 'is created. Remove the mapping (optionally purging its files) and add it again.',
-					);
-				}
-				// Preserve the original id + backend even if the caller sent different ones.
-				$updated = new Mapping(
-					$id,
-					$mapping->n8nTag,
-					$mapping->teamFolder,
-					$mapping->ncGroups,
-					$mapping->mode,
-					$existing->useTeamFolder,
-				);
-				$all[$i] = $updated;
-				break;
-			}
-		}
-		if ($updated === null) {
+	/**
+	 * Re-share a mapping's folder with the given groups — the only edit there is.
+	 *
+	 * IT WRITES TO THE FOLDER AND PERSISTS NOTHING. The stored mapping is not
+	 * touched, because groups are not on it; the return value is what the folder
+	 * reports AFTERWARDS, which is not always what was submitted — a group that
+	 * does not exist cannot be shared with.
+	 *
+	 * @param array<array-key, mixed>|string $ncGroups
+	 * @return list<string>
+	 */
+	public function updateGroups(string $id, array|string $ncGroups): array {
+		$mapping = $this->getById($id);
+		if ($mapping === null) {
 			throw new \OutOfBoundsException('mapping not found');
 		}
-		$this->persist($all);
-		return $updated;
+
+		$this->storage->ensureFolder($mapping, $ncGroups);
+
+		return $this->storage->groupsOf($mapping);
 	}
+
+	/**
+	 * The groups a mapping's folder is currently shared with.
+	 *
+	 * @return list<string>
+	 */
+	public function groupsOf(Mapping $mapping): array {
+		return $this->storage->groupsOf($mapping);
+	}
+
+	/**
+	 * The stored shape PLUS the folder's current groups — what the admin page and
+	 * `list-mappings` render, as opposed to what is written to appconfig.
+	 *
+	 * @return array<string, mixed>
+	 */
+	public function describe(Mapping $mapping): array {
+		return $mapping->toArray() + ['nc_groups' => $this->groupsOf($mapping)];
+	}
+
 
 	public function delete(string $id): void {
 		$all = $this->list();

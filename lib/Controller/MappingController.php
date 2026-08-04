@@ -26,6 +26,7 @@ use OCP\IRequest;
  * Routes (see appinfo/routes.php):
  *   GET    /apps/n8n_sync/mappings           → list
  *   POST   /apps/n8n_sync/mappings           → add   { n8n_tag, team_folder, nc_groups, mode }
+ *   PUT    /apps/n8n_sync/mappings/{id}      → re-share { nc_groups } — the ONLY edit
  *   PUT    /apps/n8n_sync/mappings/{id}      → update
  *   DELETE /apps/n8n_sync/mappings/{id}      → delete; ?purge=1 also deletes the
  *                                              integration's managed files (those
@@ -43,35 +44,80 @@ final class MappingController extends Controller {
 		parent::__construct($appName, $request);
 	}
 
+	/**
+	 * The configured mappings — described, not just stored: each carries the
+	 * groups its FOLDER is currently shared with, read as this responds.
+	 */
 	#[AuthorizedAdminSetting(settings: MappingSettings::class)]
 	public function index(): JSONResponse {
 		return new JSONResponse([
-			'mappings' => array_map(fn (Mapping $m) => $m->toArray(), $this->service->list()),
+			'mappings' => array_map(
+				fn (Mapping $m): array => $this->service->describe($m),
+				$this->service->list(),
+			),
 		]);
 	}
 
+	/**
+	 * Map an n8n tag.
+	 *
+	 * `nc_groups` is passed alongside the mapping rather than into it: groups are
+	 * applied to the provisioned folder and read back from it, never stored.
+	 */
 	#[AuthorizedAdminSetting(settings: MappingSettings::class)]
 	public function create(): JSONResponse {
 		try {
-			$mapping = Mapping::fromArray($this->request->getParams());
-			$saved = $this->service->add($mapping);
-			return new JSONResponse(['mapping' => $saved->toArray()], Http::STATUS_CREATED);
+			$params = $this->request->getParams();
+			$mapping = Mapping::fromArray($params);
+			$saved = $this->service->add($mapping, $params['nc_groups'] ?? []);
+			return new JSONResponse(['mapping' => $this->service->describe($saved)], Http::STATUS_CREATED);
 		} catch (\InvalidArgumentException $e) {
 			return new JSONResponse(['message' => $e->getMessage()], Http::STATUS_BAD_REQUEST);
+		} catch (\RuntimeException $e) {
+			// The request was fine and the mapping is fine — the FOLDER could not be
+			// provisioned (a Team Folder on an instance without groupfolders). A 400
+			// would send the admin back to change an input that was never wrong.
+			return new JSONResponse(
+				['message' => 'Could not provision the mapped folder: ' . $e->getMessage()],
+				Http::STATUS_INTERNAL_SERVER_ERROR,
+			);
 		}
 	}
 
+	/**
+	 * Re-share a mapping's folder with the given groups — THE ONLY EDIT THERE IS.
+	 *
+	 * Everything else about a mapping is immutable once created: the tag, the
+	 * folder, the storage backend and the mode. That is not enforced here by a
+	 * list of guards — it is enforced by this method taking GROUPS, so no caller
+	 * can express a change to anything else. There is no path to check.
+	 *
+	 * Changing any of the rest means removing the mapping and adding it again,
+	 * which makes the migration cost visible instead of hiding it behind a
+	 * dropdown: re-pointing the tag silently re-decides which workflows the
+	 * mapping owns, and re-pointing the folder orphans everything already
+	 * mirrored into the old one.
+	 *
+	 * It writes to the FOLDER and stores nothing, so the response carries the
+	 * groups the folder reports afterwards — which is not always what was
+	 * submitted, since a group that does not exist cannot be shared with.
+	 */
 	#[AuthorizedAdminSetting(settings: MappingSettings::class)]
 	public function update(string $id): JSONResponse {
 		try {
-			$mapping = Mapping::fromArray($this->request->getParams() + ['id' => $id]);
-			$saved = $this->service->update($id, $mapping);
-			return new JSONResponse(['mapping' => $saved->toArray()]);
-		} catch (\InvalidArgumentException $e) {
-			return new JSONResponse(['message' => $e->getMessage()], Http::STATUS_BAD_REQUEST);
+			$this->service->updateGroups($id, $this->request->getParam('nc_groups', []));
 		} catch (\OutOfBoundsException) {
 			return new JSONResponse(['message' => 'Mapping not found'], Http::STATUS_NOT_FOUND);
+		} catch (\RuntimeException $e) {
+			return new JSONResponse(
+				['message' => 'Could not re-share the mapped folder: ' . $e->getMessage()],
+				Http::STATUS_INTERNAL_SERVER_ERROR,
+			);
 		}
+
+		$mapping = $this->service->getById($id);
+
+		return new JSONResponse(['mapping' => $mapping === null ? null : $this->service->describe($mapping)]);
 	}
 
 	/**

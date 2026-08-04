@@ -61,16 +61,36 @@ final class TeamFolderService {
 	}
 
 	/**
-	 * Ensure a Team Folder named $mountPoint exists, is shared with the content
-	 * groups at the right permission level for $mode, and is writable by the actor
-	 * (via the `admin` group). Returns the groupfolders folder id.
+	 * Content-group permissions.
 	 *
-	 * Idempotent: re-running re-asserts assignments + permissions and prunes
-	 * content groups no longer desired (spec UC-5).
+	 * NO LONGER VARIES BY MODE, and that is a deliberate correction. A `link`
+	 * mapping used to grant READ only, on the reasoning that content never flows
+	 * back to n8n — but a permission bit was the wrong place to express that. It
+	 * stopped no write to n8n (the listeners and the absence of a content push do
+	 * that); it only stopped the user from using their own files: no subfolder of
+	 * their own, no drag between folders, no rename.
 	 *
-	 * @param list<string> $contentGroups user-facing groups (admin-managed; ≥1 expected)
+	 * Identical to {@see StorageService::CONTENT_PERMISSIONS} so both backends
+	 * grant the same surface, and identical to both sibling apps.
 	 */
-	public function ensure(string $mountPoint, array $contentGroups, string $mode): int {
+	private const CONTENT_PERMISSIONS = Constants::PERMISSION_READ
+		| Constants::PERMISSION_UPDATE
+		| Constants::PERMISSION_CREATE
+		| Constants::PERMISSION_DELETE;
+
+	/**
+	 * Ensure a Team Folder named $mountPoint exists and is writable by the actor,
+	 * and — only when asked — set exactly which content groups it is shared with.
+	 * Returns the groupfolders folder id.
+	 *
+	 * PASS `null` TO LEAVE THE SHARING ALONE. Every sync does: the groups belong to
+	 * the folder now, so a sync that re-asserted them would undo an admin's edit on
+	 * the next run. A non-null list is an explicit instruction and is applied
+	 * exactly, pruning groups not named.
+	 *
+	 * @param list<string>|null $contentGroups null = leave sharing untouched
+	 */
+	public function ensure(string $mountPoint, ?array $contentGroups): int {
 		$fm = $this->container->get(self::FOLDER_MANAGER);
 
 		$folderId = $this->findByMountPoint($mountPoint);
@@ -78,30 +98,73 @@ final class TeamFolderService {
 			$folderId = $fm->createFolder($mountPoint);
 		}
 
-		// Content groups: read+write for sync; read-only for link.
-		$contentPerms = ($mode === Mapping::MODE_SYNC)
-			? (Constants::PERMISSION_READ | Constants::PERMISSION_UPDATE | Constants::PERMISSION_CREATE | Constants::PERMISSION_DELETE)
-			: Constants::PERMISSION_READ;
-		foreach ($contentGroups as $gid) {
-			if ($gid === self::ADMIN_GROUP || $gid === '') {
-				continue;
+		// LEAVE SHARING ALONE MEANS LEAVE THE ADMIN ASSIGNMENT ALONE TOO.
+		//
+		// The actor group must exist for the app to write at all, so it is added
+		// when absent — but never RE-STAMPED. Re-asserting PERMISSION_ALL would
+		// overwrite the case where `admin` is a deliberate content group at
+		// CONTENT_PERMISSIONS, and contentGroups() would then hide it as plumbing:
+		// a sync would silently drop a group the admin had chosen.
+		if ($contentGroups === null) {
+			if (!$this->groupIsApplied($folderId, self::ADMIN_GROUP)) {
+				$this->assignGroup($fm, $folderId, self::ADMIN_GROUP, Constants::PERMISSION_ALL);
 			}
-			$this->assignGroup($fm, $folderId, $gid, $contentPerms);
+
+			return $folderId;
 		}
 
-		// Actor access last, with full rights so it overrides if `admin` was also
-		// listed as a content group.
-		$this->assignGroup($fm, $folderId, self::ADMIN_GROUP, Constants::PERMISSION_ALL);
+		foreach ($contentGroups as $gid) {
+			if ($gid === '') {
+				continue;
+			}
+			$this->assignGroup($fm, $folderId, $gid, self::CONTENT_PERMISSIONS);
+		}
 
-		// Spec UC-5: prune content groups dropped from the mapping (keep admin + desired).
+		// The actor group, unless the admin asked for it as a content group — in
+		// which case the loop above has already given it CONTENT_PERMISSIONS, which
+		// is enough to write with, and stamping PERMISSION_ALL over it would make
+		// contentGroups() read it back as plumbing rather than as a chosen group.
+		if (!in_array(self::ADMIN_GROUP, $contentGroups, true)) {
+			$this->assignGroup($fm, $folderId, self::ADMIN_GROUP, Constants::PERMISSION_ALL);
+		}
+
 		$keep = array_merge([self::ADMIN_GROUP], $contentGroups);
-		foreach ($this->appliedGroups($folderId) as $gid) {
+		foreach (array_keys($this->appliedGroups($folderId)) as $gid) {
 			if (!in_array($gid, $keep, true)) {
 				$fm->removeApplicableGroup($folderId, $gid);
 			}
 		}
 
 		return $folderId;
+	}
+
+	/**
+	 * The content groups a Team Folder is shared with — what the admin chose, with
+	 * the app's own plumbing filtered out.
+	 *
+	 * The actor group is only plumbing when it carries PERMISSION_ALL, which is
+	 * how {@see ensure()} stamps it. An `admin` group the admin deliberately added
+	 * as a content group carries CONTENT_PERMISSIONS instead, and is reported.
+	 * That bitmask is the ONLY thing separating the two, which is why nothing may
+	 * re-stamp it.
+	 *
+	 * @return list<string>
+	 */
+	public function contentGroups(string $mountPoint): array {
+		$folderId = $this->findByMountPoint($mountPoint);
+		if ($folderId === null) {
+			return [];
+		}
+
+		$out = [];
+		foreach ($this->appliedGroups($folderId) as $gid => $permissions) {
+			if ($gid === self::ADMIN_GROUP && $permissions === Constants::PERMISSION_ALL) {
+				continue;
+			}
+			$out[] = $gid;
+		}
+
+		return $out;
 	}
 
 	/**
@@ -155,21 +218,25 @@ final class TeamFolderService {
 	}
 
 	/**
-	 * Group ids currently applied to the folder (excludes Circles, which store an
-	 * empty group_id). Used to prune content groups dropped from a mapping.
+	 * Group ids currently applied to the folder, mapped to their permission
+	 * bitmask (excludes Circles, which store an empty group_id).
 	 *
-	 * @return list<string>
+	 * THE PERMISSIONS ARE LOAD-BEARING, not diagnostic: they are the only thing
+	 * that tells the app's own actor assignment apart from an `admin` group the
+	 * admin chose as a content group. See {@see contentGroups()}.
+	 *
+	 * @return array<string, int> group id => permission bitmask
 	 */
 	private function appliedGroups(int $folderId): array {
 		$qb = $this->db->getQueryBuilder();
-		$qb->select('group_id')
+		$qb->select('group_id', 'permissions')
 			->from('group_folders_groups')
 			->where($qb->expr()->eq('folder_id', $qb->createNamedParameter($folderId)))
 			->andWhere($qb->expr()->neq('group_id', $qb->createNamedParameter('')));
 		$res = $qb->executeQuery();
 		$out = [];
 		foreach ($res->fetchAll() as $row) {
-			$out[] = (string)$row['group_id'];
+			$out[(string)$row['group_id']] = (int)$row['permissions'];
 		}
 		$res->closeCursor();
 		return $out;

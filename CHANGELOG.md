@@ -19,6 +19,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- **Re-share a mapped folder from anywhere and this app reflects it.** The groups a mapped folder is shared with are now read from the folder itself rather than stored alongside the mapping, so a change made in Files, with `occ`, or by another app sharing the same folder shows up here — and a sync never puts back a group you removed. Setting the groups to nothing now actually clears them, which it silently did not before.
+- **BREAKING:** a mapping is now immutable except for its groups. The n8n tag, the folder, the storage backend and the mode are fixed once created — previously the tag, folder and mode could all be changed on a saved mapping, which silently re-decided which workflows it owned. Remove the mapping and add it again to change one.
+- **`occ n8n_sync:set-groups`** changes the groups a mapped folder is shared with, the one field a mapping lets you edit — previously reachable only from the admin panel.
+- **A mapped folder now appears the moment you save the mapping**, instead of only when the first sync runs. A mapping whose folder cannot be provisioned is no longer saved at all, rather than being stored and failing on every sync afterwards.
+- A `link` mapping's folder is no longer read-only for its groups. That bit stopped nothing being written to n8n — the listeners do that — and only stopped you organising your own files.
+
 ### Added
 
 - **A workflow file's dates are now the workflow's own dates.** "Modified" shows when the workflow last changed in n8n and "Created" when it was created there, instead of both showing when a sync happened to run — so sorting a mapped folder by date sorts by the workflows, and one nobody has touched in a year finally looks like it.

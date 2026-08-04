@@ -20,9 +20,26 @@ use JsonSerializable;
  * default mode for files under it.
  *
  * Ownership model (plan §12.4, decided H-B): Team Folders are owned by no user,
- * so there is no owner field. `nc_groups` are the user-facing groups the Team
- * Folder is shared with; the plugin additionally grants itself write access via
- * a dedicated actor group ({@see TeamFolderService::ACTOR_GROUP}).
+ * so there is no owner field. The plugin grants itself write access via a
+ * dedicated actor group ({@see TeamFolderService::ACTOR_GROUP}).
+ *
+ * ## WHAT IS NOT ON THIS OBJECT: GROUPS
+ *
+ * Which groups the mapped folder is shared with is a property OF THE FOLDER, and
+ * Nextcloud already stores it — as groupfolders assignments, or as group shares.
+ * Copying it here would create a second answer to the same question, and the two
+ * disagree the moment an admin re-shares the folder from the Files app or `occ`,
+ * which they are entitled to do.
+ *
+ * That is not a hypothetical tidy-up. Three apps in this family can map to the
+ * SAME folder, and while each stored its own list every sync stamped its list
+ * over the others' — so n8n, Grafana and Penpot fought for control of one folder
+ * forever, and none of them was wrong. Sourcing the groups from the folder makes
+ * the folder the single answer, so all three (and the Files UI, and `occ`) can
+ * edit the same sharing without contending.
+ *
+ * Groups are therefore read on demand ({@see StorageService::groupsOf()}) and
+ * written straight through ({@see MappingService::updateGroups()}).
  *
  * A mapping's mode is authoritative for every workflow it pulls — there is **no**
  * per-workflow or per-file `sync`↔`link` override (that toggle was removed in saga
@@ -43,21 +60,15 @@ use JsonSerializable;
  *  - `mode` MUST be `sync` or `link`.
  *  - `n8nTag` MUST NOT contain commas (n8n uses comma as the multi-tag delimiter).
  *  - `teamFolder` MUST be non-empty.
- *  - `ncGroups` MAY be empty here, but a mapping with no groups produces a Team
- *    Folder nobody can see — the pull reconciler warns + skips those.
  */
 final class Mapping implements JsonSerializable {
 	public const MODE_SYNC = 'sync';
 	public const MODE_LINK = 'link';
 
-	/**
-	 * @param list<string> $ncGroups
-	 */
 	public function __construct(
 		public readonly string $id,
 		public readonly string $n8nTag,
 		public readonly string $teamFolder,
-		public readonly array $ncGroups,
 		public readonly string $mode,
 		public readonly bool $useTeamFolder,
 	) {
@@ -86,8 +97,6 @@ final class Mapping implements JsonSerializable {
 
 		$rawFolder = $data['team_folder'] ?? $data['nc_path'] ?? '';
 		$teamFolder = self::normaliseFolder((string)$rawFolder);
-
-		$ncGroups = self::normaliseGroups($data['nc_groups'] ?? []);
 
 		// Mode, with legacy normalisation. `writeback` is read only to be ignored
 		// (the old sync+readonly "backup" collapses into sync); `reference` → link.
@@ -126,16 +135,23 @@ final class Mapping implements JsonSerializable {
 			throw new \InvalidArgumentException('mode must be "sync" or "link"');
 		}
 
-		return new self($id, $n8nTag, $teamFolder, $ncGroups, $mode, $useTeamFolder);
+		return new self($id, $n8nTag, $teamFolder, $mode, $useTeamFolder);
 	}
 
-	/** @return array<string,mixed> */
+	/**
+	 * The STORED shape — what goes into appconfig, and nothing else.
+	 *
+	 * Deliberately NOT the shape the admin page or `list-mappings` renders: those
+	 * add the folder's current groups, which are read live rather than stored
+	 * ({@see MappingService::describe()}).
+	 *
+	 * @return array{id: string, n8n_tag: string, team_folder: string, mode: string, use_team_folder: bool}
+	 */
 	public function toArray(): array {
 		return [
 			'id' => $this->id,
 			'n8n_tag' => $this->n8nTag,
 			'team_folder' => $this->teamFolder,
-			'nc_groups' => $this->ncGroups,
 			'mode' => $this->mode,
 			'use_team_folder' => $this->useTeamFolder,
 		];
@@ -180,29 +196,5 @@ final class Mapping implements JsonSerializable {
 		$v = trim($value);
 		$v = preg_replace('#/+#', '/', $v) ?? $v;
 		return trim($v, '/');
-	}
-
-	/**
-	 * Group ids: a list of non-empty trimmed strings, de-duplicated, re-indexed.
-	 *
-	 * @param mixed $value
-	 * @return list<string>
-	 */
-	private static function normaliseGroups(mixed $value): array {
-		if (is_string($value)) {
-			// tolerate a comma-separated string from a form field
-			$value = $value === '' ? [] : explode(',', $value);
-		}
-		if (!is_array($value)) {
-			return [];
-		}
-		$out = [];
-		foreach ($value as $g) {
-			$g = trim((string)$g);
-			if ($g !== '' && !in_array($g, $out, true)) {
-				$out[] = $g;
-			}
-		}
-		return $out;
 	}
 }

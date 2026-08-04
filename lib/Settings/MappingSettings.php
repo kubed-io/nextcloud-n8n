@@ -53,7 +53,13 @@ final class MappingSettings implements IDelegatedSettings {
 			Application::APP_ID,
 			'mapping_settings',
 			[
-				'mappings' => array_map(fn ($m) => $m->toArray(), $this->service->list()),
+				// describe(), not toArray(): each card's Groups picker is checked
+				// against what the FOLDER is shared with, read as this page renders.
+				// So a share added in the Files app or with occ shows up here.
+				'mappings' => array_map(
+					fn ($m) => $this->service->describe($m),
+					$this->service->list(),
+				),
 				'groups' => $groups,
 				'team_folders_available' => $this->teamFolders->isAvailable(),
 			],

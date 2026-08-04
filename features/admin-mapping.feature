@@ -86,22 +86,73 @@ Feature: Admin configures folder mappings
     # the same thing and every workflow carrying it would belong to both.
     # notes: AGENTS.md#an-n8n-tag-may-only-be-mapped-once
 
-  @admin @occ @ui @unbuilt
-  Scenario Outline: What a mapping locks, it locks for a reason
-    Given a mapping with the following values:
-      | tag    | nextcloud:alpha |
-      | folder | alpha           |
-    When the admin changes that mapping's <field> to "<value>"
-    Then the change is rejected as immutable
+  @decision
+  Scenario: There is no way to change a mapping except its groups
+    # @decision, NOT @unbuilt: there is no operation here to test, and that is the
+    # whole design. Immutability is not enforced by guards that reject a change —
+    # it is enforced by the API SHAPE. `MappingService::updateGroups()` takes an id
+    # and groups, the PUT endpoint takes `nc_groups` and nothing else, and there is
+    # no update command at all. A caller cannot express a change to the tag, the
+    # folder, the storage backend or the mode, so there is no rejection to observe.
+    #
+    # This used to be four `When`s in a row against a full-mapping update() that
+    # guarded exactly ONE field — so the tag, the folder and the mode really were
+    # editable, and the card PUT all of them on every save.
+    #
+    # To change any of them: remove the mapping and add it again. That makes the
+    # migration cost visible rather than hiding it behind a dropdown.
+    # notes: AGENTS.md#there-is-no-way-to-change-a-mapping-except-its-groups
 
-    Examples: everything a mapping is, is fixed once it exists
-      | field   | value           |
-      | tag     | nextcloud:bravo |
-      | folder  | elsewhere       |
-      | mode    | sync            |
-      | storage | admin folder    |
+  @admin @occ @ui
+  Scenario Outline: The groups a mapped folder is shared with can be changed
+    Given the Nextcloud groups "design,sales" exist
+    And a mapping with the following values:
+      | tag     | nextcloud:alpha |
+      | folder  | <folder>        |
+      | groups  | design,admin    |
+      | storage | <storage>       |
+    When the admin changes that mapping's groups to "<groups>"
+    Then the mapping's groups are "<groups>"
 
-    # notes: AGENTS.md#what-a-mapping-locks-it-locks-for-a-reason
+    # THE FOLDER NAME DIFFERS PER STORAGE KIND ON PURPOSE. Removing a mapping
+    # deletes nothing, so a folder outlives the mapping that made it — and a later
+    # row reusing the name would inherit a folder of the wrong kind.
+
+    Examples: on a Team Folder
+      | folder                  | storage      | groups             |
+      | Groups On A Team Folder | team folder  | design,admin,sales |
+      | Groups On A Team Folder | team folder  | design             |
+      | Groups On A Team Folder | team folder  | sales              |
+      | Groups On A Team Folder | team folder  |                    |
+
+    Examples: and on an admin-owned folder
+      | folder                   | storage      | groups             |
+      | Groups On A Plain Folder | admin folder | design,admin,sales |
+      | Groups On A Plain Folder | admin folder | design             |
+      | Groups On A Plain Folder | admin folder | sales              |
+      | Groups On A Plain Folder | admin folder |                    |
+
+    # NARROWING AND CLEARING ARE THE POINT. The old code only ever added: it wrote
+    # the listed groups and left the rest alone, so a group could be granted and
+    # never revoked, and "set the groups to nothing" silently did nothing at all.
+    # notes: AGENTS.md#the-groups-a-mapped-folder-is-shared-with-can-be-changed
+
+  @admin @occ @ui @team-folder
+  Scenario: Groups are read from the folder, not from the mapping
+    Given the Nextcloud groups "design,sales" exist
+    And a mapping with the following values:
+      | tag     | nextcloud:alpha  |
+      | folder  | Shared Elsewhere |
+      | groups  | design           |
+      | storage | team folder      |
+    When the Team Folder "Shared Elsewhere" is shared with the group "sales" outside this app
+    Then the mapping's groups are "design,sales"
+    # THE REASON THE WHOLE CHANGE EXISTS. Three apps in this family can map to one
+    # folder; while each stored its own list, every sync stamped that list over the
+    # others' and they fought forever, none of them wrong. Reading the groups off
+    # the folder makes the folder the single answer, so all three — and the Files
+    # UI, and occ — can edit the same sharing without contending.
+    # notes: AGENTS.md#groups-are-read-from-the-folder-not-from-the-mapping
 
   @admin @occ @ui @unbuilt
   Scenario: Two mappings may not target the same folder

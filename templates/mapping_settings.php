@@ -83,24 +83,33 @@ $info = static function (string $tip) use ($icon): string {
 					<div class="n8n-sync-field nf-tag">
 						<label><?php p($l->t('n8n tag'));
 			print_unescaped($info($desc['tag'])); ?></label>
-						<input type="text" class="js-n8n-tag" value="<?php p($m['n8n_tag']); ?>" placeholder="nextcloud:tasking" />
+						<?php /* Immutable: the tag IS the mapping — it decides which
+								 workflows the mapping owns, so re-pointing it would
+								 silently hand the folder a different set. Shown as text
+								 rather than a disabled input, because a disabled input
+								 still invites typing and implies it might save. */ ?>
+						<span class="n8n-sync-fixed js-n8n-tag" data-value="<?php p($m['n8n_tag']); ?>"><?php p($m['n8n_tag']); ?>
+							<span class="n8n-sync-hint"><?php p($l->t('(fixed)')); ?></span>
+						</span>
 					</div>
 					<div class="n8n-sync-field nf-mode">
 						<label><?php p($l->t('Mode'));
 			print_unescaped($info($desc['mode'])); ?></label>
-						<select class="js-mode">
-							<option value="sync" <?php if ($modeSel === 'sync') {
-								print_unescaped('selected');
-							} ?>><?php p($l->t('Sync')); ?></option>
-							<option value="link" <?php if ($modeSel === 'link') {
-								print_unescaped('selected');
-							} ?>><?php p($l->t('Link')); ?></option>
-						</select>
+						<?php /* Immutable: sync→link would strip every downloaded file
+								 under the mapping, link→sync would export the lot at once.
+								 Re-create the mapping to change it. */ ?>
+						<span class="n8n-sync-fixed js-mode" data-value="<?php p($modeSel); ?>"><?php p($modeSel === 'sync' ? $l->t('Sync') : $l->t('Link')); ?>
+							<span class="n8n-sync-hint"><?php p($l->t('(fixed)')); ?></span>
+						</span>
 					</div>
 					<div class="n8n-sync-field nf-folder">
 						<label><?php p($l->t('Folder'));
 			print_unescaped($info($desc['folder'])); ?></label>
-						<input type="text" class="js-team-folder" value="<?php p($m['team_folder']); ?>" placeholder="n8n" />
+						<?php /* Immutable: re-pointing it would orphan everything already
+								 mirrored into the old folder. */ ?>
+						<span class="n8n-sync-fixed js-team-folder" data-value="<?php p($m['team_folder']); ?>"><?php p($m['team_folder']); ?>
+							<span class="n8n-sync-hint"><?php p($l->t('(fixed)')); ?></span>
+						</span>
 					</div>
 					<div class="n8n-sync-field nf-tf">
 						<label class="n8n-sync-checkbox"><input type="checkbox" class="js-use-team-folder" <?php if ($useTf) {

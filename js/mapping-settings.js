@@ -66,9 +66,15 @@
 		});
 	}
 
+	// A saved card renders its immutable fields as text carrying data-value; the
+	// add-card still renders real inputs. Read either.
+	function fieldValue(card, selector) {
+		var el = card.querySelector(selector);
+		if (!el) { return ''; }
+		return (el.dataset && typeof el.dataset.value === 'string' ? el.dataset.value : (el.value || '')).trim();
+	}
+
 	function readCard(card) {
-		// Mode is a single value now: 'sync' or 'link' (saga Ch2 §14 — writeback gone).
-		var mode = card.querySelector('.js-mode').value === 'link' ? 'link' : 'sync';
 		var groups = [];
 		Array.prototype.forEach.call(
 			card.querySelectorAll('.js-groups input[type="checkbox"]:checked'),
@@ -77,23 +83,25 @@
 		var tfEl = card.querySelector('.js-use-team-folder');
 		return {
 			id: card.dataset.id || '',
-			n8n_tag: card.querySelector('.js-n8n-tag').value.trim(),
-			team_folder: card.querySelector('.js-team-folder').value.trim(),
+			n8n_tag: fieldValue(card, '.js-n8n-tag'),
+			team_folder: fieldValue(card, '.js-team-folder'),
 			nc_groups: groups,
-			mode: mode,
+			// Mode is a single value: 'sync' or 'link' (saga Ch2 §14 — writeback gone).
+			mode: fieldValue(card, '.js-mode') === 'link' ? 'link' : 'sync',
 			use_team_folder: tfEl ? tfEl.checked : true,
 		};
 	}
 
 	function saveCard(card) {
 		var data = readCard(card);
-		if (!data.nc_groups.length) {
-			cardStatus(card, 'error', t('n8n_sync', 'Pick at least one group — otherwise the folder is invisible.'));
-			return;
-		}
 		var isNew = !data.id;
+		// AN EXISTING CARD SENDS ONLY ITS GROUPS. Everything else about a mapping is
+		// immutable, and the endpoint takes nothing else — sending the rest would be
+		// a payload the server is right to ignore, which is exactly how a UI comes to
+		// offer an edit that silently does nothing.
+		var payload = isNew ? data : { nc_groups: data.nc_groups };
 		var url = OC.generateUrl(APP_URL_BASE + (isNew ? '' : '/' + encodeURIComponent(data.id)));
-		api(isNew ? 'POST' : 'PUT', url, data)
+		api(isNew ? 'POST' : 'PUT', url, payload)
 			.then(function (res) {
 				if (res.mapping && res.mapping.id) {
 					card.dataset.id = res.mapping.id;

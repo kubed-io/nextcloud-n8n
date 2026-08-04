@@ -124,6 +124,89 @@ trait MappingSteps {
 		Assert::assertSame($wanted, $stored, 'groups');
 	}
 
+	/**
+	 * @Given the Nextcloud groups :groups exist
+	 *
+	 * THE GROUPS HAVE TO REALLY EXIST. Nextcloud cannot share a folder with a group
+	 * that is not there, so a scenario that just names one and asserts it comes
+	 * back would be asserting nothing — which is precisely how the old stored-list
+	 * model passed: it echoed its own stored intent back without ever touching a
+	 * share.
+	 */
+	public function theNextcloudGroupsExist(string $groups): void {
+		foreach (explode(',', $groups) as $gid) {
+			$gid = trim($gid);
+			if ($gid !== '') {
+				// Idempotent: an existing group makes this a non-zero no-op.
+				$this->occ('group:add ' . escapeshellarg($gid));
+			}
+		}
+	}
+
+	/** @When the admin changes that mapping's groups to :groups */
+	public function theAdminChangesThatMappingsGroupsTo(string $groups): void {
+		$id = (string)($this->listMappings()[0]['id'] ?? '');
+		Assert::assertNotSame('', $id, 'no mapping to change');
+		$this->occ('n8n_sync:set-groups ' . escapeshellarg($id) . ' ' . escapeshellarg($groups));
+	}
+
+	/**
+	 * @When the Team Folder :folder is shared with the group :group outside this app
+	 *
+	 * Uses groupfolders' OWN occ command, so the share is made exactly the way an
+	 * admin would make it in the Files admin UI — by something that is not this
+	 * app. That is the whole point: the next read has to report the FOLDER's
+	 * sharing rather than this app's memory of it.
+	 *
+	 * There is no core `occ` command that creates a plain group share (checked
+	 * against a live Nextcloud: core ships `sharing:cleanup-remote-storages`,
+	 * `delete-orphan-shares`, `expiration-notification` and `fix-share-owners`,
+	 * and nothing that shares). So this scenario is written on a Team Folder,
+	 * where groupfolders gives us one.
+	 *
+	 * `read write delete` rather than the default read-only, so the group is
+	 * assigned at the same permissions the app itself grants — otherwise the app
+	 * would fix them on the next explicit set and the difference would look like
+	 * churn.
+	 */
+	public function theTeamFolderIsSharedWithTheGroupOutsideThisApp(string $folder, string $group): void {
+		$this->theNextcloudGroupsExist($group);
+
+		$res = $this->occ('groupfolders:list --output=json');
+		$folders = json_decode($res['output'], true);
+		Assert::assertIsArray($folders, "groupfolders:list did not return JSON:\n{$res['output']}");
+
+		$id = null;
+		foreach ($folders as $f) {
+			if (($f['mount_point'] ?? null) === $folder) {
+				$id = (string)($f['id'] ?? '');
+				break;
+			}
+		}
+		Assert::assertNotNull($id, "no Team Folder mounted at '$folder'");
+
+		$res = $this->occ(sprintf(
+			'groupfolders:group %s %s read write delete',
+			escapeshellarg((string)$id),
+			escapeshellarg($group),
+		));
+		Assert::assertSame(0, $res['exit'], "could not share $folder with $group:\n{$res['output']}");
+	}
+
+	/**
+	 * @Then the mapping's groups are :groups
+	 *
+	 * Compared as a SET, not a list: which groups the folder is shared with is the
+	 * fact, and the order Nextcloud happens to return them in is not.
+	 */
+	public function theMappingsGroupsAre(string $groups): void {
+		$want = $this->groupList($groups);
+		$got = array_values(array_map('strval', (array)($this->listMappings()[0]['nc_groups'] ?? [])));
+		sort($want);
+		sort($got);
+		Assert::assertSame($want, $got, 'the mapped folder is not shared with the expected groups');
+	}
+
 	/** @Then the mapping is rejected */
 	public function theMappingIsRejected(): void {
 		Assert::assertNotSame(0, $this->lastExit, "the mapping was unexpectedly accepted:\n{$this->lastOutput}");
