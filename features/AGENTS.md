@@ -618,6 +618,75 @@ hard-deleted restore-fallback and brand-new move-in create are now live too;
 the lone remaining edge is merge-on-collision (an unmapped copy moved in over an
 already-synced file with the same id), which still needs a metadata-by-id lookup.
 
+### The mappings in the Background
+
+Three mappings, declared as one table with a header row — tag, folder and mode
+spelled out per line. `move.feature` is the first feature to do this, and the
+reason is specific to it: **a move is a Nextcloud gesture, so its steps address a
+FOLDER**, while the tag only means anything on the n8n side.
+
+Everywhere else the harness derives the folder name from the tag
+(`folderNameForTag`), which made the two look like a single thing. That is not
+theoretical: a scenario was drafted asserting that a folder was "no longer a tag
+in n8n", with `<folder>` and `<destination>` in the steps and `source tag` /
+`destination tag` in the Examples — placeholders that did not resolve, over a
+claim that could not be true. Declaring both in the same row is what keeps them
+apart.
+
+**Colons were never part of a tag.** One early example used `nextcloud:alpha`
+and the shape propagated as though it were required. n8n tags are free text, and
+a Nextcloud folder would not normally contain a colon at all — so the mappings
+here are `alpha`/`Automations`, `beta`/`Pipelines`, `links`/`Pointers`. The
+reserved tags (`n8n:ignore`) are a different thing and keep their prefix, which
+is exactly why the ordinary ones should not borrow the shape.
+
+`copy.feature`, `purge.feature` and `reserved-tags.feature` still declare their
+mappings tag-first. The tag-addressed steps were kept alongside the new
+folder-addressed ones for that reason; those three want the same treatment.
+
+### Restoring when the n8n workflow was hard-deleted falls back to create
+
+The unmapped file kept its id, but the workflow was hard-deleted in n8n in the
+meantime. `moveIn` catches the unarchive 404 and recreates from the file we still
+hold — a fresh id — then re-stamps sync in the target. The file is the survivor,
+so the mirror wins over the missing original.
+
+### Moving a brand-new workflow file into a mapping creates it
+
+An untracked file (no id) dragged into a mapping is create-on-land, owned by
+`CreateInN8nListener`. It fires on `NodeRenamedEvent` rather than
+`NodeWrittenEvent`, because Nextcloud does not fire the latter for a move — a
+detail worth keeping written down, since the obvious listener choice is wrong.
+
+### Moving a workflow to another mapped folder
+
+**`@unbuilt` — this is the spec, and the app does the opposite today.**
+`MoveGuardListener` aborts a mapping→mapping move for both modes and tells the
+user to move out to an unmanaged folder first, then in. The scenario describes
+what should happen, not what does; its steps throw rather than pass, so it cannot
+quietly start counting as coverage.
+
+**Saga §14.2 case (a), and the decision it needs.** Landing in a new mapping means
+the workflow's tag changes in n8n, and there are two defensible ways to do it:
+re-tag in place, or eject and reattach as if it had arrived fresh. They differ in
+what happens to the versionId, the synced-tag baseline and the archive state — so
+picking one by accident inside the move handler would be picking it permanently.
+
+**These rows choose re-tag in place.** `And the file's mode is "<mode>"` is where
+that choice lives: the mode survives the move, so it is the same file in a new
+mapping rather than a new arrival. Eject+reattach would not preserve it, and
+would mint a fresh versionId.
+
+**The two `link` rows are the sharp end.** A link has no body on the Nextcloud
+side, which is exactly why moving one OUT of a mapping is refused — there would be
+nothing left to hold. A link moving *between* mappings never becomes bodiless, so
+it is arguably fine; but it is a real decision rather than a symmetry, and it is
+worth being deliberate that these rows assert it.
+
+Until it is built, the way through is the message's own: out to an unmanaged
+folder, then in. Both halves are covered scenarios, so the capability is not
+missing — only the shortcut.
+
 ### Moving a duplicate in under the same name is refused (the workflow is already synced here)
 
 Move-in duplicate (saga §14.19). A file carrying an id is moved into a mapping
@@ -636,7 +705,9 @@ same file relocating; it's a duplicate. Nextcloud's own rules lead the behaviour
 ── decision cases (saga Chapter 3 §14.2 a–d): documented, not yet designed ─────────
 These need a design decision before they get concrete Then-steps:
   a. sync moved directly mapping→mapping (different tag): re-tag in place vs
-     eject+reattach vs block. (Currently blocked by MoveGuardListener.)
+     eject+reattach. THE BLOCK ITSELF IS NOW SPECIFIED — see "Moving a workflow
+     straight into another mapping is refused" above. What remains undesigned is
+     what should replace it, not what happens today.
   b. moving into a nested subfolder owned by a different mapping (nearest
      enclosing wins) — interaction with case a.
   c. link rename within its mapping — does the filename matter, or is the n8n

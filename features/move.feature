@@ -7,31 +7,51 @@ Feature: Moving a workflow file is the same workflow leaving and returning
 
   Background:
     Given the app is connected to n8n
-    And a folder mapped as "sync" to the n8n tag "nextcloud:alpha"
-    And a folder mapped as "sync" to the n8n tag "nextcloud:beta"
-    And a folder mapped as "link" to the n8n tag "nextcloud:links"
+    And a mapping with the following values:
+      | tag    | alpha       |
+      | folder | Automations |
+      | mode   | sync        |
+    And a mapping with the following values:
+      | tag    | beta      |
+      | folder | Pipelines |
+      | mode   | sync      |
+    And a mapping with the following values:
+      | tag    | links    |
+      | folder | Pointers |
+      | mode   | link     |
+
+  # THE TAG AND THE FOLDER ARE DIFFERENT THINGS, and these tables are where that
+  # is visible. Every step below addresses a Nextcloud FOLDER, because a move is a
+  # Nextcloud gesture; the tag only matters on the n8n side. They used to share a
+  # name, which is how a scenario came to be written asserting that a folder was
+  # "no longer a tag in n8n".
+  #
+  # Colons are not part of a tag. One example once used "nextcloud:alpha" and the
+  # shape spread as if it were required — n8n tags are free text, and a Nextcloud
+  # folder would not normally contain a colon at all.
+  # notes: AGENTS.md#the-mappings-in-the-background
 
   # ── within the same mapping: no n8n change ───────────────────────────────────
 
   @user @in-nextcloud @gesture @ui
   Scenario: Move within the same mapping (rename) keeps it managed
-    Given a managed "sync" workflow file in the "nextcloud:alpha" folder
-    When I rename the file within the "nextcloud:alpha" folder
-    Then the file stays in "sync" mode in the "nextcloud:alpha" mapping
+    Given a managed "sync" workflow file in "Automations"
+    When I rename the file within "Automations"
+    Then the file stays in "sync" mode in "Automations"
     And nothing changes in n8n except the name
 
   @user @in-nextcloud @gesture @ui
   Scenario: Move into a subfolder of the same mapping keeps it managed
-    Given a managed "sync" workflow file in the "nextcloud:alpha" folder
-    When I move the file into a subfolder of the "nextcloud:alpha" folder
-    Then the file stays in "sync" mode in the "nextcloud:alpha" mapping
+    Given a managed "sync" workflow file in "Automations"
+    When I move the file into a subfolder of "Automations"
+    Then the file stays in "sync" mode in "Automations"
     And nothing changes in n8n
 
   # ── sync move-out → unmapped + archived ──────────────────────────────────────
 
   @user @in-nextcloud @gesture @ui
   Scenario: Moving a sync file out of its mapping unmaps it and archives in n8n
-    Given a managed "sync" workflow file in the "nextcloud:alpha" folder
+    Given a managed "sync" workflow file in "Automations"
     When I move the file to a folder that is not mapped
     Then the file's mode becomes "unmapped"
     And the file keeps its "n8n_id" and "n8n_versionId"
@@ -44,57 +64,87 @@ Feature: Moving a workflow file is the same workflow leaving and returning
   @user @in-nextcloud @gesture @ui
   Scenario: Moving an unmapped file back into a mapping restores the workflow
     Given an unmapped workflow file that still carries its "n8n_id"
-    When I move the file into the "nextcloud:beta" folder
+    When I move the file into "Pipelines"
     Then the workflow is unarchived in n8n
-    And the file's mode becomes "sync" in the "nextcloud:beta" mapping
+    And the file's mode becomes "sync" in "Pipelines"
     And the "n8n_id" is unchanged
 
-  # Restore-fallback: the unmapped file kept its id, but the workflow was hard-
-  # deleted in n8n in the meantime. moveIn catches the unarchive 404 and recreates
-  # from the file we still hold (a fresh id), then re-stamps sync in the target.
   @user @in-nextcloud @gesture @ui
   Scenario: Restoring when the n8n workflow was hard-deleted falls back to create
     Given an unmapped workflow file that still carries its "n8n_id"
     And that workflow no longer exists in n8n
-    When I move the file into the "nextcloud:beta" folder
+    When I move the file into "Pipelines"
     Then a new workflow is created in n8n from the file
-    And the file's mode becomes "sync" in the "nextcloud:beta" mapping
+    And the file's mode becomes "sync" in "Pipelines"
+    # notes: AGENTS.md#restoring-when-the-n8n-workflow-was-hard-deleted-falls-back-to-create
 
   # notes: AGENTS.md#moving-a-duplicate-in-under-the-same-name-is-refused-the-workflow-is-already-synced-here
   @user @in-nextcloud @gesture @ui
   Scenario: Moving a duplicate in under the same name is refused (the workflow is already synced here)
-    Given a managed "sync" workflow file in the "nextcloud:alpha" folder
+    Given a managed "sync" workflow file in "Automations"
     And an unmapped copy of that same workflow with the same "n8n_id" outside any mapping
-    When I try to move the unmapped copy into the "nextcloud:alpha" folder under the same name
+    When I try to move the unmapped copy into "Automations" under the same name
     Then the move is refused with a message
     And the original synced file is unchanged
 
   @user @in-nextcloud @gesture @ui
   Scenario: Moving a duplicate in under a different name mints a brand-new workflow
-    Given a managed "sync" workflow file in the "nextcloud:alpha" folder
+    Given a managed "sync" workflow file in "Automations"
     And an unmapped copy of that same workflow with the same "n8n_id" outside any mapping
-    When I move the unmapped copy into the "nextcloud:alpha" folder under a different name
+    When I move the unmapped copy into "Automations" under a different name
     Then the moved-in file becomes a brand-new workflow in n8n
     And the original synced file is unchanged
 
-  # Move-in create: an untracked file (no id) dragged into a mapping is create-on-
-  # land — CreateInN8nListener fires on the NodeRenamedEvent (NC doesn't fire
-  # NodeWrittenEvent for a move) and mints the workflow, stamping sync + the mapping.
   @user @in-nextcloud @gesture @ui
   Scenario: Moving a brand-new workflow file into a mapping creates it
     Given a ".n8n.json" file that was never tracked in n8n
-    When I move the file into the "nextcloud:alpha" folder
+    When I move the file into "Automations"
     Then a matching workflow is created in n8n
-    And the file's mode becomes "sync" in the "nextcloud:alpha" mapping
+    And the file's mode becomes "sync" in "Automations"
+    # notes: AGENTS.md#moving-a-brand-new-workflow-file-into-a-mapping-creates-it
 
-  # ── link move-out is refused ─────────────────────────────────────────────────
+  # ── leaving a mapping: what is allowed, and what is not ──────────────────────
 
   @user @in-nextcloud @gesture @ui
   Scenario: Moving a link out of its mapping is blocked
-    Given a managed "link" workflow file in the "nextcloud:links" folder
+    Given a managed "link" workflow file in "Pointers"
     When I try to move the file to a folder that is not mapped
     Then the move is refused with a message
-    And the file stays in the "nextcloud:links" folder
+    And the file stays in "Pointers"
+
+  # ── moving between two mappings ──────────────────────────────────────────────
+
+  @user @in-nextcloud @gesture @ui @unbuilt
+  Scenario Outline: Moving a workflow to another mapped folder
+    Given a managed "<mode>" workflow file in "<source folder>"
+    When I move the file into "<destination folder>"
+    Then the file no longer has the "<source tag>" tag in n8n nor Nextcloud
+    And the file now has the "<destination tag>" tag in n8n and Nextcloud
+    And the file's mapping id is updated to the "<destination folder>" mapping
+    And the file's mode is "<mode>"
+
+    Examples: out of either kind of mapping, into either kind
+      | mode | source folder | source tag | destination folder | destination tag |
+      | sync | Automations   | alpha      | Pipelines          | beta            |
+      | link | Pointers      | links      | Automations        | alpha           |
+      | link | Pointers      | links      | Pipelines          | beta            |
+
+    # @unbuilt — THIS IS THE SPEC, AND THE APP DOES THE OPPOSITE TODAY.
+    # MoveGuardListener aborts a mapping→mapping move for both modes and tells the
+    # user to move out to an unmanaged folder first, then in. So this scenario is a
+    # description of what should happen, not of what does.
+    #
+    # WHAT HAS TO BE DECIDED BEFORE IT CAN BE BUILT (saga §14.2 case a): landing in
+    # a new mapping means the workflow's tag changes in n8n, and there are two
+    # defensible ways to do it — re-tag in place, or eject and reattach as if it
+    # had arrived fresh. They differ in what happens to the versionId, the
+    # synced-tag baseline and the archive state. These rows choose RE-TAG IN PLACE:
+    # the mode survives the move, so the file is the same file, in a new mapping.
+    #
+    # The two `link` rows are the ones that make that choice explicit. A link has
+    # no body on the Nextcloud side, which is why moving one OUT is refused above —
+    # so a link that may move between mappings is a real decision, not a symmetry.
+    # notes: AGENTS.md#moving-a-workflow-to-another-mapped-folder
 
   # ── relocating an already-unmapped file: pure relocation ─────────────────────
 
@@ -105,5 +155,4 @@ Feature: Moving a workflow file is the same workflow leaving and returning
     Then the file stays "unmapped"
     And its "n8n_id" and "n8n_versionId" are unchanged
     And nothing changes in n8n
-
-  # notes: AGENTS.md#moving-an-unmapped-file-between-unmapped-locations-changes-nothing
+    # notes: AGENTS.md#moving-an-unmapped-file-between-unmapped-locations-changes-nothing

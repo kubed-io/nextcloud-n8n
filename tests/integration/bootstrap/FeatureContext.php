@@ -166,6 +166,21 @@ final class FeatureContext implements Context {
 	// ── per-scenario lifecycle (teardown) ─────────────────────────────────────
 
 	/**
+	 * Arm the once-per-scenario mapping reset.
+	 *
+	 * `a mapping with the following values:` clears the store the FIRST time a
+	 * scenario uses it and appends afterwards, so a Background can declare several
+	 * mappings by repeating the step. That "first time" is per scenario, which is
+	 * what this re-arms — without it the second scenario in a feature would append
+	 * to the first one's leftovers.
+	 *
+	 * @BeforeScenario
+	 */
+	public function armMappingReset(): void {
+		$this->mappingsDeclared = false;
+	}
+
+	/**
 	 * After every scenario, delete any n8n workflows the app created and the NC
 	 * folders we made, and clear the mappings list. Keeps re-runs isolated on the
 	 * shared CI n8n + NC instance. Best-effort: failures here never fail a test.
