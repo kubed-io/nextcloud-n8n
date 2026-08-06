@@ -61,6 +61,27 @@ Feature: Looking at a workflow file
     # could edit it could silently re-point a file at a different workflow.
     # notes: AGENTS.md#what-the-app-manages-only-the-app-changes
 
+  @admin @occ
+  Scenario: Listing the workflows n8n holds
+    Given n8n has workflows tagged "nextcloud:alpha"
+    When the admin lists the workflows tagged "nextcloud:alpha"
+    Then the listing names each of those workflows
+    # THE OTHER WAY TO LOOK, and the one with no UI at all. `occ` reads n8n
+    # directly rather than reading the mirror, which is what makes it useful when
+    # the two disagree: "is it missing from the folder, or missing from n8n?" is
+    # the first question anyone asks, and this answers the second half without
+    # trusting the first.
+    # notes: AGENTS.md#listing-the-workflows-n8n-holds
+
+  @admin @occ
+  Scenario: Viewing one workflow n8n holds
+    Given n8n has workflows tagged "nextcloud:alpha"
+    When the admin views one of those workflows by its id
+    Then the workflow's JSON is printed
+    # The id comes from the listing above — which is the whole reason the two are
+    # here together rather than as one scenario about "the CLI".
+    # notes: AGENTS.md#viewing-one-workflow-n8n-holds
+
   # n8n_mode is indexed, so "find every sync / unmapped / ignored file" is a fast
   # query. @blocked, and the missing capability is named: there is no proven DAV
   # REPORT search over `nc:metadata-*` to drive this against. Confirm that exists

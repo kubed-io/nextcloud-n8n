@@ -26,6 +26,15 @@ use PHPUnit\Framework\Assert;
  * Composed into {@see \OCA\N8nSync\Tests\Integration\FeatureContext}.
  */
 trait ViewWorkflowSteps {
+	/** @var array<string,mixed>|null the last `list-workflows` payload */
+	private ?array $cliListing = null;
+
+	/** @var array<string,mixed>|null the last `get-workflow` payload */
+	private ?array $cliWorkflow = null;
+
+	/** Which workflow the CLI view asked for, so the Then can check it got that one. */
+	private string $viewedWorkflowId = '';
+
 	private const N8N_MIME = 'application/n8n+json';
 
 	/** Carried between the PROPPATCH When and its Then. */
@@ -42,6 +51,57 @@ trait ViewWorkflowSteps {
 		// plain sync file is the simplest. (The mode-specific rows use the
 		// "in :mode mode" step owned by OpenWithSteps.)
 		$this->arrangeManagedFile('sync');
+	}
+
+	// ── the CLI view: what n8n holds, read without the mirror ──────────────────
+
+	/** @When the admin lists the workflows tagged :tag */
+	public function theAdminListsTheWorkflowsTagged(string $tag): void {
+		$res = $this->occ('n8n_sync:list-workflows --tag=' . escapeshellarg($tag) . ' --limit=50');
+		Assert::assertSame(0, $res['exit'], "list-workflows failed:\n{$res['output']}");
+		$this->cliListing = json_decode($res['output'], true);
+		Assert::assertIsArray($this->cliListing, "list-workflows did not return JSON:\n{$res['output']}");
+	}
+
+	/** @Then the listing names each of those workflows */
+	public function theListingNamesEachOfThoseWorkflows(): void {
+		Assert::assertNotEmpty($this->seededWorkflows, 'no seeded workflows to look for');
+
+		$rows = $this->cliListing['data'] ?? $this->cliListing;
+		Assert::assertIsArray($rows, 'the listing carried no rows');
+		$ids = array_map(static fn (array $w): string => (string)($w['id'] ?? ''), $rows);
+
+		foreach ($this->seededWorkflows as $name => $id) {
+			Assert::assertContains((string)$id, $ids, "the listing does not name '$name' ($id)");
+		}
+	}
+
+	/** @When the admin views one of those workflows by its id */
+	public function theAdminViewsOneOfThoseWorkflowsById(): void {
+		$id = (string)reset($this->seededWorkflows);
+		Assert::assertNotSame('', $id, 'no seeded workflow to view');
+		$this->viewedWorkflowId = $id;
+
+		$res = $this->occ('n8n_sync:get-workflow ' . escapeshellarg($id));
+		Assert::assertSame(0, $res['exit'], "get-workflow failed:\n{$res['output']}");
+		$this->cliWorkflow = json_decode($res['output'], true);
+	}
+
+	/**
+	 * @Then the workflow's JSON is printed
+	 *
+	 * ASSERTS IT IS THE RIGHT WORKFLOW, not merely that something was printed. A
+	 * command that prints any valid JSON would satisfy the looser reading, and the
+	 * point of viewing one BY ID is that you get that one.
+	 */
+	public function theWorkflowsJsonIsPrinted(): void {
+		Assert::assertIsArray($this->cliWorkflow, 'get-workflow did not return JSON');
+		Assert::assertSame(
+			$this->viewedWorkflowId,
+			(string)($this->cliWorkflow['id'] ?? ''),
+			'get-workflow printed a different workflow',
+		);
+		Assert::assertArrayHasKey('nodes', $this->cliWorkflow, 'the printed JSON is not a workflow body');
 	}
 
 	// ── Then: mimetype + icon ───────────────────────────────────────────────────

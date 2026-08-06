@@ -477,6 +477,27 @@ edit `n8n_id` could silently re-point a file at a different workflow.
 The load-bearing assertion is that the VALUE did not change, not that a particular
 status came back.
 
+### Listing the workflows n8n holds
+
+THE OTHER WAY TO LOOK, and the one with no UI at all. `occ` reads n8n directly
+rather than reading the mirror, which is exactly what makes it useful when the
+two disagree: *"is it missing from the folder, or missing from n8n?"* is the
+first question anyone asks, and this answers the second half without trusting
+the first.
+
+Neither this nor `get-workflow` had a scenario before — the CLI view surface was
+entirely unspecified, despite being the surface an admin reaches for when
+something looks wrong.
+
+### Viewing one workflow n8n holds
+
+The id comes from the listing, which is why the two sit together rather than
+being one scenario about "the CLI".
+
+The `Then` asserts it is the RIGHT workflow, not merely that something was
+printed: a command that emitted any valid JSON would satisfy the looser reading,
+and the whole point of viewing one *by id* is that you get that one.
+
 ### Finding workflows by their mode
 
 `@blocked`, and the missing capability is named: there is no proven DAV REPORT
