@@ -168,9 +168,43 @@ mapping was written. Delete the mapping and add a new one — which makes the
 migration cost visible instead of hiding it behind a dropdown.
 
 **Groups stopped being an edit of the mapping at all.** They are a pass-through
-to the folder now (see the `admin-mapping` groups sections below and Penpot's
-§C6.35), so the mapping object itself is wholly immutable and "editing a mapping"
-means "re-sharing its folder".
+to the folder now — see the two sections that follow, and Penpot's §C6.35 — so
+the mapping object itself is wholly immutable and "editing a mapping" means
+"re-sharing its folder".
+
+### The groups a mapped folder is shared with can be changed
+
+The one edit a mapping has, and the only one it should ever have.
+
+**NARROWING AND CLEARING ARE THE POINT.** The old `syncGroupShares()` wrote the
+listed groups and left the rest alone, so a group could be granted and never
+revoked, and "set the groups to nothing" silently did nothing at all. It could
+only start pruning safely once the sync stopped re-asserting a stored list — a
+sync that pruned from a stored list would have been quietly revoking access an
+admin had granted by hand.
+
+The folder name differs per storage kind deliberately: removing a mapping deletes
+nothing, so a folder outlives the mapping that made it, and a later Examples row
+reusing the name would inherit a folder of the wrong kind.
+
+### Groups are read from the folder, not from the mapping
+
+**The scenario that explains why the whole change exists.** Three apps in this
+family — this one, Grafana and Penpot — can map to the same folder. While each
+stored its own group list, every sync stamped that list over the others', so all
+three fought for control of one folder forever and none of them was wrong.
+Reading the groups off the folder makes the folder the single answer.
+
+The share is made through **groupfolders' own `occ` command**, so it comes from
+something that is not this app — otherwise the scenario would prove only that the
+app agrees with itself.
+
+It is written on a Team Folder for a checked reason: **core ships no `occ` command
+that creates a plain group share.** Verified against a live Nextcloud rather than
+assumed — core has `sharing:cleanup-remote-storages`, `delete-orphan-shares`,
+`expiration-notification` and `fix-share-owners`, and nothing that shares. A first
+draft called `occ sharing:share`, which does not exist and would have failed in
+CI.
 
 ### Two mappings may not target the same folder
 
