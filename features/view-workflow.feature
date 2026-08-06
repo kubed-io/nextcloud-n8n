@@ -36,10 +36,10 @@ Feature: Looking at a workflow file
   @user @dav
   Scenario Outline: Viewing the DAV properties on a file shows n8n specific details
     Given a mapping with the following values:
-      | tag     | <tag>        |
-      | folder  | <folder>     |
-      | mode    | <mode>       |
-      | storage | admin folder |
+      | tag    | <tag>    |
+      | folder | <folder> |
+      | mode   | <mode>   |
+      | groups | admin    |
     And a workflow "<workflow>" mirrored into that folder
     When a WebDAV client requests the file's properties
     Then the response carries the properties the app manages:
@@ -64,6 +64,16 @@ Feature: Looking at a workflow file
     # when a file lands. `n8n_syncedTags` is managed too, but the tag reconciler
     # stamps it afterwards and only once there are content tags, so it is not part
     # of what viewing a fresh mirror shows.
+    #
+    # NO `storage` ROW, DELIBERATELY. Naming a field in a table is a claim that it
+    # matters to the outcome, and what a mirror publishes over DAV is identical on
+    # an admin-owned folder and a Team Folder. So the mapping takes the app's own
+    # default — a Team Folder — which is also what a real admin gets. `storage` is
+    # named only where provisioning IS the behaviour, in admin-mapping.feature.
+    #
+    # `groups` is here for the opposite reason: it is load-bearing. A Team Folder
+    # shared with nobody is mounted for nobody, and the file could not be written,
+    # let alone read back.
     #
     # TWO ROWS, WHERE THERE USED TO BE FOUR. A mapping only ever produces `sync` or
     # `link`; `unmapped` and `ignored` are what a file BECOMES — by being moved out

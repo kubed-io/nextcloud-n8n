@@ -485,6 +485,14 @@ crashes core's PROPFIND — the only place in this app where a wire value differ
 from the name of the thing it carries, so it is an Examples column rather than a
 footnote, and the row shows both what the admin chose and what a client reads.
 
+**The table says nothing about storage.** Naming a field is a claim that it
+matters, and what a mirror publishes over DAV is identical on an admin-owned
+folder and a Team Folder — so the mapping takes the app's own default, which is a
+Team Folder, and is also what a real admin gets. `storage` is named only where
+provisioning *is* the behaviour, in `admin-mapping.feature`. `groups` is present
+for the opposite reason: a Team Folder shared with nobody is mounted for nobody,
+so without it the file could not be written, let alone read back.
+
 **The outline lost two rows** (`unmapped`, `ignored`) when it was reshaped around
 a mapping. That is deliberate and not a coverage regression: a mapping only ever
 produces `sync` or `link`. The other two are what a file *becomes* — moved out of

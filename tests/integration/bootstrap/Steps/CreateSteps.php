@@ -20,9 +20,19 @@ use PHPUnit\Framework\Assert;
  */
 trait CreateSteps {
 	/**
-	 * Set up an admin-owned (no groupfolders) mapping + the backing folder so a
-	 * WebDAV PUT into it resolves to a mapping. Admin-owned keeps CI free of the
-	 * groupfolders app; resolveForPath only cares about the folder name.
+	 * Set up an admin-owned mapping + the backing folder so a WebDAV PUT into it
+	 * resolves to a mapping. `resolveForPath` only cares about the folder name, so
+	 * the storage kind is invisible to every scenario that uses this.
+	 *
+	 * ADMIN-OWNED IS A SPEED CHOICE, NOT A DEPENDENCY ONE. It used to be the latter
+	 * — "keeps CI free of the groupfolders app" — but groupfolders is installed on
+	 * every leg now (integration.yml), and that stale note is why a later scenario
+	 * put `| storage | admin folder |` in a table where storage is irrelevant.
+	 * A plain folder is simply cheaper to make than a Team Folder mount.
+	 *
+	 * A scenario that cares which backend it runs on must say so in its own table,
+	 * and `use_team_folder` defaults to TRUE — so this is the exception, not the
+	 * shape a mapping normally has.
 	 *
 	 * @Given a folder mapped as :mode to the n8n tag :tag
 	 */
