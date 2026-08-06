@@ -331,7 +331,6 @@ trait ViewWorkflowSteps {
 		return str_starts_with($local, 'metadata-') ? substr($local, strlen('metadata-')) : $local;
 	}
 
-
 	/** Attempt to set a single nc:metadata-* prop via PROPPATCH; returns the raw response. */
 	private function davProppatch(string $path, string $prop, string $value): \Psr\Http\Message\ResponseInterface {
 		$local = str_contains($prop, ':') ? substr($prop, (int)strpos($prop, ':') + 1) : $prop;
