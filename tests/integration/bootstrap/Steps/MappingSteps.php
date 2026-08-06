@@ -63,9 +63,6 @@ trait MappingSteps {
 	/** @var array<string,string> what an unset field is expected to become */
 	private array $mappingDefaults = [];
 
-	/** @var array<string,string> tag ⇒ folder, from `a mapping with the following values:` */
-	private array $foldersByTag = [];
-
 	/** Whether this scenario has already reset the store — see the step's docblock. */
 	private bool $mappingsDeclared = false;
 
@@ -110,14 +107,10 @@ trait MappingSteps {
 	 * previous scenario left behind. Resetting on EVERY use meant a Background could
 	 * only ever describe one mapping, and silently: the second table wiped the first
 	 * and nothing said so.
-	 *
-	 * The folder is recorded against the tag so the steps that address a file by its
-	 * Nextcloud folder can resolve it.
 	 */
 	public function aMappingWithTheFollowingValues(TableNode $table): void {
 		if (!$this->mappingsDeclared) {
 			$this->noN8nTagsAreMapped();
-			$this->foldersByTag = [];
 			$this->mappingsDeclared = true;
 		}
 
@@ -132,17 +125,28 @@ trait MappingSteps {
 
 		if (isset($form['folder'])) {
 			$this->davMkdir($form['folder']);
-			$this->foldersByTag[$tag] = $form['folder'];
 		}
 	}
 
-	/** The n8n tag whose mapping owns $folder. */
+	/**
+	 * The n8n tag whose mapping owns $folder, read from the LIVE store rather than
+	 * anything recorded at arrange time.
+	 *
+	 * copy.feature, purge.feature and delete.feature still declare their Background
+	 * mapping through `CreateSteps::aFolderMappedAsModeToTag` (a direct
+	 * `occ add-mapping` call), not `a mapping with the following values:` — an
+	 * earlier version of this method only knew about mappings made the second way,
+	 * and failed with "no mapping declares the folder…" for the other three
+	 * features in CI. Every mapping lands in the same store however it was made, so
+	 * reading it back from there works regardless of which arrange a feature uses.
+	 */
 	private function tagForFolder(string $folder): string {
-		$tag = array_search($folder, $this->foldersByTag, true);
-		if (!is_string($tag)) {
-			$this->fail("no mapping declares the folder '$folder' — check the Background table");
+		foreach ($this->listMappings() as $m) {
+			if (($m['team_folder'] ?? '') === $folder) {
+				return (string)($m['n8n_tag'] ?? '');
+			}
 		}
-		return $tag;
+		$this->fail("no mapping owns the folder '$folder' — check the Background");
 	}
 
 	/** The folder of the first `sync` mapping in the store, for backend-agnostic arranges. */

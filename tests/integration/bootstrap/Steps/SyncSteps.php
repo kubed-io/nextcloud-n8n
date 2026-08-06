@@ -337,9 +337,20 @@ trait SyncSteps {
 
 	// ── helpers: drive the occ sync surface ───────────────────────────────────
 
-	/** Run `occ n8n_sync:sync <direction> --mapping=<tag>` and assert it succeeded. */
-	private function runMappingSync(string $direction, string $tag): void {
-		$res = $this->occ('n8n_sync:sync ' . escapeshellarg($direction) . ' --mapping=' . escapeshellarg($tag));
+	/**
+	 * Run `occ n8n_sync:sync <direction>` and assert it succeeded.
+	 *
+	 * $tag null means EVERY MAPPING — the CLI's own `--all` (Reconcile.php:36),
+	 * which is also what an omitted `--mapping` means. `actorSyncsScope` (the
+	 * "every mapping" leg of sync-now.feature) has passed null here since that
+	 * scenario was written; nothing caught the mismatch with this method's
+	 * previously-required `string $tag` until CI actually ran it, because Actions
+	 * was down for the whole cycle this was written in.
+	 */
+	private function runMappingSync(string $direction, ?string $tag): void {
+		$cmd = 'n8n_sync:sync ' . escapeshellarg($direction);
+		$cmd .= $tag !== null ? ' --mapping=' . escapeshellarg($tag) : ' --all';
+		$res = $this->occ($cmd);
 		// RuntimeException, not Assert: a failing PHPUnit assertion under Behat +
 		// PHPUnit 12 throws the opaque Registry::get() TypeError that masks the real
 		// message (see WebDavTrait::assertStatus). A plain throw shows exit + output.

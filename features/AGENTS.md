@@ -823,6 +823,15 @@ kept, with their docblock, so re-adding it is one line if it ever earns a home.
 The behaviours that DO rewrite a mirror assert their own end states, which is
 where that guarantee belongs.
 
+**The "every mapping" leg was never actually exercised until Actions came back
+from an outage.** `runMappingSync()` required a `string $tag`, but this
+scenario's own actor×scope table passes it `null` for that row — the CLI's
+`--all` (Reconcile.php:36), which is also what an omitted `--mapping` means. The
+mismatch had sat unrun since this file was written; the harness now builds
+`--all` when the tag is null instead of type-erroring before the command even
+runs. Worth remembering the shape of the failure: it wasn't a bug in a scenario
+that had been passing, it was a scenario that had never once been graded.
+
 ### carries its n8n dates
 
 AN END STATE, NOT A FEATURE OF ITS OWN. A mirror wears the workflow's clocks
