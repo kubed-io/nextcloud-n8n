@@ -12,7 +12,10 @@ namespace OCA\N8nSync\Tests\Integration\Steps;
 use PHPUnit\Framework\Assert;
 
 /**
- * Manual per-mapping sync steps (saga Ch2 §14.6 `reconcile.feature`): the admin's
+ * Sync steps — the first sync (sync-now.feature), the push behind an edit
+ * (edit-workflow.feature), and the mechanism by which an n8n-side change reaches
+ * Nextcloud for the behaviours that own it. There is no reconcile.feature: the
+ * reconciler is a MECHANISM, and a mechanism does not get a feature file. The admin's
  * two buttons, each scoped to ONE mapping —
  *   - "Sync from n8n" (pull): bring the mapping's tagged workflows into its folder,
  *     update files in place by `n8n_id`, and prune files whose workflow lost the tag.
@@ -26,7 +29,10 @@ use PHPUnit\Framework\Assert;
  * helpers below seed/inspect the workflow+tag state the pull reconciles against.
  * Composed into {@see \OCA\N8nSync\Tests\Integration\FeatureContext}.
  */
-trait ReconcileSteps {
+trait SyncSteps {
+	/** The workflow whose mapping tag was stripped, for the prune assertion. */
+	private string $untaggedWorkflowId = '';
+
 	/**
 	 * Workflow ids this scenario seeded directly in n8n (tagged for the mapping),
 	 * keyed by name so a Then can find "the workflow that lost its tag".
@@ -100,16 +106,74 @@ trait ReconcileSteps {
 
 	// ── When ──────────────────────────────────────────────────────────────────
 
-	/** @When the admin clicks :button for the :tag mapping */
-	public function theAdminClicksSyncForMapping(string $button, string $tag): void {
-		$direction = match ($button) {
-			'Sync from n8n' => 'pull',
-			'Sync to n8n' => 'push',
-			default => throw new \InvalidArgumentException("unknown sync button '$button'"),
-		};
-		// Remember the tag so argless Thens (update-in-place, prune) can find the folder.
+	/**
+	 * THE TRIGGER IS DATA, NOT A BEHAVIOUR. Three ways to start one sync — the
+	 * card's button, the section's button, and the clock — so the outline treats
+	 * them as columns and this turns a column into an action.
+	 *
+	 * A REGEX WITH THE VOCABULARY SPELLED OUT, not `:actor syncs :scope`. Behat's
+	 * `:name` placeholder matches a quoted string or a single non-space token, so
+	 * `the admin` never matches it and every row comes back undefined. The
+	 * alternation also makes a typo in an Examples cell a hard failure rather than
+	 * a silently different actor.
+	 *
+	 * @When /^(the admin|the schedule) syncs (one mapping|every mapping)$/
+	 */
+	public function actorSyncsScope(string $actor, string $scope): void {
+		if ($actor === 'the schedule') {
+			$this->theScheduleFires();
+
+			return;
+		}
+
+		$this->runMappingSync('pull', $scope === 'one mapping' ? $this->currentTag : null);
+	}
+
+	/** @When the admin pushes to n8n */
+	public function theAdminPushesToN8n(): void {
+		$this->runMappingSync('push', $this->currentTag);
+	}
+
+	/** @When the :tag mapping is synced */
+	public function theMappingIsSynced(string $tag): void {
 		$this->currentTag = $tag;
-		$this->runMappingSync($direction, $tag);
+		$this->runMappingSync('pull', $tag);
+	}
+
+	/**
+	 * Make the scheduled pull actually run, rather than asserting that it would.
+	 *
+	 * TWO SAFETY FLOORS STAND BETWEEN A TEST AND A TIMED JOB, and neither can be
+	 * waited out in CI: the job's own interval and the worker's last-run gate. So
+	 * this enables the schedule, finds the registered job by class, and executes it
+	 * by id with `--force-execute`, which bypasses both.
+	 *
+	 * That is the real job, reading the real setting, calling the real sync.
+	 * Asserting that a row exists in oc_jobs would prove the job is registered and
+	 * nothing about whether it works.
+	 */
+	private function theScheduleFires(): void {
+		$res = $this->occ('config:app:set n8n_sync schedule_enabled --value=1 --type=boolean');
+		Assert::assertSame(0, $res['exit'], "could not enable the schedule:\n{$res['output']}");
+
+		$res = $this->occ('background-job:list --class=' . escapeshellarg('OCA\\N8nSync\\BackgroundJob\\ScheduledPullJob') . ' --output=json');
+		$jobs = json_decode($res['output'], true);
+		Assert::assertIsArray($jobs, "background-job:list did not return JSON:\n{$res['output']}");
+		Assert::assertNotSame([], $jobs, 'the scheduled pull job is not registered');
+
+		$id = (string)($jobs[0]['id'] ?? '');
+		Assert::assertNotSame('', $id, 'the scheduled pull job has no id');
+
+		$res = $this->occ('background-job:execute ' . escapeshellarg($id) . ' --force-execute');
+		Assert::assertSame(0, $res['exit'], "running the scheduled pull failed:\n{$res['output']}");
+	}
+
+	/** @When the :tag tag is removed from the workflow in n8n */
+	public function theTagIsRemovedFromTheWorkflowInN8n(string $tag): void {
+		$id = (string)reset($this->seededWorkflows);
+		Assert::assertNotSame('', $id, 'no seeded workflow to untag');
+		$this->untaggedWorkflowId = $id;
+		$this->setN8nWorkflowTags($id, []);
 	}
 
 	// ── Then (pull) ───────────────────────────────────────────────────────────
@@ -127,6 +191,11 @@ trait ReconcileSteps {
 	 * the pull that created the file ran. The one clock a later sync could never
 	 * reconstruct — once the file exists there is no "before" left to read it from.
 	 *
+	 * ONE REUSABLE SENTENCE for both clocks, because they are one end state: a
+	 * mirror wears the workflow's times rather than the sync's. Any later
+	 * behaviour that produces a mirror can assert it in a line.
+	 *
+	 * @Then each file carries its n8n dates
 	 * @Then each file's creation time is when its workflow was created in n8n
 	 */
 	public function eachFileCreationTimeIsTheWorkflowCreatedAt(): void {
@@ -157,15 +226,19 @@ trait ReconcileSteps {
 		}
 	}
 
-	/** @Then a mapped file whose workflow no longer carries the tag is pruned from the folder */
-	public function aMappedFileWhoseWorkflowLostTheTagIsPruned(): void {
-		$folder = $this->folderNameForTag($this->currentTag);
-		// Strip the mapping tag from one seeded workflow, then re-pull: its file goes.
-		$victimId = (string)reset($this->seededWorkflows);
-		$this->setN8nWorkflowTags($victimId, []);
-		$this->runMappingSync('pull', $this->currentTag);
-		$byId = $this->mappedFilesByWorkflowId($folder);
-		Assert::assertArrayNotHasKey($victimId, $byId, "workflow $victimId lost its tag but its file was not pruned");
+	/**
+	 * @Then the file is pruned from the folder
+	 *
+	 * ASSERTS ONLY. Its predecessor stripped the tag AND re-ran the sync inside the
+	 * Then, so the scenario's only visible step was "the button was pressed" and
+	 * the actual behaviour — a workflow losing its mapping tag — happened invisibly
+	 * inside an assertion. The untagging is a `When` now, and this looks.
+	 */
+	public function theFileIsPrunedFromTheFolder(): void {
+		$id = $this->untaggedWorkflowId;
+		Assert::assertNotSame('', $id, 'no workflow was untagged');
+		$byId = $this->mappedFilesByWorkflowId($this->folderNameForTag($this->currentTag));
+		Assert::assertArrayNotHasKey($id, $byId, "workflow $id lost its tag but its file was not pruned");
 	}
 
 	/** @Then /^the unmapped file is left untouched \(it is outside the mapping's scope\)$/ */

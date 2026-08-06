@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Spec: there is no longer a `reconcile.feature`. Reconciling is how an n8n-side change reaches Nextcloud, not something anyone does — its scenarios moved to the behaviours that own them, and the first sync now has a file of its own.
 - **Re-share a mapped folder from anywhere and this app reflects it.** The groups a mapped folder is shared with are now read from the folder itself rather than stored alongside the mapping, so a change made in Files, with `occ`, or by another app sharing the same folder shows up here — and a sync never puts back a group you removed. Setting the groups to nothing now actually clears them, which it silently did not before.
 - **BREAKING:** a mapping is now immutable except for its groups. The n8n tag, the folder, the storage backend and the mode are fixed once created — previously the tag, folder and mode could all be changed on a saved mapping, which silently re-decided which workflows it owned. Remove the mapping and add it again to change one.
 - **`occ n8n_sync:set-groups`** changes the groups a mapped folder is shared with, the one field a mapping lets you edit — previously reachable only from the admin panel.

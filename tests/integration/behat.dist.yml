@@ -54,7 +54,7 @@ default:
   #             about the tag vocabulary and the three-way sync lives here, and it
   #             is the largest single body of scenarios in the repo.
   #   core      what is not a verb on a file and not about tags: identity, file
-  #             type, the manual sync buttons, purge, and the app lifecycle.
+  #             type, the FIRST sync, purge, and the app lifecycle.
   suites:
     admin:
       paths:
@@ -69,6 +69,7 @@ default:
     workflow:
       paths:
       - '%paths.base%/../../features/create-workflow.feature'
+      - '%paths.base%/../../features/edit-workflow.feature'
       - '%paths.base%/../../features/copy.feature'
       - '%paths.base%/../../features/delete.feature'
       - '%paths.base%/../../features/move.feature'
@@ -83,7 +84,7 @@ default:
 
     core:
       paths:
-      - '%paths.base%/../../features/reconcile.feature'
+      - '%paths.base%/../../features/sync-now.feature'
       - '%paths.base%/../../features/mapping-membership.feature'
       - '%paths.base%/../../features/file-type.feature'
       - '%paths.base%/../../features/open-with.feature'

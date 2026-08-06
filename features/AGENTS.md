@@ -458,6 +458,16 @@ a file, so nested mappings work and the nearest enclosing one wins. Each scenari
 lands a real file over WebDAV and reads the resulting n8n_mapping stamp back, so
 these are server-observable assertions of MappingService::resolveForPath.
 
+### A sync never touches a file outside every mapping
+
+THE SCOPE OF A SYNC IS A MEMBERSHIP QUESTION, so it is answered here rather than
+in a file about syncing. "Which files does this mapping own" is what this file
+exists to say; a sync merely acts on that answer.
+
+It moved from a scenario about the sync button, where it was one `Then` among
+four — so "an unmapped file is out of scope" could only ever fail as part of "the
+button worked", and never named itself.
+
 ## move
 
 `features/move.feature`
@@ -565,47 +575,86 @@ arrange existed all along, it just silently ignored the mode it was handed and
 produced a `sync` file, which would have made this scenario assert the opposite
 of its own Given.
 
-## reconcile
+## sync-now
 
-`features/reconcile.feature`
+`features/sync-now.feature`
 
-The two manual sync controls in admin settings, each SCOPED TO A MAPPING:
-  - "Sync from n8n" (pull): bring the mapping's tagged workflows into its folder.
-  - "Sync to n8n"   (push): send the mapping's sync files up to n8n.
-Both reconcile the mapped folder against the workflows carrying that mapping's
-tag, and both FULLY IGNORE "unmapped" files — those live outside any mapping, so
-a mapping-scoped sync never sees them. Pruning here is therefore mapping-scoped:
-it only ever concerns files/workflows inside the mapping.
+THE FIRST SYNC, AND ONLY THAT.
 
-(The "merge" that happens when you MOVE an unmapped file back into a mapping that
-already holds its workflow is a MOVE-time behaviour, not a sync — see
-move.feature. The duplicate state, one unmapped + one mapped with the same id, is
-perfectly fine and intentional; a sync does not touch the unmapped one.)
+### sync-now scope
 
-### Sync from n8n with nothing changed rewrites nothing and says so
+**There is no `reconcile.feature`, and there must never be one.** Reconciling is
+a MECHANISM — the thing that carries an n8n-side change into Nextcloud — and a
+mechanism does not get a feature file. What a person does gets a feature file.
 
-── RULE: a run that changes nothing changes nothing ──────────────────────────
-Two things are NOT behaviours, and both were nearly written up as if they were.
+This file replaced one called "Manual per-mapping sync (Sync from / Sync to
+n8n)", which was named after two buttons. Its three scenarios turned out to be
+four different behaviours wearing one coat, and every one of them belonged
+somewhere else:
 
-A file's "modified" time is a RESULT, not a gesture. Editing, moving, copying and
-renaming all move it, each already owned by the file that owns the gesture. A
-scenario asserting "the mtime moved after an edit" specifies Nextcloud, not this
-app, and has to invent an actor to do it.
+| it said | it meant | where it went |
+|---|---|---|
+| the button pulls the tagged workflows in | the FIRST sync | here |
+| …and prunes a file whose workflow lost the tag | a tag removed **in n8n** | `tag-sync.feature` |
+| …and leaves the unmapped file alone | what "unmapped" **means** | `mapping-membership.feature` |
+| a run that changed nothing rewrote nothing | an mtime, and the reconciler | deleted — see below |
+| the button pushes local changes up | **editing** a workflow file | `edit-workflow.feature` |
 
-The RECONCILER is likewise the *how*, not the *what*. The scheduled pull is a
-machine that makes n8n-origin behaviours show up in Nextcloud; "renamed in n8n"
-is the behaviour, the reconciler is merely how it arrives — which is why those
-scenarios live with their behaviour and carry `@in-n8n`, not here.
+**Why the first sync is genuinely its own thing.** Nothing is tracked yet, so
+whatever sits in n8n is simply a Given. Every LATER run only has work because
+something changed upstream — and each of those is a scenario about the change:
+renamed in n8n is `rename.feature`, deleted in n8n is `delete.feature`, tagged in
+n8n is `tag-sync.feature`. The sync is how the news arrives, not what happened.
+Once those files own their behaviours there is no "second sync" left to describe.
 
-What is left is genuinely this file's, and genuinely not automatic: the admin
-presses the button when nothing has changed, and the run must leave every file
-exactly as it found it. It matters because the same run is what the schedule
-fires — a write performed unconditionally is performed forever, and a folder
-where everything was modified seconds ago says nothing about what changed.
+**The trigger is data.** Three ways to start one sync — the card's button, the
+section's button, the schedule — same pre-state, same post-state. Columns, not
+scenarios. Whether a run is synchronous or queued is a mechanism and is asserted
+nowhere.
 
-The negative control lives with the behaviour that supplies it: "a content change
-in n8n DOES rewrite the mirror" is tag-sync.feature's, so this rule cannot be
-satisfied by a pull that has simply stopped writing.
+The schedule row drives the REAL job, forced past its interval and the worker's
+last-run gate with `background-job:execute --force-execute`. Asserting a row
+exists in `oc_jobs` would prove the job is registered and nothing about whether
+it runs.
+
+**"A run that changed nothing rewrote nothing" was deleted, not moved.** It
+asserted an mtime — a result — about the reconciler — a mechanism — and neither
+gets a scenario. The defect it once guarded (a pull rewriting every mirror on
+every run) is real and is recorded in the CHANGELOG; the step definitions are
+kept, with their docblock, so re-adding it is one line if it ever earns a home.
+The behaviours that DO rewrite a mirror assert their own end states, which is
+where that guarantee belongs.
+
+### carries its n8n dates
+
+AN END STATE, NOT A FEATURE OF ITS OWN. A mirror wears the workflow's clocks
+rather than the sync's, and that holds however the sync started — so it is one
+reusable sentence rather than two `Then`s, and any later behaviour producing a
+mirror can assert it the same way.
+
+Creation time especially: it is the one clock a later run can never reconstruct,
+because after the first sync there is no "before" left to read it from.
+
+## edit-workflow
+
+`features/edit-workflow.feature`
+
+EDITING IS THE BEHAVIOUR; THE PUSH IS HOW IT TRAVELS.
+
+### A local edit reaches its workflow in n8n
+
+This was "the admin clicks Sync to n8n", which described a button rather than
+anything anyone wants. Nobody edits a workflow in order to press a button — they
+edit it so n8n gets the change, and the app offers three ways for that to happen
+(on save, on the button, on the schedule). Those are mechanisms; this is what
+they are for.
+
+### A file outside every mapping is never pushed
+
+Its own scenario rather than a second `Then` on the one above: "my edit travels"
+and "a file I never mapped does not" are different promises, and a reader looking
+for the second should not have to find it inside the first.
+
 
 ## rename
 
@@ -1036,7 +1085,7 @@ Slice B), so the body-array assertions stay in the @todo projection scenarios be
 Both scenarios are `@in-n8n` BEHAVIOURS — someone changed a workflow's content, or
 its tags — and the pull is merely how the change arrives. The third case, "nobody
 changed anything", is not a behaviour at all: it is what a RUN does, and it lives
-in reconcile.feature.
+in sync-now.feature.
 
 The first is also the negative control for that rule: a pull that had simply
 stopped writing would satisfy "a quiet run rewrites nothing" and fail this.
@@ -1084,6 +1133,23 @@ removal that unbinds the workflow from the "reports" mapping and prunes that mir
 The protected set must therefore be the UNION of every mapping tag on the workflow,
 not just the current mapping's. Also future fan-out work, pinned `@todo` below.
 
+### A workflow that loses the mapping tag in n8n loses its mirror
+
+THE BEHAVIOUR IS THE UNTAGGING, NOT THE SYNC. The mapping tag is what makes a
+workflow the folder's, so removing it upstream says the workflow no longer
+belongs and the mirror follows. The sync is only how the news arrives, which is
+why this sits with the other tag behaviours.
+
+It moved from a "Manual per-mapping sync" file where it was one `Then` among
+four, and where the assertion did the work: the old step stripped the tag AND
+re-ran the sync inside the `Then`, so the scenario's only visible action was
+"the button was pressed" and the behaviour happened invisibly inside an
+assertion. The untagging is a `When` now.
+
+Note the eject gesture is the deliberate Nextcloud-side twin: dropping the pill
+yourself keeps the file and marks it ignored. Losing the tag upstream is not a
+request to keep anything.
+
 ## uninstall
 
 `features/uninstall.feature`
@@ -1114,7 +1180,7 @@ will pass until that exists, which is exactly the distinction the tag makes.
 NOTE THE TAG IS ON THE `Feature:`, so it excludes EVERY scenario below, including
 the data-orphan ones a disable/enable could genuinely prove. That is deliberate
 but easy to misread: the DATA promise — reinstall reconciles existing files in
-place by id with NO duplicates — is already proven LIVE by reconcile.feature
+place by id with NO duplicates — is already proven LIVE by sync-now.feature
 ("existing files are updated in place — matched by workflow id, never
 duplicated"), and a disable/enable changes nothing about that reconcile, so
 re-proving it here would be duplicate coverage of one behaviour in two files.
