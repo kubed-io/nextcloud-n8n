@@ -37,9 +37,8 @@ Feature: Looking at a workflow file
   Scenario Outline: Viewing the DAV properties on a file shows n8n specific details
     Given a mapping with the following values:
       | tag    | <tag>    |
-      | folder | <folder> |
       | mode   | <mode>   |
-      | groups | admin    |
+      | folder | <folder> |
     And a workflow "<workflow>" mirrored into that folder
     When a WebDAV client requests the file's properties
     Then the response carries the properties the app manages:
@@ -68,12 +67,10 @@ Feature: Looking at a workflow file
     # NO `storage` ROW, DELIBERATELY. Naming a field in a table is a claim that it
     # matters to the outcome, and what a mirror publishes over DAV is identical on
     # an admin-owned folder and a Team Folder. So the mapping takes the app's own
-    # default — a Team Folder — which is also what a real admin gets. `storage` is
-    # named only where provisioning IS the behaviour, in admin-mapping.feature.
-    #
-    # `groups` is here for the opposite reason: it is load-bearing. A Team Folder
-    # shared with nobody is mounted for nobody, and the file could not be written,
-    # let alone read back.
+    # default, which is an admin-owned folder — the one backend that exists on
+    # every install. `storage` is named only where provisioning IS the behaviour,
+    # in admin-mapping.feature, and a scenario that wants a Team Folder asks for
+    # one there.
     #
     # TWO ROWS, WHERE THERE USED TO BE FOUR. A mapping only ever produces `sync` or
     # `link`; `unmapped` and `ignored` are what a file BECOMES — by being moved out

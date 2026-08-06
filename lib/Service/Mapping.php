@@ -116,11 +116,24 @@ final class Mapping implements JsonSerializable {
 			$mode = self::MODE_LINK;
 		}
 
-		// Storage backend (immutability enforced in MappingService::update).
-		// Default true: groupfolders is the preferred path; legacy rows created
-		// before this flag existed were all Team Folders.
-		$useTeamFolder = !array_key_exists('use_team_folder', $data)
-			|| filter_var($data['use_team_folder'], FILTER_VALIDATE_BOOLEAN);
+		// Storage backend. DEFAULT FALSE — an omitted flag means an admin-owned
+		// folder, because that is the only backend guaranteed to exist.
+		//
+		// A Team Folder needs the groupfolders app, which is OPTIONAL and absent on
+		// a stock Nextcloud. Defaulting to it meant the default mapping was the one
+		// that could not be provisioned: `StorageService::isAvailable()` returns
+		// `teamFolders->isAvailable()` for a Team Folder, so an admin who filled in
+		// a tag and a folder and touched nothing else got a refusal on a plain
+		// install. A default must be the safe choice, not the preferred one.
+		//
+		// This matches the sibling penpot app, which has always defaulted to false.
+		//
+		// NOTE FOR OLD DATA: `toArray()` always writes the key, so every mapping
+		// this app has ever saved carries it explicitly and is unaffected. Only a
+		// row persisted before the flag existed at all would read differently — and
+		// those were Team Folders. At 0.1.x that is a re-map, not a migration.
+		$useTeamFolder = array_key_exists('use_team_folder', $data)
+			&& filter_var($data['use_team_folder'], FILTER_VALIDATE_BOOLEAN);
 
 		if ($n8nTag === '') {
 			throw new \InvalidArgumentException('n8n_tag is required');

@@ -24,15 +24,15 @@ trait CreateSteps {
 	 * resolves to a mapping. `resolveForPath` only cares about the folder name, so
 	 * the storage kind is invisible to every scenario that uses this.
 	 *
-	 * ADMIN-OWNED IS A SPEED CHOICE, NOT A DEPENDENCY ONE. It used to be the latter
-	 * — "keeps CI free of the groupfolders app" — but groupfolders is installed on
-	 * every leg now (integration.yml), and that stale note is why a later scenario
-	 * put `| storage | admin folder |` in a table where storage is irrelevant.
-	 * A plain folder is simply cheaper to make than a Team Folder mount.
+	 * ADMIN-OWNED MATCHES THE APP'S OWN DEFAULT, so this arrange builds the mapping
+	 * an admin gets by filling in the required fields and nothing else. It is also
+	 * cheaper than a Team Folder mount. A scenario that wants the other backend
+	 * says so in its own table.
 	 *
-	 * A scenario that cares which backend it runs on must say so in its own table,
-	 * and `use_team_folder` defaults to TRUE — so this is the exception, not the
-	 * shape a mapping normally has.
+	 * This note used to read "keeps CI free of the groupfolders app", which stopped
+	 * being true once integration.yml installed it on every leg — and a stale note
+	 * is worse than none, because it gets believed: it is why a later scenario put
+	 * `| storage | admin folder |` in a table where storage is irrelevant.
 	 *
 	 * @Given a folder mapped as :mode to the n8n tag :tag
 	 */

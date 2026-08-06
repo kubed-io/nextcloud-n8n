@@ -143,19 +143,24 @@ jobs:
         ./occ config:system:set trusted_domains 2 --value=localhost:8080
         ./occ config:system:set loglevel --type=integer --value=0
 
-    # TEAM FOLDERS ARE THE DEFAULT BACKEND, so the suite has to have them.
+    # TEAM FOLDERS ARE OPT-IN, AND THE SUITE HAS TO BE ABLE TO OPT IN.
     #
-    # groupfolders is an optional app and this workflow never installed it, which
-    # was survivable only because `add-mapping` used to persist without
-    # provisioning anything — the folder was created lazily at sync time, so a
-    # Team Folder mapping could be *stored* on an instance that could never make
-    # one. Now that creating a mapping provisions its folder, a default mapping
-    # fails outright without it, and the admin suite goes red.
+    # groupfolders is an optional app, which is exactly why `use_team_folder`
+    # defaults to FALSE: the default mapping must be one that provisions on a
+    # stock Nextcloud. It briefly defaulted to true here, which made the default
+    # the one backend a plain install cannot create.
     #
-    # Installing it is the right fix rather than making every scenario ask for an
-    # admin-owned folder: `use_team_folder` defaults to true, and a suite that
-    # cannot exercise the default is testing a fiction. It is also the
-    # prerequisite for running the whole matrix across both backends.
+    # So this install is not there to serve the default — it is there so the
+    # scenarios that NAME `| storage | team folder |` have something to run
+    # against. Without it those rows would be unrunnable and the Team Folder path
+    # would go uncovered, which is how a Team Folder mapping once came to be
+    # *storable* on an instance that could never make one.
+    #
+    # WHAT IS NOT COVERED, AND IS WORTH KNOWING: every leg has groupfolders, so
+    # nothing here proves the app survives on a server WITHOUT it. That is a real
+    # exposure — TeamFolderService resolves the groupfolders FQCN lazily for
+    # precisely this reason, and a guard with no test behind it is one refactor
+    # from being deleted. It wants one cheap leg, not a second full axis.
     - name: Install Team Folders (groupfolders)
       run: |
         ./occ app:install groupfolders

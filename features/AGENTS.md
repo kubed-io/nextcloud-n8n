@@ -100,7 +100,7 @@ exercise them are legible without opening PHP.
 
 **Only the tag and the folder are required.** Omitting either is a refusal, not a
 default, and the refusal outline carries a row proving it for each. `mode`
-defaults to `link`, `nc_groups` to empty, and `use_team_folder` to true.
+defaults to `link`, `nc_groups` to empty, and `use_team_folder` to false.
 
 **Mode did not always default, and writing this table is what found it.**
 Declaring what every unset field becomes forces a value for each, and there was
@@ -111,13 +111,26 @@ nothing and pushes nothing back. Grafana had the identical gap and was fixed in
 the same pass. An *unknown* mode is still refused — saying nothing and saying
 nonsense are different inputs.
 
-One divergence from the Penpot sibling remains, and it is real rather than
-accidental: **`use_team_folder` defaults to true here; Penpot changed its
-equivalent to false**, because groupfolders is an OPTIONAL app and a default that
-cannot be provisioned on a stock Nextcloud is not a default (the sibling's
-§C6.35). Note this app now provisions the folder AT CREATE, so the failure is at
-least immediate rather than deferred to the first sync — but the default still
-asks for a backend that may be absent.
+**`use_team_folder` defaults to false**, matching Penpot. A Team Folder needs
+groupfolders, an OPTIONAL app absent from a stock Nextcloud, so defaulting to it
+made the default mapping the one that could not be provisioned: an admin who
+filled in a tag and a folder and touched nothing else got a refusal. A default
+must be the safe choice, not the preferred one. A Team Folder is opted into, by
+naming `| storage | team folder |`.
+
+**This note previously argued the opposite, and that is the lesson.** It recorded
+the divergence from Penpot as "real rather than accidental", conceded in the same
+breath that "the default still asks for a backend that may be absent", and left
+it standing. Writing the reason down is not the same as having one — a documented
+defect reads as a decision, and is much harder to see afterwards than an
+undocumented one. Two things followed from it: a CI comment claiming groupfolders
+had to be installed *because* Team Folders were the default, and a later scenario
+adding `| storage | admin folder |` to a table where storage is irrelevant, just
+to escape the default. Grafana had the identical inversion.
+
+`MappingTest::testStorageDefaultsToAdminOwned` now pins it, and it asserts the
+OMITTED flag rather than an explicit `false` — the whole defect lived in what
+happens when nobody says anything.
 
 ### A mapping the app cannot honour is refused, and says why
 
@@ -487,11 +500,10 @@ footnote, and the row shows both what the admin chose and what a client reads.
 
 **The table says nothing about storage.** Naming a field is a claim that it
 matters, and what a mirror publishes over DAV is identical on an admin-owned
-folder and a Team Folder — so the mapping takes the app's own default, which is a
-Team Folder, and is also what a real admin gets. `storage` is named only where
-provisioning *is* the behaviour, in `admin-mapping.feature`. `groups` is present
-for the opposite reason: a Team Folder shared with nobody is mounted for nobody,
-so without it the file could not be written, let alone read back.
+folder and a Team Folder — so the mapping takes the app's own default, an
+admin-owned folder, which is the one backend that exists on every install.
+`storage` is named only where provisioning *is* the behaviour, in
+`admin-mapping.feature`, and a scenario wanting a Team Folder asks for one there.
 
 **The outline lost two rows** (`unmapped`, `ignored`) when it was reshaped around
 a mapping. That is deliberate and not a coverage regression: a mapping only ever

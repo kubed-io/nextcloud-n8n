@@ -112,6 +112,24 @@ final class MappingTest extends TestCase {
 		self::assertSame('outer/inner', $m->teamFolder);
 	}
 
+	/**
+	 * THE DEFAULT MUST BE THE BACKEND THAT ALWAYS EXISTS.
+	 *
+	 * A Team Folder needs groupfolders, an optional app that is absent on a stock
+	 * Nextcloud, so defaulting to it made the default mapping the one that could
+	 * not be provisioned. This asserts the omitted flag, not a passed `false` —
+	 * the bug was entirely in what happens when nobody says anything.
+	 */
+	public function testStorageDefaultsToAdminOwned(): void {
+		$m = Mapping::fromArray(['n8n_tag' => 't', 'team_folder' => 'f']);
+		self::assertFalse($m->useTeamFolder, 'an unset storage flag must mean an admin-owned folder');
+	}
+
+	public function testStorageIsOptedInto(): void {
+		$m = Mapping::fromArray(['n8n_tag' => 't', 'team_folder' => 'f', 'use_team_folder' => true]);
+		self::assertTrue($m->useTeamFolder, 'a Team Folder must still be selectable');
+	}
+
 	public function testRoundTripThroughToArray(): void {
 		$m = Mapping::fromArray(['n8n_tag' => 't', 'team_folder' => 'f', 'mode' => 'link', 'use_team_folder' => false]);
 		$again = Mapping::fromArray($m->toArray());
