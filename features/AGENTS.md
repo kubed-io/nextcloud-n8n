@@ -418,25 +418,72 @@ of one request — that is the missing capability, and naming it is what keeps
 this out of the @todo work queue. A unit test against a mocked N8nClient is
 the cheaper home if it is ever wanted.
 
-## file-type
+## view-workflow
 
-`features/file-type.feature`
+`features/view-workflow.feature`
 
-The custom mimetype makes a workflow a first-class FILE TYPE: its own mimetype,
-its own icon, DAV-exposed (and read-only) metadata, and — because n8n_mode is
-indexed — it's queryable. (What happens when you OPEN one is the related but
-separate "open with" concern; see open-with.feature.)
+LOOKING AT A WORKFLOW FILE — the only part of "it is a real file type" that
+anyone actually performs.
 
-Live for the WebDAV-observable surface (saga §14.9): the custom mimetype, the
-four nc:metadata-* props exposed in PROPFIND, the descriptive n8n_mode value for
-sync/unmapped/ignored, and the read-only (PROPPATCH-rejected) guarantee.
+### view-workflow
 
-Two rows are not live, for two DIFFERENT reasons — which is the whole point of
-having more than one status tag (features/README.md):
-  - the `link` row is @todo — the code exists and other files exercise a link
-    file live; only this assertion is unwritten.
-  - the REPORT-by-indexed-mode query is @blocked — the DAV search plumbing for
-    `nc:metadata-*` is unproven, and that is a capability, not a missing test.
+**This replaced `file-type.feature`, which described a CONSTRUCT.** "n8n workflow
+is a first-class file type" was about a mimetype, a property set and an index —
+none of which anyone does. Each turned out to be the end state of something else:
+
+| it described | whose end state it is | where it went |
+|---|---|---|
+| the mimetype is registered | **enabling the app** | `lifecycle.feature` |
+| a file carries this metadata | **creating** or **syncing** a workflow | asserted by those, shown here |
+| the mode property's wire value | what the metadata says | the DAV view outline |
+| the metadata cannot be edited | a refusal anyone can provoke | stayed, as a scenario |
+
+Nobody registers a mimetype; they install an app. Nobody sets metadata; they make
+a workflow and the app stamps it. Once each end state sits with the behaviour
+that produces it, what remains is looking — and that is a real thing to do.
+
+### A mapped folder shows its workflows as workflows
+
+**ONE SCENARIO, DELIBERATELY.** Behat cannot read rendered pixels, so the icon is
+proven the only way it can be: the file carries the app's own mimetype rather
+than `application/json`, and Nextcloud maps that mimetype to the app's glyph.
+Elaborating past that would be testing Nextcloud's icon renderer, which is not
+this app's to prove.
+
+This is the app's only genuinely UI-only surface, which is why it is one small
+scenario rather than a file.
+
+### Viewing one file over DAV shows what the app manages
+
+`@dav`, because a DAV client is the actor: it asks for the properties and gets
+back what the app knows.
+
+The property list moved out of the feature file and into the step. Spelling four
+property names out in Gherkin made the metadata look like the thing under test
+rather than the end state it is — and every behaviour that produces a mirror
+wants to say "and it carries its metadata" without restating the list.
+
+`link` stores as `reference`. The literal string `link` is `is_callable()`, which
+crashes core's PROPFIND — the only place in this app where a wire value differs
+from the name of the thing it carries, so it is an Examples column rather than a
+footnote.
+
+### What the app manages, only the app changes
+
+A REFUSAL SOMEONE CAN PROVOKE, so it earns a scenario: any DAV client can attempt
+a PROPPATCH. The identity of a mirror is the app's to write — a client that could
+edit `n8n_id` could silently re-point a file at a different workflow.
+
+The load-bearing assertion is that the VALUE did not change, not that a particular
+status came back.
+
+### Finding workflows by their mode
+
+`@blocked`, and the missing capability is named: there is no proven DAV REPORT
+search over `nc:metadata-*` to drive it against. `n8n_mode` is indexed precisely
+so this is a fast query; confirm the search surface exists and this becomes an
+ordinary `@todo`.
+
 
 ## lifecycle
 
@@ -444,6 +491,21 @@ having more than one status tag (features/README.md):
 
 Stage 0 (saga §5): the app installs and uninstalls cleanly on a real Nextcloud.
 A clean uninstall is also an app-store rule. No n8n contact.
+
+### Enabling the app
+
+**THE MIMETYPE IS WHAT ENABLING LEFT BEHIND.** It used to head a file called "n8n
+workflow is a first-class file type", which described the registration as though
+someone had gone and done it. Nobody registers a mimetype; they install an app,
+and the registration is the consequence — so it is asserted here, on the install.
+
+Proven by uploading a plain file rather than by reading the app's own metadata: a
+file this app has never touched, with nothing but the extension going for it,
+comes back typed as the app's own mimetype. That is what registration means and
+the only part of it a client can observe.
+
+Its visible consequence (a mapped folder that looks like workflows) belongs to
+`view-workflow.feature`; its removal belongs to `uninstall.feature`.
 
 ## mapping-membership
 
@@ -522,7 +584,7 @@ These need a design decision before they get concrete Then-steps:
 `features/open-with.feature`
 
 "Open with" — the openers offered for a managed workflow file, and which one is
-the default click. RELATED to the file type (file-type.feature: it's *because*
+the default click. RELATED to the file type (view-workflow.feature: it's *because*
 `.n8n.json` is a first-class type that we get custom openers) but a distinct
 concern, because the opener set + default depend on the file's MODE, not its type.
 
@@ -702,7 +764,7 @@ Authority is one-directional. The app NEVER writes n8n:ignore onto workflows in
 n8n; it only READS it (if present) as a per-workflow exclude at pull time. You add
 it yourself when you want the exception. The Nextcloud-side `n8n:sync` / `n8n:link`
 system tags the app stamps on managed files are AUTHORITATIVE + automatic and just
-mirror each file's mode (see the Tagging feature / file-type.feature) — they are
+mirror each file's mode (see the Tagging feature / view-workflow.feature) — they are
 not an override mechanism.
 
 So n8n:ignore is 100% optional: the mapping does everything on its own; the

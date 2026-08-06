@@ -35,6 +35,7 @@ Feature: Syncing a mapped n8n tag into Nextcloud
     When <actor> syncs <scope>
     Then each "<tag>" workflow appears as a file in the mapped folder
     And each file carries its n8n dates
+    And each file carries its n8n metadata
 
     Examples: every way a sync starts
       | actor        | scope         | tag               |

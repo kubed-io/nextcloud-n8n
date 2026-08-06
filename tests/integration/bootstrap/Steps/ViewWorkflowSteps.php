@@ -13,7 +13,7 @@ use Behat\Gherkin\Node\TableNode;
 use PHPUnit\Framework\Assert;
 
 /**
- * First-class-file-type steps (saga §14.9 `file-type.feature`): the custom
+ * View-workflow steps (`view-workflow.feature`): the custom
  * mimetype + icon, the four `nc:metadata-*` props exposed (and read-only) over
  * WebDAV, and the per-mode descriptive `n8n_mode` value.
  *
@@ -25,7 +25,7 @@ use PHPUnit\Framework\Assert;
  * migration. Reuses {@see OpenWithSteps::arrangeManagedFile} for the fixtures.
  * Composed into {@see \OCA\N8nSync\Tests\Integration\FeatureContext}.
  */
-trait FileTypeSteps {
+trait ViewWorkflowSteps {
 	private const N8N_MIME = 'application/n8n+json';
 
 	/** Carried between the PROPPATCH When and its Then. */
@@ -51,7 +51,10 @@ trait FileTypeSteps {
 		Assert::assertSame($mime, $this->davContentType($this->currentFilePath), 'the file does not carry the custom mimetype');
 	}
 
-	/** @Then the Files app shows the n8n icon instead of a generic JSON icon */
+	/**
+	 * @Then the mapped folder shows the workflows with the n8n icon
+	 * @Then the Files app shows the n8n icon instead of a generic JSON icon
+	 */
 	public function theFilesAppShowsTheN8nIcon(): void {
 		// The icon is a deterministic consequence of the registered mimetype: the
 		// RegisterMimetype migration maps application/n8n+json → the app's icon, so
@@ -64,21 +67,39 @@ trait FileTypeSteps {
 
 	// ── When/Then: PROPFIND exposes the metadata ─────────────────────────────────
 
-	/** @When /^a WebDAV client requests the file's properties \(PROPFIND\)$/ */
+	/** @When /^a WebDAV client requests the file's properties(?: \(PROPFIND\))?$/ */
 	public function aWebdavClientRequestsTheProperties(): void {
 		// The assertion is in the matching Then; each property is read back via the
 		// shared davReadMetadata (a Depth-0 PROPFIND that only returns 200-block props).
 	}
 
-	/** @Then the raw XML includes: */
-	public function theRawXmlIncludes(TableNode $table): void {
-		foreach ($table->getColumnsHash() as $row) {
-			$prop = $row['property'];
-			$key = $this->metadataKeyFromProp($prop);
-			Assert::assertNotNull(
-				$this->davReadMetadata($this->currentFilePath, $key),
-				"PROPFIND did not expose $prop in a 200 block",
-			);
+	/**
+	 * The app-managed properties a mirror carries, as ONE SENTENCE.
+	 *
+	 * It replaced a table of four property names spelled out in the feature file,
+	 * which made the metadata look like a thing under test rather than the end
+	 * state it is. Which four properties the app writes is the app's business, not
+	 * the reader's — and every behaviour that produces a mirror wants to say "and
+	 * it carries its metadata" without restating the list.
+	 *
+	 * @Then the file carries its n8n metadata
+	 * @Then each file carries its n8n metadata
+	 */
+	public function theFileCarriesItsN8nMetadata(): void {
+		$paths = $this->currentFilePath !== ''
+			? [$this->currentFilePath]
+			: array_map(fn (string $href): string => $this->hrefToFilesPath($href),
+				array_values($this->mappedFilesByWorkflowId($this->folderNameForTag($this->currentTag))));
+
+		Assert::assertNotSame([], $paths, 'no mirrored file to inspect');
+
+		foreach ($paths as $path) {
+			foreach (['n8n_id', 'n8n_mode', 'n8n_versionId', 'n8n_mapping'] as $key) {
+				Assert::assertNotNull(
+					$this->davReadMetadata($path, $key),
+					"PROPFIND did not expose nc:metadata-$key on $path in a 200 block",
+				);
+			}
 		}
 	}
 
@@ -118,7 +139,7 @@ trait FileTypeSteps {
 
 	/** @Given a :modeA workflow file and a :modeB workflow file in the same user's storage */
 	public function twoWorkflowFilesInStorage(string $modeA, string $modeB): void {
-		throw new \RuntimeException('REPORT-by-indexed-mode harness pending (file-type.feature scenario is @todo)');
+		throw new \RuntimeException('REPORT-by-indexed-mode harness pending (view-workflow.feature scenario is @blocked)');
 	}
 
 	/** @When a DAV REPORT searches for files where :prop is :value */
@@ -139,19 +160,6 @@ trait FileTypeSteps {
 		return str_starts_with($local, 'metadata-') ? substr($local, strlen('metadata-')) : $local;
 	}
 
-	/** Read the file's mimetype via PROPFIND (d:getcontenttype). */
-	private function davContentType(string $path): string {
-		$res = $this->davClient()->request('PROPFIND', $this->davEncode($path), [
-			'headers' => ['Depth' => '0', 'Content-Type' => 'application/xml'],
-			'body' => '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getcontenttype/></d:prop></d:propfind>',
-		]);
-		Assert::assertSame(207, $res->getStatusCode(), "PROPFIND $path failed: " . (string)$res->getBody());
-		$doc = new \SimpleXMLElement((string)$res->getBody());
-		$doc->registerXPathNamespace('d', 'DAV:');
-		$ct = (string)($doc->xpath('//d:getcontenttype')[0] ?? '');
-		// getcontenttype can carry a "; charset=..." suffix — keep only the type.
-		return trim(explode(';', $ct)[0]);
-	}
 
 	/** Attempt to set a single nc:metadata-* prop via PROPPATCH; returns the raw response. */
 	private function davProppatch(string $path, string $prop, string $value): \Psr\Http\Message\ResponseInterface {

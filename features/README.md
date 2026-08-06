@@ -33,7 +33,7 @@ apart, and nobody reads two files to answer one question.
 | `tag-sync.feature` | A workflow's tags, across all three surfaces |
 | `reserved-tags.feature` | The `n8n:*` control plane — `n8n:ignore` and the mode pills |
 | `mapping-membership.feature` | Which files a mapping owns, and what "unmapped" means |
-| `file-type.feature` | A mirror as a first-class file type: mimetype, icon, DAV props |
+| `view-workflow.feature` | Looking at a workflow: its icon in Files, its managed metadata over DAV |
 | `open-with.feature` | What clicking a mirror does |
 | `admin-connection.feature` | Reaching n8n at all: URL, key, and how failure reads |
 | `admin-mapping.feature` | Creating, editing, and removing a mapping |
@@ -178,7 +178,7 @@ can only disable and enable), and **no proven DAV REPORT search over
 `nc:metadata-*`**.
 
 If the stated reason stops being true, the tag is stale and the scenario is
-probably promotable. That is not hypothetical: `file-type.feature` skipped its
+probably promotable. That is not hypothetical: the old `file-type.feature` skipped its
 `link` row for "link integration is uncertain" while `delete.feature` and
 `move.feature` were both arranging a `link` file and running green.
 

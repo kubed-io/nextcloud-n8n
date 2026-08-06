@@ -86,7 +86,7 @@ default:
       paths:
       - '%paths.base%/../../features/sync-now.feature'
       - '%paths.base%/../../features/mapping-membership.feature'
-      - '%paths.base%/../../features/file-type.feature'
+      - '%paths.base%/../../features/view-workflow.feature'
       - '%paths.base%/../../features/open-with.feature'
       - '%paths.base%/../../features/purge.feature'
       - '%paths.base%/../../features/lifecycle.feature'

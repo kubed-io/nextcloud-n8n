@@ -60,6 +60,28 @@ trait WebDavTrait {
 		}
 	}
 
+	/**
+	 * Read the file's mimetype via PROPFIND (d:getcontenttype).
+	 *
+	 * SHARED PLUMBING, not a step helper. It lived private inside the view-workflow
+	 * steps, which worked only because every trait composes into one FeatureContext
+	 * — so the lifecycle steps calling it were quietly depending on an unrelated
+	 * step file continuing to exist under that name. It reads DAV; it belongs with
+	 * the rest of the DAV.
+	 */
+	private function davContentType(string $path): string {
+		$res = $this->davClient()->request('PROPFIND', $this->davEncode($path), [
+			'headers' => ['Depth' => '0', 'Content-Type' => 'application/xml'],
+			'body' => '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getcontenttype/></d:prop></d:propfind>',
+		]);
+		Assert::assertSame(207, $res->getStatusCode(), "PROPFIND $path failed: " . (string)$res->getBody());
+		$doc = new \SimpleXMLElement((string)$res->getBody());
+		$doc->registerXPathNamespace('d', 'DAV:');
+		$ct = (string)($doc->xpath('//d:getcontenttype')[0] ?? '');
+		// getcontenttype can carry a "; charset=..." suffix — keep only the type.
+		return trim(explode(';', $ct)[0]);
+	}
+
 	/** PUT file content at a path under the user's files root. */
 	private function davPut(string $path, string $body): void {
 		$this->assertStatus($this->davClient()->request('PUT', $this->davEncode($path), ['body' => $body]), [201, 204], "PUT $path");
@@ -151,7 +173,7 @@ trait WebDavTrait {
 	/**
 	 * PROPFIND a single nc:metadata-<key> on a file. Returns the property value,
 	 * or null if the property is absent (404 inside the multistatus). This is the
-	 * exact DAV surface the README documents for the file-type feature.
+	 * exact DAV surface the README documents for viewing a workflow.
 	 */
 	private function davReadMetadata(string $path, string $key): ?string {
 		$ns = 'http://nextcloud.org/ns';
