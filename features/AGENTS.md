@@ -98,28 +98,26 @@ to know which field broke reads the failure, not the spec.
 scenario** rather than hiding them in a step definition, so the two rows that
 exercise them are legible without opening PHP.
 
-**Only two fields have a default, and the table says so.** `n8n_tag`,
-`team_folder` and `mode` are all required by `Mapping::fromArray()` — omitting
-any of them is a refusal, not a default, and the refusal outline carries a row
-proving it for each. `nc_groups` defaults to empty; `use_team_folder` defaults to
-true.
+**Only the tag and the folder are required.** Omitting either is a refusal, not a
+default, and the refusal outline carries a row proving it for each. `mode`
+defaults to `link`, `nc_groups` to empty, and `use_team_folder` to true.
 
-Two of those are DIVERGENCES from the Penpot sibling, and both are real rather
-than accidental:
+**Mode did not always default, and writing this table is what found it.**
+Declaring what every unset field becomes forces a value for each, and there was
+none to put in the `mode` row — omitting it refused the whole mapping, so the
+shortest useful `occ` call could not be written and every caller had to name a
+mode it had no opinion about. `link` is the conservative choice: it downloads
+nothing and pushes nothing back. Grafana had the identical gap and was fixed in
+the same pass. An *unknown* mode is still refused — saying nothing and saying
+nonsense are different inputs.
 
-- **`mode` is required here; Penpot defaults it to `link`.** Penpot's reasoning
-  is that `link` is the conservative choice — it downloads nothing — so the
-  overwhelmingly common `occ` call can name a tag and nothing else. Grafana also
-  requires it, so this app is with the majority, but the majority is not
-  obviously right and the question is open.
-- **`use_team_folder` defaults to true here; Penpot changed its equivalent to
-  false.** groupfolders is an OPTIONAL app, so the old default asked for a
-  backend that is simply absent on a stock Nextcloud — and a default that cannot
-  be provisioned is not a default (the sibling's §C6.35).
-
-Both are behaviour changes and neither belongs in a specification-only change.
-They are written down here so the next person decides deliberately instead of
-discovering the difference from a failing test.
+One divergence from the Penpot sibling remains, and it is real rather than
+accidental: **`use_team_folder` defaults to true here; Penpot changed its
+equivalent to false**, because groupfolders is an OPTIONAL app and a default that
+cannot be provisioned on a stock Nextcloud is not a default (the sibling's
+§C6.35). Note this app now provisions the folder AT CREATE, so the failure is at
+least immediate rather than deferred to the first sync — but the default still
+asks for a backend that may be absent.
 
 ### A mapping the app cannot honour is refused, and says why
 
@@ -144,36 +142,69 @@ mapping it twice would make two mappings mean the same thing, and every workflow
 carrying that tag would belong to both. Enforced by
 `MappingService::assertTagUnique()`.
 
-### What a mapping locks, it locks for a reason
+### There is no way to change a mapping except its groups
 
-`@unbuilt`, and this is the widest gap in the file.
+`@decision`, not `@unbuilt`: **there is no operation to test, and that is the
+design.**
 
-**THE STANDARD, taken from the Penpot sibling: a mapping is immutable except for
-its groups.** Not enforced by a list of guards but by the API SHAPE — Penpot's
-`MappingController::update()` takes an id and `ncGroups`, and nothing else, so no
-caller can express a change to anything else. That is stronger than checking,
-because there is no path to check.
+Immutability is enforced by the API SHAPE rather than by guards.
+`MappingService::updateGroups()` takes an id and groups; the PUT endpoint takes
+`nc_groups` and nothing else; `update()` is gone and there is no update command.
+A caller cannot *express* a change to the tag, the folder, the storage backend or
+the mode, so there is no rejection to observe.
 
-**What this app does today is much weaker.** `MappingService::update()` takes a
-whole Mapping and guards exactly one field — `use_team_folder`. The n8n tag, the
-folder and the mode can all be changed on an existing mapping, and the admin
-card PUTs all of them on every save. Changing the tag silently re-points which
-workflows the mapping owns; changing the folder orphans everything already
-mirrored into the old one.
+**This section used to describe the opposite, and the gap was real.** `update()`
+took a whole Mapping and guarded exactly ONE field — `use_team_folder` — so the
+tag, the folder and the mode were all editable on a live mapping, and the admin
+card PUT every one of them on each save. Changing the tag silently re-decided
+which workflows the mapping owned; changing the folder orphaned everything
+already mirrored into the old one.
 
-Each field is locked for the same reason it is in the siblings: the change would
-force a live migration nobody asked for. Re-pointing the tag or the folder moves
-a whole tree of already-synced files; switching the storage backend migrates the
-provisioned folder and all its shares. Delete the mapping and add a new one —
-which makes the migration cost visible instead of hiding it behind a dropdown.
+Each field is fixed for the reason it always was: the change would force a live
+migration nobody asked for. Re-pointing the tag or the folder moves a whole tree
+of already-synced files; switching the storage backend migrates the provisioned
+folder and all of its shares; the mode decided how every existing file under the
+mapping was written. Delete the mapping and add a new one — which makes the
+migration cost visible instead of hiding it behind a dropdown.
 
-Written here as one outline whose Examples are the fields, so adding a field to a
-mapping means adding a row rather than writing a fifth scenario.
+**Groups stopped being an edit of the mapping at all.** They are a pass-through
+to the folder now — see the two sections that follow, and Penpot's §C6.35 — so
+the mapping object itself is wholly immutable and "editing a mapping" means
+"re-sharing its folder".
 
-**Groups are the exception, and will stop being an edit at all.** Once groups
-become a pass-through to the folder (the change this app has not taken yet, see
-the Penpot sibling's §C6.35), "editing a mapping" stops existing as a concept:
-the groups live on the folder and the mapping is wholly immutable.
+### The groups a mapped folder is shared with can be changed
+
+The one edit a mapping has, and the only one it should ever have.
+
+**NARROWING AND CLEARING ARE THE POINT.** The old `syncGroupShares()` wrote the
+listed groups and left the rest alone, so a group could be granted and never
+revoked, and "set the groups to nothing" silently did nothing at all. It could
+only start pruning safely once the sync stopped re-asserting a stored list — a
+sync that pruned from a stored list would have been quietly revoking access an
+admin had granted by hand.
+
+The folder name differs per storage kind deliberately: removing a mapping deletes
+nothing, so a folder outlives the mapping that made it, and a later Examples row
+reusing the name would inherit a folder of the wrong kind.
+
+### Groups are read from the folder, not from the mapping
+
+**The scenario that explains why the whole change exists.** Three apps in this
+family — this one, Grafana and Penpot — can map to the same folder. While each
+stored its own group list, every sync stamped that list over the others', so all
+three fought for control of one folder forever and none of them was wrong.
+Reading the groups off the folder makes the folder the single answer.
+
+The share is made through **groupfolders' own `occ` command**, so it comes from
+something that is not this app — otherwise the scenario would prove only that the
+app agrees with itself.
+
+It is written on a Team Folder for a checked reason: **core ships no `occ` command
+that creates a plain group share.** Verified against a live Nextcloud rather than
+assumed — core has `sharing:cleanup-remote-storages`, `delete-orphan-shares`,
+`expiration-notification` and `fix-share-owners`, and nothing that shares. A first
+draft called `occ sharing:share`, which does not exist and would have failed in
+CI.
 
 ### Two mappings may not target the same folder
 
