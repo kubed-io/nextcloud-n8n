@@ -225,6 +225,19 @@ The test: can you write the rows as a list of *values*, or only as a list of
 
 ## Wording is an API
 
+### Never end a line with `JSON`
+
+The syntax highlighter reads a trailing `JSON` as a doc-string content-type hint,
+and everything after it in the file stops being highlighted — so one word at the
+end of one sentence makes the rest of the spec unreadable in the editor.
+
+Mid-line is fine: *"the workflow's JSON is printed"* highlights correctly. Only
+the last word matters. Add the noun — `JSON files`, `JSON body` — or reword.
+
+Cheap to write, expensive to notice, and invisible in review because the diff
+looks perfect. `grep -n 'JSON\s*$' features/*.feature` finds them all.
+
+
 Every step line is a function signature, so the vocabulary is deliberately small
 and parameterised. Read `tests/integration/bootstrap/Steps/` before inventing a
 phrasing — **two wordings for one idea are two functions to maintain and two ways

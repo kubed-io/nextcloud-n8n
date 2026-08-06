@@ -3,7 +3,7 @@
 Feature: Looking at a workflow file
   As someone with workflows mirrored into Nextcloud
   I want to see them for what they are, and see what the app knows about them
-  So that a mapped folder reads as workflows rather than as anonymous JSON
+  So that a mapped folder reads as workflows rather than as anonymous JSON files
 
   Background:
     Given the app is connected to n8n
