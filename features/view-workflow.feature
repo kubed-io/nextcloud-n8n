@@ -24,7 +24,8 @@ Feature: Looking at a workflow file
   Scenario: A mapped folder shows its workflows as workflows
     Given a folder mapped as "sync" to the n8n tag "nextcloud:alpha"
     And n8n has workflows tagged "nextcloud:alpha"
-    When the "nextcloud:alpha" mapping is synced
+    And the "nextcloud:alpha" mapping has been synced
+    When the user views the contents of the mapped folder
     Then the mapped folder shows the workflows with the n8n icon
     # ONE SCENARIO, DELIBERATELY. Behat cannot read rendered pixels, so the icon is
     # proven the only way it can be: the file carries the app's own mimetype rather
@@ -33,23 +34,49 @@ Feature: Looking at a workflow file
     # notes: AGENTS.md#a-mapped-folder-shows-its-workflows-as-workflows
 
   @user @dav
-  Scenario Outline: Viewing one file over DAV shows what the app manages
-    Given a managed workflow file in "<mode>" mode
+  Scenario Outline: Viewing the DAV properties on a file shows n8n specific details
+    Given a mapping with the following values:
+      | tag     | <tag>        |
+      | folder  | <folder>     |
+      | mode    | <mode>       |
+      | storage | admin folder |
+    And a workflow "<workflow>" mirrored into that folder
     When a WebDAV client requests the file's properties
-    Then the file carries its n8n metadata
-    And its "nc:metadata-n8n_mode" property is "<dav value>"
+    Then the response carries the properties the app manages:
+      | property                   | value             |
+      | nc:metadata-n8n_id         | the workflow's id |
+      | nc:metadata-n8n_mapping    | the mapping's id  |
+      | nc:metadata-n8n_mode       | <stored mode>     |
+      | nc:metadata-n8n_versionId  | set               |
+      | nc:metadata-n8n_syncedHash | set               |
 
-    Examples: every mode a file can be in
-      | mode     | dav value |
-      | sync     | sync      |
-      | link     | reference |
-      | unmapped | unmapped  |
-      | ignored  | ignored   |
+    Examples: both modes a mapping can hold
+      | mode | stored mode | tag                 | folder    | workflow |
+      | sync | sync        | nextcloud:view-sync | bananacat | fuzzler  |
+      | link | reference   | nextcloud:view-link | applepie  | wobbler  |
 
     # `link` stores as "reference" — the literal string "link" is `is_callable()`,
     # which crashes core's PROPFIND. That is the only place in this app where a
-    # wire value differs from the name of the thing it carries.
-    # notes: AGENTS.md#viewing-one-file-over-dav-shows-what-the-app-manages
+    # wire value differs from the name of the thing it carries, so the row spells
+    # out both: what the admin chose, and what a DAV client reads back.
+    #
+    # THE TABLE IS THE FIVE KEYS A MIRROR ARRIVES WITH — what `stampSynced` writes
+    # when a file lands. `n8n_syncedTags` is managed too, but the tag reconciler
+    # stamps it afterwards and only once there are content tags, so it is not part
+    # of what viewing a fresh mirror shows.
+    #
+    # TWO ROWS, WHERE THERE USED TO BE FOUR. A mapping only ever produces `sync` or
+    # `link`; `unmapped` and `ignored` are what a file BECOMES — by being moved out
+    # of its folder, or hand-tagged `n8n:ignore` — so neither can be reached from a
+    # mapping form, and neither belongs to a scenario shaped like one. Their DAV
+    # values are asserted where those behaviours live: open-with.feature and
+    # reserved-tags.feature.
+    #
+    # `set` means present and non-empty — the same claim penpot's file-type
+    # scenarios make. A version id and a body hash are opaque by design; pinning a
+    # literal would assert the sync engine's internals rather than the fact under
+    # test, which is that the app publishes them and a client can read them.
+    # notes: AGENTS.md#viewing-the-dav-properties-on-a-file-shows-n8n-specific-details
 
   @user @dav
   Scenario: What the app manages, only the app changes

@@ -37,6 +37,12 @@ trait ViewWorkflowSteps {
 
 	private const N8N_MIME = 'application/n8n+json';
 
+	/** The mapping the current file belongs to, for the `the mapping's id` cell. */
+	private string $currentMappingId = '';
+
+	/** @var list<string> what the folder listing returned, for the icon assertion */
+	private array $viewedFiles = [];
+
 	/** Carried between the PROPPATCH When and its Then. */
 	private string $proppatchKey = '';
 	private ?string $proppatchOriginal = null;
@@ -51,6 +57,40 @@ trait ViewWorkflowSteps {
 		// plain sync file is the simplest. (The mode-specific rows use the
 		// "in :mode mode" step owned by OpenWithSteps.)
 		$this->arrangeManagedFile('sync');
+	}
+
+	/**
+	 * @Given a workflow :name mirrored into that folder
+	 *
+	 * The follow-on to `a mapping with the following values:`, which describes the
+	 * mapping but does not create its folder — it is a pre-state for scenarios
+	 * about the mapping itself, where nothing is ever stored in it.
+	 *
+	 * "That folder" is the one the table just named. It is read back from the store
+	 * rather than taken from the table, which is what makes the scenario's claim
+	 * honest: the file lands where the APP put the mapping's folder, not where the
+	 * test assumed it would be. The preceding step resets the store, so there is
+	 * exactly one mapping to find.
+	 */
+	public function aWorkflowMirroredIntoThatFolder(string $name): void {
+		$mappings = $this->listMappings();
+		if (count($mappings) !== 1) {
+			$this->fail('expected exactly one mapping in the store, found ' . count($mappings));
+		}
+		$mapping = $mappings[0];
+
+		$folder = (string)($mapping['team_folder'] ?? '');
+		if ($folder === '') {
+			$this->fail('the mapping stored no folder to mirror into');
+		}
+		$this->currentMappingId = (string)($mapping['id'] ?? '');
+		$this->currentTag = (string)($mapping['n8n_tag'] ?? '');
+		$this->currentFolder = $folder;
+
+		$this->davMkdir($folder);
+		// A PUT into a mapped folder is create-on-land: the app makes the workflow
+		// in n8n and stamps the file. putManagedFile fails loudly if it did not.
+		$this->putManagedFile($folder . '/' . $name . '.n8n.json', $name);
 	}
 
 	// ── the CLI view: what n8n holds, read without the mirror ──────────────────
@@ -112,17 +152,40 @@ trait ViewWorkflowSteps {
 	}
 
 	/**
+	 * @When the user views the contents of the mapped folder
+	 *
+	 * Opening a folder in the Files app is a Depth-1 PROPFIND — the same request the
+	 * browser makes — so this lists the folder for real and remembers what came
+	 * back. The assertion is in the matching Then.
+	 */
+	public function theUserViewsTheContentsOfTheMappedFolder(): void {
+		Assert::assertNotSame('', $this->currentFolder, 'no mapped folder — a Given must set one');
+		$this->viewedFiles = array_map(
+			fn (string $href): string => $this->hrefToFilesPath($href),
+			array_values($this->mappedFilesByWorkflowId($this->currentFolder)),
+		);
+	}
+
+	/**
 	 * @Then the mapped folder shows the workflows with the n8n icon
 	 * @Then the Files app shows the n8n icon instead of a generic JSON icon
+	 *
+	 * EVERY FILE THE USER JUST SAW, not merely the last one arranged. A folder of
+	 * workflows where one row renders as a generic document is exactly the failure
+	 * this scenario exists to catch, and checking a single file would miss it.
 	 */
 	public function theFilesAppShowsTheN8nIcon(): void {
 		// The icon is a deterministic consequence of the registered mimetype: the
 		// RegisterMimetype migration maps application/n8n+json → the app's icon, so
 		// a file carrying that mimetype (not application/json) renders the n8n glyph.
 		// Behat can't read the rendered pixels, so the mimetype IS the testable proof.
-		$ct = $this->davContentType($this->currentFilePath);
-		Assert::assertSame(self::N8N_MIME, $ct, 'mimetype is not the custom n8n type — the icon would be the generic JSON glyph');
-		Assert::assertNotSame('application/json', $ct, 'file is still plain JSON');
+		$paths = $this->viewedFiles !== [] ? $this->viewedFiles : [$this->currentFilePath];
+		Assert::assertNotSame([], array_filter($paths), 'no files to inspect — the folder listed nothing');
+
+		foreach ($paths as $path) {
+			$ct = $this->davContentType($path);
+			Assert::assertSame(self::N8N_MIME, $ct, "$path does not carry the custom n8n mimetype — its icon would be the generic glyph");
+		}
 	}
 
 	// ── When/Then: PROPFIND exposes the metadata ─────────────────────────────────
@@ -160,6 +223,54 @@ trait ViewWorkflowSteps {
 					"PROPFIND did not expose nc:metadata-$key on $path in a 200 block",
 				);
 			}
+		}
+	}
+
+	/**
+	 * @Then the response carries the properties the app manages:
+	 *
+	 * Reads each `nc:metadata-*` prop back with a Depth-0 PROPFIND that only counts
+	 * values returned in a 200 block, so a prop the server reports as 404 fails
+	 * here rather than reading as an empty string.
+	 *
+	 * THE VALUE COLUMN TAKES THREE FORMS, and no more — a table that can say
+	 * anything stops being readable:
+	 *
+	 *   set                  present and non-empty; the value is opaque by design
+	 *   the workflow's id    the id the app stamped when the file landed
+	 *   the mapping's id     the mapping the file came from
+	 *   anything else        an exact literal (the mode's stored value)
+	 *
+	 * The two `the …'s id` forms exist because presence is too weak for them: an id
+	 * that is merely non-empty could be any workflow's, and the whole point of
+	 * publishing it is that it names THIS one.
+	 */
+	public function theResponseCarriesTheManagedProperties(TableNode $table): void {
+		Assert::assertNotSame('', $this->currentFilePath, 'no file to inspect — a Given must arrange one');
+
+		foreach ($table->getHash() as $row) {
+			$prop = trim((string)($row['property'] ?? ''));
+			$expected = trim((string)($row['value'] ?? ''));
+			$key = $this->metadataKeyFromProp($prop);
+			$actual = $this->davReadMetadata($this->currentFilePath, $key);
+
+			if ($actual === null || $actual === '') {
+				$this->fail("PROPFIND did not return $prop on {$this->currentFilePath} in a 200 block");
+			}
+
+			$want = match ($expected) {
+				'set' => null,
+				"the workflow's id" => (string)$this->lastWorkflowId,
+				"the mapping's id" => $this->currentMappingId,
+				default => $expected,
+			};
+			if ($want === null) {
+				continue;
+			}
+			if ($want === '') {
+				$this->fail("the scenario asked for '$expected' but the arrange never recorded one");
+			}
+			Assert::assertSame($want, $actual, "$prop carried the wrong value");
 		}
 	}
 

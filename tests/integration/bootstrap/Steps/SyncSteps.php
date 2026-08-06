@@ -134,7 +134,15 @@ trait SyncSteps {
 		$this->runMappingSync('push', $this->currentTag);
 	}
 
-	/** @When the :tag mapping is synced */
+	/**
+	 * @When the :tag mapping is synced
+	 * @Given the :tag mapping has been synced
+	 *
+	 * The same run, in the two tenses a spec needs it. A feature ABOUT syncing puts
+	 * it in the When; a feature about looking at what a sync left behind needs the
+	 * mirror to exist as pre-state, and past tense is what keeps the reader's eye on
+	 * that feature's own behaviour instead of on this one.
+	 */
 	public function theMappingIsSynced(string $tag): void {
 		$this->currentTag = $tag;
 		$this->runMappingSync('pull', $tag);

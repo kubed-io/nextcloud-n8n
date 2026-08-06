@@ -61,15 +61,18 @@ jobs:
           exit $status
         fi
 
-    # Both of these answer, in about a second and with no services at all,
-    # questions the integration matrix otherwise answers in minutes after booting
-    # a Nextcloud and an n8n — or, worse, does not answer at all because the
-    # failure mode is a silently-skipped scenario.
+    # All three answer, in about a second and with no services at all, questions
+    # the integration matrix otherwise answers in minutes after booting a
+    # Nextcloud and an n8n — or, worse, does not answer at all because the
+    # failure mode is a silently-skipped scenario or unreadable prose.
     - name: Behat suites partition features/
       run: bash tests/integration/bin/check-suites.sh
 
     - name: Behat step definitions resolve
       run: bash tests/integration/bin/check-step-definitions.sh
+
+    - name: Feature notes breadcrumbs resolve
+      run: bash tests/integration/bin/check-notes-anchors.sh
 
     - name: Coding standard (php-cs-fixer)
       run: composer run cs:check

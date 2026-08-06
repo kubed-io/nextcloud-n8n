@@ -453,20 +453,44 @@ this app's to prove.
 This is the app's only genuinely UI-only surface, which is why it is one small
 scenario rather than a file.
 
-### Viewing one file over DAV shows what the app manages
+### Viewing the DAV properties on a file shows n8n specific details
 
 `@dav`, because a DAV client is the actor: it asks for the properties and gets
 back what the app knows.
 
-The property list moved out of the feature file and into the step. Spelling four
-property names out in Gherkin made the metadata look like the thing under test
-rather than the end state it is — and every behaviour that produces a mirror
-wants to say "and it carries its metadata" without restating the list.
+**This is the one scenario that spells the properties out**, and everywhere else
+the same fact is one sentence — `the file carries its n8n metadata`. The two are
+not in tension, they are the difference between a subject and an end state. Sync,
+create and rename all *produce* a mirror; which keys that mirror carries is the
+app's business, and listing them there would make every one of those scenarios
+look like a metadata test. Here the properties genuinely are what is under test,
+so the table is the specification.
+
+The keys are the five `stampSynced` writes when a file lands: `n8n_id`,
+`n8n_mapping`, `n8n_mode`, `n8n_versionId`, `n8n_syncedHash`. `n8n_syncedTags` is
+managed too but is stamped afterwards by the tag reconciler, and only once there
+are content tags — so it is not part of what viewing a fresh mirror shows.
+
+The value column takes three forms and no more, because a table that can say
+anything stops being readable: `set` (present and non-empty), `the workflow's id`
+/ `the mapping's id` (resolved against what the arrange recorded), or an exact
+literal. The two id forms exist because presence is too weak for them — an id
+that is merely non-empty could be any workflow's, and the whole point of
+publishing it is that it names *this* one. A version id and a body hash are
+opaque by design; pinning literals there would assert the sync engine's internals
+instead of the fact under test.
 
 `link` stores as `reference`. The literal string `link` is `is_callable()`, which
 crashes core's PROPFIND — the only place in this app where a wire value differs
 from the name of the thing it carries, so it is an Examples column rather than a
-footnote.
+footnote, and the row shows both what the admin chose and what a client reads.
+
+**The outline lost two rows** (`unmapped`, `ignored`) when it was reshaped around
+a mapping. That is deliberate and not a coverage regression: a mapping only ever
+produces `sync` or `link`. The other two are what a file *becomes* — moved out of
+its folder, or hand-tagged `n8n:ignore` — so they cannot be reached from a
+mapping form at all, and their DAV values are asserted where those behaviours
+live, in `open-with.feature` and `reserved-tags.feature`.
 
 ### What the app manages, only the app changes
 
