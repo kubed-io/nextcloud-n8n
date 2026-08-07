@@ -176,10 +176,25 @@ trait SyncSteps {
 		Assert::assertSame(0, $res['exit'], "running the scheduled pull failed:\n{$res['output']}");
 	}
 
-	/** @When the :tag tag is removed from the workflow in n8n */
+	/**
+	 * @When the :tag tag is removed from the workflow in n8n
+	 *
+	 * TAKES THE WORKFLOW FROM WHICHEVER ARRANGE RAN. It only read
+	 * `$seededWorkflows`, which is filled by `n8n has workflows tagged` — the Given
+	 * this step was written beside, in the file that became sync-now.feature. Its
+	 * scenario now lives in tag-sync.feature and opens with a managed-file arrange
+	 * instead, which records `lastWorkflowId` and seeds nothing; the step then
+	 * untagged `''` and failed with "no seeded workflow to untag".
+	 *
+	 * Moving a scenario moves its assumptions with it, and this one's were in the
+	 * step rather than the feature.
+	 */
 	public function theTagIsRemovedFromTheWorkflowInN8n(string $tag): void {
-		$id = (string)reset($this->seededWorkflows);
-		Assert::assertNotSame('', $id, 'no seeded workflow to untag');
+		$id = (string)($this->lastWorkflowId ?? '');
+		if ($id === '') {
+			$id = (string)reset($this->seededWorkflows);
+		}
+		Assert::assertNotSame('', $id, 'no workflow to untag — the arrange recorded neither a managed file nor a seeded workflow');
 		$this->untaggedWorkflowId = $id;
 		$this->setN8nWorkflowTags($id, []);
 	}

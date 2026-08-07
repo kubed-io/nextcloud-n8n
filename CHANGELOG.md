@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **A new mapping defaults to an admin-owned folder, not a Team Folder.** Leaving the storage backend unset used to mean "Team Folder", which needs the optional `groupfolders` app — so on a stock Nextcloud the default mapping was the one that could not be provisioned, and filling in only the required fields got you a refusal. A Team Folder is now opted into. Existing mappings are unaffected: every mapping this app has saved records its backend explicitly.
 - Spec: there is no longer a `file-type.feature` either. A mimetype, a property set and an index are not things anyone does — the registration is what enabling the app leaves behind, the metadata is what creating or syncing a workflow leaves behind, and what remains is looking at the file, which now has its own small feature.
 - Spec: there is no longer a `reconcile.feature`. Reconciling is how an n8n-side change reaches Nextcloud, not something anyone does — its scenarios moved to the behaviours that own them, and the first sync now has a file of its own.
 - **Re-share a mapped folder from anywhere and this app reflects it.** The groups a mapped folder is shared with are now read from the folder itself rather than stored alongside the mapping, so a change made in Files, with `occ`, or by another app sharing the same folder shows up here — and a sync never puts back a group you removed. Setting the groups to nothing now actually clears them, which it silently did not before.
