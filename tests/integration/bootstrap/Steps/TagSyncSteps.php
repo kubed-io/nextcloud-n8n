@@ -174,7 +174,7 @@ trait TagSyncSteps {
 
 	/**
 	 * The mirror WAS written. Etag inequality is the assertion: Nextcloud mints a fresh
-	 * etag on every write, so this is the direct counterpart of reconcile.feature's
+	 * etag on every write, so this is the direct counterpart of the deleted
 	 * "no file was rewritten" — and the reason that one means anything, since a pull
 	 * that had stopped writing altogether would satisfy it and fail this.
 	 *

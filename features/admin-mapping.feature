@@ -15,9 +15,9 @@ Feature: Admin configures folder mappings
     # The tag and the folder are the only required fields — leaving either out is
     # a refusal, not a default, and the outline below proves it for each.
     And an unset field on the mapping form defaults to:
-      | mode    | link        |
-      | groups  |             |
-      | storage | team folder |
+      | mode    | link         |
+      | groups  |              |
+      | storage | admin folder |
 
     # A mapping is one fact, so it is one sentence plus a table of what is in it —
     # the same table whether it is pre-state or the action. A blank cell means the

@@ -63,6 +63,9 @@ trait MappingSteps {
 	/** @var array<string,string> what an unset field is expected to become */
 	private array $mappingDefaults = [];
 
+	/** Whether this scenario has already reset the store — see the step's docblock. */
+	private bool $mappingsDeclared = false;
+
 	/** @Given no n8n tags are mapped */
 	public function noN8nTagsAreMapped(): void {
 		foreach ($this->listMappings() as $m) {
@@ -96,19 +99,67 @@ trait MappingSteps {
 	/**
 	 * @Given a mapping with the following values:
 	 *
-	 * The pre-state twin of `the admin maps the tag :tag with:`. It resets the
-	 * store first, so a scenario opening with it starts from a known count rather
-	 * than inheriting whatever the previous scenario left behind.
+	 * The pre-state twin of `the admin maps the tag :tag with:`.
+	 *
+	 * REPEATING IT DECLARES ANOTHER MAPPING; it does not replace the first. The
+	 * reset happens once per scenario, on the first use, which is what the isolation
+	 * was ever for — starting from a known count instead of inheriting whatever the
+	 * previous scenario left behind. Resetting on EVERY use meant a Background could
+	 * only ever describe one mapping, and silently: the second table wiped the first
+	 * and nothing said so.
 	 */
 	public function aMappingWithTheFollowingValues(TableNode $table): void {
-		$this->noN8nTagsAreMapped();
+		if (!$this->mappingsDeclared) {
+			$this->noN8nTagsAreMapped();
+			$this->mappingsDeclared = true;
+		}
+
 		$form = $this->formValues($table);
 		$tag = $form['tag'] ?? '';
 		unset($form['tag']);
+
 		$res = $this->addMappingFromForm($tag, $form);
 		if ($res['exit'] !== 0) {
 			$this->fail("the pre-state mapping could not be created:\n{$res['output']}");
 		}
+
+		if (isset($form['folder'])) {
+			$this->davMkdir($form['folder']);
+		}
+	}
+
+	/**
+	 * The n8n tag whose mapping owns $folder, read from the LIVE store rather than
+	 * anything recorded at arrange time.
+	 *
+	 * copy.feature, purge.feature and delete.feature still declare their Background
+	 * mapping through `CreateSteps::aFolderMappedAsModeToTag` (a direct
+	 * `occ add-mapping` call), not `a mapping with the following values:` — an
+	 * earlier version of this method only knew about mappings made the second way,
+	 * and failed with "no mapping declares the folder…" for the other three
+	 * features in CI. Every mapping lands in the same store however it was made, so
+	 * reading it back from there works regardless of which arrange a feature uses.
+	 */
+	private function tagForFolder(string $folder): string {
+		foreach ($this->listMappings() as $m) {
+			if (($m['team_folder'] ?? '') === $folder) {
+				return (string)($m['n8n_tag'] ?? '');
+			}
+		}
+		$this->fail("no mapping owns the folder '$folder' — check the Background");
+	}
+
+	/** The folder of the first `sync` mapping in the store, for backend-agnostic arranges. */
+	private function firstSyncFolder(): string {
+		foreach ($this->listMappings() as $m) {
+			if (($m['mode'] ?? '') === 'sync') {
+				$folder = (string)($m['team_folder'] ?? '');
+				if ($folder !== '') {
+					return $folder;
+				}
+			}
+		}
+		$this->fail('no sync mapping in the store to arrange against');
 	}
 
 	/** @When the admin maps the tag :tag with: */

@@ -26,6 +26,20 @@ Feature: Mapping membership is resolved by folder
     And it is "untracked" if it has no n8n id, or "unmapped" if it carries one
 
   @admin @ui @occ
+  Scenario: A sync never touches a file outside every mapping
+    Given a folder mapped as "sync" to the n8n tag "nextcloud:alpha"
+    And an unmapped workflow file exists outside every mapping
+    When the admin syncs every mapping
+    Then the unmapped file is left untouched (it is outside the mapping's scope)
+    # THE SCOPE OF A SYNC IS A MEMBERSHIP QUESTION, so it is answered here rather
+    # than in a file about syncing. "Which files does this mapping own" is what
+    # this file exists to say; a sync simply acts on that answer.
+    #
+    # It moved here from a scenario about the sync button, where it was one Then
+    # among four — so "an unmapped file is out of scope" could only fail as part
+    # of "the button worked", and never named itself.
+    # notes: AGENTS.md#a-sync-never-touches-a-file-outside-every-mapping
+
   Scenario: Folder mappings are metadata, so a mapped folder can nest in another
     Given a folder mapped to the n8n tag "nextcloud:outer"
     And a subfolder of it mapped to the n8n tag "nextcloud:inner"

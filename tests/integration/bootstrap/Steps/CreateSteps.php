@@ -20,9 +20,19 @@ use PHPUnit\Framework\Assert;
  */
 trait CreateSteps {
 	/**
-	 * Set up an admin-owned (no groupfolders) mapping + the backing folder so a
-	 * WebDAV PUT into it resolves to a mapping. Admin-owned keeps CI free of the
-	 * groupfolders app; resolveForPath only cares about the folder name.
+	 * Set up an admin-owned mapping + the backing folder so a WebDAV PUT into it
+	 * resolves to a mapping. `resolveForPath` only cares about the folder name, so
+	 * the storage kind is invisible to every scenario that uses this.
+	 *
+	 * ADMIN-OWNED MATCHES THE APP'S OWN DEFAULT, so this arrange builds the mapping
+	 * an admin gets by filling in the required fields and nothing else. It is also
+	 * cheaper than a Team Folder mount. A scenario that wants the other backend
+	 * says so in its own table.
+	 *
+	 * This note used to read "keeps CI free of the groupfolders app", which stopped
+	 * being true once integration.yml installed it on every leg — and a stale note
+	 * is worse than none, because it gets believed: it is why a later scenario put
+	 * `| storage | admin folder |` in a table where storage is irrelevant.
 	 *
 	 * @Given a folder mapped as :mode to the n8n tag :tag
 	 */
@@ -39,6 +49,13 @@ trait CreateSteps {
 		Assert::assertSame(0, $res['exit'], "adding mapping for $tag failed:\n{$res['output']}");
 		$this->davMkdir($folder);
 		$this->currentFolder = $folder;
+		// NAMES THE MAPPING, so a later step can say "the mapped folder" without
+		// repeating the tag. Every other mapping arrange does this
+		// (SetupTrait::setupSyncMappingAndFolder, TagSyncSteps::tagArrangeManagedFile);
+		// this one did not, so `currentTag` stayed '' and folderNameForTag('') fell
+		// through to its 'mapped' default — a folder no scenario ever creates. That
+		// is the 404 sync-now.feature hit on "each file carries its n8n dates".
+		$this->currentTag = $tag;
 	}
 
 	/** @Given a folder that is not mapped */

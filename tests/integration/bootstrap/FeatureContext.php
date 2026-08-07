@@ -17,17 +17,17 @@ use OCA\N8nSync\Tests\Integration\Steps\AppLifecycleSteps;
 use OCA\N8nSync\Tests\Integration\Steps\CopySteps;
 use OCA\N8nSync\Tests\Integration\Steps\CreateSteps;
 use OCA\N8nSync\Tests\Integration\Steps\DeleteSteps;
-use OCA\N8nSync\Tests\Integration\Steps\FileTypeSteps;
 use OCA\N8nSync\Tests\Integration\Steps\MappingMembershipSteps;
 use OCA\N8nSync\Tests\Integration\Steps\MappingSteps;
 use OCA\N8nSync\Tests\Integration\Steps\ModeChangeSteps;
 use OCA\N8nSync\Tests\Integration\Steps\MoveSteps;
 use OCA\N8nSync\Tests\Integration\Steps\OpenWithSteps;
 use OCA\N8nSync\Tests\Integration\Steps\PurgeSteps;
-use OCA\N8nSync\Tests\Integration\Steps\ReconcileSteps;
 use OCA\N8nSync\Tests\Integration\Steps\RenameSteps;
 use OCA\N8nSync\Tests\Integration\Steps\ReservedTagsSteps;
+use OCA\N8nSync\Tests\Integration\Steps\SyncSteps;
 use OCA\N8nSync\Tests\Integration\Steps\TagSyncSteps;
+use OCA\N8nSync\Tests\Integration\Steps\ViewWorkflowSteps;
 use OCA\N8nSync\Tests\Integration\Support\N8nApiTrait;
 use OCA\N8nSync\Tests\Integration\Support\OccTrait;
 use OCA\N8nSync\Tests\Integration\Support\SetupTrait;
@@ -80,10 +80,10 @@ final class FeatureContext implements Context {
 	use PurgeSteps;
 	use CopySteps;
 	use ModeChangeSteps;
-	use ReconcileSteps;
+	use SyncSteps;
 	use ReservedTagsSteps;
 	use TagSyncSteps;
-	use FileTypeSteps;
+	use ViewWorkflowSteps;
 	use MappingMembershipSteps;
 
 	private const APP_ID = 'n8n_sync';
@@ -164,6 +164,21 @@ final class FeatureContext implements Context {
 	}
 
 	// ── per-scenario lifecycle (teardown) ─────────────────────────────────────
+
+	/**
+	 * Arm the once-per-scenario mapping reset.
+	 *
+	 * `a mapping with the following values:` clears the store the FIRST time a
+	 * scenario uses it and appends afterwards, so a Background can declare several
+	 * mappings by repeating the step. That "first time" is per scenario, which is
+	 * what this re-arms — without it the second scenario in a feature would append
+	 * to the first one's leftovers.
+	 *
+	 * @BeforeScenario
+	 */
+	public function armMappingReset(): void {
+		$this->mappingsDeclared = false;
+	}
 
 	/**
 	 * After every scenario, delete any n8n workflows the app created and the NC

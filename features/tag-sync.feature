@@ -421,6 +421,27 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     And the unrelated file still carries the "old" pill
 
   @n8n @in-n8n @ui @occ
+  Scenario: A workflow that loses the mapping tag in n8n loses its mirror
+    Given a managed "sync" workflow file in "flows" tagged "flows"
+    When the "flows" tag is removed from the workflow in n8n
+    And the "flows" mapping is synced
+    Then the file is pruned from the folder
+    # THE BEHAVIOUR IS THE UNTAGGING, NOT THE SYNC. The mapping tag is what makes a
+    # workflow the folder's, so removing it upstream is a statement that the
+    # workflow no longer belongs — and the mirror follows. The sync is only how the
+    # news arrives, which is why this sits with the other tag behaviours rather
+    # than in a file about running a sync.
+    #
+    # It moved here from a "Manual per-mapping sync" file, where it had been one
+    # Then among four inside a scenario about the button. Nothing named it, so
+    # nothing could fail on it alone.
+    #
+    # Note the eject gesture above is the deliberate, Nextcloud-side twin of this:
+    # dropping the pill yourself keeps the file and marks it ignored. Losing the
+    # tag upstream is not a request to keep anything.
+    # notes: AGENTS.md#a-workflow-that-loses-the-mapping-tag-in-n8n-loses-its-mirror
+
+  @n8n @in-n8n @ui @occ
   Scenario: Reconcile never mints a definition it is about to drop
     Given a managed "sync" file last synced with tags "flows" and "linux"
     And the workflow in n8n now has only "flows" and "linux"

@@ -30,7 +30,7 @@ Feature: Purge the app's restorable files from Nextcloud
   Scenario: Sync from n8n brings the file back after a purge
     Given a managed "sync" workflow file in the "nextcloud:alpha" folder
     And the admin purges the Nextcloud files
-    When the admin clicks "Sync from n8n" for the "nextcloud:alpha" mapping
+    When the "nextcloud:alpha" mapping is synced
     Then the workflow appears again as a file in the "nextcloud:alpha" folder
 
   # notes: AGENTS.md#purge-keeps-an-ignored-file

@@ -100,7 +100,7 @@ exercise them are legible without opening PHP.
 
 **Only the tag and the folder are required.** Omitting either is a refusal, not a
 default, and the refusal outline carries a row proving it for each. `mode`
-defaults to `link`, `nc_groups` to empty, and `use_team_folder` to true.
+defaults to `link`, `nc_groups` to empty, and `use_team_folder` to false.
 
 **Mode did not always default, and writing this table is what found it.**
 Declaring what every unset field becomes forces a value for each, and there was
@@ -111,13 +111,26 @@ nothing and pushes nothing back. Grafana had the identical gap and was fixed in
 the same pass. An *unknown* mode is still refused — saying nothing and saying
 nonsense are different inputs.
 
-One divergence from the Penpot sibling remains, and it is real rather than
-accidental: **`use_team_folder` defaults to true here; Penpot changed its
-equivalent to false**, because groupfolders is an OPTIONAL app and a default that
-cannot be provisioned on a stock Nextcloud is not a default (the sibling's
-§C6.35). Note this app now provisions the folder AT CREATE, so the failure is at
-least immediate rather than deferred to the first sync — but the default still
-asks for a backend that may be absent.
+**`use_team_folder` defaults to false**, matching Penpot. A Team Folder needs
+groupfolders, an OPTIONAL app absent from a stock Nextcloud, so defaulting to it
+made the default mapping the one that could not be provisioned: an admin who
+filled in a tag and a folder and touched nothing else got a refusal. A default
+must be the safe choice, not the preferred one. A Team Folder is opted into, by
+naming `| storage | team folder |`.
+
+**This note previously argued the opposite, and that is the lesson.** It recorded
+the divergence from Penpot as "real rather than accidental", conceded in the same
+breath that "the default still asks for a backend that may be absent", and left
+it standing. Writing the reason down is not the same as having one — a documented
+defect reads as a decision, and is much harder to see afterwards than an
+undocumented one. Two things followed from it: a CI comment claiming groupfolders
+had to be installed *because* Team Folders were the default, and a later scenario
+adding `| storage | admin folder |` to a table where storage is irrelevant, just
+to escape the default. Grafana had the identical inversion.
+
+`MappingTest::testStorageDefaultsToAdminOwned` now pins it, and it asserts the
+OMITTED flag rather than an explicit `false` — the whole defect lived in what
+happens when nobody says anything.
 
 ### A mapping the app cannot honour is refused, and says why
 
@@ -418,25 +431,124 @@ of one request — that is the missing capability, and naming it is what keeps
 this out of the @todo work queue. A unit test against a mocked N8nClient is
 the cheaper home if it is ever wanted.
 
-## file-type
+## view-workflow
 
-`features/file-type.feature`
+`features/view-workflow.feature`
 
-The custom mimetype makes a workflow a first-class FILE TYPE: its own mimetype,
-its own icon, DAV-exposed (and read-only) metadata, and — because n8n_mode is
-indexed — it's queryable. (What happens when you OPEN one is the related but
-separate "open with" concern; see open-with.feature.)
+LOOKING AT A WORKFLOW FILE — the only part of "it is a real file type" that
+anyone actually performs.
 
-Live for the WebDAV-observable surface (saga §14.9): the custom mimetype, the
-four nc:metadata-* props exposed in PROPFIND, the descriptive n8n_mode value for
-sync/unmapped/ignored, and the read-only (PROPPATCH-rejected) guarantee.
+### view-workflow
 
-Two rows are not live, for two DIFFERENT reasons — which is the whole point of
-having more than one status tag (features/README.md):
-  - the `link` row is @todo — the code exists and other files exercise a link
-    file live; only this assertion is unwritten.
-  - the REPORT-by-indexed-mode query is @blocked — the DAV search plumbing for
-    `nc:metadata-*` is unproven, and that is a capability, not a missing test.
+**This replaced `file-type.feature`, which described a CONSTRUCT.** "n8n workflow
+is a first-class file type" was about a mimetype, a property set and an index —
+none of which anyone does. Each turned out to be the end state of something else:
+
+| it described | whose end state it is | where it went |
+|---|---|---|
+| the mimetype is registered | **enabling the app** | `lifecycle.feature` |
+| a file carries this metadata | **creating** or **syncing** a workflow | asserted by those, shown here |
+| the mode property's wire value | what the metadata says | the DAV view outline |
+| the metadata cannot be edited | a refusal anyone can provoke | stayed, as a scenario |
+
+Nobody registers a mimetype; they install an app. Nobody sets metadata; they make
+a workflow and the app stamps it. Once each end state sits with the behaviour
+that produces it, what remains is looking — and that is a real thing to do.
+
+### A mapped folder shows its workflows as workflows
+
+**ONE SCENARIO, DELIBERATELY.** Behat cannot read rendered pixels, so the icon is
+proven the only way it can be: the file carries the app's own mimetype rather
+than `application/json`, and Nextcloud maps that mimetype to the app's glyph.
+Elaborating past that would be testing Nextcloud's icon renderer, which is not
+this app's to prove.
+
+This is the app's only genuinely UI-only surface, which is why it is one small
+scenario rather than a file.
+
+### Viewing the DAV properties on a file shows n8n specific details
+
+`@dav`, because a DAV client is the actor: it asks for the properties and gets
+back what the app knows.
+
+**This is the one scenario that spells the properties out**, and everywhere else
+the same fact is one sentence — `the file carries its n8n metadata`. The two are
+not in tension, they are the difference between a subject and an end state. Sync,
+create and rename all *produce* a mirror; which keys that mirror carries is the
+app's business, and listing them there would make every one of those scenarios
+look like a metadata test. Here the properties genuinely are what is under test,
+so the table is the specification.
+
+The keys are the five `stampSynced` writes when a file lands: `n8n_id`,
+`n8n_mapping`, `n8n_mode`, `n8n_versionId`, `n8n_syncedHash`. `n8n_syncedTags` is
+managed too but is stamped afterwards by the tag reconciler, and only once there
+are content tags — so it is not part of what viewing a fresh mirror shows.
+
+The value column takes three forms and no more, because a table that can say
+anything stops being readable: `set` (present and non-empty), `the workflow's id`
+/ `the mapping's id` (resolved against what the arrange recorded), or an exact
+literal. The two id forms exist because presence is too weak for them — an id
+that is merely non-empty could be any workflow's, and the whole point of
+publishing it is that it names *this* one. A version id and a body hash are
+opaque by design; pinning literals there would assert the sync engine's internals
+instead of the fact under test.
+
+`link` stores as `reference`. The literal string `link` is `is_callable()`, which
+crashes core's PROPFIND — the only place in this app where a wire value differs
+from the name of the thing it carries, so it is an Examples column rather than a
+footnote, and the row shows both what the admin chose and what a client reads.
+
+**The table says nothing about storage.** Naming a field is a claim that it
+matters, and what a mirror publishes over DAV is identical on an admin-owned
+folder and a Team Folder — so the mapping takes the app's own default, an
+admin-owned folder, which is the one backend that exists on every install.
+`storage` is named only where provisioning *is* the behaviour, in
+`admin-mapping.feature`, and a scenario wanting a Team Folder asks for one there.
+
+**The outline lost two rows** (`unmapped`, `ignored`) when it was reshaped around
+a mapping. That is deliberate and not a coverage regression: a mapping only ever
+produces `sync` or `link`. The other two are what a file *becomes* — moved out of
+its folder, or hand-tagged `n8n:ignore` — so they cannot be reached from a
+mapping form at all, and their DAV values are asserted where those behaviours
+live, in `open-with.feature` and `reserved-tags.feature`.
+
+### What the app manages, only the app changes
+
+A REFUSAL SOMEONE CAN PROVOKE, so it earns a scenario: any DAV client can attempt
+a PROPPATCH. The identity of a mirror is the app's to write — a client that could
+edit `n8n_id` could silently re-point a file at a different workflow.
+
+The load-bearing assertion is that the VALUE did not change, not that a particular
+status came back.
+
+### Listing the workflows n8n holds
+
+THE OTHER WAY TO LOOK, and the one with no UI at all. `occ` reads n8n directly
+rather than reading the mirror, which is exactly what makes it useful when the
+two disagree: *"is it missing from the folder, or missing from n8n?"* is the
+first question anyone asks, and this answers the second half without trusting
+the first.
+
+Neither this nor `get-workflow` had a scenario before — the CLI view surface was
+entirely unspecified, despite being the surface an admin reaches for when
+something looks wrong.
+
+### Viewing one workflow n8n holds
+
+The id comes from the listing, which is why the two sit together rather than
+being one scenario about "the CLI".
+
+The `Then` asserts it is the RIGHT workflow, not merely that something was
+printed: a command that emitted any valid JSON would satisfy the looser reading,
+and the whole point of viewing one *by id* is that you get that one.
+
+### Finding workflows by their mode
+
+`@blocked`, and the missing capability is named: there is no proven DAV REPORT
+search over `nc:metadata-*` to drive it against. `n8n_mode` is indexed precisely
+so this is a fast query; confirm the search surface exists and this becomes an
+ordinary `@todo`.
+
 
 ## lifecycle
 
@@ -444,6 +556,21 @@ having more than one status tag (features/README.md):
 
 Stage 0 (saga §5): the app installs and uninstalls cleanly on a real Nextcloud.
 A clean uninstall is also an app-store rule. No n8n contact.
+
+### Enabling the app
+
+**THE MIMETYPE IS WHAT ENABLING LEFT BEHIND.** It used to head a file called "n8n
+workflow is a first-class file type", which described the registration as though
+someone had gone and done it. Nobody registers a mimetype; they install an app,
+and the registration is the consequence — so it is asserted here, on the install.
+
+Proven by uploading a plain file rather than by reading the app's own metadata: a
+file this app has never touched, with nothing but the extension going for it,
+comes back typed as the app's own mimetype. That is what registration means and
+the only part of it a client can observe.
+
+Its visible consequence (a mapped folder that looks like workflows) belongs to
+`view-workflow.feature`; its removal belongs to `uninstall.feature`.
 
 ## mapping-membership
 
@@ -457,6 +584,16 @@ Live (saga §14.9): the resolver matches the deepest mapped folder that encloses
 a file, so nested mappings work and the nearest enclosing one wins. Each scenario
 lands a real file over WebDAV and reads the resulting n8n_mapping stamp back, so
 these are server-observable assertions of MappingService::resolveForPath.
+
+### A sync never touches a file outside every mapping
+
+THE SCOPE OF A SYNC IS A MEMBERSHIP QUESTION, so it is answered here rather than
+in a file about syncing. "Which files does this mapping own" is what this file
+exists to say; a sync merely acts on that answer.
+
+It moved from a scenario about the sync button, where it was one `Then` among
+four — so "an unmapped file is out of scope" could only ever fail as part of "the
+button worked", and never named itself.
 
 ## move
 
@@ -481,6 +618,75 @@ hard-deleted restore-fallback and brand-new move-in create are now live too;
 the lone remaining edge is merge-on-collision (an unmapped copy moved in over an
 already-synced file with the same id), which still needs a metadata-by-id lookup.
 
+### The mappings in the Background
+
+Three mappings, declared as one table with a header row — tag, folder and mode
+spelled out per line. `move.feature` is the first feature to do this, and the
+reason is specific to it: **a move is a Nextcloud gesture, so its steps address a
+FOLDER**, while the tag only means anything on the n8n side.
+
+Everywhere else the harness derives the folder name from the tag
+(`folderNameForTag`), which made the two look like a single thing. That is not
+theoretical: a scenario was drafted asserting that a folder was "no longer a tag
+in n8n", with `<folder>` and `<destination>` in the steps and `source tag` /
+`destination tag` in the Examples — placeholders that did not resolve, over a
+claim that could not be true. Declaring both in the same row is what keeps them
+apart.
+
+**Colons were never part of a tag.** One early example used `nextcloud:alpha`
+and the shape propagated as though it were required. n8n tags are free text, and
+a Nextcloud folder would not normally contain a colon at all — so the mappings
+here are `alpha`/`Automations`, `beta`/`Pipelines`, `links`/`Pointers`. The
+reserved tags (`n8n:ignore`) are a different thing and keep their prefix, which
+is exactly why the ordinary ones should not borrow the shape.
+
+`copy.feature`, `purge.feature` and `reserved-tags.feature` still declare their
+mappings tag-first. The tag-addressed steps were kept alongside the new
+folder-addressed ones for that reason; those three want the same treatment.
+
+### Restoring when the n8n workflow was hard-deleted falls back to create
+
+The unmapped file kept its id, but the workflow was hard-deleted in n8n in the
+meantime. `moveIn` catches the unarchive 404 and recreates from the file we still
+hold — a fresh id — then re-stamps sync in the target. The file is the survivor,
+so the mirror wins over the missing original.
+
+### Moving a brand-new workflow file into a mapping creates it
+
+An untracked file (no id) dragged into a mapping is create-on-land, owned by
+`CreateInN8nListener`. It fires on `NodeRenamedEvent` rather than
+`NodeWrittenEvent`, because Nextcloud does not fire the latter for a move — a
+detail worth keeping written down, since the obvious listener choice is wrong.
+
+### Moving a workflow to another mapped folder
+
+**`@unbuilt` — this is the spec, and the app does the opposite today.**
+`MoveGuardListener` aborts a mapping→mapping move for both modes and tells the
+user to move out to an unmanaged folder first, then in. The scenario describes
+what should happen, not what does; its steps throw rather than pass, so it cannot
+quietly start counting as coverage.
+
+**Saga §14.2 case (a), and the decision it needs.** Landing in a new mapping means
+the workflow's tag changes in n8n, and there are two defensible ways to do it:
+re-tag in place, or eject and reattach as if it had arrived fresh. They differ in
+what happens to the versionId, the synced-tag baseline and the archive state — so
+picking one by accident inside the move handler would be picking it permanently.
+
+**These rows choose re-tag in place.** `And the file's mode is "<mode>"` is where
+that choice lives: the mode survives the move, so it is the same file in a new
+mapping rather than a new arrival. Eject+reattach would not preserve it, and
+would mint a fresh versionId.
+
+**The two `link` rows are the sharp end.** A link has no body on the Nextcloud
+side, which is exactly why moving one OUT of a mapping is refused — there would be
+nothing left to hold. A link moving *between* mappings never becomes bodiless, so
+it is arguably fine; but it is a real decision rather than a symmetry, and it is
+worth being deliberate that these rows assert it.
+
+Until it is built, the way through is the message's own: out to an unmanaged
+folder, then in. Both halves are covered scenarios, so the capability is not
+missing — only the shortcut.
+
 ### Moving a duplicate in under the same name is refused (the workflow is already synced here)
 
 Move-in duplicate (saga §14.19). A file carrying an id is moved into a mapping
@@ -499,7 +705,9 @@ same file relocating; it's a duplicate. Nextcloud's own rules lead the behaviour
 ── decision cases (saga Chapter 3 §14.2 a–d): documented, not yet designed ─────────
 These need a design decision before they get concrete Then-steps:
   a. sync moved directly mapping→mapping (different tag): re-tag in place vs
-     eject+reattach vs block. (Currently blocked by MoveGuardListener.)
+     eject+reattach. THE BLOCK ITSELF IS NOW SPECIFIED — see "Moving a workflow
+     straight into another mapping is refused" above. What remains undesigned is
+     what should replace it, not what happens today.
   b. moving into a nested subfolder owned by a different mapping (nearest
      enclosing wins) — interaction with case a.
   c. link rename within its mapping — does the filename matter, or is the n8n
@@ -512,7 +720,7 @@ These need a design decision before they get concrete Then-steps:
 `features/open-with.feature`
 
 "Open with" — the openers offered for a managed workflow file, and which one is
-the default click. RELATED to the file type (file-type.feature: it's *because*
+the default click. RELATED to the file type (view-workflow.feature: it's *because*
 `.n8n.json` is a first-class type that we get custom openers) but a distinct
 concern, because the opener set + default depend on the file's MODE, not its type.
 
@@ -565,47 +773,95 @@ arrange existed all along, it just silently ignored the mode it was handed and
 produced a `sync` file, which would have made this scenario assert the opposite
 of its own Given.
 
-## reconcile
+## sync-now
 
-`features/reconcile.feature`
+`features/sync-now.feature`
 
-The two manual sync controls in admin settings, each SCOPED TO A MAPPING:
-  - "Sync from n8n" (pull): bring the mapping's tagged workflows into its folder.
-  - "Sync to n8n"   (push): send the mapping's sync files up to n8n.
-Both reconcile the mapped folder against the workflows carrying that mapping's
-tag, and both FULLY IGNORE "unmapped" files — those live outside any mapping, so
-a mapping-scoped sync never sees them. Pruning here is therefore mapping-scoped:
-it only ever concerns files/workflows inside the mapping.
+THE FIRST SYNC, AND ONLY THAT.
 
-(The "merge" that happens when you MOVE an unmapped file back into a mapping that
-already holds its workflow is a MOVE-time behaviour, not a sync — see
-move.feature. The duplicate state, one unmapped + one mapped with the same id, is
-perfectly fine and intentional; a sync does not touch the unmapped one.)
+### sync-now scope
 
-### Sync from n8n with nothing changed rewrites nothing and says so
+**There is no `reconcile.feature`, and there must never be one.** Reconciling is
+a MECHANISM — the thing that carries an n8n-side change into Nextcloud — and a
+mechanism does not get a feature file. What a person does gets a feature file.
 
-── RULE: a run that changes nothing changes nothing ──────────────────────────
-Two things are NOT behaviours, and both were nearly written up as if they were.
+This file replaced one called "Manual per-mapping sync (Sync from / Sync to
+n8n)", which was named after two buttons. Its three scenarios turned out to be
+four different behaviours wearing one coat, and every one of them belonged
+somewhere else:
 
-A file's "modified" time is a RESULT, not a gesture. Editing, moving, copying and
-renaming all move it, each already owned by the file that owns the gesture. A
-scenario asserting "the mtime moved after an edit" specifies Nextcloud, not this
-app, and has to invent an actor to do it.
+| it said | it meant | where it went |
+|---|---|---|
+| the button pulls the tagged workflows in | the FIRST sync | here |
+| …and prunes a file whose workflow lost the tag | a tag removed **in n8n** | `tag-sync.feature` |
+| …and leaves the unmapped file alone | what "unmapped" **means** | `mapping-membership.feature` |
+| a run that changed nothing rewrote nothing | an mtime, and the reconciler | deleted — see below |
+| the button pushes local changes up | **editing** a workflow file | `edit-workflow.feature` |
 
-The RECONCILER is likewise the *how*, not the *what*. The scheduled pull is a
-machine that makes n8n-origin behaviours show up in Nextcloud; "renamed in n8n"
-is the behaviour, the reconciler is merely how it arrives — which is why those
-scenarios live with their behaviour and carry `@in-n8n`, not here.
+**Why the first sync is genuinely its own thing.** Nothing is tracked yet, so
+whatever sits in n8n is simply a Given. Every LATER run only has work because
+something changed upstream — and each of those is a scenario about the change:
+renamed in n8n is `rename.feature`, deleted in n8n is `delete.feature`, tagged in
+n8n is `tag-sync.feature`. The sync is how the news arrives, not what happened.
+Once those files own their behaviours there is no "second sync" left to describe.
 
-What is left is genuinely this file's, and genuinely not automatic: the admin
-presses the button when nothing has changed, and the run must leave every file
-exactly as it found it. It matters because the same run is what the schedule
-fires — a write performed unconditionally is performed forever, and a folder
-where everything was modified seconds ago says nothing about what changed.
+**The trigger is data.** Three ways to start one sync — the card's button, the
+section's button, the schedule — same pre-state, same post-state. Columns, not
+scenarios. Whether a run is synchronous or queued is a mechanism and is asserted
+nowhere.
 
-The negative control lives with the behaviour that supplies it: "a content change
-in n8n DOES rewrite the mirror" is tag-sync.feature's, so this rule cannot be
-satisfied by a pull that has simply stopped writing.
+The schedule row drives the REAL job, forced past its interval and the worker's
+last-run gate with `background-job:execute --force-execute`. Asserting a row
+exists in `oc_jobs` would prove the job is registered and nothing about whether
+it runs.
+
+**"A run that changed nothing rewrote nothing" was deleted, not moved.** It
+asserted an mtime — a result — about the reconciler — a mechanism — and neither
+gets a scenario. The defect it once guarded (a pull rewriting every mirror on
+every run) is real and is recorded in the CHANGELOG; the step definitions are
+kept, with their docblock, so re-adding it is one line if it ever earns a home.
+The behaviours that DO rewrite a mirror assert their own end states, which is
+where that guarantee belongs.
+
+**The "every mapping" leg was never actually exercised until Actions came back
+from an outage.** `runMappingSync()` required a `string $tag`, but this
+scenario's own actor×scope table passes it `null` for that row — the CLI's
+`--all` (Reconcile.php:36), which is also what an omitted `--mapping` means. The
+mismatch had sat unrun since this file was written; the harness now builds
+`--all` when the tag is null instead of type-erroring before the command even
+runs. Worth remembering the shape of the failure: it wasn't a bug in a scenario
+that had been passing, it was a scenario that had never once been graded.
+
+### carries its n8n dates
+
+AN END STATE, NOT A FEATURE OF ITS OWN. A mirror wears the workflow's clocks
+rather than the sync's, and that holds however the sync started — so it is one
+reusable sentence rather than two `Then`s, and any later behaviour producing a
+mirror can assert it the same way.
+
+Creation time especially: it is the one clock a later run can never reconstruct,
+because after the first sync there is no "before" left to read it from.
+
+## edit-workflow
+
+`features/edit-workflow.feature`
+
+EDITING IS THE BEHAVIOUR; THE PUSH IS HOW IT TRAVELS.
+
+### A local edit reaches its workflow in n8n
+
+This was "the admin clicks Sync to n8n", which described a button rather than
+anything anyone wants. Nobody edits a workflow in order to press a button — they
+edit it so n8n gets the change, and the app offers three ways for that to happen
+(on save, on the button, on the schedule). Those are mechanisms; this is what
+they are for.
+
+### A file outside every mapping is never pushed
+
+Its own scenario rather than a second `Then` on the one above: "my edit travels"
+and "a file I never mapped does not" are different promises, and a reader looking
+for the second should not have to find it inside the first.
+
 
 ## rename
 
@@ -653,7 +909,7 @@ Authority is one-directional. The app NEVER writes n8n:ignore onto workflows in
 n8n; it only READS it (if present) as a per-workflow exclude at pull time. You add
 it yourself when you want the exception. The Nextcloud-side `n8n:sync` / `n8n:link`
 system tags the app stamps on managed files are AUTHORITATIVE + automatic and just
-mirror each file's mode (see the Tagging feature / file-type.feature) — they are
+mirror each file's mode (see the Tagging feature / view-workflow.feature) — they are
 not an override mechanism.
 
 So n8n:ignore is 100% optional: the mapping does everything on its own; the
@@ -1036,7 +1292,7 @@ Slice B), so the body-array assertions stay in the @todo projection scenarios be
 Both scenarios are `@in-n8n` BEHAVIOURS — someone changed a workflow's content, or
 its tags — and the pull is merely how the change arrives. The third case, "nobody
 changed anything", is not a behaviour at all: it is what a RUN does, and it lives
-in reconcile.feature.
+in sync-now.feature.
 
 The first is also the negative control for that rule: a pull that had simply
 stopped writing would satisfy "a quiet run rewrites nothing" and fail this.
@@ -1084,6 +1340,23 @@ removal that unbinds the workflow from the "reports" mapping and prunes that mir
 The protected set must therefore be the UNION of every mapping tag on the workflow,
 not just the current mapping's. Also future fan-out work, pinned `@todo` below.
 
+### A workflow that loses the mapping tag in n8n loses its mirror
+
+THE BEHAVIOUR IS THE UNTAGGING, NOT THE SYNC. The mapping tag is what makes a
+workflow the folder's, so removing it upstream says the workflow no longer
+belongs and the mirror follows. The sync is only how the news arrives, which is
+why this sits with the other tag behaviours.
+
+It moved from a "Manual per-mapping sync" file where it was one `Then` among
+four, and where the assertion did the work: the old step stripped the tag AND
+re-ran the sync inside the `Then`, so the scenario's only visible action was
+"the button was pressed" and the behaviour happened invisibly inside an
+assertion. The untagging is a `When` now.
+
+Note the eject gesture is the deliberate Nextcloud-side twin: dropping the pill
+yourself keeps the file and marks it ignored. Losing the tag upstream is not a
+request to keep anything.
+
 ## uninstall
 
 `features/uninstall.feature`
@@ -1114,7 +1387,7 @@ will pass until that exists, which is exactly the distinction the tag makes.
 NOTE THE TAG IS ON THE `Feature:`, so it excludes EVERY scenario below, including
 the data-orphan ones a disable/enable could genuinely prove. That is deliberate
 but easy to misread: the DATA promise — reinstall reconciles existing files in
-place by id with NO duplicates — is already proven LIVE by reconcile.feature
+place by id with NO duplicates — is already proven LIVE by sync-now.feature
 ("existing files are updated in place — matched by workflow id, never
 duplicated"), and a disable/enable changes nothing about that reconcile, so
 re-proving it here would be duplicate coverage of one behaviour in two files.

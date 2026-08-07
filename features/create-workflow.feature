@@ -15,6 +15,7 @@ Feature: Create a workflow from Nextcloud
     Then a matching workflow is created in n8n
     And the workflow carries the "nextcloud:demo" tag
     And the file is stamped with the workflow's "n8n_id"
+    And the file carries its n8n metadata
 
   @user @in-nextcloud @gesture @ui
   Scenario: A workflow file created outside any mapped folder stays unmanaged

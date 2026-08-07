@@ -33,11 +33,12 @@ apart, and nobody reads two files to answer one question.
 | `tag-sync.feature` | A workflow's tags, across all three surfaces |
 | `reserved-tags.feature` | The `n8n:*` control plane — `n8n:ignore` and the mode pills |
 | `mapping-membership.feature` | Which files a mapping owns, and what "unmapped" means |
-| `file-type.feature` | A mirror as a first-class file type: mimetype, icon, DAV props |
+| `view-workflow.feature` | Looking at a workflow: its icon in Files, its managed metadata over DAV |
 | `open-with.feature` | What clicking a mirror does |
 | `admin-connection.feature` | Reaching n8n at all: URL, key, and how failure reads |
 | `admin-mapping.feature` | Creating, editing, and removing a mapping |
-| `reconcile.feature` | What a sync run does *as a run*: completeness, idempotency, what it reports |
+| `sync-now.feature` | The FIRST sync, and only that — however it was started |
+| `edit-workflow.feature` | A local edit reaching its workflow in n8n |
 | `lifecycle.feature` | Install and enable |
 | `uninstall.feature` | Removal, and what survives it |
 
@@ -55,7 +56,7 @@ leg:
 | `admin` | the settings surface — the connection and the mapping list |
 | `workflow` | the verbs a user performs on a workflow file: create, copy, move, rename, delete |
 | `tags` | the tag vocabulary and the three-way sync — n8n's only grouping construct |
-| `core` | identity, file type, the manual sync buttons, purge, and the app lifecycle |
+| `core` | identity, file type, the first sync, purge, and the app lifecycle |
 
 **The axis is the filename, not a tag.** A tag partition leaks: `@occ`, `@ui` and
 `@in-n8n` are carried by some scenarios and not others, so an untagged scenario
@@ -95,11 +96,12 @@ do"* is a question worth one filter rather than a boolean expression, and an act
 the first thing a reader of a use-case model looks for. Redundancy that answers the
 primary question is not redundancy.
 
-**`@time` is currently zero, and that is a real gap rather than a tagging oversight.**
-The scheduled pull is the one actor with no scenario of its own: everything it does is
-exercised through a manual `occ` reconcile, which is not the same thing — a job that
-self-gates on `schedule_enabled` and re-reads its interval on every instantiation has
-behaviour a manual invocation never reaches.
+**`@time` used to be zero, and it no longer is.** The scheduled pull is a row in
+`sync-now.feature`'s outline, driving the real job — forced past its own interval and
+the worker's last-run gate — rather than standing in for it with a manual `occ` call. A
+job that self-gates on `schedule_enabled` and re-reads its interval on every
+instantiation has behaviour a manual invocation never reaches, which is exactly why the
+row runs the job itself.
 
 Where the actor genuinely *varies* across otherwise identical scenarios, prefer an
 `Examples` column or a step parameter (*"the admin adds…"* vs *"the user adds…"*) over
@@ -176,7 +178,7 @@ can only disable and enable), and **no proven DAV REPORT search over
 `nc:metadata-*`**.
 
 If the stated reason stops being true, the tag is stale and the scenario is
-probably promotable. That is not hypothetical: `file-type.feature` skipped its
+probably promotable. That is not hypothetical: the old `file-type.feature` skipped its
 `link` row for "link integration is uncertain" while `delete.feature` and
 `move.feature` were both arranging a `link` file and running green.
 
@@ -222,6 +224,19 @@ The test: can you write the rows as a list of *values*, or only as a list of
 *sentences*? Values → `Examples`. Sentences → separate scenarios.
 
 ## Wording is an API
+
+### Never end a line with `JSON`
+
+The syntax highlighter reads a trailing `JSON` as a doc-string content-type hint,
+and everything after it in the file stops being highlighted — so one word at the
+end of one sentence makes the rest of the spec unreadable in the editor.
+
+Mid-line is fine: *"the workflow's JSON is printed"* highlights correctly. Only
+the last word matters. Add the noun — `JSON files`, `JSON body` — or reword.
+
+Cheap to write, expensive to notice, and invisible in review because the diff
+looks perfect. `grep -n 'JSON\s*$' features/*.feature` finds them all.
+
 
 Every step line is a function signature, so the vocabulary is deliberately small
 and parameterised. Read `tests/integration/bootstrap/Steps/` before inventing a

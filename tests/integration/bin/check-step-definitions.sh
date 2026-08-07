@@ -56,6 +56,10 @@ fail = False
 # `:name` placeholders) and a handful as regex (`@Then /^"([^"]*)" is gone$/`).
 # Behat accepts either; a guard that knows only one reports every step of the
 # other kind as undefined, which is a spectacularly unhelpful way to fail.
+# What Behat's `:name` placeholder actually accepts: a quoted string, or a single
+# non-space token. NOT multi-word unquoted text.
+PLACEHOLDER = '(?:"[^"]*"|\'[^\']*\'|[^\\s"\']+)'
+
 regex_re = re.compile(r'@(?:Given|When|Then)\s+/\^(.+?)\$/')
 plain_re = re.compile(r'@(?:Given|When|Then)\s+(?!/)(\S.*?)\s*$')
 patterns, seen, parens = [], {}, []
@@ -76,7 +80,17 @@ for php in sorted(bootstrap.rglob('*.php')):
         # Behat will silently make optional.
         if re.search(r'\((?!s\))', text):
             parens.append(f'{php.name}: {text}')
-        body = re.sub(r':\w+', '(.+)', re.escape(text).replace('\\:', ':'))
+        # `:name` AS BEHAT ACTUALLY MATCHES IT, not as `(.+)`.
+        #
+        # Behat's turnip placeholder accepts a quoted string or a single
+        # non-space token — it does NOT match multi-word unquoted text. Modelling
+        # it as `(.+)` made this check MORE PERMISSIVE THAN BEHAT, so it reported
+        # every step resolved while three scenarios came back undefined in CI.
+        # A guard that passes where the real thing fails is worse than no guard.
+        # A LAMBDA, because re.sub parses the replacement for escapes and would
+        # choke on the `\s` inside it.
+        body = re.sub(r':\w+', lambda _: PLACEHOLDER,
+                      re.escape(text).replace('\\:', ':'))
         # …and the sanctioned `file(s)` really IS an optional group, so compile it
         # as one. Escaped literally instead, a step declared `... file(s)` only
         # matches text carrying the parentheses, and every singular use of it in a
@@ -105,54 +119,98 @@ if parens:
 compiled = [re.compile('^' + p + '$') for p in patterns]
 
 # ── the steps the suite actually runs ──────────────────────────────────────────
+#
+# OUTLINE STEPS ARE EXPANDED, NOT SKIPPED. They used to be waved through on
+# sight of a `<`, on the reasoning that a placeholder resolves per Examples row —
+# which is true, and is precisely why they have to be checked per Examples row
+# instead. Behat matches the SUBSTITUTED text, so a step that only ever appears
+# inside an outline was never checked at all here.
+#
+# That is not hypothetical: `When <actor> syncs <scope>` sat in this repo behind
+# a `:actor syncs :scope` definition that Behat cannot match (its `:name`
+# placeholder takes a quoted string or one non-space token, never `the admin`),
+# and this check reported everything resolved while three scenarios came back
+# undefined in CI. A guard that passes where the real thing fails is worse than
+# no guard, because it is trusted.
 step_re = re.compile(r'^\s*(?:Given|When|Then|And|But)\s+(.*?)\s*$')
+row_re = re.compile(r'^\s*\|(.*)\|\s*$')
+
+
+def cells(line):
+    return [c.strip() for c in row_re.match(line).group(1).split('|')]
+
+
+def expansions(text, examples):
+    """Every concrete form of a step, one per Examples row (or itself if plain)."""
+    if '<' not in text or not examples:
+        return [text]
+    out = []
+    for header, rows in examples:
+        for row in rows:
+            concrete = text
+            for name, value in zip(header, row):
+                concrete = concrete.replace(f'<{name}>', value)
+            out.append(concrete)
+    return out or [text]
+
+
 undefined = []
 for feature in features:
-    tags, in_scenario, runs = set(), False, False
-    background_gaps, any_runs = [], False
-    # A TAG ON THE `Feature:` LINE APPLIES TO EVERY SCENARIO BELOW IT, and
-    # uninstall.feature uses exactly that to mark a whole file @blocked. Read
-    # without this, all seven of its steps look like undefined steps in live
-    # scenarios — a false report on a file the runner has never once executed.
-    feature_tags = set()
-    for raw in feature.read_text(encoding='utf-8').splitlines():
+    lines = feature.read_text(encoding='utf-8').splitlines()
+    feature_tags, tags = set(), set()
+    # (runs, [steps], [(header, [rows])]) for the block being read
+    blocks, cur = [], None
+    for raw in lines:
         line = raw.strip()
         if line.startswith('@'):
             tags |= set(line.split())
             continue
-        if line.startswith(('Scenario:', 'Scenario Outline:')):
-            in_scenario, runs = True, not ((tags | feature_tags) & UNRUN)
-            any_runs = any_runs or runs
-            tags = set()
-            continue
         if line.startswith('Feature:'):
-            feature_tags = tags
-            in_scenario, runs = True, None
+            feature_tags, tags = tags, set()
+            cur = None
+            continue
+        if line.startswith(('Scenario:', 'Scenario Outline:')):
+            cur = {'runs': not ((tags | feature_tags) & UNRUN), 'steps': [], 'ex': []}
+            blocks.append(cur)
             tags = set()
             continue
         if line.startswith('Background:'):
-            # A BACKGROUND IS ONLY REQUIRED IF SOMETHING IN ITS FILE RUNS. It runs
-            # once per scenario, so in a file that is entirely specification it never
-            # runs at all — and demanding its steps be implemented would report false
-            # failures on a suite CI is happily green on. Held aside and judged after
-            # the file is read.
-            in_scenario, runs = True, None
+            # Only required if something in the file runs; judged after the read.
+            cur = {'runs': None, 'steps': [], 'ex': []}
+            blocks.append(cur)
             tags = set()
             continue
-        if line.startswith(('Examples:', '#')) or not line:
+        if line.startswith('Examples:'):
+            if cur is not None:
+                cur['ex'].append(None)  # marker: the next table row is the header
             continue
-        if not in_scenario or runs is False:
+        if not line or line.startswith('#'):
+            continue
+        if cur is None:
+            continue
+        if row_re.match(line):
+            if cur['ex'] and cur['ex'][-1] is None:
+                cur['ex'][-1] = (cells(line), [])
+            elif cur['ex'] and isinstance(cur['ex'][-1], tuple):
+                cur['ex'][-1][1].append(cells(line))
             continue
         m = step_re.match(line)
-        if not m:
+        if m:
+            cur['steps'].append(m.group(1))
+
+    any_runs = any(b['runs'] for b in blocks)
+    for b in blocks:
+        if b['runs'] is False:
             continue
-        text = m.group(1)
-        if '<' in text:  # a Scenario Outline placeholder; resolved per example row
+        if b['runs'] is None and not any_runs:
             continue
-        if not any(c.match(text) for c in compiled):
-            (background_gaps if runs is None else undefined).append(f'{feature.name}: {text}')
-    if any_runs:
-        undefined.extend(background_gaps)
+        examples = [e for e in b['ex'] if isinstance(e, tuple)]
+        for text in b['steps']:
+            for concrete in expansions(text, examples):
+                if '<' in concrete:
+                    continue  # a placeholder with no Examples column to fill it
+                if not any(c.match(concrete) for c in compiled):
+                    undefined.append(f'{feature.name}: {concrete}')
 
 if undefined:
     fail = True
