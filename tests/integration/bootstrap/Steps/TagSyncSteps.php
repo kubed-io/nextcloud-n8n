@@ -40,9 +40,10 @@ use PHPUnit\Framework\Assert;
  * So `the workflow's tags are changed to … in n8n` changes them AND settles the
  * mirror, and the scenario says only what a person did and what came of it.
  *
- * The same applies in the other direction under `async` timing, where the settling
- * is the queue rather than a pull: `… in n8n once the queue has run` is an END
- * STATE ("this is true after the queue tick"), not an instruction to run a worker.
+ * TIMING IS NOT IN THE SPEC EITHER, for the same reason. Whether the writeback
+ * runs during the request or on the worker's next tick is our plumbing; the
+ * behaviour is that the change arrives. The arrange pins it so one scenario does
+ * not inherit whatever the previous one left behind.
  *
  * Leans on the composed helpers: SyncSteps (`ensureN8nTag`, `createN8nWorkflow`,
  * `setN8nWorkflowTags`, `propfindWorkflowIds`, `runMappingSync`), ReservedTagsSteps
@@ -52,9 +53,6 @@ use PHPUnit\Framework\Assert;
  * \OCA\N8nSync\Tests\Integration\FeatureContext}.
  */
 trait TagSyncSteps {
-	/** The queued-job class the reactive pill-edit path enqueues under async timing. */
-	private const RECONCILE_TAGS_JOB = 'OCA\N8nSync\BackgroundJob\ReconcileTagsJob';
-
 	/** The n8n workflow id under test in a tag scenario. */
 	private string $tagWfId = '';
 	/** The managed file's files-root-relative path (resolved lazily after a pull). */
@@ -69,8 +67,6 @@ trait TagSyncSteps {
 	private array $tagN8nBefore = [];
 	/** The mirror's body before an n8n-side change — "what else did the pull touch?". */
 	private string $tagBodyBefore = '';
-	/** Queued ReconcileTagsJob count before the gesture under test (the list is global). */
-	private int $tagJobsBefore = 0;
 
 	// ── Given: the mirror, and the tags it starts with ─────────────────────────
 
@@ -86,6 +82,13 @@ trait TagSyncSteps {
 	 * @Given a managed :mode workflow file in :mapping whose normal tags are :tags
 	 */
 	public function aManagedFileWhoseNormalTagsAre(string $mode, string $mapping, string $tags): void {
+		// TIMING IS NOT IN THE SPEC, AND IS PINNED HERE INSTEAD. Whether the change
+		// reaches n8n during the request or on the worker's next tick is an
+		// implementation detail of this app — the behaviour is that it arrives, and
+		// a scenario that said "async" would be describing our plumbing rather than
+		// anything a person does. The harness still has to pin it, or every scenario
+		// inherits whatever the one before it left behind.
+		$this->setPushTiming('sync');
 		$normal = self::tagList($tags);
 		$this->tagMappingTag = $mapping;
 		$this->currentFolder = $this->folderNameForTag($mapping);
@@ -129,7 +132,6 @@ trait TagSyncSteps {
 		// n8n, so a snapshot taken before it would attribute the unmap's own side
 		// effects to the tag change under test.
 		$this->tagN8nBefore = $this->tagN8nContent($this->tagWfId);
-		$this->tagJobsBefore = $this->tagReconcileJobCount();
 	}
 
 	/** @Given the Nextcloud system tag :tag is also pinned on an unrelated non-workflow file */
@@ -140,8 +142,8 @@ trait TagSyncSteps {
 		$this->tagUnrelatedFile = $path;
 	}
 
-	/** @Given the push timing is :timing */
-	public function thePushTimingIs(string $timing): void {
+	/** Pin how the writeback runs. A harness concern; see the arrange above. */
+	private function setPushTiming(string $timing): void {
 		$res = $this->occ('config:app:set ' . self::APP_ID . ' timing --value=' . escapeshellarg($timing));
 		Assert::assertSame(0, $res['exit'], "setting timing=$timing failed:\n{$res['output']}");
 	}
@@ -323,18 +325,6 @@ trait TagSyncSteps {
 	}
 
 	/**
-	 * The END STATE under `async` timing: the change is in n8n once the queue has had
-	 * its tick. Draining is how the harness makes the tick happen — the behaviour is
-	 * that the change arrives without anyone pressing anything.
-	 *
-	 * @Then the workflow's normal tags are :tags in n8n once the queue has run
-	 */
-	public function theNormalTagsAreInN8nOnceTheQueueHasRun(string $tags): void {
-		$this->drainJobs(self::RECONCILE_TAGS_JOB);
-		$this->theNormalTagsAreStillInN8n($tags);
-	}
-
-	/**
 	 * A link's tags are n8n's, so a local change to them does not merely fail to
 	 * push — it does not survive at all. n8n is the only writer, and the next sync
 	 * restores what it says.
@@ -472,29 +462,6 @@ trait TagSyncSteps {
 		sort($before);
 		sort($after);
 		Assert::assertSame($before, $after, "n8n's tags changed for an unmapped file");
-	}
-
-	/**
-	 * No NEW tag-reconcile job appeared — measured against a snapshot, not against an
-	 * empty list.
-	 *
-	 * The job list is GLOBAL. Asserting it is empty made this scenario depend on every
-	 * scenario that ran before it: the async-timing one queues a job on purpose, so the
-	 * assertion failed on a leftover that was nobody's bug.
-	 *
-	 * Plain throw rather than a PHPUnit assert: a failing assert here surfaces as
-	 * `Registry::get(): … null returned`, which hides the reason (see WebDavTrait).
-	 *
-	 * @Then no tag-push job is queued
-	 */
-	public function noTagPushJobIsQueued(): void {
-		$after = $this->tagReconcileJobCount();
-		if ($after > $this->tagJobsBefore) {
-			throw new \RuntimeException(
-				'a tag-reconcile job was queued for an unmapped file '
-				. "(before: {$this->tagJobsBefore}, after: {$after})",
-			);
-		}
 	}
 
 	// ── Then: pruning is an edge sweep, not a catalog GC ────────────────────────
@@ -664,13 +631,6 @@ trait TagSyncSteps {
 			}
 		}
 		throw new \RuntimeException("no pulled file for workflow {$this->tagWfId} in {$this->currentFolder}");
-	}
-
-	/** How many ReconcileTagsJob entries are currently queued, across the instance. */
-	private function tagReconcileJobCount(): int {
-		$res = $this->occ('background-job:list --class=' . escapeshellarg(self::RECONCILE_TAGS_JOB) . ' --output=json');
-		$jobs = json_decode($res['output'], true);
-		return is_array($jobs) ? count($jobs) : 0;
 	}
 
 	/** Every Nextcloud system-tag display name (the whole catalog). @return list<string> */

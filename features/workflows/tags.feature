@@ -9,7 +9,6 @@ Feature: Changing a workflow's tags
     Given the app is connected to n8n
     And a folder mapped as "sync" to the n8n tag "flows"
     And a folder mapped as "link" to the n8n tag "reports"
-    And the push timing is "sync"
 
     # ── RULE: applying a set of tags is ONE gesture, on any surface ─────────────
     # notes: ../AGENTS.md#applying-a-set-of-tags-is-one-gesture
@@ -59,15 +58,6 @@ Feature: Changing a workflow's tags
       |               | foo, bar           |
       | foo, bar, baz | qux, quux          |
 
-  # notes: ../AGENTS.md#with-async-timing-the-change-reaches-n8n-on-the-next-queue-tick
-  @user @in-nextcloud @gesture @ui @occ
-  Scenario: With "async" timing the change reaches n8n on the next queue tick
-    Given the push timing is "async"
-    And a managed "sync" workflow file in "flows" whose normal tags are "foo, bar"
-    When I change the Nextcloud tags to "foo, bar, qux"
-    Then the workflow's normal tags are still "foo, bar" in n8n
-    And the workflow's normal tags are "foo, bar, qux" in n8n once the queue has run
-
     # ── RULE: a change only travels where the mode lets it ─────────────────────
 
   # notes: ../AGENTS.md#changing-the-tags-on-a-link-does-not-change-them-in-n8n
@@ -85,7 +75,6 @@ Feature: Changing a workflow's tags
     Given a workflow file that has become "unmapped"
     When I change the Nextcloud tags to "urgent"
     Then no tag push to n8n is triggered
-    And no tag-push job is queued
     And the body agrees with the pills
 
   # notes: ../AGENTS.md#a-reserved-n8n-tag-never-becomes-a-nextcloud-tag

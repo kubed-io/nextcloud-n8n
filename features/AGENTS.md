@@ -1273,6 +1273,16 @@ both, and `Examples` rows must be one rule over different inputs. A pill edit
 and an n8n edit are different rules with different payoffs. The surface is
 therefore the scenario; the set is the input.
 
+TIMING IS NOT IN THE SPEC EITHER, and for the same reason. The app can write a
+tag change back during the request or hand it to the worker for its next tick —
+that is a knob in our plumbing, not something a person does, and a scenario
+named after it was describing the implementation out loud. Both settings end in
+the same place, which is the only thing the spec has an opinion about. The
+harness pins one so a scenario does not inherit whatever the previous one left
+behind. The same goes for "a job was queued": a queue is how the work waits, and
+"nothing reached n8n" already says the part that matters, against n8n's own API
+rather than against our job list.
+
 WHY NO `When the mapping is pulled` SURVIVES IN THIS FILE. Nobody changes a
 tag in order to run a reconcile. n8n emits no outbound event, so a pull is
 simply HOW the news of an n8n-side change arrives — mechanism, not behaviour,
@@ -1281,18 +1291,6 @@ is folded into the gesture step instead, and the scenarios say only what a
 person did and what came of it. The same reasoning retires the `pushed` /
 `reconciled` phrasings and the `@unbuilt` catalog-sweep scenarios, whose only
 action was "the sweep ran".
-
-### With async timing the change reaches n8n on the next queue tick
-
-The `timing` knob, and the only scenario in this file that is about it. Under
-`sync` the reconcile runs inline during the request; under `async` it is a
-per-file job the cron worker runs on its next tick. Both end in the same
-place, which is why every other scenario here leaves the Background's `sync`
-alone rather than testing the knob twice.
-
-`… once the queue has run` is an END STATE, not an instruction to run a
-worker. Draining is how the harness makes the tick happen; the behaviour is
-that the change arrives without anyone pressing anything.
 
 ### Changing the tags on a link does not change them in n8n
 
