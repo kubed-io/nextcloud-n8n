@@ -272,12 +272,14 @@ trait TagSyncSteps {
 	 * The file's own `tags` array — the third surface, and the only one that
 	 * survives the file being copied or carried out of Nextcloud.
 	 *
-	 * THE IDS ARE ASSERTED HERE, because they are part of what "the file holds the
-	 * tags" means. A tag n8n has never seen has no id, and a human editing the JSON
-	 * writes `{"name": "prod"}` with none — so canonical `{id,name}` rows are what a
-	 * SETTLED change looks like, whichever surface it started on. An empty array is
-	 * tolerated on purpose: emptying the tags is one of the gestures under test, and
-	 * "no rows" is a correct end state rather than a missing id.
+	 * THE IDS ARE DELIBERATELY NOT ASSERTED HERE, and CI is why. Asserting them read
+	 * well — canonical `{id,name}` rows as the mark of a settled change — and it
+	 * failed every row of the file-edit outline: a hand-edited file keeps the bare
+	 * `{"name": …}` rows the person typed, and only a later sync from n8n rewrites
+	 * them. That is the documented design (the file is briefly "incomplete" in a way
+	 * that self-corrects), so the assertion was wrong, not the app. What this step
+	 * owns is the SET; the id shape is asserted where it is the point, on an unmapped
+	 * file that has no n8n to mint one.
 	 *
 	 * @Then the workflow's normal tags are :tags in the file
 	 */
@@ -289,9 +291,7 @@ trait TagSyncSteps {
 		$names = [];
 		foreach ((array)($wf['tags'] ?? []) as $tag) {
 			Assert::assertIsArray($tag, 'a body tag entry is not an object');
-			$name = (string)($tag['name'] ?? '');
-			Assert::assertNotSame('', (string)($tag['id'] ?? ''), "the body tag '$name' carries no n8n id");
-			$names[] = $name;
+			$names[] = (string)($tag['name'] ?? '');
 		}
 		Assert::assertSame(
 			self::tagList($tags),
@@ -398,7 +398,6 @@ trait TagSyncSteps {
 				);
 			}
 		}
-		$this->addToAssertionCount(1);
 	}
 
 	/**

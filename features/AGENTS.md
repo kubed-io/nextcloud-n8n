@@ -1261,6 +1261,15 @@ was three checks wearing one name. A settled tag change means the tags are on
 the Nextcloud pills, in the file, and in n8n, so a scenario says exactly that,
 in three lines, and a failure names the surface that drifted in its own right.
 
+THE IDS ARE NOT ASSERTED ON THE FILE, AND CI IS WHY. Asserting canonical
+`{id,name}` rows as the mark of a settled change read well and failed every row
+of the file-edit outline: a hand-edited file KEEPS the bare `{"name": …}` rows
+the person typed, and only a later sync from n8n rewrites them. That is the
+documented design below — the file is briefly "incomplete" in a way that
+self-corrects — so the assertion was wrong, not the app. The id shape is
+asserted where it is the point instead: on an unmapped file, which has no n8n to
+mint one.
+
 THE IDS ARE PART OF THE END STATE, NOT A SCENARIO OF THEIR OWN. n8n's API
 forces the shape — `tags` is readOnly on both create and update, so a body save
 can never carry tags; they go via `PUT /workflows/{id}/tags`, separately,

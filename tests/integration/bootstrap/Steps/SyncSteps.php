@@ -102,8 +102,11 @@ trait SyncSteps {
 				static fn (string $n): bool => !str_starts_with($n, 'n8n:'),
 			));
 			sort($want);
+			// hrefToFilesPath: mappedFilesByWorkflowId hands back DAV hrefs, and the
+			// system-tag lookup wants a files-root-relative path — handed the href it
+			// reports "could not resolve fileid", which reads like a missing file.
 			$got = array_values(array_filter(
-				$this->fileSystemTags($byId[$id]),
+				$this->fileSystemTags($this->hrefToFilesPath($byId[$id])),
 				static fn (string $n): bool => !str_starts_with($n, 'n8n:'),
 			));
 			sort($got);
