@@ -1233,82 +1233,94 @@ edit on one mirror reaches n8n but the sibling only catches up on its next pull;
 converging every mirror of an id in one gesture is future fan-out work (specced
 `@todo` at the end, deliberately out of scope for now).
 
-### A pill added in Nextcloud reaches n8n and the file body
+### Applying a set of tags is one gesture
 
-── DIRECTION 2: a pill → n8n, AND the body follows ─────────────────────────
+── RULE: A TAG CHANGE IS A NEW SET, NOT A POKE ─────────────────────────────
 
-THE BODY COLUMN IS THE POINT OF THESE TWO. A pill edit used to move n8n and the
-pills and leave the body behind, which made the body the only surface that could
-go stale — and staleness is what made a body edit undecidable (`body ≠ pills`
-could mean "the user removed a tag" or "a pill moved and the body lagged", the
-same state with opposite correct answers).
+This file used to spell out six scenarios where it now has three outlines:
+"a tag added in n8n", "a tag removed in n8n", "a pill added", "a pill
+removed", "a tag typed into the file", "a tag deleted from the file". They
+were six sentences for one rule. Nobody adds a tag; a person edits a list and
+saves it, and whether that list gained or lost an entry is a property of the
+values, not of the behaviour. So the gesture is "the tags are now THIS", the
+add/subtract cases are rows of an `Examples` table, and the interesting
+combinations — replace the whole set, empty it, tag something that had none —
+became reachable at last, because they cost a row rather than a scenario.
 
-A pill edit now writes the body too, so all four columns move together. That
-single column is what makes DIRECTION 3 possible at all.
+WHAT THE SETS DELIBERATELY DO NOT CONTAIN: the mapping tag, and anything in
+the reserved `n8n:*` namespace. Neither is a label a person applied; one is
+the binding to a folder and the other is this app's control plane. A set that
+listed them would be asserting the binding survived rather than asserting
+anything about tags, on every single row. They are added back by the arrange
+and stripped from every assertion, and the scenarios that are genuinely ABOUT
+them name them explicitly.
 
-### The body never disagrees with the pills, whatever moved
+THE THREE SURFACES GET THREE SENTENCES. The payoff was one step asserting all
+of them at once, which read as a single sentence containing an "and" — and it
+was three checks wearing one name. A settled tag change means the tags are on
+the Nextcloud pills, in the file, and in n8n, so a scenario says exactly that,
+in three lines, and a failure names the surface that drifted in its own right.
 
-── THE INVARIANT THAT REPLACED THE PROBLEM ─────────────────────────────────
+THE IDS ARE NOT ASSERTED ON THE FILE, AND CI IS WHY. Asserting canonical
+`{id,name}` rows as the mark of a settled change read well and failed every row
+of the file-edit outline: a hand-edited file KEEPS the bare `{"name": …}` rows
+the person typed, and only a later sync from n8n rewrites them. That is the
+documented design below — the file is briefly "incomplete" in a way that
+self-corrects — so the assertion was wrong, not the app. The id shape is
+asserted where it is the point instead: on an unmapped file, which has no n8n to
+mint one.
 
-This section used to hold a scenario proving that a pill edit was the ONLY way
-to make the body disagree with the pills. That enumeration is what solved the
-design — and it is kept here as reasoning, because the scenario that stated it
-would now FAIL, which is exactly the point:
+THE IDS ARE PART OF THE END STATE, NOT A SCENARIO OF THEIR OWN. n8n's API
+forces the shape — `tags` is readOnly on both create and update, so a body save
+can never carry tags; they go via `PUT /workflows/{id}/tags`, separately,
+always. A human editing the JSON writes `{"name": "prod"}` with no id, and that
+must work: we resolve the name for n8n and leave the file as typed, then write
+n8n's canonical `{id,name}` rows back. So the file is briefly "wrong" in a way
+that self-corrects, deliberately — and "the rows are canonical again" is simply
+what a settled tag change looks like, whichever surface it started on. It used
+to be a `@todo` scenario saying no more than one line of the payoff assertion
+now says, at the cost of a whole live run.
 
-  a pull runs                → rewrites the body wholesale   → body FRESH
-  the user edits the body    → the body is what they typed    → body TRUTH
-  a tag changes in n8n alone → invisible until a pull, which  → body FRESH
-                               rewrites the body
-  a pill is toggled          → n8n and pills moved, the body  → body was STALE
-                               did not                          ← the one cause
+THE SURFACES ARE THREE SCENARIOS, NOT THREE ROWS, and that is a rule from
+`.github/instructions/gherkin.instructions.md` rather than a preference:
+origin is exclusive, so a scenario is `@in-nextcloud` or `@in-n8n` and never
+both, and `Examples` rows must be one rule over different inputs. A pill edit
+and an n8n edit are different rules with different payoffs. The surface is
+therefore the scenario; the set is the input.
 
-One row, and it was our own contract rather than a fact about mirrors. Removing
-it turned a puzzle into an invariant, and the invariant is what gets asserted
-now: THE BODY NEVER DISAGREES WITH THE PILLS. Everything else in this file
-depends on that holding, so it is asserted across every trigger rather than
-trusted.
+TIMING IS NOT IN THE SPEC EITHER, and for the same reason. The app can write a
+tag change back during the request or hand it to the worker for its next tick —
+that is a knob in our plumbing, not something a person does, and a scenario
+named after it was describing the implementation out loud. Both settings end in
+the same place, which is the only thing the spec has an opinion about. The
+harness pins one so a scenario does not inherit whatever the previous one left
+behind. The same goes for "a job was queued": a queue is how the work waits, and
+"nothing reached n8n" already says the part that matters, against n8n's own API
+rather than against our job list.
 
-### A tag typed into the file reaches n8n and the pills
+WHY NO `When the mapping is pulled` SURVIVES IN THIS FILE. Nobody changes a
+tag in order to run a reconcile. n8n emits no outbound event, so a pull is
+simply HOW the news of an n8n-side change arrives — mechanism, not behaviour,
+and a spec written on it has to be rewritten every time the plumbing moves. It
+is folded into the gesture step instead, and the scenarios say only what a
+person did and what came of it. The same reasoning retires the `pushed` /
+`reconciled` phrasings and the `@unbuilt` catalog-sweep scenarios, whose only
+action was "the sweep ran".
 
-── DIRECTION 3: the body → n8n (the goal, and what blocks it) ──────────────
+### Changing the tags on a link does not change them in n8n
 
-What "full sync" means: type a tag into the `.n8n.json` and it reaches n8n and
-the pills. n8n's API forces the shape — `tags` is readOnly on both create and
-update, so a body save can never carry tags; they go via
-`PUT /workflows/{id}/tags`, separately, always.
+A link is a READ-ONLY projection of n8n's tags: the pills are there so you can
+search, but n8n is the only writer. A tag added on a link never pushes (the
+reactive reconcile gates on `sync`), and because a link has no push channel
+that stray tag would linger forever — so the next sync wipes it, mirroring n8n
+exactly. Both halves are asserted in one scenario because they are one rule;
+splitting them produced a scenario whose only claim was that nothing happened.
 
-The body may be written LOOSELY. A human types `{"name": "prod"}` with no id,
-and that must work: we resolve the name to an id for n8n and leave the file as
-typed. The next pull rewrites the array with n8n's canonical `{id,name}` rows.
-So the file is briefly "wrong" in a way that self-corrects, deliberately.
+Searchability is asserted here rather than in a scenario of its own. It is the
+POINT of mirroring tags at all, and a link is the strongest place to say it:
+the file holds no workflow, so its tags are the only thing making it findable.
 
-### A save that did not touch the tags must not undo a pill edit
-
-── THE AMBIGUITY, WRITTEN OUT ──────────────────────────────────────────────
-
-THIS IS WHAT THE LOCKSTEP BOUGHT, and it is worth keeping written down because
-the scenario below is the only guard against it coming back. Before a pill edit
-wrote the body, the stale body from direction 2 and the removal from direction 3
-were the SAME on-disk state with two opposite correct answers:
-
-    pills "a,b,c"  body "a,b"   → the user deleted `c` from the file  (remove)
-    pills "a,b,c"  body "a,b"   → a pill was added, body not rewritten (ignore)
-
-Identical inputs. This is why "just pick a winner" does not work: precedence
-chooses which of two legitimate gestures to destroy, it does not tell them
-apart. A baseline tells you WHO MOVED — but `agreed` is the baseline for the
-n8n↔pills pair, and it says nothing about what the BODY last held.
-
-### A save that did not touch the tags must not undo a pill edit
-
-THE ACCEPTANCE TEST FOR THE WHOLE THIRD DIRECTION, and the reason the lockstep
-exists. Before it, the body still read "flows,linux" while the pills read
-"flows,linux,prod" — so this save looked exactly like a deliberate removal of
-`prod`, and reading the body as truth would have destroyed a pill edit made
-seconds earlier. Any design that cannot pass this is wrong however well it
-handles the happy path.
-
-### Tagging an unmapped workflow file keeps its body and pills in step
+### Changing the tags on an unmapped file updates the body tags too
 
 ── RULE: THE NEXTCLOUD PAIR IS LOCAL; ONLY THE n8n LEG NEEDS A MAPPING ─────
 
@@ -1319,176 +1331,197 @@ Only the third participant, n8n, requires a mapping.
 
     pills  ⇄  body        always, for any .n8n.json file
     pills/body  →  n8n    only for a managed `sync` file
-    n8n  →  pills/body    only for a mapped folder, on a pull
+    n8n  →  pills/body    only for a mapped folder, on a sync
 
-THIS IS WHAT MAKES THE TRANSPORT CASE WORK END TO END. Tags applied while a file
-sits outside every mapping are recorded in the body, which is the only surface
-that survives being moved, copied, or carried out of Nextcloud — so when the file
-is later dropped into a mapped folder, the tags are still there to seed n8n
-(create-workflow.feature's ADOPTION section). Without the local pair, a tag added
-to an unmapped file would live only in the pills and die the moment the file
-moved.
+A TAG n8n HAS NEVER SEEN HAS NO ID, and the body records it honestly as
+`{"name": "urgent"}` with no other keys — which is the positive claim this
+scenario makes, and the reason it is not merely "nothing reached n8n". Ids are
+minted by n8n at adoption, and the first sync after that rewrites the array with
+canonical `{id,name}` rows. The file being briefly "incomplete" is correct
+rather than a defect, and it is the one place in this feature where a settled
+file legitimately holds a row with no id.
 
-A tag n8n has never seen has NO ID, and the body records it honestly as
-`{"name": "foo"}` with no other keys. n8n mints the id at adoption, and the next
-pull rewrites the array with canonical `{id,name}` rows. The file being briefly
-"incomplete" is correct, not a defect.
+THIS IS WHAT MAKES THE TRANSPORT CASE WORK END TO END. Tags applied while a
+file sits outside every mapping are recorded in the body, which is the only
+surface that survives being moved, copied, or carried out of Nextcloud — so
+when the file is later dropped into a mapped folder, the tags are still there
+to seed n8n. That adoption is `workflows/create.feature`'s to own, and it is
+specced there; this file only pins the local pair it depends on.
 
-### The tags an adopted file arrives with come back with real ids
+### A reserved n8n: tag never becomes a Nextcloud tag
 
-── THE TWO WAYS OUT, AND WHY ONE IS NOW PREFERRED ──────────────────────────
+THE RULE OF EQUALITY has exactly one exclusion: the app's reserved namespace
+`n8n:*` (`n8n:sync`, `n8n:link`, `n8n:ignore`, and any future control tag).
+Reserved tags are the app's control plane — never pushed to n8n, never
+imported from n8n as content.
 
-A — REMEMBER WHAT THE BODY LAST HELD (`n8n_bodyTags`). A fourth stamp,
-    updated whenever the app reads or writes the body. `body == n8n_bodyTags`
-    ⇒ the user did not touch tags (free, no n8n call, and a stale body still
-    equals its own stamp). Different ⇒ a real edit, applied as a DELTA.
-    Costs: one more metadata key; the body still visibly lags a pill edit.
+It is stated here as a tag CHANGE (someone adds `n8n:sync` in n8n) rather than
+as an end state of a sync, because that is the moment the exclusion has to
+hold. What `n8n:ignore` then DOES is `workflows/ignore.feature`'s subject, not
+this file's.
 
-B — NEVER LET THE BODY GO STALE. A pill edit also rewrites the body's `tags`
-    array, so `body ≠ pills` can ONLY mean a body edit. No new metadata, and
-    it makes the surfaces honest rather than reconciling a known lie.
-    Costs: one guarded `putContent` per pill edit, loop-guarded by re-stamping
-    `n8n_syncedHash` so the write it triggers is recognised as the app's own.
+### The mapping tag is the binding, not a label anyone may drop
 
-B IS NOW THE RECOMMENDATION, and the reason is the "one cause" scenario above:
-A treats staleness as a fact to be tracked, B removes the only thing that
-produces it. B also gets cheaper the moment pull change-detection lands, since
-a tags-only pull already has to write the body's `tags` array in place — the
-same operation a pill edit needs. Two features, one mechanism.
+MAPPING-TAG PROTECTION (n8n-only, no Grafana analogue — Grafana maps by real
+folders): n8n maps a folder BY TAG, so the tag that binds a workflow to its
+folder is itself a content tag. It is shown as a pill for visibility but is
+PROTECTED: a reconcile FORCE-KEEPS it on both sides, so removing it from
+either Nextcloud surface — the pill OR the body `tags` array — never pushes a
+removal that would unbind the workflow and prune the mirror.
 
-B was built once and reverted, and it is worth being precise about why: the
-revert was NOT because lockstep is wrong. The commit also refactored the
-SHARED merge so the pill path and the body path went through one "read the NC
-side" step, and that regressed the shipping pill path. The lesson recorded at
-the time still stands — the body path needs its own entry point and must not
-touch `reconcilePush` — and it says nothing against the body write itself.
+THE SCENARIOS SAY WHAT THE APP DOES, NOT WHAT IT MIGHT DO. There is a live
+design question about whether a deliberate drop should instead UNSYNC the file
+— push one last tag change, then remove the mirror while n8n keeps the rest —
+and it is a reasonable design, since nothing is lost when n8n still has the
+workflow. It is NOT what the code does, so it is not written as a scenario:
+a spec that describes an intention is indistinguishable from one describing a
+defect, and this file has been burned by that before. When it is built it
+replaces the two protection scenarios; until then they are the truth.
 
-### Adding a pill pushes the tag to n8n immediately when timing is "sync"
+Leaving a mapping is always an EXPLICIT gesture, and there are exactly two
+sanctioned forms, neither of which is a tag change: move the file out
+(`workflows/move.feature`) or tag it `n8n:ignore` (`workflows/ignore.feature`).
 
-── a pill edit auto-propagates (no manual button), honouring the timing knob ───
-PLANNED: a content-tag pill change on a sync file updates the body silently and
-reconciles that ONE tag to n8n on its own — no "Sync to n8n" click required.
+THE n8n SIDE IS THE OPPOSITE, AND THAT ASYMMETRY IS THE POINT. The mapping tag
+is what makes a workflow the folder's, so removing it UPSTREAM says the
+workflow no longer belongs and the mirror follows. Nextcloud may not drop the
+binding; n8n may, because n8n is where membership is decided.
 
-LIVE (Slice A, §5.6.2): the pill→n8n reconcile is wired reactively via
-ContentTagListener, honouring the same `timing` knob as the body writeback
-(`sync` inline, `async` via ReconcileTagsJob). Slice A carries the pill to n8n and
-converges the pills; it does NOT yet rewrite the file body's `tags` array (that is
-Slice B), so the body-array assertions stay in the @todo projection scenarios below.
+### Changing tags on one mirror should converge its sibling (future fan-out)
 
-### A content change pulls the new body and then reconciles the tags
+── one workflow mirrored by several mappings (known, not solved here) ──────
+A single n8n workflow can carry two mapping tags at once, and each mapping
+mirrors it into its own folder — so the SAME workflow id exists as TWO managed
+files in Nextcloud. They share one canonical object in n8n, so an n8n tag is a
+property of the workflow, not of either file.
 
-── RULE: a change in n8n reaches the mirror, and nothing else moves ───────────
-Both scenarios are `@in-n8n` BEHAVIOURS — someone changed a workflow's content, or
-its tags — and the pull is merely how the change arrives. The third case, "nobody
-changed anything", is not a behaviour at all: it is what a RUN does, and it lives
-in sync-now.feature.
+The hazard: change the tags on ONE mirror and n8n now holds the merged set —
+but the SIBLING file still shows its old tags until its own mapping is next
+synced, and its stale `n8n_syncedTags` baseline could then read a since-agreed
+tag as a local remove and bounce it. Converging all mirrors of one id on a tag
+change (fan-out by workflow id, not just by file) is the real fix and is
+deliberately OUT OF SCOPE; this scenario only PINS THE SHAPE.
 
-The first is also the negative control for that rule: a pull that had simply
-stopped writing would satisfy "a quiet run rewrites nothing" and fail this.
+A SECOND hazard in the same setup: on the "flows" mirror the OTHER mapping's
+tag shows as an ORDINARY content tag — it is not THIS mapping's protected tag
+— so dropping it here would unbind the workflow from the other mapping. The
+protected set must therefore be the UNION of every mapping tag on the
+workflow. That was its own `@unbuilt` scenario and is now recorded here
+instead: its action was a push, and a hazard nobody can trigger yet is a note,
+not a specification.
 
-### Moving the file out is the sanctioned unmap — it changes no tags
+### The three-way merge, and the catalogs, have no scenarios
 
-Move-out is the sanctioned unmap, and it is TAG-NEUTRAL: the unmap path only
-archives the workflow in n8n — it never touches tags. So the n8n workflow keeps
-its "flows" tag and the file keeps its "flows" pill; nothing is pushed or pruned.
-Once the file is `unmapped` it is a plain Nextcloud file (see the scope scenarios
-below), so tag-sync simply no longer applies to it.
+Both are real and both are unit-tested; neither earns a live scenario, and the
+reasons are different enough to write down.
 
-### Editing tags on an unmapped file keeps Nextcloud in step and leaves n8n alone
+THE MERGE. `n8n_syncedTags` banks the reserved-stripped tag set as of the last
+successful sync, and the reconcile three-way-merges against it — a tag is ADDED
+only if it was not in the baseline and REMOVED only if it was, and those are
+disjoint, so the merge is deterministic with no conflict to break. That baseline
+is what tells an add on one side from a remove on the other: `body {a,b}` vs
+`n8n {a,b,c}` is the SAME two sets whether the user deleted `c` or added `c`
+elsewhere while the body sat stale, and a fixed winner only picks which of two
+legitimate gestures to destroy.
 
-An unmapped file has no workflow to tell, so NOTHING reaches n8n — no push, no
-queued job. Its own two Nextcloud surfaces still track each other, because that
-pair needs no remote system (saga §5.10); that is what lets a tag applied out here
-survive until the file is moved back into a mapping.
+Two scenarios used to pin it, and both were the outlines' add and remove rows
+again with an extra `Given` — and that `Given` PERFORMED AN ACTION ("I have
+changed the Nextcloud tags to …"), which is a setup step doing a gesture. The
+merge is exercised on every row of every outline already; what a scenario cannot
+reach is the merge in ISOLATION, which is exactly what `TagMerge`'s unit tests
+do, purely and in milliseconds.
 
-THIS SCENARIO USED TO SAY LESS THAN IT SHOULD. It asserted only "the tag is just a
-plain Nextcloud system tag on the file", which stayed technically true when the
-local pair landed while quietly missing the half that changed. An assertion that
-survives a behaviour change unaltered is not necessarily a good one.
+THE CATALOGS. Tags exist at two levels: the ASSIGNMENT (this tag is on this
+workflow) and the DEFINITION (the catalog entry). Assignments are reconciled
+aggressively and both ways. DEFINITIONS are deliberately never auto-pruned —
+neither catalog is ours alone, a system tag may be pinned on files nobody here
+knows about, and deleting one because no MANAGED object uses it would strip it
+off bystanders.
 
-### One workflow with two mapping tags is mirrored into both mapped folders
+So there is no code that deletes a definition, and a scenario asserting that a
+definition survived was testing the ABSENCE of a feature nobody wrote — on the
+Nextcloud side, mostly testing Nextcloud. The design (an explicit, opt-in `occ`
+sweep, dry-run first, never on the reconcile hot path, whose predicate is
+orphaned-on-BOTH-sides) is recorded here so it is not rediscovered, and it gets
+scenarios when it gets code.
 
-── one workflow mirrored by several mappings (known, not solved here) ─────────
-A single n8n workflow can carry two mapping tags at once (e.g. "flows" AND
-"reports"), and each mapping mirrors it into its own folder — so the SAME
-workflow id exists as TWO managed files in Nextcloud. They share one canonical
-object in n8n, so an n8n tag is a property of the workflow, not of either file.
+### tags.feature — WHAT WAS RETIRED, AND WHY
 
-The hazard: edit the pills on ONE mirror and push, and n8n now holds the merged
-tag set — but the SIBLING file (same id, other folder) still shows its old pills
-until its own mapping is next pulled, and its stale `n8n_syncedTags` baseline
-could then read a since-agreed tag as a local remove and bounce it. Converging
-all mirrors of one id on a tag edit (fan-out by workflow id, not just by file) is
-the real fix and is deliberately OUT OF SCOPE for now; these scenarios only
-PIN THE SHAPE so the future work has a target and the current behaviour is known.
+Twenty-nine scenarios became fourteen. Nothing here was deleted for being
+wrong about the app; the entries below were duplicates, mechanisms, or other
+files' business.
 
-A SECOND hazard in the same setup: on the "flows" mirror the OTHER mapping's tag
-("reports") shows as an ORDINARY content pill — it is not THIS mapping's protected
-tag (protection is per-mapping, `[mapping tag]`) — so dropping it here would push a
-removal that unbinds the workflow from the "reports" mapping and prunes that mirror.
-The protected set must therefore be the UNION of every mapping tag on the workflow,
-not just the current mapping's. Also future fan-out work, pinned `@todo` below.
+MECHANISM AS THE ACTION — the largest group, and the rule they broke is the
+oldest one in `gherkin.instructions.md`: describe behaviour, not
+implementation. `When the "flows" mapping is pulled` / `is pushed` /
+`is reconciled` / `When both mappings are pulled` / `When an admin runs the
+optional catalog sweep`. Where the scenario had a real gesture underneath, the
+sync was folded into it; where the sync WAS the scenario, it went.
 
-### A workflow that loses the mapping tag in n8n loses its mirror
+  · Push writes Nextcloud content tags into n8n (sync only)
+  · Adding a pill pushes the tag to n8n immediately when timing is "sync"
+  · Removing a pill removes the tag from n8n on its own
+  · A tag added in Nextcloud since the last sync is added in n8n
+  · A tag removed in n8n since the last sync is removed in Nextcloud
+  · A tag removed in Nextcloud since the last sync is removed in n8n
+  · Reconcile never mints a definition it is about to drop
+  · An optional catalog sweep keeps any tag still used on either side
+  · An optional catalog sweep never removes a reserved or mapping tag
+  · One workflow with two mapping tags is mirrored into both mapped folders
+  · A sibling mapping's tag is protected on every mirror
 
-THE BEHAVIOUR IS THE UNTAGGING, NOT THE SYNC. The mapping tag is what makes a
-workflow the folder's, so removing it upstream says the workflow no longer
-belongs and the mirror follows. The sync is only how the news arrives, which is
-why this sits with the other tag behaviours.
+END STATE OF SOMETHING ELSE. A mirror wearing its workflow's tags is what a
+SYNC leaves behind, not a tag change, so it is asserted where the sync lives:
+`connection/sync-now.feature` now seeds its workflows with an ordinary tag and
+asserts every mirror wears it. Without that extra tag the assertion would pass
+on a mirror that imported nothing at all.
 
-It moved from a "Manual per-mapping sync" file where it was one `Then` among
-four, and where the assertion did the work: the old step stripped the tag AND
-re-ran the sync inside the `Then`, so the scenario's only visible action was
-"the button was pressed" and the behaviour happened invisibly inside an
-assertion. The untagging is a `When` now.
+  · Pull mirrors n8n tags onto the Nextcloud file as system tags
+  · The reserved namespace is never imported as a content tag  (kept, restated
+    as a change made in n8n)
+  · Pull mirrors tags even for a link mapping (searchability, not push)
+  · A tag added in n8n lands on the link on the next pull  — `@in-n8n` is
+    mode-agnostic; the n8n outline covers both modes
+  · A content change pulls the new body and then reconciles the tags — a
+    CONTENT change, and its tags half survives as `nothing else in the file
+    changed` on the n8n outline
+  · A tags-only change in n8n reaches the pills and the tags array, and
+    nothing else — same
 
-Note the eject gesture is the deliberate Nextcloud-side twin: dropping the pill
-yourself keeps the file and marks it ignored. Losing the tag upstream is not a
-request to keep anything.
+ANOTHER FILE'S GESTURE. Each was already specced where its verb lives; the
+only thing missing was an assertion, which was added there.
 
-### A tag deleted from the file is removed from n8n and the pills
+  · Moving an untracked tagged file into a mapping creates it in n8n with its
+    tags → `workflows/create.feature` (adoption) and `workflows/move.feature`
+  · The tags an adopted file arrives with come back with real ids →
+    `workflows/create.feature`
+  · Moving the file out is the sanctioned unmap — it changes no tags →
+    `workflows/move.feature`. A move never changes tags, so the assertion is
+    "nothing happened" and belongs to the move that could have caused it.
+  · Ejecting via n8n:ignore keeps the file instead of pruning it →
+    `workflows/ignore.feature`, which already has the same gesture
+  · Removing the mapping pill as a deliberate eject is paired with n8n:ignore
+    → the same, and see the mapping-tag section above
 
-The direction that was blocked twice. It is decidable only because a pill edit
-now keeps the body in step, so a body that disagrees with the pills can only be
-a deliberate edit.
+NEGATIVE-ONLY, WITH SOMEONE ELSE'S ACTION. A save is `workflows/edit.feature`'s
+gesture, and "the tags did not move" is its end state, not a tag behaviour.
 
-### Moving an untracked tagged file into a mapping creates it in n8n with its tags
+  · A save that did not touch the tags must not undo a pill edit
+  · With no Nextcloud edit, a file that disagrees with n8n loses — the n8n
+    outline says exactly this, with a gesture
 
-THE SCENARIO THE WHOLE LOCAL-PAIR RULE EXISTS FOR. No metadata means this is
-unambiguously a create, and the body is the only thing that knows the tags — the
-pills came along only because this is the same file id, and a copy or a round
-trip through another system would not have them at all.
+THE AMBIGUITY THIS FILE WAS BUILT AROUND, kept because it is the reason the
+design is what it is. Before a Nextcloud tag change wrote the body too, the
+stale body and a deliberate removal were the SAME on-disk state:
 
-### A pill added on a link is not pushed to n8n (read-only projection)
+    pills "a,b,c"  body "a,b"   → the user deleted `c` from the file  (remove)
+    pills "a,b,c"  body "a,b"   → a pill was added, body not rewritten (ignore)
 
-A link is a READ-ONLY projection of n8n's tags: the pills are there so you can
-search, but n8n is the only writer. A pill added on a link never pushes (the
-reactive reconcile gates on sync), and because a link has no push channel that
-stray pill would linger forever — so the pull wipes it, mirroring n8n exactly.
-
-### With no Nextcloud edit, a file that disagrees with n8n loses
-
-THE TWO SCENARIOS THAT MAKE THE SURFACE SAFE. Whichever of A/B above is built,
-these are what prove it did not resurrect the false-removal bug. They are the
-first tests to write, not the last.
-
-### Removing the mapping pill as a deliberate eject is paired with n8n:ignore
-
-The planned reactive gesture: dropping the binding tag on purpose means "take
-this out of the mapping" — so the app marks it ignored rather than silently
-pruning the mirror on the next pull.
-
-### Editing tags on one mirror should converge its sibling (future fan-out)
-
-NOTE: same-request convergence of every mirror of one workflow id is not built
-yet — for now the sibling catches up on its own next pull, and the app must not
-bounce the agreed tag when it does.
-
-### A sibling mapping's tag is protected on every mirror (future cross-mapping guard)
-
-On the "flows" mirror the "reports" tag is an ordinary content pill, not this
-mapping's protected tag, so today a push could drop it and unbind the sibling.
-The fix is a protected set that is the UNION of all mapping tags on the workflow.
+Identical inputs, opposite correct answers. The lockstep removed the only
+thing that produced staleness, which is why the body is a first-class surface
+here instead of a derived mirror — and why "a save must not undo a tag change"
+stopped being a scenario this file needs: there is no stale state left for it
+to catch.
 
 ## uninstall
 
