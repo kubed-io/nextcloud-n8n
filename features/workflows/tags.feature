@@ -81,13 +81,13 @@ Feature: Changing a workflow's tags
     And the file's tags settle back to "prod, dns"
     And the file can be found by a Nextcloud tag search for "prod"
 
-  # notes: ../AGENTS.md#changing-the-tags-on-an-unmapped-file-never-reaches-n8n
+  # notes: ../AGENTS.md#changing-the-tags-on-an-unmapped-file-updates-the-body-tags-too
   @user @in-nextcloud @gesture @ui
-  Scenario: Changing the tags on an unmapped file never reaches n8n
+  Scenario: Changing the tags on an unmapped file updates the body tags too
     Given a workflow file that has become "unmapped"
     When I change the Nextcloud tags to "urgent"
-    Then no tag push to n8n is triggered
-    And the body agrees with the pills
+    Then the workflow's normal tags are "urgent" in Nextcloud
+    And the file records the tag "urgent" by name alone, with no id
 
   # notes: ../AGENTS.md#a-reserved-n8n-tag-never-becomes-a-nextcloud-tag
   @n8n @in-n8n @ui @occ

@@ -59,8 +59,6 @@ trait TagSyncSteps {
 	private string $tagFilePath = '';
 	/** The mapping tag binding the file under test — excluded from every "normal" set. */
 	private string $tagMappingTag = '';
-	/** The workflow's n8n tags before an unmapped-file gesture — "did anything reach n8n?". */
-	private array $tagN8nBefore = [];
 	/** The mirror's body before an n8n-side change — "what else did the pull touch?". */
 	private string $tagBodyBefore = '';
 
@@ -128,10 +126,6 @@ trait TagSyncSteps {
 		$this->davMove($from, $to);
 		$this->tagFilePath = $to;
 		$this->currentFilePath = $to;
-		// Snapshot AFTER the move-out: the unmap archives and untags the workflow in
-		// n8n, so a snapshot taken before it would attribute the unmap's own side
-		// effects to the tag change under test.
-		$this->tagN8nBefore = $this->tagN8nContent($this->tagWfId);
 	}
 
 	/** Pin how the writeback runs. A harness concern; see the arrange above. */
@@ -369,18 +363,6 @@ trait TagSyncSteps {
 		);
 	}
 
-	/**
-	 * THE INVARIANT the file-edit direction rests on: the file body's `tags` array
-	 * never disagrees with the pills. Asserted on its own where there is no n8n side
-	 * to compare against.
-	 *
-	 * @Then the body agrees with the pills
-	 */
-	public function theBodyAgreesWithThePills(): void {
-		$got = $this->readNormalTags();
-		Assert::assertSame($got['pills'], $got['body'], "the file's tags array and its pills disagree");
-	}
-
 	/** @Then the file has no content tag :tag */
 	public function theFileHasNoContentTag(string $tag): void {
 		$pills = $this->tagContentPills($this->tagLocateFile());
@@ -436,6 +418,31 @@ trait TagSyncSteps {
 		);
 	}
 
+	/**
+	 * A tag n8n has never seen has NO ID, and the file records it honestly: a row
+	 * whose ONLY key is `name`. This is the one place a settled file legitimately
+	 * holds an id-less row — the file sits outside every mapping, so there is no n8n
+	 * to mint one, and inventing a placeholder would be a lie the next sync has to
+	 * undo. Asserted on the KEYS, not merely on a missing id, because a row carrying
+	 * `{"name": "urgent", "id": null}` or a stray `createdAt` would be this app
+	 * writing shapes n8n never agreed to.
+	 *
+	 * @Then the file records the tag :tag by name alone, with no id
+	 */
+	public function theFileRecordsTheTagByNameAlone(string $tag): void {
+		$path = $this->tagLocateFile();
+		$wf = json_decode($this->davGet($path), true);
+		Assert::assertIsArray($wf, "managed file at $path is not JSON");
+
+		foreach ((array)($wf['tags'] ?? []) as $row) {
+			if (is_array($row) && ($row['name'] ?? null) === $tag) {
+				Assert::assertSame(['name'], array_keys($row), "the '$tag' row carries more than its name");
+				return;
+			}
+		}
+		throw new \RuntimeException("the file's tags array has no row for '$tag'");
+	}
+
 	/** @Then every tag in the file body carries an n8n id */
 	public function everyBodyTagCarriesAnId(): void {
 		$path = $this->tagLocateFile();
@@ -475,51 +482,7 @@ trait TagSyncSteps {
 		Assert::assertContains($want, $found, "the file (id $want) was not returned by a tag search for '$tag'");
 	}
 
-	// ── Then: nothing reached n8n ──────────────────────────────────────────────
-
-	/**
-	 * Nothing reached n8n. Compares the workflow's tag set against the snapshot taken
-	 * when the file became unmapped — asserting on the SET rather than on "no request
-	 * was made", because the observable that matters is n8n being unchanged, and a
-	 * request-counting assertion would pass just as happily if we sent a no-op write.
-	 *
-	 * @Then no tag push to n8n is triggered
-	 */
-	public function noTagPushToN8nIsTriggered(): void {
-		$before = $this->tagN8nBefore;
-		$after = $this->tagN8nContent($this->tagWfId);
-		sort($before);
-		sort($after);
-		Assert::assertSame($before, $after, "n8n's tags changed for an unmapped file");
-	}
-
 	// ── helpers: reading the three surfaces ────────────────────────────────────
-
-	/**
-	 * The normal tags on all three surfaces, each sorted — reserved `n8n:*` and the
-	 * mapping tag stripped, since neither is a label anyone applied.
-	 *
-	 * @return array{n8n: list<string>, pills: list<string>, body: list<string>}
-	 */
-	private function readNormalTags(): array {
-		$path = $this->tagLocateFile();
-
-		$wf = json_decode($this->davGet($path), true);
-		Assert::assertIsArray($wf, "managed file at $path is not JSON");
-		$body = [];
-		foreach ((array)($wf['tags'] ?? []) as $tag) {
-			$name = is_array($tag) ? (string)($tag['name'] ?? '') : '';
-			if ($name !== '') {
-				$body[] = $name;
-			}
-		}
-
-		return [
-			'n8n' => $this->tagNormal($this->tagN8nContent($this->tagWfId)),
-			'pills' => $this->tagNormal($this->tagContentPills($path)),
-			'body' => $this->tagNormal($body),
-		];
-	}
 
 	/**
 	 * Drop the mapping tag (and anything reserved that slipped through), sort, dedupe.

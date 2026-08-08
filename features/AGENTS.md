@@ -1311,7 +1311,7 @@ Searchability is asserted here rather than in a scenario of its own. It is the
 POINT of mirroring tags at all, and a link is the strongest place to say it:
 the file holds no workflow, so its tags are the only thing making it findable.
 
-### Changing the tags on an unmapped file never reaches n8n
+### Changing the tags on an unmapped file updates the body tags too
 
 ── RULE: THE NEXTCLOUD PAIR IS LOCAL; ONLY THE n8n LEG NEEDS A MAPPING ─────
 
@@ -1323,6 +1323,14 @@ Only the third participant, n8n, requires a mapping.
     pills  ⇄  body        always, for any .n8n.json file
     pills/body  →  n8n    only for a managed `sync` file
     n8n  →  pills/body    only for a mapped folder, on a sync
+
+A TAG n8n HAS NEVER SEEN HAS NO ID, and the body records it honestly as
+`{"name": "urgent"}` with no other keys — which is the positive claim this
+scenario makes, and the reason it is not merely "nothing reached n8n". Ids are
+minted by n8n at adoption, and the first sync after that rewrites the array with
+canonical `{id,name}` rows. The file being briefly "incomplete" is correct
+rather than a defect, and it is the one place in this feature where a settled
+file legitimately holds a row with no id.
 
 THIS IS WHAT MAKES THE TRANSPORT CASE WORK END TO END. Tags applied while a
 file sits outside every mapping are recorded in the body, which is the only
