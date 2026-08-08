@@ -56,15 +56,59 @@ trait SyncSteps {
 
 	// ── Given ─────────────────────────────────────────────────────────────────
 
-	/** @Given n8n has workflows tagged :tag */
-	public function n8nHasWorkflowsTagged(string $tag): void {
-		$tagId = $this->ensureN8nTag($tag);
+	/**
+	 * Seed the workflows a sync will find, optionally carrying an ORDINARY tag
+	 * alongside the mapping tag.
+	 *
+	 * The extra tag is what makes "a mirror wears its workflow's tags" assertable
+	 * here at all: with only the mapping tag on them, a mirror that imported no tags
+	 * whatsoever would still pass. It is one phrasing more, not a second step —
+	 * Behat fills the omitted argument from the default, so the plain sentence keeps
+	 * working for the scenarios that do not care.
+	 *
+	 * @Given n8n has workflows tagged :tag
+	 * @Given n8n has workflows tagged :tag, each also carrying :extra
+	 */
+	public function n8nHasWorkflowsTagged(string $tag, string $extra = ''): void {
+		$tagIds = [$this->ensureN8nTag($tag)];
+		if ($extra !== '') {
+			$tagIds[] = $this->ensureN8nTag($extra);
+		}
 		foreach (['Reconcile-Alpha', 'Reconcile-Beta'] as $name) {
 			$unique = $name . '-' . bin2hex(random_bytes(3));
-			$id = $this->createN8nWorkflow($unique, [$tagId]);
+			$id = $this->createN8nWorkflow($unique, $tagIds);
 			$this->seededWorkflows[$unique] = $id;
 		}
 		Assert::assertCount(2, $this->seededWorkflows, 'failed to seed tagged workflows in n8n');
+	}
+
+	/**
+	 * Every mirror wears its workflow's tags as Nextcloud system tags — the END STATE
+	 * of a sync, and the thing that makes the mirror as searchable as n8n.
+	 *
+	 * It lives here rather than in tags.feature because nobody CHANGED a tag: this is
+	 * what a first sync leaves behind. The reserved `n8n:*` namespace is the app's
+	 * control plane and is excluded, so a mirror never wears one as a content tag.
+	 *
+	 * @Then each file carries its workflow's tags as Nextcloud tags
+	 */
+	public function eachFileCarriesItsWorkflowTags(): void {
+		Assert::assertNotEmpty($this->seededWorkflows, 'no seeded workflows to check');
+		$byId = $this->mappedFilesByWorkflowId($this->folderNameForTag($this->currentTag));
+		foreach ($this->seededWorkflows as $name => $id) {
+			Assert::assertArrayHasKey($id, $byId, "workflow '$name' ($id) has no mirror to check");
+			$want = array_values(array_filter(
+				$this->n8nWorkflowTagNames($id),
+				static fn (string $n): bool => !str_starts_with($n, 'n8n:'),
+			));
+			sort($want);
+			$got = array_values(array_filter(
+				$this->fileSystemTags($byId[$id]),
+				static fn (string $n): bool => !str_starts_with($n, 'n8n:'),
+			));
+			sort($got);
+			Assert::assertSame($want, $got, "the mirror of '$name' does not wear its workflow's tags");
+		}
 	}
 
 	/** @Given an unmapped workflow file exists outside every mapping */

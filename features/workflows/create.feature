@@ -35,7 +35,9 @@ Feature: Create a workflow from Nextcloud
     Then a matching workflow is created in n8n
     And the workflow carries the tags "prod", "billing", "critical", and "nextcloud:demo"
     And the file has the Nextcloud system tags "prod", "billing", and "critical"
-    # The mapping tag JOINS them — adoption is additive, never a replace.
+    And every tag in the file body carries an n8n id
+    # The mapping tag JOINS them — adoption is additive, never a replace. The body
+    # arrives with bare {name} entries and n8n mints the ids: loose by design.
 
   @user @in-nextcloud @gesture @ui @unbuilt
   Scenario: A file that arrives with no tags adopts with only the mapping tag

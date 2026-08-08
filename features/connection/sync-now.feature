@@ -14,11 +14,12 @@ Feature: Syncing a mapped n8n tag into Nextcloud
   @admin @occ @ui
   Scenario Outline: A sync brings the tag's workflows into Nextcloud
     Given a folder mapped as "sync" to the n8n tag "<tag>"
-    And n8n has workflows tagged "<tag>"
+    And n8n has workflows tagged "<tag>", each also carrying "urgent"
     When <actor> syncs <scope>
     Then each "<tag>" workflow appears as a file in the mapped folder
     And each file carries its n8n dates
     And each file carries its n8n metadata
+    And each file carries its workflow's tags as Nextcloud tags
 
     Examples: every way a sync starts
       | actor        | scope         | tag               |
