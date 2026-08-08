@@ -88,9 +88,7 @@ $info = static function (string $tip) use ($icon): string {
 								 silently hand the folder a different set. Shown as text
 								 rather than a disabled input, because a disabled input
 								 still invites typing and implies it might save. */ ?>
-						<span class="n8n-sync-fixed js-n8n-tag" data-value="<?php p($m['n8n_tag']); ?>"><?php p($m['n8n_tag']); ?>
-							<span class="n8n-sync-hint"><?php p($l->t('(fixed)')); ?></span>
-						</span>
+						<span class="n8n-sync-fixed js-n8n-tag" data-value="<?php p($m['n8n_tag']); ?>"><?php p($m['n8n_tag']); ?></span>
 					</div>
 					<div class="n8n-sync-field nf-mode">
 						<label><?php p($l->t('Mode'));
@@ -98,18 +96,14 @@ $info = static function (string $tip) use ($icon): string {
 						<?php /* Immutable: sync→link would strip every downloaded file
 								 under the mapping, link→sync would export the lot at once.
 								 Re-create the mapping to change it. */ ?>
-						<span class="n8n-sync-fixed js-mode" data-value="<?php p($modeSel); ?>"><?php p($modeSel === 'sync' ? $l->t('Sync') : $l->t('Link')); ?>
-							<span class="n8n-sync-hint"><?php p($l->t('(fixed)')); ?></span>
-						</span>
+						<span class="n8n-sync-fixed js-mode" data-value="<?php p($modeSel); ?>"><?php p($modeSel === 'sync' ? $l->t('Sync') : $l->t('Link')); ?></span>
 					</div>
 					<div class="n8n-sync-field nf-folder">
 						<label><?php p($l->t('Folder'));
 			print_unescaped($info($desc['folder'])); ?></label>
 						<?php /* Immutable: re-pointing it would orphan everything already
 								 mirrored into the old folder. */ ?>
-						<span class="n8n-sync-fixed js-team-folder" data-value="<?php p($m['team_folder']); ?>"><?php p($m['team_folder']); ?>
-							<span class="n8n-sync-hint"><?php p($l->t('(fixed)')); ?></span>
-						</span>
+						<span class="n8n-sync-fixed js-team-folder" data-value="<?php p($m['team_folder']); ?>"><?php p($m['team_folder']); ?></span>
 					</div>
 					<div class="n8n-sync-field nf-tf">
 						<label class="n8n-sync-checkbox"><input type="checkbox" class="js-use-team-folder" <?php if ($useTf) {

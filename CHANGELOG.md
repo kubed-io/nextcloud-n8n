@@ -19,18 +19,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-### Changed
-
-- Spec: the feature files are grouped by what they act on — `workflows/`, `mapping/` and `connection/` — one verb per file, matching the sibling integrations.
-- **A new mapping defaults to an admin-owned folder, not a Team Folder.** Leaving the storage backend unset used to mean "Team Folder", which needs the optional `groupfolders` app — so on a stock Nextcloud the default mapping was the one that could not be provisioned, and filling in only the required fields got you a refusal. A Team Folder is now opted into. Existing mappings are unaffected: every mapping this app has saved records its backend explicitly.
-- Spec: there is no longer a `file-type.feature` either. A mimetype, a property set and an index are not things anyone does — the registration is what enabling the app leaves behind, the metadata is what creating or syncing a workflow leaves behind, and what remains is looking at the file, which now has its own small feature.
-- Spec: there is no longer a `reconcile.feature`. Reconciling is how an n8n-side change reaches Nextcloud, not something anyone does — its scenarios moved to the behaviours that own them, and the first sync now has a file of its own.
-- **Re-share a mapped folder from anywhere and this app reflects it.** The groups a mapped folder is shared with are now read from the folder itself rather than stored alongside the mapping, so a change made in Files, with `occ`, or by another app sharing the same folder shows up here — and a sync never puts back a group you removed. Setting the groups to nothing now actually clears them, which it silently did not before.
-- **BREAKING:** a mapping is now immutable except for its groups. The n8n tag, the folder, the storage backend and the mode are fixed once created — previously the tag, folder and mode could all be changed on a saved mapping, which silently re-decided which workflows it owned. Remove the mapping and add it again to change one.
-- **`occ n8n_sync:set-groups`** changes the groups a mapped folder is shared with, the one field a mapping lets you edit — previously reachable only from the admin panel.
-- **A mapped folder now appears the moment you save the mapping**, instead of only when the first sync runs. A mapping whose folder cannot be provisioned is no longer saved at all, rather than being stored and failing on every sync afterwards.
-- A `link` mapping's folder is no longer read-only for its groups. That bit stopped nothing being written to n8n — the listeners do that — and only stopped you organising your own files.
-
 ### Added
 
 - **A workflow file's dates are now the workflow's own dates.** "Modified" shows when the workflow last changed in n8n and "Created" when it was created there, instead of both showing when a sync happened to run — so sorting a mapped folder by date sorts by the workflows, and one nobody has touched in a year finally looks like it.
@@ -43,6 +31,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- The admin cards no longer tag every immutable field with "(fixed)". The value renders as plain text rather than a control, which already says it cannot be edited.
+- Spec: the feature files are grouped by what they act on — `workflows/`, `mapping/` and `connection/` — one verb per file, matching the sibling integrations.
+- **A new mapping defaults to an admin-owned folder, not a Team Folder.** Leaving the storage backend unset used to mean "Team Folder", which needs the optional `groupfolders` app — so on a stock Nextcloud the default mapping was the one that could not be provisioned, and filling in only the required fields got you a refusal. A Team Folder is now opted into. Existing mappings are unaffected: every mapping this app has saved records its backend explicitly.
+- Spec: there is no longer a `file-type.feature` either. A mimetype, a property set and an index are not things anyone does — the registration is what enabling the app leaves behind, the metadata is what creating or syncing a workflow leaves behind, and what remains is looking at the file, which now has its own small feature.
+- Spec: there is no longer a `reconcile.feature`. Reconciling is how an n8n-side change reaches Nextcloud, not something anyone does — its scenarios moved to the behaviours that own them, and the first sync now has a file of its own.
+- **Re-share a mapped folder from anywhere and this app reflects it.** The groups a mapped folder is shared with are now read from the folder itself rather than stored alongside the mapping, so a change made in Files, with `occ`, or by another app sharing the same folder shows up here — and a sync never puts back a group you removed. Setting the groups to nothing now actually clears them, which it silently did not before.
+- **BREAKING:** a mapping is now immutable except for its groups. The n8n tag, the folder, the storage backend and the mode are fixed once created — previously the tag, folder and mode could all be changed on a saved mapping, which silently re-decided which workflows it owned. Remove the mapping and add it again to change one.
+- **`occ n8n_sync:set-groups`** changes the groups a mapped folder is shared with, the one field a mapping lets you edit — previously reachable only from the admin panel.
+- **A mapped folder now appears the moment you save the mapping**, instead of only when the first sync runs. A mapping whose folder cannot be provisioned is no longer saved at all, rather than being stored and failing on every sync afterwards.
+- A `link` mapping's folder is no longer read-only for its groups. That bit stopped nothing being written to n8n — the listeners do that — and only stopped you organising your own files.
+
 - **BREAKING:** minimum Nextcloud version is now **31** (was 30). Fixing the scheduled-sync checkbox requires a settings API introduced in 31; Nextcloud 30 reached end of life in 2025.
 - REST API card now shows whether an API key is **currently stored** (the field itself always looks empty because the key is sensitive/encrypted), so you can tell "not set yet" from "already saved" at a glance.
 - Pushing tags to n8n now resolves the whole set with a single tag-list fetch instead of one per tag, so a workflow with many tags no longer triggers a burst of API calls on each push.
@@ -52,6 +51,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - **A mapping's mode now defaults to `link` when you don't set one**, instead of the whole mapping being refused — so `occ n8n_sync:add-mapping` needs only a tag and a folder. `link` downloads nothing, so a mapping made without thinking about mode cannot cost you anything.
 
 ### Fixed
+
+- **A link file can no longer be opened in the text editor.** On the first folder of a session the mode had not always reached the browser yet, so the editor could be offered on a pointer whose edits the server discards and the next sync overwrites; picking it now opens the workflow in n8n instead.
 
 - **A sync no longer marks every workflow file as modified.** Each scheduled sync rewrote every mirrored file whether or not anything had changed in n8n, so the whole folder read "Modified a few seconds ago" after every run and a file you had actually touched was impossible to spot — a pull now writes only the files whose workflow really changed, and the Sync Actions panel reports the rest as "unchanged".
 - **Emptying the trash now really deletes the workflow in n8n.** Purging a synced workflow file used to leave its workflow alive in n8n forever, archived, with the Nextcloud file gone — a silent leak. Nextcloud fires no event for a trash purge (the step was listening for one that never comes), and the trashed file is renamed with a deletion timestamp that also defeated the "is this one of ours?" check. Both are fixed.

@@ -53,27 +53,53 @@ const n8nUrl = (() => {
 })()
 
 /**
- * Fallback for the first-load race: ask the built-in WebDAV endpoint for just
- * this node's metadata. getDefaultPropfind() now includes our registered prop,
- * so the single-node stat returns `metadata-n8n_id`.
+ * Fallback for the first-load race: ask the built-in WebDAV endpoint for this
+ * node's metadata. getDefaultPropfind() includes our registered props, so a
+ * single-node stat returns both `metadata-n8n_id` and `metadata-n8n_mode`.
+ *
+ * Returns the raw props bag rather than one value, because both callers below
+ * need a different key out of the same request.
  */
-async function propfindN8nId(node) {
-  if (!node?.path) return ''
+async function propfindProps(node) {
+  if (!node?.path) return {}
   try {
     const res = await getClient().stat(getRootPath() + node.path, {
       details: true,
       data: getDefaultPropfind(),
     })
-    return res?.data?.props?.['metadata-n8n_id'] || ''
+    return res?.data?.props ?? {}
   } catch (e) {
     console.warn('[n8n_sync] metadata PROPFIND failed', e)
-    return ''
+    return {}
   }
 }
 
 /** Node → n8n deep link: node attributes first (free), else a one-shot PROPFIND. */
 async function resolveUrl(node) {
-  return buildUrl(n8nUrl, getN8nId(node)) || buildUrl(n8nUrl, await propfindN8nId(node))
+  return buildUrl(n8nUrl, getN8nId(node))
+    || buildUrl(n8nUrl, (await propfindProps(node))['metadata-n8n_id'] || '')
+}
+
+/**
+ * The file's mode, for real — the listing value when it rode along, else one
+ * PROPFIND.
+ *
+ * WHY AN ASYNC MODE EXISTS AT ALL. `enabled()` is synchronous, so it can only
+ * ever see what the listing carried, and on the first folder after a page load
+ * that is nothing (the race documented at the top of this file). The editor's
+ * unknown-mode default is deliberately PERMISSIVE, so that `unmapped`/`ignored`
+ * files — whose only opener is the text editor — are never left with no way to
+ * open at all. The cost of that choice is that a `link` can slip into the menu
+ * for exactly one folder per session, and editing a link is meaningless: the
+ * server refuses to push it (NodeWrittenListener) and the next pull overwrites
+ * whatever was typed.
+ *
+ * So the menu stays permissive and the ACTION is what resolves the truth. By
+ * exec() time we can afford the round trip, and a link ends up where a link
+ * should: opened in n8n.
+ */
+async function resolveMode(node) {
+  return getN8nMode(node) || getN8nMode({ attributes: await propfindProps(node) })
 }
 
 // ── "Edit as text" — a plain-text source editor in a modal ─────────────────
@@ -199,8 +225,18 @@ registerFileAction({
   // row render; openInText() handles the (unlikely) case where Text's API isn't ready.
   enabled: (context) => isN8nFile(context) && canEditAsText(getN8nMode(context?.nodes?.[0])),
   async exec(context) {
+    const node = context.nodes[0]
+    // The listing may not have carried the mode (see resolveMode). Settle it
+    // before opening an editor on something that can never be saved: a link
+    // opens in n8n, which is the only thing a pointer can meaningfully do.
+    if (!canEditAsText(await resolveMode(node))) {
+      const url = await resolveUrl(node)
+      if (!url) return null
+      window.open(url, '_blank', 'noopener,noreferrer')
+      return true
+    }
     // null = silent (the modal is the feedback); false = error toast on failure.
-    return (await openInText(context.nodes[0])) ? null : false
+    return (await openInText(node)) ? null : false
   },
   default: DefaultType.DEFAULT,
   order: -49, // below "Open in n8n"; the fallback default for unmapped/ignored
