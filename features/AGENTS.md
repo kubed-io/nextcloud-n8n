@@ -1337,42 +1337,6 @@ as an end state of a sync, because that is the moment the exclusion has to
 hold. What `n8n:ignore` then DOES is `workflows/ignore.feature`'s subject, not
 this file's.
 
-### When both sides moved, neither change is thrown away
-
-PROVENANCE — a new tag from Nextcloud vs a new tag from n8n: when the two sets
-differ on a string you cannot tell an ADD on one side from a REMOVE on the
-other from the current sets alone. So the app banks the reserved-stripped tag
-set as of the last successful sync in `n8n_syncedTags` (the tag analogue of
-`n8n_syncedHash`) and three-way-merges against it. Against a single baseline
-the merge is DETERMINISTIC — there is no add-vs-remove conflict to break: a
-tag is ADDED only if it was not in the baseline (so at least one side newly
-has it) and REMOVED only if it was in the baseline (so a side dropped it), and
-those are disjoint. Rule: add-on-either-side keeps the tag; REMOVE-ON-EITHER-
-SIDE drops it. Direction is NOT a merge input — it only decides which side the
-merged set is written back to.
-
-WHY PICKING A WINNER IS NOT ENOUGH ON ITS OWN: `body {a,b}` vs `n8n {a,b,c}`
-is the SAME two sets whether the user deleted `c` from the file or added `c`
-in Nextcloud while the body sat stale — and the correct answer is opposite in
-each case. A fixed winner does not resolve that, it only picks which of two
-legitimate gestures to break.
-
-THESE TWO SCENARIOS USE THE DELTA PHRASING (`the tag "prod" is added to the
-workflow in n8n`) WHERE EVERY OTHER USES THE SET, and that is load-bearing
-rather than sloppy: restating n8n's whole set here would overwrite the
-Nextcloud change inside the arrange and the scenario would prove nothing. A
-set is the right vocabulary for a gesture; a delta is the right vocabulary for
-"and meanwhile, elsewhere".
-
-AUTHORITY BELONGS TO THE MOMENT, NOT TO A SURFACE:
-
-  ADOPTION (a file becomes managed)                → THE BODY WINS
-      Nothing else knows. No pills, no metadata, no workflow yet.
-  STEADY STATE, no Nextcloud change                → n8n WINS
-      n8n is the system of record; a stale body loses.
-  A DELIBERATE NEXTCLOUD CHANGE                    → THE CHANGE WINS
-      The user acted; carry it to n8n.
-
 ### The mapping tag is the binding, not a label anyone may drop
 
 MAPPING-TAG PROTECTION (n8n-only, no Grafana analogue — Grafana maps by real
@@ -1400,36 +1364,6 @@ is what makes a workflow the folder's, so removing it UPSTREAM says the
 workflow no longer belongs and the mirror follows. Nextcloud may not drop the
 binding; n8n may, because n8n is where membership is decided.
 
-### Dropping a tag sweeps the edge, never the shared catalog
-
-Tags exist at two levels on each side: the ASSIGNMENT (this tag is on this
-workflow/file) and the DEFINITION (the catalog entry — an n8n `/api/v1/tags`
-row, or a Nextcloud system tag). The reconcile prunes ASSIGNMENTS aggressively
-and both ways: remove-on-either-side drops the edge, so the mirror never
-carries a tag the canonical side let go.
-
-DEFINITIONS are deliberately NOT auto-pruned. Neither catalog is ours alone —
-a system tag ("urgent") may be pinned on non-workflow files by a human, an n8n
-tag may sit on workflows outside any mapping — so deleting a definition
-because no MANAGED object uses it would strip it off bystanders. An orphaned
-definition is cheap and harmless and is often a human about to reuse it.
-
-PRUNE-FREE BY CONSTRUCTION, asserted on the same scenario: `ensureTag(name)`
-reuses an existing catalog entry by name on both sides (idempotent — no
-duplicates); reserved `n8n:*` never crosses; and a reconcile computes the FINAL
-merged set FIRST, then writes once, so we never mint a definition we are about
-to drop. That used to be a scenario of its own whose action was "a reconcile
-ran" against a state where nothing had changed — it says more as an assertion
-on a reconcile that genuinely drops a tag, and costs nothing.
-
-AN OPTIONAL DEFINITION SWEEP is still the plan for admins who want the
-catalogs tidied: an EXPLICIT `occ` command, dry-run first, never on the
-reconcile hot path, whose predicate is conservative and identical on both
-sides — a definition is a candidate ONLY if it is non-reserved, not a mapping
-tag, and orphaned on BOTH sides at once. It has no scenarios, because a
-command that does not exist cannot have a gesture; the two that existed said
-only "the sweep ran" and were retired with the rest of the mechanism `When`s.
-
 ### Changing tags on one mirror should converge its sibling (future fan-out)
 
 ── one workflow mirrored by several mappings (known, not solved here) ──────
@@ -1452,6 +1386,41 @@ protected set must therefore be the UNION of every mapping tag on the
 workflow. That was its own `@unbuilt` scenario and is now recorded here
 instead: its action was a push, and a hazard nobody can trigger yet is a note,
 not a specification.
+
+### The three-way merge, and the catalogs, have no scenarios
+
+Both are real and both are unit-tested; neither earns a live scenario, and the
+reasons are different enough to write down.
+
+THE MERGE. `n8n_syncedTags` banks the reserved-stripped tag set as of the last
+successful sync, and the reconcile three-way-merges against it — a tag is ADDED
+only if it was not in the baseline and REMOVED only if it was, and those are
+disjoint, so the merge is deterministic with no conflict to break. That baseline
+is what tells an add on one side from a remove on the other: `body {a,b}` vs
+`n8n {a,b,c}` is the SAME two sets whether the user deleted `c` or added `c`
+elsewhere while the body sat stale, and a fixed winner only picks which of two
+legitimate gestures to destroy.
+
+Two scenarios used to pin it, and both were the outlines' add and remove rows
+again with an extra `Given` — and that `Given` PERFORMED AN ACTION ("I have
+changed the Nextcloud tags to …"), which is a setup step doing a gesture. The
+merge is exercised on every row of every outline already; what a scenario cannot
+reach is the merge in ISOLATION, which is exactly what `TagMerge`'s unit tests
+do, purely and in milliseconds.
+
+THE CATALOGS. Tags exist at two levels: the ASSIGNMENT (this tag is on this
+workflow) and the DEFINITION (the catalog entry). Assignments are reconciled
+aggressively and both ways. DEFINITIONS are deliberately never auto-pruned —
+neither catalog is ours alone, a system tag may be pinned on files nobody here
+knows about, and deleting one because no MANAGED object uses it would strip it
+off bystanders.
+
+So there is no code that deletes a definition, and a scenario asserting that a
+definition survived was testing the ABSENCE of a feature nobody wrote — on the
+Nextcloud side, mostly testing Nextcloud. The design (an explicit, opt-in `occ`
+sweep, dry-run first, never on the reconcile hot path, whose predicate is
+orphaned-on-BOTH-sides) is recorded here so it is not rediscovered, and it gets
+scenarios when it gets code.
 
 ### tags.feature — WHAT WAS RETIRED, AND WHY
 

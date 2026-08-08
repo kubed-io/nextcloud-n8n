@@ -59,11 +59,7 @@ trait TagSyncSteps {
 	private string $tagFilePath = '';
 	/** The mapping tag binding the file under test — excluded from every "normal" set. */
 	private string $tagMappingTag = '';
-	/** A non-workflow file pinned with a shared tag, for the edge-vs-catalog prune check. */
-	private string $tagUnrelatedFile = '';
-	/** Snapshot of the NC system-tag catalog names, for the "no new definition" check. */
-	private array $tagCatalogBefore = [];
-	/** Snapshot of the n8n tag catalog names, for the "no new definition" check. */
+	/** The workflow's n8n tags before an unmapped-file gesture — "did anything reach n8n?". */
 	private array $tagN8nBefore = [];
 	/** The mirror's body before an n8n-side change — "what else did the pull touch?". */
 	private string $tagBodyBefore = '';
@@ -79,9 +75,16 @@ trait TagSyncSteps {
 	 * `sync` file is written into the folder and pulled, a `link` has no bytes of
 	 * its own so its workflow is seeded in n8n and the pull mints the pointer.
 	 *
-	 * @Given a managed :mode workflow file in :mapping whose normal tags are :tags
+	 * NAMED BY ITS FOLDER, and the mapping tag is read back from the live store.
+	 * A mapping IS its n8n tag, so naming the tag here would have read fine too —
+	 * but `move.feature` and `delete.feature` already say "in Automations", the
+	 * Background declares the folder in its table, and one vocabulary across the
+	 * suite is worth more than the shortest sentence in one file. Tags are named
+	 * where a tag is what the gesture is about.
+	 *
+	 * @Given a managed :mode workflow file in :folder whose normal tags are :tags
 	 */
-	public function aManagedFileWhoseNormalTagsAre(string $mode, string $mapping, string $tags): void {
+	public function aManagedFileWhoseNormalTagsAre(string $mode, string $folder, string $tags): void {
 		// TIMING IS NOT IN THE SPEC, AND IS PINNED HERE INSTEAD. Whether the change
 		// reaches n8n during the request or on the worker's next tick is an
 		// implementation detail of this app — the behaviour is that it arrives, and
@@ -90,8 +93,9 @@ trait TagSyncSteps {
 		// inherits whatever the one before it left behind.
 		$this->setPushTiming('sync');
 		$normal = self::tagList($tags);
+		$mapping = $this->tagForFolder($folder);
 		$this->tagMappingTag = $mapping;
-		$this->currentFolder = $this->folderNameForTag($mapping);
+		$this->currentFolder = $folder;
 		$this->currentTag = $mapping;
 		$this->tagFilePath = '';
 
@@ -107,10 +111,6 @@ trait TagSyncSteps {
 		$this->tagSetN8n(array_merge([$mapping], $normal));
 		$this->runMappingSync('pull', $mapping);
 
-		// Snapshotted AFTER the arrange so "no new definition" means "none minted by
-		// the gesture under test", not "none minted by the fixture".
-		$this->tagCatalogBefore = $this->allSystemTagNames();
-		$this->tagN8nBefore = $this->allN8nTagNames();
 	}
 
 	/**
@@ -120,7 +120,7 @@ trait TagSyncSteps {
 	 * @Given a workflow file that has become "unmapped"
 	 */
 	public function aWorkflowFileThatHasBecomeUnmapped(): void {
-		$this->aManagedFileWhoseNormalTagsAre('sync', 'flows', 'foo');
+		$this->aManagedFileWhoseNormalTagsAre('sync', 'Flows', 'foo');
 		$from = $this->tagLocateFile();
 		$dest = 'unmapped-' . bin2hex(random_bytes(3));
 		$this->davMkdir($dest);
@@ -132,14 +132,6 @@ trait TagSyncSteps {
 		// n8n, so a snapshot taken before it would attribute the unmap's own side
 		// effects to the tag change under test.
 		$this->tagN8nBefore = $this->tagN8nContent($this->tagWfId);
-	}
-
-	/** @Given the Nextcloud system tag :tag is also pinned on an unrelated non-workflow file */
-	public function aSharedTagPinnedOnAnUnrelatedFile(string $tag): void {
-		$path = 'unrelated-' . bin2hex(random_bytes(3)) . '.txt';
-		$this->davPut($path, 'not a workflow');
-		$this->assignSystemTag($path, $tag);
-		$this->tagUnrelatedFile = $path;
 	}
 
 	/** Pin how the writeback runs. A harness concern; see the arrange above. */
@@ -407,6 +399,23 @@ trait TagSyncSteps {
 		$this->addToAssertionCount(1);
 	}
 
+	/**
+	 * The MIRROR went, the WORKFLOW did not. Losing a mapping tag says the workflow
+	 * no longer belongs to that folder — it says nothing about the workflow, which
+	 * is still in n8n wearing whatever tags it has left. Asserted because "the file
+	 * is gone" reads identically whether the app unmirrored it or deleted it.
+	 *
+	 * @Then the workflow still exists in n8n, with its other tags
+	 */
+	public function theWorkflowStillExistsInN8n(): void {
+		$wf = $this->n8nGetWorkflow($this->tagWfId);
+		Assert::assertIsArray($wf, "workflow {$this->tagWfId} was deleted in n8n, not merely unmirrored");
+		Assert::assertNotEmpty(
+			$this->tagNormal($this->n8nWorkflowTagNames($this->tagWfId)),
+			'the workflow lost its other tags along with the mapping tag',
+		);
+	}
+
 	/** @Then every tag in the file body carries an n8n id */
 	public function everyBodyTagCarriesAnId(): void {
 		$path = $this->tagLocateFile();
@@ -462,27 +471,6 @@ trait TagSyncSteps {
 		sort($before);
 		sort($after);
 		Assert::assertSame($before, $after, "n8n's tags changed for an unmapped file");
-	}
-
-	// ── Then: pruning is an edge sweep, not a catalog GC ────────────────────────
-
-	/** @Then the :tag system-tag definition still exists */
-	public function theSystemTagDefinitionStillExists(string $tag): void {
-		Assert::assertContains($tag, $this->allSystemTagNames(), "the '$tag' system-tag definition was deleted");
-	}
-
-	/** @Then the unrelated file still carries the :tag pill */
-	public function theUnrelatedFileStillCarries(string $tag): void {
-		Assert::assertNotSame('', $this->tagUnrelatedFile, 'no unrelated file was seeded');
-		Assert::assertContains($tag, $this->fileSystemTags($this->tagUnrelatedFile), "the unrelated file lost its '$tag' pill");
-	}
-
-	/** @Then no new tag definition is created on either side */
-	public function noNewTagDefinitionIsCreated(): void {
-		$ncNew = array_values(array_diff($this->allSystemTagNames(), $this->tagCatalogBefore));
-		$n8nNew = array_values(array_diff($this->allN8nTagNames(), $this->tagN8nBefore));
-		Assert::assertSame([], $ncNew, 'a new Nextcloud system-tag definition was minted: ' . implode(',', $ncNew));
-		Assert::assertSame([], $n8nNew, 'a new n8n tag definition was minted: ' . implode(',', $n8nNew));
 	}
 
 	// ── helpers: reading the three surfaces ────────────────────────────────────
@@ -631,39 +619,5 @@ trait TagSyncSteps {
 			}
 		}
 		throw new \RuntimeException("no pulled file for workflow {$this->tagWfId} in {$this->currentFolder}");
-	}
-
-	/** Every Nextcloud system-tag display name (the whole catalog). @return list<string> */
-	private function allSystemTagNames(): array {
-		$res = $this->tagDavClient()->request('PROPFIND', 'systemtags', [
-			'headers' => ['Depth' => '1', 'Content-Type' => 'application/xml'],
-			'body' => '<?xml version="1.0"?><d:propfind xmlns:d="DAV:" xmlns:oc="http://owncloud.org/ns">'
-				. '<d:prop><oc:display-name/></d:prop></d:propfind>',
-		]);
-		$doc = new \SimpleXMLElement((string)$res->getBody());
-		$doc->registerXPathNamespace('oc', 'http://owncloud.org/ns');
-		$names = [];
-		foreach ($doc->xpath('//oc:display-name') ?: [] as $n) {
-			$v = trim((string)$n);
-			if ($v !== '') {
-				$names[] = $v;
-			}
-		}
-		sort($names);
-		return array_values(array_unique($names));
-	}
-
-	/** Every n8n tag name (the whole catalog). @return list<string> */
-	private function allN8nTagNames(): array {
-		$res = $this->n8nClient()->request('GET', 'tags?limit=250');
-		$decoded = json_decode((string)$res->getBody(), true);
-		$names = [];
-		foreach ((array)($decoded['data'] ?? []) as $tag) {
-			if (is_array($tag) && isset($tag['name']) && is_string($tag['name'])) {
-				$names[] = $tag['name'];
-			}
-		}
-		sort($names);
-		return array_values(array_unique($names));
 	}
 }
