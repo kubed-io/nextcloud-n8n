@@ -407,9 +407,14 @@ trait TagSyncSteps {
 	 * is still in n8n wearing whatever tags it has left. Asserted because "the file
 	 * is gone" reads identically whether the app unmirrored it or deleted it.
 	 *
+	 * NAMED FOR WHAT IT ASSERTS, not for its sentence: `theWorkflowStillExistsInN8n`
+	 * is already PurgeSteps', and two traits composed into one context may not both
+	 * define a method name — PHP fatals on the collision before Behat sees a single
+	 * step, so every leg dies at once with a message about traits rather than tests.
+	 *
 	 * @Then the workflow still exists in n8n, with its other tags
 	 */
-	public function theWorkflowStillExistsInN8n(): void {
+	public function theWorkflowSurvivesUnmirrored(): void {
 		$wf = $this->n8nGetWorkflow($this->tagWfId);
 		Assert::assertIsArray($wf, "workflow {$this->tagWfId} was deleted in n8n, not merely unmirrored");
 		Assert::assertNotEmpty(

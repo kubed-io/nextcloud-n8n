@@ -63,6 +63,19 @@ PLACEHOLDER = '(?:"[^"]*"|\'[^\']*\'|[^\\s"\']+)'
 regex_re = re.compile(r'@(?:Given|When|Then)\s+/\^(.+?)\$/')
 plain_re = re.compile(r'@(?:Given|When|Then)\s+(?!/)(\S.*?)\s*$')
 patterns, seen, parens = [], {}, []
+# METHOD NAMES, NOT ONLY STEP TEXT. Two traits composed into one FeatureContext
+# may not both define a method name: PHP fatals on the collision before Behat
+# reads a single step, so every matrix leg dies at once reporting a trait
+# conflict rather than a test failure. Two steps can legitimately want the same
+# obvious name (`theWorkflowStillExistsInN8n` was claimed by PurgeSteps and
+# written again by TagSyncSteps), and nothing else catches it until CI does.
+methods = {}
+func_re = re.compile(r'^\s*(?:public|protected|private)\s+function\s+(\w+)\s*\(')
+for php in sorted(bootstrap.rglob('*.php')):
+    for line in php.read_text(encoding='utf-8').splitlines():
+        m = func_re.match(line)
+        if m:
+            methods.setdefault(m.group(1), []).append(php.name)
 for php in sorted(bootstrap.rglob('*.php')):
     for line in php.read_text(encoding='utf-8').splitlines():
         m = regex_re.search(line)
@@ -107,6 +120,15 @@ if dupes:
     for p, files in sorted(dupes.items()):
         print(f'    {p}  ({", ".join(files)})')
     print('  One function may carry several phrasings; never the same phrasing twice.')
+
+collisions = {n: f for n, f in methods.items() if len(set(f)) > 1}
+if collisions:
+    fail = True
+    print('\u2718 TRAIT METHOD COLLISION — PHP fatals when the context composes these,')
+    print('  so EVERY leg dies before a single step runs:')
+    for n, files in sorted(collisions.items()):
+        print(f'    {n}()  ({", ".join(sorted(set(files)))})')
+    print('  Rename one. A step may be phrased freely; its method name must be unique.')
 
 if parens:
     fail = True
@@ -244,6 +266,7 @@ if undefined:
 
 if not fail:
     print(f'✓ step definitions: {len(patterns)} patterns, no duplicates, '
+          f'{len(methods)} method names unique, '
           f'every runnable step defined across {len(features)} feature files')
 sys.exit(1 if fail else 0)
 PY
