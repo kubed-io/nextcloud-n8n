@@ -77,7 +77,7 @@ async function propfindProps(node) {
 /** Node → n8n deep link: node attributes first (free), else a one-shot PROPFIND. */
 async function resolveUrl(node) {
   return buildUrl(n8nUrl, getN8nId(node))
-    || buildUrl(n8nUrl, (await propfindProps(node))['metadata-n8n_id'] || '')
+    || buildUrl(n8nUrl, getN8nId({ attributes: await propfindProps(node) }))
 }
 
 /**
