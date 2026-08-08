@@ -1,4 +1,4 @@
-# Notes, decisions and history for this feature: AGENTS.md#rename
+# Notes, decisions and history for this feature: ../AGENTS.md#workflowsrename
 
 Feature: Renaming keeps file, JSON, and n8n in agreement
   As a Nextcloud user
@@ -28,7 +28,7 @@ Feature: Renaming keeps file, JSON, and n8n in agreement
     When the file is renamed by any of the above means
     Then the "n8n_id" metadata is unchanged
 
-    # notes: AGENTS.md#renaming-a-workflow-in-n8n-renames-the-mirrored-file
+    # notes: ../AGENTS.md#renaming-a-workflow-in-n8n-renames-the-mirrored-file
 
   @n8n @in-n8n @occ @todo
   Scenario: Renaming a workflow in n8n renames the mirrored file
@@ -81,10 +81,7 @@ Feature: Renaming keeps file, JSON, and n8n in agreement
     When I rename the file to "New Name.n8n.json"
     Then the file stays renamed in Nextcloud
     And the workflow name in n8n is retried on the next sync
-    # THE ASYMMETRY WITH DELETE, AND IT IS DELIBERATE. A delete aborts when n8n
-    # refuses, because the two sides must not disagree about whether something
-    # exists. A name is cosmetic and self-heals, so reverting a rename under the
-    # user's cursor would cost more than the drift does.
+    # notes: ../AGENTS.md#a-failed-propagation-never-reverts-the-local-rename
 
   @user @in-nextcloud @gesture @ui @unbuilt
   Scenario: A rename to an empty or whitespace-only name is refused

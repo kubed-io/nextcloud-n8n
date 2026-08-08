@@ -1,4 +1,4 @@
-# Notes, decisions and history for this feature: AGENTS.md#delete
+# Notes, decisions and history for this feature: ../AGENTS.md#workflowsdelete
 
 Feature: Deleting a workflow file
   As a Nextcloud user
@@ -15,7 +15,7 @@ Feature: Deleting a workflow file
     When I move it to the trash
     Then the workflow is archived (hidden, preserved) in n8n
 
-  # notes: AGENTS.md#purging-a-sync-mode-file-permanently-deletes-the-workflow
+  # notes: ../AGENTS.md#purging-a-sync-mode-file-permanently-deletes-the-workflow
   @user @in-nextcloud @gesture @ui
   Scenario: Purging a sync-mode file permanently deletes the workflow
     Given a trashed "sync" workflow file
@@ -41,7 +41,7 @@ Feature: Deleting a workflow file
     When I delete it
     Then n8n is not contacted
 
-  # notes: AGENTS.md#trashing-an-unmapped-file-is-a-no-op-in-n8n-already-archived
+  # notes: ../AGENTS.md#trashing-an-unmapped-file-is-a-no-op-in-n8n-already-archived
   @user @in-nextcloud @gesture @ui
   Scenario: Trashing an unmapped file is a no-op in n8n (already archived)
     Given an unmapped workflow file that still carries its "n8n_id"
@@ -49,7 +49,7 @@ Feature: Deleting a workflow file
     Then the trash move succeeds
     And the archived workflow in n8n is left as-is
 
-  # notes: AGENTS.md#purging-an-unmapped-file-permanently-deletes-the-archived-workflow
+  # notes: ../AGENTS.md#purging-an-unmapped-file-permanently-deletes-the-archived-workflow
   @user @in-nextcloud @gesture @ui @unbuilt
   Scenario: Purging an unmapped file permanently deletes the archived workflow
     Given a trashed unmapped workflow file that still carries its "n8n_id"
@@ -62,9 +62,9 @@ Feature: Deleting a workflow file
     When I restore it from the trash
     Then the archived workflow in n8n is left as-is
 
-    # notes: AGENTS.md#restoring-an-unmapped-file-from-trash-touches-nothing-in-n8n
+    # notes: ../AGENTS.md#restoring-an-unmapped-file-from-trash-touches-nothing-in-n8n
 
-    # notes: AGENTS.md#unarchiving-a-workflow-in-n8n-brings-its-file-back-out-of-the-trash
+    # notes: ../AGENTS.md#unarchiving-a-workflow-in-n8n-brings-its-file-back-out-of-the-trash
   @n8n @in-n8n @ui @occ @unbuilt
   Scenario: Unarchiving a workflow in n8n brings its file back out of the trash
     Given a trashed "sync" workflow file
@@ -74,7 +74,7 @@ Feature: Deleting a workflow file
     And it holds the workflow's current content
     And only one file carries that workflow's id
 
-    # notes: AGENTS.md#restoring-a-file-whose-workflow-was-deleted-in-n8n-gives-it-a-new-one
+    # notes: ../AGENTS.md#restoring-a-file-whose-workflow-was-deleted-in-n8n-gives-it-a-new-one
   @user @in-nextcloud @gesture @ui @unbuilt
   Scenario: Restoring a file whose workflow was deleted in n8n gives it a new one
     Given a trashed "sync" workflow file
@@ -84,7 +84,7 @@ Feature: Deleting a workflow file
     And a workflow in n8n holds its content
     And the file points at that workflow
 
-    # notes: AGENTS.md#deleting-a-workflow-in-n8n-leaves-an-already-trashed-file-where-it-is
+    # notes: ../AGENTS.md#deleting-a-workflow-in-n8n-leaves-an-already-trashed-file-where-it-is
   @n8n @in-n8n @ui @occ @unbuilt
   Scenario: Deleting a workflow in n8n leaves an already-trashed file where it is
     Given a trashed "sync" workflow file
@@ -93,10 +93,7 @@ Feature: Deleting a workflow file
     Then the file is still in the Nextcloud trash
     And nothing is restored or pruned because of it
 
-    # The race the scheduled pull makes easy to hit: a user unarchives in n8n, then
-    # restores in Nextcloud before a reconcile has run. Unarchiving an already-live
-    # workflow must be a no-op, not an error — the same idempotency every other
-    # write in this app relies on.
+    # notes: ../AGENTS.md#deleting-a-workflow-in-n8n-leaves-an-already-trashed-file-where-it-is
   @user @in-nextcloud @gesture @ui @unbuilt
   Scenario: Restoring a file whose workflow is already live again is not a conflict
     Given a trashed "sync" workflow file
@@ -106,7 +103,7 @@ Feature: Deleting a workflow file
     And the workflow in n8n is live exactly once
     # and the delete path already rely on.
 
-  # notes: AGENTS.md#a-delete-is-aborted-if-n8n-is-unreachable
+  # notes: ../AGENTS.md#a-delete-is-aborted-if-n8n-is-unreachable
   @user @in-nextcloud @gesture @ui @blocked
   Scenario: A delete is aborted if n8n is unreachable
     Given a managed "sync" workflow file

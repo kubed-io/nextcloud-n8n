@@ -1,4 +1,4 @@
-# Notes, decisions and history for this feature: AGENTS.md#create-workflow
+# Notes, decisions and history for this feature: ../AGENTS.md#workflowscreate
 
 Feature: Create a workflow from Nextcloud
   As a Nextcloud user
@@ -25,7 +25,7 @@ Feature: Create a workflow from Nextcloud
     And the file has no "n8n_id" metadata
     And the file is treated as a plain document (unmapped state)
 
-    # notes: AGENTS.md#a-file-that-arrives-with-tags-in-its-body-carries-them-into-n8n
+    # notes: ../AGENTS.md#a-file-that-arrives-with-tags-in-its-body-carries-them-into-n8n
 
   @user @in-nextcloud @gesture @ui @unbuilt
   Scenario: A file that arrives with tags in its body carries them into n8n
@@ -52,9 +52,7 @@ Feature: Create a workflow from Nextcloud
     When the file is copied out of Nextcloud and its workflow is deleted in n8n
     And the copy is placed back in the mapped folder
     Then the workflow recreated in n8n carries the tags "prod", "billing", and "nextcloud:demo"
-    # THE CASE THAT DECIDES THE DESIGN. The pills did not survive the trip and n8n
-    # no longer holds the workflow. The body is the only carrier left — and it is
-    # enough, which is the whole reason adoption reads it.
+    # notes: ../AGENTS.md#a-round-trip-out-of-nextcloud-and-back-keeps-the-workflows-tags
 
   @user @in-nextcloud @gesture @ui @unbuilt
   Scenario: Adoption takes the tags from the body alone
@@ -65,3 +63,11 @@ Feature: Create a workflow from Nextcloud
     And no existing workflow's tags are read to decide them
     # There is no baseline and no remote counterpart yet, so there is nothing to
     # merge against — the three-way merge does not apply at adoption.
+
+  # notes: ../AGENTS.md#a-file-created-in-a-nested-mapping-belongs-to-the-nearest-one
+  @user @in-nextcloud @gesture @ui @todo
+  Scenario: A file created in a nested mapping belongs to the nearest one
+    Given a folder mapped to the n8n tag "nextcloud:outer"
+    And a subfolder of it mapped to the n8n tag "nextcloud:inner"
+    When I create a new workflow file in the subfolder
+    Then the file belongs to the "nextcloud:inner" mapping, not "nextcloud:outer"

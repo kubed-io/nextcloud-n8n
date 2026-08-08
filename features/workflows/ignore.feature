@@ -1,4 +1,4 @@
-# Notes, decisions and history for this feature: AGENTS.md#reserved-tags
+# Notes, decisions and history for this feature: ../AGENTS.md#workflowsignore
 
 Feature: The n8n:ignore reserved tag excludes individual workflows
   As an n8n admin

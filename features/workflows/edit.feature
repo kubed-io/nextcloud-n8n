@@ -1,4 +1,4 @@
-# Notes, decisions and history for this feature: AGENTS.md#edit-workflow
+# Notes, decisions and history for this feature: ../AGENTS.md#workflowsedit
 
 Feature: Editing a workflow file
   As someone who keeps workflows in Nextcloud
@@ -8,15 +8,7 @@ Feature: Editing a workflow file
   Background:
     Given the app is connected to n8n
 
-  # EDITING IS THE BEHAVIOUR; THE PUSH IS HOW IT TRAVELS.
-  #
-  # This scenario used to live in a "Manual per-mapping sync" file as "the admin
-  # clicks Sync to n8n", which described the button rather than what anyone was
-  # trying to do. Nobody edits a workflow in order to press a button — they edit
-  # it so n8n gets the change, and the app offers three ways for that to happen
-  # (on save, on the button, on the schedule). Those are mechanisms; this is the
-  # behaviour they serve.
-  # notes: AGENTS.md#a-local-edit-reaches-its-workflow-in-n8n
+  # notes: ../AGENTS.md#a-local-edit-reaches-its-workflow-in-n8n
 
   @admin @in-nextcloud @occ @ui
   Scenario: A local edit reaches its workflow in n8n
@@ -32,7 +24,4 @@ Feature: Editing a workflow file
     And an unmapped workflow file exists outside every mapping
     When the admin pushes to n8n
     Then the unmapped file is not pushed (it is outside the mapping's scope)
-    # Its own scenario rather than a second Then on the one above: "my edit
-    # travels" and "a file I never mapped does not" are different promises, and a
-    # reader looking for the second should not have to find it inside the first.
-    # notes: AGENTS.md#a-file-outside-every-mapping-is-never-pushed
+    # notes: ../AGENTS.md#a-file-outside-every-mapping-is-never-pushed

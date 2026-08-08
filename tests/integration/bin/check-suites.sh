@@ -24,8 +24,8 @@ set -euo pipefail
 cd "$(dirname "$0")/../../.."
 config=tests/integration/behat.dist.yml
 
-on_disk=$(find features -maxdepth 1 -name '*.feature' -printf '%f\n' | sort)
-in_suites=$(grep -oE "features/[A-Za-z0-9._-]+\.feature'" "$config" | sed "s|features/||; s|'||" | sort)
+on_disk=$(find features -name '*.feature' -printf '%P\n' | sort)
+in_suites=$(grep -oE "features/[A-Za-z0-9._/-]+\.feature'" "$config" | sed "s|features/||; s|'||" | sort)
 
 missing=$(comm -23 <(echo "$on_disk") <(echo "$in_suites" | uniq))
 duplicated=$(echo "$in_suites" | uniq -d)

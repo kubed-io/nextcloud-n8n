@@ -43,7 +43,7 @@ import re, sys, pathlib
 
 root = pathlib.Path(sys.argv[1])
 bootstrap = root / 'tests' / 'integration' / 'bootstrap'
-features = sorted((root / 'features').glob('*.feature'))
+features = sorted((root / 'features').rglob('*.feature'))
 
 # Scenarios carrying any of these are specification, not implementation.
 UNRUN = {'@todo', '@unbuilt', '@blocked', '@decision'}
@@ -154,6 +154,14 @@ def expansions(text, examples):
     return out or [text]
 
 
+# AN OUTLINE WITH NO `Examples` IS A SILENT HOLE, and it is how this check let a
+# real break through: splitting a file lifted a Scenario Outline away from its
+# Examples and left them behind, attached to the scenario above. The outline then
+# ran with `<groups>` as a literal, and the orphaned tables turned a plain
+# Scenario into an outline over columns it never used. Neither is visible to the
+# undefined-step pass below, which skips any step still holding a `<placeholder>`.
+outline_holes = []
+
 undefined = []
 for feature in features:
     lines = feature.read_text(encoding='utf-8').splitlines()
@@ -170,7 +178,9 @@ for feature in features:
             cur = None
             continue
         if line.startswith(('Scenario:', 'Scenario Outline:')):
-            cur = {'runs': not ((tags | feature_tags) & UNRUN), 'steps': [], 'ex': []}
+            cur = {'runs': not ((tags | feature_tags) & UNRUN), 'steps': [], 'ex': [],
+                   'outline': line.startswith('Scenario Outline:'),
+                   'title': line.split(':', 1)[1].strip()}
             blocks.append(cur)
             tags = set()
             continue
@@ -198,6 +208,10 @@ for feature in features:
         if m:
             cur['steps'].append(m.group(1))
 
+    for b in blocks:
+        if b.get('outline') and not [e for e in b['ex'] if isinstance(e, tuple)]:
+            outline_holes.append(f"{feature.relative_to(root / 'features')}: {b['title']}")
+
     any_runs = any(b['runs'] for b in blocks)
     for b in blocks:
         if b['runs'] is False:
@@ -210,7 +224,15 @@ for feature in features:
                 if '<' in concrete:
                     continue  # a placeholder with no Examples column to fill it
                 if not any(c.match(concrete) for c in compiled):
-                    undefined.append(f'{feature.name}: {concrete}')
+                    undefined.append(f'{feature.relative_to(root / "features")}: {concrete}')
+
+if outline_holes:
+    fail = True
+    print('\u2718 SCENARIO OUTLINE WITH NO EXAMPLES — every step keeps its <placeholder>')
+    print('  literally, and nothing else in this check can see it:')
+    for h in outline_holes:
+        print(f'    {h}')
+    print('  Give it an Examples table, or make it a plain Scenario.')
 
 if undefined:
     fail = True

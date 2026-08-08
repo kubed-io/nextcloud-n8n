@@ -58,39 +58,35 @@ default:
   suites:
     admin:
       paths:
-      - '%paths.base%/../../features/admin-connection.feature'
-      - '%paths.base%/../../features/admin-mapping.feature'
-      # Context class lives with the test code (tests/integration/bootstrap/),
-      # loaded via the integration composer autoload — features/ stays pure
-      # Gherkin.
+      - '%paths.base%/../../features/connection/connection.feature'
+      - '%paths.base%/../../features/connection/sync-now.feature'
+      - '%paths.base%/../../features/mapping/create.feature'
+      - '%paths.base%/../../features/mapping/manage-groups.feature'
       contexts: &contexts
       - OCA\N8nSync\Tests\Integration\FeatureContext
 
     workflow:
       paths:
-      - '%paths.base%/../../features/create-workflow.feature'
-      - '%paths.base%/../../features/edit-workflow.feature'
-      - '%paths.base%/../../features/copy.feature'
-      - '%paths.base%/../../features/delete.feature'
-      - '%paths.base%/../../features/move.feature'
-      - '%paths.base%/../../features/rename.feature'
+      - '%paths.base%/../../features/workflows/create.feature'
+      - '%paths.base%/../../features/workflows/copy.feature'
+      - '%paths.base%/../../features/workflows/delete.feature'
+      - '%paths.base%/../../features/workflows/edit.feature'
+      - '%paths.base%/../../features/workflows/move.feature'
+      - '%paths.base%/../../features/workflows/rename.feature'
       contexts: *contexts
 
     tags:
       paths:
-      - '%paths.base%/../../features/tag-sync.feature'
-      - '%paths.base%/../../features/reserved-tags.feature'
+      - '%paths.base%/../../features/workflows/tags.feature'
+      - '%paths.base%/../../features/workflows/ignore.feature'
       contexts: *contexts
 
     core:
       paths:
-      - '%paths.base%/../../features/sync-now.feature'
-      - '%paths.base%/../../features/mapping-membership.feature'
-      - '%paths.base%/../../features/view-workflow.feature'
-      - '%paths.base%/../../features/open-with.feature'
-      - '%paths.base%/../../features/purge.feature'
+      - '%paths.base%/../../features/workflows/view.feature'
+      - '%paths.base%/../../features/workflows/open-with.feature'
+      - '%paths.base%/../../features/workflows/purge.feature'
       - '%paths.base%/../../features/lifecycle.feature'
-      - '%paths.base%/../../features/uninstall.feature'
       contexts: *contexts
 
   formatters:

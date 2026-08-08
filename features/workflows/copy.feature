@@ -1,4 +1,4 @@
-# Notes, decisions and history for this feature: AGENTS.md#copy
+# Notes, decisions and history for this feature: ../AGENTS.md#workflowscopy
 
 Feature: Copying a workflow file always makes a new instance
   As a Nextcloud user

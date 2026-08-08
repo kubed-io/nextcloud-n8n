@@ -1,4 +1,4 @@
-# Notes, decisions and history for this feature: AGENTS.md#move
+# Notes, decisions and history for this feature: ../AGENTS.md#workflowsmove
 
 Feature: Moving a workflow file is the same workflow leaving and returning
   As a Nextcloud user
@@ -20,16 +20,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
       | folder | Pointers |
       | mode   | link     |
 
-  # THE TAG AND THE FOLDER ARE DIFFERENT THINGS, and these tables are where that
-  # is visible. Every step below addresses a Nextcloud FOLDER, because a move is a
-  # Nextcloud gesture; the tag only matters on the n8n side. They used to share a
-  # name, which is how a scenario came to be written asserting that a folder was
-  # "no longer a tag in n8n".
-  #
-  # Colons are not part of a tag. One example once used "nextcloud:alpha" and the
-  # shape spread as if it were required — n8n tags are free text, and a Nextcloud
-  # folder would not normally contain a colon at all.
-  # notes: AGENTS.md#the-mappings-in-the-background
+  # notes: ../AGENTS.md#the-mappings-in-the-background
 
   # ── within the same mapping: no n8n change ───────────────────────────────────
 
@@ -76,9 +67,9 @@ Feature: Moving a workflow file is the same workflow leaving and returning
     When I move the file into "Pipelines"
     Then a new workflow is created in n8n from the file
     And the file's mode becomes "sync" in "Pipelines"
-    # notes: AGENTS.md#restoring-when-the-n8n-workflow-was-hard-deleted-falls-back-to-create
+    # notes: ../AGENTS.md#restoring-when-the-n8n-workflow-was-hard-deleted-falls-back-to-create
 
-  # notes: AGENTS.md#moving-a-duplicate-in-under-the-same-name-is-refused-the-workflow-is-already-synced-here
+  # notes: ../AGENTS.md#moving-a-duplicate-in-under-the-same-name-is-refused-the-workflow-is-already-synced-here
   @user @in-nextcloud @gesture @ui
   Scenario: Moving a duplicate in under the same name is refused (the workflow is already synced here)
     Given a managed "sync" workflow file in "Automations"
@@ -101,7 +92,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
     When I move the file into "Automations"
     Then a matching workflow is created in n8n
     And the file's mode becomes "sync" in "Automations"
-    # notes: AGENTS.md#moving-a-brand-new-workflow-file-into-a-mapping-creates-it
+    # notes: ../AGENTS.md#moving-a-brand-new-workflow-file-into-a-mapping-creates-it
 
   # ── leaving a mapping: what is allowed, and what is not ──────────────────────
 
@@ -130,21 +121,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
       | link | Pointers      | links      | Pipelines          | beta            |
 
     # @unbuilt — THIS IS THE SPEC, AND THE APP DOES THE OPPOSITE TODAY.
-    # MoveGuardListener aborts a mapping→mapping move for both modes and tells the
-    # user to move out to an unmanaged folder first, then in. So this scenario is a
-    # description of what should happen, not of what does.
-    #
-    # WHAT HAS TO BE DECIDED BEFORE IT CAN BE BUILT (saga §14.2 case a): landing in
-    # a new mapping means the workflow's tag changes in n8n, and there are two
-    # defensible ways to do it — re-tag in place, or eject and reattach as if it
-    # had arrived fresh. They differ in what happens to the versionId, the
-    # synced-tag baseline and the archive state. These rows choose RE-TAG IN PLACE:
-    # the mode survives the move, so the file is the same file, in a new mapping.
-    #
-    # The two `link` rows are the ones that make that choice explicit. A link has
-    # no body on the Nextcloud side, which is why moving one OUT is refused above —
-    # so a link that may move between mappings is a real decision, not a symmetry.
-    # notes: AGENTS.md#moving-a-workflow-to-another-mapped-folder
+    # notes: ../AGENTS.md#moving-a-workflow-to-another-mapped-folder
 
   # ── relocating an already-unmapped file: pure relocation ─────────────────────
 
@@ -155,4 +132,4 @@ Feature: Moving a workflow file is the same workflow leaving and returning
     Then the file stays "unmapped"
     And its "n8n_id" and "n8n_versionId" are unchanged
     And nothing changes in n8n
-    # notes: AGENTS.md#moving-an-unmapped-file-between-unmapped-locations-changes-nothing
+    # notes: ../AGENTS.md#moving-an-unmapped-file-between-unmapped-locations-changes-nothing

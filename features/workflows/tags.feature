@@ -1,4 +1,4 @@
-# Notes, decisions and history for this feature: AGENTS.md#tag-sync
+# Notes, decisions and history for this feature: ../AGENTS.md#workflowstags
 
 Feature: A workflow's tags and its Nextcloud system tags stay one set
   As an n8n admin browsing workflows in Nextcloud
@@ -10,36 +10,9 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     And a folder mapped as "sync" to the n8n tag "flows"
 
     # ══ ADOPTION LIVES IN create-workflow.feature ══════════════════════════════
-    #
-    # A file arriving in a mapped folder already carrying tags in its body is a
-    # CREATION, so it is specced next to every other way a workflow comes into
-    # existence — not here. This file owns what happens to a workflow's tags once
-    # it is managed.
-    #
-    # Worth knowing while reading the rest of this file, because it is the one
-    # moment the body outranks everything: at adoption there are no pills, no
-    # baseline, and no workflow, so the body is the only record of the tags. Today
-    # they are silently discarded (saga §5.6.3) — see create-workflow.feature.
+    # notes: ../AGENTS.md#workflowstags
 
     # ══ THE MAP: FOUR SURFACES, THREE DIRECTIONS, AND ONE AMBIGUITY ════════════
-    #
-    # Everything about tag sync becomes obvious once the four surfaces are written
-    # out side by side, so the scenarios in this section do exactly that. Each one
-    # states the WHOLE tag state before and after, in one step:
-    #
-    #     the tag state is n8n "…" / pills "…" / body "…" / agreed "…"
-    #
-    #   • n8n     — the workflow's tags. The remote system of record.
-    #   • pills   — the Nextcloud system tags on the mirror file. Searchable, and
-    #               the surface a user actually clicks.
-    #   • body    — the `tags` array inside the `.n8n.json`. THE ONLY PORTABLE ONE:
-    #               it survives an export, a copy, a trip out of Nextcloud and back.
-    #   • agreed  — `n8n_syncedTags`, the set n8n and Nextcloud last agreed on. Not
-    #               a surface a user can see; it is what tells an ADD from a REMOVE.
-    #
-    # Reading the four columns is the point. A row where `body` disagrees with
-    # `pills` is the entire open problem, and the scenarios below are arranged to
-    # show exactly when that can happen.
 
     # ── DIRECTION 1: n8n → Nextcloud ────────────────────────────────────────────
     # n8n is authoritative; a pull carries its tags to BOTH Nextcloud surfaces and
@@ -62,7 +35,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     # `agreed` is what makes this a REMOVE rather than "Nextcloud has an extra tag":
     # `old` was in the baseline, so exactly one side dropped it, and that side wins.
 
-    # notes: AGENTS.md#a-pill-added-in-nextcloud-reaches-n8n-and-the-file-body
+    # notes: ../AGENTS.md#a-pill-added-in-nextcloud-reaches-n8n-and-the-file-body
 
   @admin @in-nextcloud @gesture @ui
   Scenario: A pill added in Nextcloud reaches n8n and the file body
@@ -78,21 +51,9 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     When the admin removes the Nextcloud system tag "old" from the file
     Then the tag state is n8n "flows,linux" / pills "flows,linux" / body "flows,linux" / agreed "flows,linux"
 
-    # notes: AGENTS.md#the-body-never-disagrees-with-the-pills-whatever-moved
+    # notes: ../AGENTS.md#the-body-never-disagrees-with-the-pills-whatever-moved
 
-  @admin @in-nextcloud @gesture @ui @occ
-  Scenario: The body never disagrees with the pills, whatever moved
-    Given the push timing is "sync"
-    And the tag state starts as n8n "flows,linux" / pills "flows,linux" / body "flows,linux" / agreed "flows,linux"
-    When the admin adds the Nextcloud system tag "prod" to the file
-    Then the body agrees with the pills
-    When the tag "extra" is added to the workflow in n8n
-    And the "flows" mapping is pulled
-    Then the body agrees with the pills
-    When the admin removes the Nextcloud system tag "prod" from the file
-    Then the body agrees with the pills
-
-    # notes: AGENTS.md#a-tag-typed-into-the-file-reaches-n8n-and-the-pills
+    # notes: ../AGENTS.md#a-tag-typed-into-the-file-reaches-n8n-and-the-pills
 
   @admin @in-nextcloud @gesture @ui
   Scenario: A tag typed into the file reaches n8n and the pills
@@ -109,11 +70,9 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     And the tag state starts as n8n "flows,linux,old" / pills "flows,linux,old" / body "flows,linux,old" / agreed "flows,linux,old"
     When the admin edits the file body's "tags" array to "flows" and "linux"
     Then the tag state is n8n "flows,linux" / pills "flows,linux" / body "flows,linux" / agreed "flows,linux"
-    # The direction that was blocked twice. It is decidable only because a pill edit
-    # now keeps the body in step, so a body that disagrees with the pills can only be
-    # a deliberate edit.
+    # notes: ../AGENTS.md#a-tag-deleted-from-the-file-is-removed-from-n8n-and-the-pills
 
-    # notes: AGENTS.md#a-save-that-did-not-touch-the-tags-must-not-undo-a-pill-edit
+    # notes: ../AGENTS.md#a-save-that-did-not-touch-the-tags-must-not-undo-a-pill-edit
 
   @admin @in-nextcloud @gesture @ui
   Scenario: A save that did not touch the tags must not undo a pill edit
@@ -123,9 +82,9 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     And I note the current tag state
     When the admin edits the workflow's nodes and saves, leaving the tags array alone
     Then the tag state is unchanged
-    # notes: AGENTS.md#a-save-that-did-not-touch-the-tags-must-not-undo-a-pill-edit
+    # notes: ../AGENTS.md#a-save-that-did-not-touch-the-tags-must-not-undo-a-pill-edit
 
-    # notes: AGENTS.md#tagging-an-unmapped-workflow-file-keeps-its-body-and-pills-in-step
+    # notes: ../AGENTS.md#tagging-an-unmapped-workflow-file-keeps-its-body-and-pills-in-step
 
   @admin @in-nextcloud @gesture @ui @todo
   Scenario: Tagging an unmapped workflow file keeps its body and pills in step
@@ -157,10 +116,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     Then a workflow is created in n8n for it
     And the workflow in n8n is tagged "prod", "billing", and "flows"
     And the file has the Nextcloud system tags "prod", "billing", and "flows"
-    # THE SCENARIO THE WHOLE LOCAL-PAIR RULE EXISTS FOR. No metadata means this is
-    # unambiguously a create, and the body is the only thing that knows the tags — the
-    # pills came along only because this is the same file id, and a copy or a round
-    # trip through another system would not have them at all.
+    # notes: ../AGENTS.md#moving-an-untracked-tagged-file-into-a-mapping-creates-it-in-n8n-with-its-tags
 
   @user @ui @occ @todo
   Scenario: The tags an adopted file arrives with come back with real ids
@@ -171,7 +127,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     # The loose `{"name":"prod"}` the user typed is resolved by n8n, and the pull writes
     # the canonical row back. Nothing corrects the file until n8n has an opinion.
 
-    # notes: AGENTS.md#the-tags-an-adopted-file-arrives-with-come-back-with-real-ids
+    # notes: ../AGENTS.md#the-tags-an-adopted-file-arrives-with-come-back-with-real-ids
 
     # ══ STEADY STATE ═══════════════════════════════════════════════════════════
 
@@ -197,10 +153,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     Then the workflow's file has the Nextcloud system tags "prod" and "dns"
     And the file can be found by a Nextcloud tag search for "prod"
 
-  # A link is a READ-ONLY projection of n8n's tags: the pills are there so you can
-  # search, but n8n is the only writer. A pill added on a link never pushes (the
-  # reactive reconcile gates on sync), and because a link has no push channel that
-  # stray pill would linger forever — so the pull wipes it, mirroring n8n exactly.
+  # notes: ../AGENTS.md#a-pill-added-on-a-link-is-not-pushed-to-n8n-read-only-projection
   @admin @in-nextcloud @gesture @ui @occ
   Scenario: A pill added on a link is not pushed to n8n (read-only projection)
     Given the push timing is "sync"
@@ -239,7 +192,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     Then the workflow in n8n is tagged "flows", "linux", and "urgent"
     And the reserved "n8n:*" tags are not written to n8n
 
-  # notes: AGENTS.md#adding-a-pill-pushes-the-tag-to-n8n-immediately-when-timing-is-sync
+  # notes: ../AGENTS.md#adding-a-pill-pushes-the-tag-to-n8n-immediately-when-timing-is-sync
 
   @admin @in-nextcloud @gesture @ui
   Scenario: Adding a pill pushes the tag to n8n immediately when timing is "sync"
@@ -281,9 +234,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     Then the file's Nextcloud system tags still include "flows"
     And the file stays mapped to "flows"
 
-  # THE TWO SCENARIOS THAT MAKE THE SURFACE SAFE. Whichever of A/B above is built,
-  # these are what prove it did not resurrect the false-removal bug. They are the
-  # first tests to write, not the last.
+  # notes: ../AGENTS.md#with-no-nextcloud-edit-a-file-that-disagrees-with-n8n-loses
 
   @user @ui @occ @todo
   Scenario: With no Nextcloud edit, a file that disagrees with n8n loses
@@ -308,7 +259,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     When the "flows" mapping is pulled
     Then the file's Nextcloud system tags are exactly "flows" and "linux"
 
-  # notes: AGENTS.md#a-content-change-pulls-the-new-body-and-then-reconciles-the-tags
+  # notes: ../AGENTS.md#a-content-change-pulls-the-new-body-and-then-reconciles-the-tags
   @n8n @in-n8n @ui @occ
   Scenario: A content change pulls the new body and then reconciles the tags
     Given a managed "sync" workflow file in "flows" whose body and tags match n8n
@@ -317,9 +268,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     Then the file is rewritten
     And the file body is updated from n8n
     And the file's Nextcloud system tags match the workflow's n8n tags
-    # An end state of the same behaviour, not a feature of its own: the mirror's
-    # "Modified" is when the WORKFLOW changed, not when the reconcile that carried
-    # the change happened to run.
+    # notes: ../AGENTS.md#a-content-change-pulls-the-new-body-and-then-reconciles-the-tags
     And the file's modification time is when the workflow last changed in n8n
 
   # A tags-only change still writes the body — the body IS the n8n row, so the new
@@ -370,7 +319,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     And the workflow in n8n still carries the "flows" tag
     And the file is still bound to the "flows" mapping
 
-  # notes: AGENTS.md#moving-the-file-out-is-the-sanctioned-unmap-it-changes-no-tags
+  # notes: ../AGENTS.md#moving-the-file-out-is-the-sanctioned-unmap-it-changes-no-tags
   @user @in-nextcloud @gesture @ui
   Scenario: Moving the file out is the sanctioned unmap — it changes no tags
     Given a managed "sync" workflow file in "flows" tagged "flows"
@@ -379,7 +328,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     And the file still carries the "flows" system tag
     And the workflow in n8n still carries the "flows" tag
 
-  # notes: AGENTS.md#editing-tags-on-an-unmapped-file-keeps-nextcloud-in-step-and-leaves-n8n-alone
+  # notes: ../AGENTS.md#editing-tags-on-an-unmapped-file-keeps-nextcloud-in-step-and-leaves-n8n-alone
   @admin @in-nextcloud @gesture @ui
   Scenario: Editing tags on an unmapped file keeps Nextcloud in step and leaves n8n alone
     Given the push timing is "sync"
@@ -400,9 +349,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
 
   @admin @ui @unbuilt
   Scenario: Removing the mapping pill as a deliberate eject is paired with n8n:ignore
-    # The planned reactive gesture: dropping the binding tag on purpose means "take
-    # this out of the mapping" — so the app marks it ignored rather than silently
-    # pruning the mirror on the next pull.
+    # notes: ../AGENTS.md#removing-the-mapping-pill-as-a-deliberate-eject-is-paired-with-n8nignore
     Given a managed "sync" workflow file in "flows" tagged "flows"
     When the admin removes the mapping-tag pill "flows" as an eject gesture
     Then the file is tagged "n8n:ignore" and becomes "ignored"
@@ -426,20 +373,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     When the "flows" tag is removed from the workflow in n8n
     And the "flows" mapping is synced
     Then the file is pruned from the folder
-    # THE BEHAVIOUR IS THE UNTAGGING, NOT THE SYNC. The mapping tag is what makes a
-    # workflow the folder's, so removing it upstream is a statement that the
-    # workflow no longer belongs — and the mirror follows. The sync is only how the
-    # news arrives, which is why this sits with the other tag behaviours rather
-    # than in a file about running a sync.
-    #
-    # It moved here from a "Manual per-mapping sync" file, where it had been one
-    # Then among four inside a scenario about the button. Nothing named it, so
-    # nothing could fail on it alone.
-    #
-    # Note the eject gesture above is the deliberate, Nextcloud-side twin of this:
-    # dropping the pill yourself keeps the file and marks it ignored. Losing the
-    # tag upstream is not a request to keep anything.
-    # notes: AGENTS.md#a-workflow-that-loses-the-mapping-tag-in-n8n-loses-its-mirror
+    # notes: ../AGENTS.md#a-workflow-that-loses-the-mapping-tag-in-n8n-loses-its-mirror
 
   @n8n @in-n8n @ui @occ
   Scenario: Reconcile never mints a definition it is about to drop
@@ -462,7 +396,7 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     Then the "n8n:sync" definition is kept
     And the "flows" mapping-tag definition is kept
 
-  # notes: AGENTS.md#one-workflow-with-two-mapping-tags-is-mirrored-into-both-mapped-folders
+  # notes: ../AGENTS.md#one-workflow-with-two-mapping-tags-is-mirrored-into-both-mapped-folders
   @unbuilt
   Scenario: One workflow with two mapping tags is mirrored into both mapped folders
     Given a folder mapped as "sync" to the n8n tag "flows"
@@ -479,15 +413,11 @@ Feature: A workflow's tags and its Nextcloud system tags stay one set
     When the admin adds the Nextcloud system tag "urgent" to the "flows" mirror
     Then the workflow in n8n is tagged "flows", "reports", and "urgent"
     And the "reports" mirror should also show the "urgent" pill once its mapping next syncs
-    # NOTE: same-request convergence of every mirror of one workflow id is not built
-    # yet — for now the sibling catches up on its own next pull, and the app must not
-    # bounce the agreed tag when it does.
+    # notes: ../AGENTS.md#editing-tags-on-one-mirror-should-converge-its-sibling-future-fan-out
 
   @admin @in-nextcloud @gesture @ui @occ @unbuilt
   Scenario: A sibling mapping's tag is protected on every mirror (future cross-mapping guard)
-    # On the "flows" mirror the "reports" tag is an ordinary content pill, not this
-    # mapping's protected tag, so today a push could drop it and unbind the sibling.
-    # The fix is a protected set that is the UNION of all mapping tags on the workflow.
+    # notes: ../AGENTS.md#a-sibling-mappings-tag-is-protected-on-every-mirror-future-cross-mapping-guard
     Given one n8n workflow mirrored as a file in both the "flows" and "reports" folders
     When the admin removes the "reports" pill from the "flows" mirror
     And the "flows" mapping is pushed

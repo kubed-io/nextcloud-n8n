@@ -1,4 +1,4 @@
-# Notes, decisions and history for this feature: AGENTS.md#open-with
+# Notes, decisions and history for this feature: ../AGENTS.md#workflowsopen-with
 
 Feature: Opening a workflow file (Open in n8n / Open with text editor)
   As a Nextcloud user
@@ -11,20 +11,17 @@ Feature: Opening a workflow file (Open in n8n / Open with text editor)
   # ── Open in n8n ───────────────────────────────────────────────────────────────
 
   @user @in-nextcloud @gesture @ui
-  Scenario: Open in n8n opens the live workflow (sync)
-    Given a managed workflow file in "sync" mode with a live workflow in n8n
-    When I choose "Open in n8n" from its context menu
-    Then n8n opens at that workflow (not a download, not the text editor)
+  Scenario Outline: Open in n8n is offered exactly when a live workflow exists
+    Given a managed workflow file in "<mode>" mode
+    When I look at its context menu
+    Then "Open in n8n" is <offered or hidden>
 
-  @user @ui
-  Scenario: Open in n8n is hidden when there is no live workflow (unmapped)
-    Given a managed workflow file in "unmapped" mode
-    Then "Open in n8n" is hidden from its context menu
-
-  @user @ui
-  Scenario: Open in n8n is hidden when there is no live workflow (ignored)
-    Given a managed workflow file in "ignored" mode
-    Then "Open in n8n" is hidden from its context menu
+    Examples: the two modes that name a live workflow, and the two that do not
+      | mode     | offered or hidden |
+      | sync     | offered           |
+      | link     | offered           |
+      | unmapped | hidden            |
+      | ignored  | hidden            |
 
   # ── Open with text editor ──────────────────────────────────────────────────────
 
