@@ -21,49 +21,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
-- **A workflow file's dates are now the workflow's own dates.** "Modified" shows when the workflow last changed in n8n and "Created" when it was created there, instead of both showing when a sync happened to run — so sorting a mapped folder by date sorts by the workflows, and one nobody has touched in a year finally looks like it.
-- **Tags now sync all three ways.** As well as editing tags in n8n or clicking the coloured pills in Files, you can edit the `tags` array **inside the `.n8n.json`** and saving the file pushes the change to n8n and updates the pills. Add a tag by name alone — write `{"name": "prod"}` and save; n8n assigns the real id and the next sync fills it in, so nothing rewrites the file while you are editing it.
-- **Tags on a workflow file outside any mapped folder stay in step too.** A file's pills and its `tags` array are kept together whether or not n8n is involved, because that pair is purely local. This is what lets tags survive travel: pills belong to a file id and are lost on a copy, but the `tags` array is part of the file.
-- **A file that arrives already tagged keeps its tags.** Moving, copying, or dropping a tagged `.n8n.json` into a mapped folder now creates the workflow in n8n **with those tags on it**. Previously every tag the file arrived with was silently discarded.
-
-- **Bidirectional tag sync** — a workflow's n8n tags and its Nextcloud system-tag pills are now kept as one searchable set. A pull mirrors n8n's tags onto the file (and, for a `sync` file, keeps any tag you added in Nextcloud); a push sends your Nextcloud tag edits back to n8n. A last-synced baseline tells an add apart from a remove, so removing a tag on either side removes it on the other; the reserved `n8n:` pills are never mixed into content; and a mapping's folder-binding tag is protected so removing its pill can never silently unbind the workflow (leaving a mapping is an explicit move-out or `n8n:ignore`). A `link` mapping mirrors tags read-only (n8n → Nextcloud) for search — a pill added on a link isn't pushed and is wiped on the next pull. Specs in `features/tag-sync.feature`, saga §5.6.
-- **Tag edits push on their own** — adding or removing a system-tag pill on a synced workflow file now reconciles that tag to n8n automatically, no "Sync to n8n" click needed, following the same instant/background timing as the rest of the writeback.
+- A workflow file now carries the workflow's own created and modified dates, not the sync's.
+- Tags are one set across n8n, the Nextcloud pills, and the file's own `tags` array — change any of them.
+- A tag written by name alone gets its n8n id filled in for you.
+- A tag change reaches n8n on its own, with no "Sync to n8n" click.
+- Tags on a workflow file outside any mapped folder are kept in step, so they survive being moved or copied.
+- A file that arrives already tagged keeps its tags when it becomes a workflow.
+- A `link` mapping mirrors tags one way, so a pointer is searchable too.
+- `occ n8n_sync:set-groups` changes the groups a mapped folder is shared with.
 
 ### Changed
 
-- The admin cards no longer tag every immutable field with "(fixed)". The value renders as plain text rather than a control, which already says it cannot be edited.
-- Spec: the feature files are grouped by what they act on — `workflows/`, `mapping/` and `connection/` — one verb per file, matching the sibling integrations.
-- **A new mapping defaults to an admin-owned folder, not a Team Folder.** Leaving the storage backend unset used to mean "Team Folder", which needs the optional `groupfolders` app — so on a stock Nextcloud the default mapping was the one that could not be provisioned, and filling in only the required fields got you a refusal. A Team Folder is now opted into. Existing mappings are unaffected: every mapping this app has saved records its backend explicitly.
-- Spec: there is no longer a `file-type.feature` either. A mimetype, a property set and an index are not things anyone does — the registration is what enabling the app leaves behind, the metadata is what creating or syncing a workflow leaves behind, and what remains is looking at the file, which now has its own small feature.
-- Spec: the tag specification is now written as a **change to a set of tags**, not as one scenario per tag added and per tag removed. `workflows/tags.feature` drops from 45 scenarios to 14 — three outlines (change them in Nextcloud, in the file, or in n8n) whose `Examples` rows carry the interesting combinations: replace the whole set, empty it, tag a workflow that had none. No `When` in the file runs a mechanism any more; a mirror wearing its workflow's tags is asserted where a sync happens, in `connection/sync-now.feature`, because that is a sync's end state rather than a tag change.
-- Spec: there is no longer a `reconcile.feature`. Reconciling is how an n8n-side change reaches Nextcloud, not something anyone does — its scenarios moved to the behaviours that own them, and the first sync now has a file of its own.
-- **Re-share a mapped folder from anywhere and this app reflects it.** The groups a mapped folder is shared with are now read from the folder itself rather than stored alongside the mapping, so a change made in Files, with `occ`, or by another app sharing the same folder shows up here — and a sync never puts back a group you removed. Setting the groups to nothing now actually clears them, which it silently did not before.
-- **BREAKING:** a mapping is now immutable except for its groups. The n8n tag, the folder, the storage backend and the mode are fixed once created — previously the tag, folder and mode could all be changed on a saved mapping, which silently re-decided which workflows it owned. Remove the mapping and add it again to change one.
-- **`occ n8n_sync:set-groups`** changes the groups a mapped folder is shared with, the one field a mapping lets you edit — previously reachable only from the admin panel.
-- **A mapped folder now appears the moment you save the mapping**, instead of only when the first sync runs. A mapping whose folder cannot be provisioned is no longer saved at all, rather than being stored and failing on every sync afterwards.
-- A `link` mapping's folder is no longer read-only for its groups. That bit stopped nothing being written to n8n — the listeners do that — and only stopped you organising your own files.
-
-- **BREAKING:** minimum Nextcloud version is now **31** (was 30). Fixing the scheduled-sync checkbox requires a settings API introduced in 31; Nextcloud 30 reached end of life in 2025.
-- REST API card now shows whether an API key is **currently stored** (the field itself always looks empty because the key is sensitive/encrypted), so you can tell "not set yet" from "already saved" at a glance.
-- Pushing tags to n8n now resolves the whole set with a single tag-list fetch instead of one per tag, so a workflow with many tags no longer triggers a burst of API calls on each push.
-- CI: the integration suite is split into four Behat suites (`admin`, `workflow`, `tags`, `core`) run as parallel matrix legs, with one aggregated result comment instead of one per leg.
-- CI: two second-long quality checks guard the split — every feature file is in exactly one suite, and every step a live scenario uses actually resolves.
-- Spec: the mapping specification now describes a mapping as one fact with a table of its values, so a scenario can state an existing mapping and perform the action that would have created it in the same words. Records an unbuilt gap: two mappings may currently target the same folder.
-- **A mapping's mode now defaults to `link` when you don't set one**, instead of the whole mapping being refused — so `occ n8n_sync:add-mapping` needs only a tag and a folder. `link` downloads nothing, so a mapping made without thinking about mode cannot cost you anything.
+- **BREAKING:** minimum Nextcloud version is now **31** (was 30). Nextcloud 30 reached end of life in 2025.
+- **BREAKING:** a mapping is immutable except for its groups. Remove it and add it again to change one.
+- A new mapping defaults to an admin-owned folder, not a Team Folder.
+- A mapping's mode defaults to `link` when you don't set one, instead of the mapping being refused.
+- A mapped folder appears as soon as you save the mapping, and one that cannot be provisioned is not saved at all.
+- The groups a mapped folder is shared with are read from the folder, so sharing it anywhere shows up here.
+- A `link` mapping's folder is no longer read-only.
+- Immutable fields on the admin cards no longer say "(fixed)".
+- The REST API card shows whether an API key is already stored.
+- Pushing a workflow's tags no longer costs one n8n call per tag.
 
 ### Fixed
 
-- **A link file can no longer be opened in the text editor.** On the first folder of a session the mode had not always reached the browser yet, so the editor could be offered on a pointer whose edits the server discards and the next sync overwrites; picking it now opens the workflow in n8n instead.
-
-- **A sync no longer marks every workflow file as modified.** Each scheduled sync rewrote every mirrored file whether or not anything had changed in n8n, so the whole folder read "Modified a few seconds ago" after every run and a file you had actually touched was impossible to spot — a pull now writes only the files whose workflow really changed, and the Sync Actions panel reports the rest as "unchanged".
-- **Emptying the trash now really deletes the workflow in n8n.** Purging a synced workflow file used to leave its workflow alive in n8n forever, archived, with the Nextcloud file gone — a silent leak. Nextcloud fires no event for a trash purge (the step was listening for one that never comes), and the trashed file is renamed with a deletion timestamp that also defeated the "is this one of ours?" check. Both are fixed.
-- **Tag changes made from the command line now reach n8n.** `occ tag:files:add` and background tag changes run with nobody logged in, and the tag listeners gave up at that point — so adding or removing a tag (including `n8n:ignore`) outside the web UI silently did nothing. They now fall back to the same sync account the scheduled pull uses.
-- The admin "Test connection" and "Test webhook" buttons are now CSRF-protected like the rest of the admin surface. Previously any page an admin visited could make their Nextcloud probe the configured n8n and learn the result.
-
-- **Scheduled n8n → Nextcloud sync can be turned on again** — the "scheduled sync" checkbox in Sync Settings now actually saves, so the background pull runs. Ticking it used to do nothing at all: Nextcloud's built-in storage for declarative settings cannot round-trip a checkbox in an admin form (it rejects the boolean on the way in *and* on the way back out), so the Sync Settings panel now reads and writes its own values. The stored settings are unchanged — `occ config:app:get n8n_sync schedule_enabled` reads exactly what it always did.
-- Corrupted tag-baseline metadata (a JSON object where a list was expected) can no longer turn into real tags — only a proper list of strings is honoured.
-
-- Test connection now tells a **missing** API key apart from a **rejected** one — an unset key says so, an invalid/expired one reports "n8n rejected the API key (HTTP 401)". Previously a rejected key surfaced n8n's raw error and looked the same as other failures. Same wording on the button and `occ n8n_sync:test-connection`.
+- Scheduled n8n → Nextcloud sync can be turned on again — the checkbox now saves.
+- A sync no longer marks every workflow file as modified.
+- Emptying the trash now really deletes the workflow in n8n.
+- Tag changes made from the command line now reach n8n.
+- A link file can no longer be opened in the text editor.
+- Test connection tells a missing API key apart from a rejected one.
+- Corrupted tag-baseline metadata can no longer turn into real tags.
+- The admin "Test connection" and "Test webhook" buttons are CSRF-protected.
 
 ## [0.1.5] - 2026-07-22
 
