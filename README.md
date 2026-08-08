@@ -84,7 +84,7 @@ This is a high-level showcase. Each feature links to its **executable specificat
 
 Make a `.n8n.json` file in a mapped sync folder (new file, upload, or move-in) and the app registers it as a real n8n workflow — tagged with the mapping and stamped with the workflow's ID. Author in your editor of choice; it goes live in n8n without opening the n8n UI. A file created **outside** any mapped folder stays a plain, untracked document.
 
-📋 spec: [`features/create-workflow.feature`](features/create-workflow.feature) · 🛠 [`lib/Listener/CreateInN8nListener.php`](lib/Listener/CreateInN8nListener.php)
+📋 spec: [`features/workflows/create.feature`](features/workflows/create.feature) · 🛠 [`lib/Listener/CreateInN8nListener.php`](lib/Listener/CreateInN8nListener.php)
 
 ![The Files app New menu with an n8n workflow option](screenshots/create-workflow.png)
 
@@ -94,7 +94,7 @@ Make a `.n8n.json` file in a mapped sync folder (new file, upload, or move-in) a
 
 Folder mappings are **metadata on the folder**, so a file's mapping is resolved by where it lives. Because mappings are per-folder, you can map a folder **inside** an already-mapped folder — the nearest enclosing mapping wins.
 
-📋 spec: [`features/mapping-membership.feature`](features/mapping-membership.feature) · 🛠 [`lib/Service/MappingService.php`](lib/Service/MappingService.php)
+📋 spec: [`features/mapping/create.feature`](features/mapping/create.feature) · 🛠 [`lib/Service/MappingService.php`](lib/Service/MappingService.php)
 
 ### Moving a workflow (it's the same workflow, leaving and coming back)
 
@@ -106,7 +106,7 @@ A move in Nextcloud mirrors as the *same workflow* moving in n8n — never a dup
 - **A link** cannot be moved out of its mapping (ejecting a pointer is meaningless); that move is refused with a message.
 - **Merge on collision**: if you move an unmapped copy back into a mapping that *already* holds that workflow (e.g. someone restored it in n8n and it synced back), the app sees the matching workflow ID, keeps the already-synced file (n8n is the source of truth), and simply removes the incoming copy — it feels like the two merged.
 
-📋 spec: [`features/move.feature`](features/move.feature) · 🛠 [`lib/Listener/MoveGuardListener.php`](lib/Listener/MoveGuardListener.php)
+📋 spec: [`features/workflows/move.feature`](features/workflows/move.feature) · 🛠 [`lib/Listener/MoveGuardListener.php`](lib/Listener/MoveGuardListener.php)
 
 ### Copying a workflow (always a brand-new instance)
 
@@ -118,13 +118,13 @@ Where a move is "the same workflow," a **copy** is always a *new* one. A copied 
 
 So duplicating a workflow is as simple as copying its file, and you never have to worry about a copy silently hijacking the original's n8n workflow.
 
-📋 spec: [`features/copy.feature`](features/copy.feature) · 🛠 [`lib/Listener/CopyListener.php`](lib/Listener/CopyListener.php) · [`lib/Service/CopyService.php`](lib/Service/CopyService.php)
+📋 spec: [`features/workflows/copy.feature`](features/workflows/copy.feature) · 🛠 [`lib/Listener/CopyListener.php`](lib/Listener/CopyListener.php) · [`lib/Service/CopyService.php`](lib/Service/CopyService.php)
 
 ### Renaming (three-way)
 
 In **sync mode** the filename stem, the JSON `name` field, and the n8n workflow name are kept in agreement. Rename the file → the JSON and n8n update. Edit the `name` inside the JSON → the file is renamed and n8n updates. The stable link is the workflow ID, so no rename ever breaks the connection.
 
-📋 spec: [`features/rename.feature`](features/rename.feature) · 🛠 [`lib/Listener/NameSyncListener.php`](lib/Listener/NameSyncListener.php), [`lib/Service/FilenameCodec.php`](lib/Service/FilenameCodec.php)
+📋 spec: [`features/workflows/rename.feature`](features/workflows/rename.feature) · 🛠 [`lib/Listener/NameSyncListener.php`](lib/Listener/NameSyncListener.php), [`lib/Service/FilenameCodec.php`](lib/Service/FilenameCodec.php)
 
 ### Deleting (mode-aware)
 
@@ -138,7 +138,7 @@ Deletion mirrors Nextcloud's two-step trash model, and what happens in n8n depen
 
 If n8n is unreachable on delete, the delete aborts (the file stays) rather than desyncing the two systems.
 
-📋 spec: [`features/delete.feature`](features/delete.feature) · 🛠 [`lib/Service/DeleteService.php`](lib/Service/DeleteService.php), [`lib/Listener/DeleteToN8nListener.php`](lib/Listener/DeleteToN8nListener.php)
+📋 spec: [`features/workflows/delete.feature`](features/workflows/delete.feature) · 🛠 [`lib/Service/DeleteService.php`](lib/Service/DeleteService.php), [`lib/Listener/DeleteToN8nListener.php`](lib/Listener/DeleteToN8nListener.php)
 
 ### Manual per-mapping sync (Sync from / Sync to n8n)
 
@@ -149,7 +149,7 @@ Each mapping has two on-demand buttons in admin settings, both **scoped to that 
 
 Both **ignore unmapped files entirely** — those live outside any mapping, so a mapping-scoped sync never touches them. (The unmapped-plus-mapped "duplicate" you can briefly hold after a move-out and an n8n-side restore is fine and intentional; it's resolved at *move* time, not by a sync — see [Moving a workflow](#moving-a-workflow-its-the-same-workflow-leaving-and-coming-back).)
 
-📋 spec: [`features/reconcile.feature`](features/reconcile.feature) · 🛠 [`lib/Service/SyncService.php`](lib/Service/SyncService.php)
+📋 spec: [`features/connection/sync-now.feature`](features/connection/sync-now.feature) · 🛠 [`lib/Service/SyncService.php`](lib/Service/SyncService.php)
 
 ### A first-class file type: custom mimetype, icon, queryable metadata
 
@@ -166,7 +166,7 @@ A managed workflow isn't a generic JSON blob — it's a proper file type. The ap
 
 These properties are **read-only** — clients cannot change them via `PROPPATCH`; the sync engine owns them. And because `n8n_mode` is **indexed**, "find every sync workflow" / "every unmapped file" is a fast DAV query (REPORT), not a folder walk.
 
-📋 spec: [`features/file-type.feature`](features/file-type.feature) · 🛠 [`lib/Migration/RegisterMimetype.php`](lib/Migration/RegisterMimetype.php), [`lib/Service/WorkflowMetadata.php`](lib/Service/WorkflowMetadata.php)
+📋 spec: [`features/workflows/view.feature`](features/workflows/view.feature) · 🛠 [`lib/Migration/RegisterMimetype.php`](lib/Migration/RegisterMimetype.php), [`lib/Service/WorkflowMetadata.php`](lib/Service/WorkflowMetadata.php)
 
 ### Opening a workflow: Open in n8n vs text editor
 
@@ -175,7 +175,7 @@ Closely related to the file type, but driven by the file's **mode**. Two openers
 - **Open in n8n** — jumps straight to the live workflow. Offered for **sync** and **link** files (there's a workflow to open), and it's their default click.
 - **Open with text editor** — edits the raw JSON; always available on any workflow file. For **unmapped** and **ignored** files there's no live workflow, so "Open in n8n" is hidden and the text editor is the default.
 
-📋 spec: [`features/open-with.feature`](features/open-with.feature) · 🛠 [`src/files.js`](src/files.js)
+📋 spec: [`features/workflows/open-with.feature`](features/workflows/open-with.feature) · 🛠 [`src/files.js`](src/files.js)
 
 ![The Files app right-click menu showing Open in n8n and Open with text editor](screenshots/context-menu.png)
 
@@ -192,7 +192,7 @@ Each managed file carries exactly one system tag indicating its mode:
 
 Tags are visible as coloured pills in the Files app. They are **mutually exclusive** — the app keeps exactly one per managed file, always matching the file's mode. On the Nextcloud side these tags are **authoritative and automatic**: the app maintains them; you don't have to.
 
-📋 spec: [`features/file-type.feature`](features/file-type.feature)
+📋 spec: [`features/workflows/view.feature`](features/workflows/view.feature)
 
 ### Sync vs link is set by the folder mapping
 
@@ -208,7 +208,7 @@ A mapping binds **one** n8n tag to a folder + a mode — and that tag can be **a
 
 `n8n:ignore` is **optional and hand-set by you** — the app only *reads* it and **never writes it onto your n8n workflows**. Add it to leave a workflow out; remove it to bring the file back to its mapping's mode. The Nextcloud-side `n8n:sync`/`n8n:link` pills are just the automatic mode mirror described above, not an override switch.
 
-📋 spec: [`features/reserved-tags.feature`](features/reserved-tags.feature)
+📋 spec: [`features/workflows/ignore.feature`](features/workflows/ignore.feature)
 
 ### Bidirectional Sync
 

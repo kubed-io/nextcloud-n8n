@@ -37,9 +37,9 @@ because it will be believed.
 
 Ported from `kubed-io/nextcloud-penpot`, where this layout was worked out.
 
-## admin-mapping
+## mapping/create
 
-`features/admin-mapping.feature`
+`features/mapping/create.feature`
 
 "Admin makes a mapping" — the mapping list in admin settings, driven over the CLI
 (the same operations the Settings panel performs). A mapping binds an n8n **tag**
@@ -231,9 +231,26 @@ Written in deliberately the same shape as the tag rule above, because once it is
 built the two collapse into one outline with the columns as the difference. The
 Penpot sibling already refuses it (`assertFolderUnique`).
 
-## admin-connection
 
-`features/admin-connection.feature`
+## mapping/manage-groups
+
+`features/mapping/manage-groups.feature`
+
+THE ONE FIELD A MAPPING LETS YOU EDIT, split out so it is not buried among the
+immutable ones — the same split both siblings made. Everything else is fixed at
+creation, and not by a guard that rejects a change but by the API shape: there is
+no way to express one.
+
+Both storage backends get their own Examples block because the provisioning
+differs and the behaviour must not.
+
+The `@decision` scenario that used to sit beside these — "there is no way to
+change a mapping except its groups" — is gone. It had no `When`, because there is
+no operation to perform; that is what this file's existence already says.
+
+## connection/connection
+
+`features/connection/connection.feature`
 
 The "admin makes the n8n connection" use case — the app's "I'm logged in" gate,
 a prerequisite to every other feature. The admin points the app at n8n (base
@@ -243,9 +260,16 @@ confirm the URL + key are valid and n8n is reachable.
 (Obtaining the API key is out of the app's scope — that's the n8n admin's job;
 in the tests it's provided as setup.)
 
-## copy
+### The connection test says which of the two key problems it is
 
-`features/copy.feature`
+A sensitive key field renders blank whether or not a key is stored, so the Test
+connection result is the admin's diagnostic — and it must tell the two failure
+modes apart: "you haven't added a key" vs "the key you added was rejected". Same
+distinct messages on the button and the occ command.
+
+## workflows/copy
+
+`features/workflows/copy.feature`
 
 Copying a workflow file. Where a MOVE is "the same workflow" (see move.feature),
 a COPY is ALWAYS a brand-new instance. A copy never inherits the original's n8n
@@ -256,9 +280,9 @@ whatever the source was (sync, link, unmapped), the copy starts clean.
 Nextcloud distinguishes copy from move at the event layer (NodeCopiedEvent vs
 NodeRenamedEvent), which is what lets us treat them oppositely.
 
-## create-workflow
+## workflows/create
 
-`features/create-workflow.feature`
+`features/workflows/create.feature`
 
 Creating workflows from Nextcloud. These scenarios are the human-readable spec
 for the "author in NC, live in n8n" flow. LIVE: a .n8n.json written over WebDAV
@@ -293,9 +317,26 @@ create AND update anyway (`workflowCreate.yml`, `additionalProperties: false`).
 
 Nothing caught it because adoption's tag behaviour had never been written down.
 
-## delete
 
-`features/delete.feature`
+### A file created in a nested mapping belongs to the nearest one
+
+FROM THE RETIRED `mapping-membership.feature`, reshaped. It read *"a workflow
+file lives in the subfolder"* — a state, not an action — so it stated the rule
+rather than exercising it. Creating a file there is the gesture that makes the
+nearest-enclosing-mapping rule observable, which is the only way a rule ever is.
+
+Two of that file's other scenarios were the rule stated twice more and are gone;
+its sync-scope one moved to `connection/sync-now.feature`, where the actor is.
+
+### A round trip out of Nextcloud and back keeps the workflow's tags
+
+THE CASE THAT DECIDES THE DESIGN. The pills did not survive the trip and n8n
+no longer holds the workflow. The body is the only carrier left — and it is
+enough, which is the whole reason adoption reads it.
+
+## workflows/delete
+
+`features/workflows/delete.feature`
 
 Deletion semantics differ by mode. Mirrors Nextcloud's two-step trash model.
 The matrix here is the contract the delete listener must satisfy.
@@ -431,9 +472,9 @@ of one request — that is the missing capability, and naming it is what keeps
 this out of the @todo work queue. A unit test against a mocked N8nClient is
 the cheaper home if it is ever wanted.
 
-## view-workflow
+## workflows/view
 
-`features/view-workflow.feature`
+`features/workflows/view.feature`
 
 LOOKING AT A WORKFLOW FILE — the only part of "it is a real file type" that
 anyone actually performs.
@@ -572,6 +613,16 @@ the only part of it a client can observe.
 Its visible consequence (a mapped folder that looks like workflows) belongs to
 `view-workflow.feature`; its removal belongs to `uninstall.feature`.
 
+
+### Removing the app
+
+FOLDED IN FROM `uninstall.feature`, which is retired — enabling, disabling and
+removing are three points on one lifecycle. `@blocked`: **no app removal**, since
+`occ` enables and disables and nothing more. Two of that file's scenarios did not
+come with it: "disabling leaves the files in place" asserted Nextcloud rather
+than this app, and "re-enabling reconciles without duplicates" is the id-matching
+`connection/sync-now.feature` already owns.
+
 ## mapping-membership
 
 `features/mapping-membership.feature`
@@ -595,9 +646,9 @@ It moved from a scenario about the sync button, where it was one `Then` among
 four — so "an unmapped file is out of scope" could only ever fail as part of "the
 button worked", and never named itself.
 
-## move
+## workflows/move
 
-`features/move.feature`
+`features/workflows/move.feature`
 
 How the app reacts to every move a Nextcloud user can make on a workflow file.
 A MOVE mirrors as the SAME workflow moving in n8n — never a duplicate. The
@@ -715,9 +766,9 @@ These need a design decision before they get concrete Then-steps:
   d. deleting an unmapped file (it has an id + an archived workflow) — see
      delete.feature.
 
-## open-with
+## workflows/open-with
 
-`features/open-with.feature`
+`features/workflows/open-with.feature`
 
 "Open with" — the openers offered for a managed workflow file, and which one is
 the default click. RELATED to the file type (view-workflow.feature: it's *because*
@@ -744,9 +795,9 @@ and running green — a stale reason nobody re-checked. It is one rule over four
 modes, so it belongs in the Examples table with the rest; splitting it hid that
 the only thing missing was the row.
 
-## purge
+## workflows/purge
 
-`features/purge.feature`
+`features/workflows/purge.feature`
 
 Purge — an admin-only button beside "Sync from/to n8n" and "Test connection"
 (also `occ n8n_sync:purge`) that removes the workflow files THIS APP created and
@@ -773,9 +824,9 @@ arrange existed all along, it just silently ignored the mode it was handed and
 produced a `sync` file, which would have made this scenario assert the opposite
 of its own Given.
 
-## sync-now
+## connection/sync-now
 
-`features/sync-now.feature`
+`features/connection/sync-now.feature`
 
 THE FIRST SYNC, AND ONLY THAT.
 
@@ -842,9 +893,40 @@ mirror can assert it the same way.
 Creation time especially: it is the one clock a later run can never reconstruct,
 because after the first sync there is no "before" left to read it from.
 
-## edit-workflow
+### A sync brings the tag's workflows into Nextcloud
 
-`features/edit-workflow.feature`
+
+actor        | scope
+-------------+---------------------
+the admin    | one mapping        the card's "Sync from n8n"
+the admin    | every mapping      the section's button
+the schedule | every mapping      time as the actor
+
+Same pre-state, same post-state. The actor and the scope are the only things
+that differ, so they are COLUMNS rather than three scenarios. Whether a run is
+synchronous or queued is a mechanism, and is asserted nowhere.
+
+THIS FILE IS THE FIRST SYNC, AND ONLY THAT. Nothing is tracked yet, so whatever
+is in n8n is simply a Given. A LATER run only has work to do because something
+changed in n8n — and every one of those is a scenario about the change, not
+about the sync: a workflow renamed upstream belongs to rename.feature, one
+deleted upstream to delete.feature, a tag added or dropped upstream to
+tag-sync.feature. The sync is how those arrive, not what they are.
+
+A TAG PER ROW, deliberately. A tag may be mapped once, so every row needs its
+own — and distinct tags stop one row's mirrors being read as the next row's
+result.
+
+THE DATES ARE AN END STATE, not a feature of their own: a mirror wears the
+workflow's clocks rather than the sync's, and that is true however the sync
+started. Creation time especially — it is the one clock a later run can never
+reconstruct, because after this run there is no "before" left to read it
+from. One reusable sentence, so any later behaviour that produces a mirror
+can assert it the same way.
+
+## workflows/edit
+
+`features/workflows/edit.feature`
 
 EDITING IS THE BEHAVIOUR; THE PUSH IS HOW IT TRAVELS.
 
@@ -863,9 +945,9 @@ and "a file I never mapped does not" are different promises, and a reader lookin
 for the second should not have to find it inside the first.
 
 
-## rename
+## workflows/rename
 
-`features/rename.feature`
+`features/workflows/rename.feature`
 
 Three-way name agreement: filename stem ⇄ JSON "name" ⇄ n8n name.
 The stable link is the workflow ID, so none of these break the connection — which is
@@ -888,9 +970,16 @@ of these needs a reconcile to become observable. The pull matches by ID and move
 the existing file rather than writing a second one — matching by NAME is exactly
 what a rename would defeat.
 
-## reserved-tags
+### A failed propagation never reverts the local rename
 
-`features/reserved-tags.feature`
+THE ASYMMETRY WITH DELETE, AND IT IS DELIBERATE. A delete aborts when n8n
+refuses, because the two sides must not disagree about whether something
+exists. A name is cosmetic and self-heals, so reverting a rename under the
+user's cursor would cost more than the drift does.
+
+## workflows/ignore
+
+`features/workflows/ignore.feature`
 
 Reserved n8n tag — the optional, per-workflow EXCLUDE switch.
 
@@ -920,9 +1009,9 @@ The un-tag RESTORE — removing n8n:ignore unarchives the workflow and returns t
 file to the mapping's mode — is live too (saga §14.18), driven by a
 TagUnassignedEvent listener.
 
-## tag-sync
+## workflows/tags
 
-`features/tag-sync.feature`
+`features/workflows/tags.feature`
 
 Bidirectional workflow-tag sync — a workflow's tags and its Nextcloud system
 tags are kept as ONE set, so the mirror is as searchable as n8n.
@@ -1356,6 +1445,50 @@ assertion. The untagging is a `When` now.
 Note the eject gesture is the deliberate Nextcloud-side twin: dropping the pill
 yourself keeps the file and marks it ignored. Losing the tag upstream is not a
 request to keep anything.
+
+### A tag deleted from the file is removed from n8n and the pills
+
+The direction that was blocked twice. It is decidable only because a pill edit
+now keeps the body in step, so a body that disagrees with the pills can only be
+a deliberate edit.
+
+### Moving an untracked tagged file into a mapping creates it in n8n with its tags
+
+THE SCENARIO THE WHOLE LOCAL-PAIR RULE EXISTS FOR. No metadata means this is
+unambiguously a create, and the body is the only thing that knows the tags — the
+pills came along only because this is the same file id, and a copy or a round
+trip through another system would not have them at all.
+
+### A pill added on a link is not pushed to n8n (read-only projection)
+
+A link is a READ-ONLY projection of n8n's tags: the pills are there so you can
+search, but n8n is the only writer. A pill added on a link never pushes (the
+reactive reconcile gates on sync), and because a link has no push channel that
+stray pill would linger forever — so the pull wipes it, mirroring n8n exactly.
+
+### With no Nextcloud edit, a file that disagrees with n8n loses
+
+THE TWO SCENARIOS THAT MAKE THE SURFACE SAFE. Whichever of A/B above is built,
+these are what prove it did not resurrect the false-removal bug. They are the
+first tests to write, not the last.
+
+### Removing the mapping pill as a deliberate eject is paired with n8n:ignore
+
+The planned reactive gesture: dropping the binding tag on purpose means "take
+this out of the mapping" — so the app marks it ignored rather than silently
+pruning the mirror on the next pull.
+
+### Editing tags on one mirror should converge its sibling (future fan-out)
+
+NOTE: same-request convergence of every mirror of one workflow id is not built
+yet — for now the sibling catches up on its own next pull, and the app must not
+bounce the agreed tag when it does.
+
+### A sibling mapping's tag is protected on every mirror (future cross-mapping guard)
+
+On the "flows" mirror the "reports" tag is an ordinary content pill, not this
+mapping's protected tag, so today a push could drop it and unbind the sibling.
+The fix is a protected set that is the UNION of all mapping tags on the workflow.
 
 ## uninstall
 

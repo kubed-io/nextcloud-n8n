@@ -80,7 +80,14 @@ trait AdminSteps {
 		Assert::assertSame(0, $res['exit'], "providing the API key failed:\n{$res['output']}");
 	}
 
-	/** @When the admin provides an invalid API key */
+	/**
+	 * ONE FUNCTION, TWO PHRASINGS: the `When` is the admin doing it, the `Given`
+	 * is the same fact as pre-state — which is what the key-failure outline needs
+	 * so its two rows differ only in a table cell.
+	 *
+	 * @When the admin provides an invalid API key
+	 * @Given an invalid API key is set
+	 */
 	public function theAdminProvidesAnInvalidApiKey(): void {
 		$res = $this->occStdin($this->occ . ' n8n_sync:set-api-key', 'not-a-real-key');
 		Assert::assertSame(0, $res['exit'], "storing the (invalid) key failed:\n{$res['output']}");

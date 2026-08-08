@@ -65,6 +65,16 @@ trait OpenWithSteps {
 		$this->lastOpenerChoice = $opener;
 	}
 
+	/**
+	 * Opening the menu performs nothing — what is under test is which entries it
+	 * offers, which the Then reads off the file's own mode.
+	 *
+	 * @When /^I look at its context menu$/
+	 */
+	public function iLookAtItsContextMenu(): void {
+		// No-op by design; the assertions follow.
+	}
+
 	/** @When I click the file in the Files app */
 	public function iClickTheFileInTheFilesApp(): void {
 		// A plain row-click resolves to the default opener; asserted in the Then.
@@ -84,6 +94,23 @@ trait OpenWithSteps {
 		$wf = $this->n8nGetWorkflow($id);
 		Assert::assertIsArray($wf, "workflow $id is not in n8n — nothing to open");
 		Assert::assertFalse((bool)($wf['isArchived'] ?? false), 'workflow is archived — not a live workflow to open');
+	}
+
+	/**
+	 * OFFERED OR HIDDEN, as one step, so the four modes are one outline instead
+	 * of a scenario for the offered case and one per hidden mode. Offering is
+	 * asserted through the thing that makes it meaningful — a live workflow to
+	 * open — rather than by reading the front-end's own answer back.
+	 *
+	 * @Then /^"([^"]*)" is (offered|hidden)$/
+	 */
+	public function theActionIsOfferedOrHidden(string $action, string $verdict): void {
+		if ($verdict === 'offered') {
+			$this->n8nOpensAtThatWorkflow();
+
+			return;
+		}
+		$this->theActionIsHiddenFromContextMenu($action);
 	}
 
 	/** @Then :action is hidden from its context menu */

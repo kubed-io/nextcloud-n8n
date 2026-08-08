@@ -21,6 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- Spec: the feature files are grouped by what they act on — `workflows/`, `mapping/` and `connection/` — one verb per file, matching the sibling integrations.
 - **A new mapping defaults to an admin-owned folder, not a Team Folder.** Leaving the storage backend unset used to mean "Team Folder", which needs the optional `groupfolders` app — so on a stock Nextcloud the default mapping was the one that could not be provisioned, and filling in only the required fields got you a refusal. A Team Folder is now opted into. Existing mappings are unaffected: every mapping this app has saved records its backend explicitly.
 - Spec: there is no longer a `file-type.feature` either. A mimetype, a property set and an index are not things anyone does — the registration is what enabling the app leaves behind, the metadata is what creating or syncing a workflow leaves behind, and what remains is looking at the file, which now has its own small feature.
 - Spec: there is no longer a `reconcile.feature`. Reconciling is how an n8n-side change reaches Nextcloud, not something anyone does — its scenarios moved to the behaviours that own them, and the first sync now has a file of its own.
