@@ -256,48 +256,68 @@ trait TagSyncSteps {
 	// ── Then: the tags, everywhere ─────────────────────────────────────────────
 
 	/**
-	 * THE PAYOFF STEP: the normal tags are $tags on every surface at once — n8n, the
-	 * Nextcloud pills, and the file's own `tags` array.
+	 * THE PAYOFF, ONE SURFACE PER SENTENCE.
 	 *
-	 * Asserted as ONE comparison over all three rather than three assertions in a
-	 * row, because which surface drifted is the first thing you want to know and
-	 * asserting them one at a time hides the other two behind the first failure.
+	 * These were one step asserting all three at once, which read as a single
+	 * sentence containing an "and" — and it was three checks wearing one name. A
+	 * settled tag change means the tags are on the pills, in the file, and in n8n,
+	 * so a scenario says that in three lines and a failure names the surface that
+	 * drifted in its own right.
 	 *
-	 * THE IDS ARE PART OF THE END STATE, NOT A SCENARIO. A tag n8n has never seen
-	 * has no id, and a human editing the JSON writes `{"name": "prod"}` with none —
-	 * so "the file's rows are canonical `{id,name}` again" is simply what a settled
-	 * tag change looks like, whichever surface it started on. It used to be a `@todo`
-	 * scenario of its own, which said no more than this line does and cost a whole
-	 * live run to say it.
-	 *
-	 * @Then the workflow's normal tags are :tags in n8n and in Nextcloud
+	 * @Then the workflow's normal tags are :tags in Nextcloud
 	 */
-	public function theNormalTagsAreEverywhere(string $tags): void {
-		$want = self::tagList($tags);
-		$got = $this->readNormalTags();
+	public function theNormalTagsAreInNextcloud(string $tags): void {
 		Assert::assertSame(
-			['n8n' => $want, 'pills' => $want, 'body' => $want],
-			$got,
-			'the tag surfaces disagree (want vs got shown above)',
+			self::tagList($tags),
+			$this->tagNormal($this->tagContentPills($this->tagLocateFile())),
+			"the file's Nextcloud tags are not the expected set",
 		);
-		$this->assertBodyTagsCarryIds();
 	}
 
 	/**
-	 * Every row in the file's `tags` array carries a non-empty n8n id.
+	 * The file's own `tags` array — the third surface, and the only one that
+	 * survives the file being copied or carried out of Nextcloud.
 	 *
-	 * Tolerates an empty array on purpose: emptying the tags is one of the gestures
-	 * under test, and "no rows" is a correct end state rather than a missing id.
+	 * THE IDS ARE ASSERTED HERE, because they are part of what "the file holds the
+	 * tags" means. A tag n8n has never seen has no id, and a human editing the JSON
+	 * writes `{"name": "prod"}` with none — so canonical `{id,name}` rows are what a
+	 * SETTLED change looks like, whichever surface it started on. An empty array is
+	 * tolerated on purpose: emptying the tags is one of the gestures under test, and
+	 * "no rows" is a correct end state rather than a missing id.
+	 *
+	 * @Then the workflow's normal tags are :tags in the file
 	 */
-	private function assertBodyTagsCarryIds(): void {
+	public function theNormalTagsAreInTheFile(string $tags): void {
 		$path = $this->tagLocateFile();
 		$wf = json_decode($this->davGet($path), true);
 		Assert::assertIsArray($wf, "managed file at $path is not JSON");
+
+		$names = [];
 		foreach ((array)($wf['tags'] ?? []) as $tag) {
 			Assert::assertIsArray($tag, 'a body tag entry is not an object');
-			$name = (string)($tag['name'] ?? '?');
+			$name = (string)($tag['name'] ?? '');
 			Assert::assertNotSame('', (string)($tag['id'] ?? ''), "the body tag '$name' carries no n8n id");
+			$names[] = $name;
 		}
+		Assert::assertSame(
+			self::tagList($tags),
+			$this->tagNormal($names),
+			"the file's tags array is not the expected set",
+		);
+	}
+
+	/**
+	 * n8n's own answer, read from its API rather than from anything this app
+	 * reports — a `Then` that only asks this app proves the app agrees with itself.
+	 *
+	 * @Then the workflow's normal tags are :tags in n8n
+	 */
+	public function theNormalTagsAreInN8n(string $tags): void {
+		Assert::assertSame(
+			self::tagList($tags),
+			$this->tagNormal($this->tagN8nContent($this->tagWfId)),
+			"the workflow's n8n tags are not the expected set",
+		);
 	}
 
 	/**

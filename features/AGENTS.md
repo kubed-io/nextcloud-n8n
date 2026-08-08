@@ -1255,6 +1255,12 @@ anything about tags, on every single row. They are added back by the arrange
 and stripped from every assertion, and the scenarios that are genuinely ABOUT
 them name them explicitly.
 
+THE THREE SURFACES GET THREE SENTENCES. The payoff was one step asserting all
+of them at once, which read as a single sentence containing an "and" — and it
+was three checks wearing one name. A settled tag change means the tags are on
+the Nextcloud pills, in the file, and in n8n, so a scenario says exactly that,
+in three lines, and a failure names the surface that drifted in its own right.
+
 THE IDS ARE PART OF THE END STATE, NOT A SCENARIO OF THEIR OWN. n8n's API
 forces the shape — `tags` is readOnly on both create and update, so a body save
 can never carry tags; they go via `PUT /workflows/{id}/tags`, separately,

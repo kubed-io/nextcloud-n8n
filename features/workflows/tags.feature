@@ -23,7 +23,9 @@ Feature: Changing a workflow's tags
   Scenario Outline: Changing a workflow's tags in Nextcloud changes them in n8n
     Given a managed "sync" workflow file in "Flows" whose normal tags are "<tags before>"
     When I change the Nextcloud tags to "<tags after>"
-    Then the workflow's normal tags are "<tags after>" in n8n and in Nextcloud
+    Then the workflow's normal tags are "<tags after>" in Nextcloud
+    And the workflow's normal tags are "<tags after>" in the file
+    And the workflow's normal tags are "<tags after>" in n8n
 
     Examples: adding, subtracting, and doing both at once are one gesture
       | tags before   | tags after         |
@@ -38,7 +40,9 @@ Feature: Changing a workflow's tags
   Scenario Outline: Changing a workflow's tags in the file changes them in n8n
     Given a managed "sync" workflow file in "Flows" whose normal tags are "<tags before>"
     When I change the tags in the file to "<tags after>"
-    Then the workflow's normal tags are "<tags after>" in n8n and in Nextcloud
+    Then the workflow's normal tags are "<tags after>" in Nextcloud
+    And the workflow's normal tags are "<tags after>" in the file
+    And the workflow's normal tags are "<tags after>" in n8n
 
     Examples: the same gesture, typed into the JSON instead of clicked on the file
       | tags before   | tags after    |
@@ -52,7 +56,9 @@ Feature: Changing a workflow's tags
   Scenario Outline: Changing a workflow's tags in n8n changes them in Nextcloud
     Given a managed "sync" workflow file in "Flows" whose normal tags are "<tags before>"
     When the workflow's tags are changed to "<tags after>" in n8n
-    Then the workflow's normal tags are "<tags after>" in n8n and in Nextcloud
+    Then the workflow's normal tags are "<tags after>" in Nextcloud
+    And the workflow's normal tags are "<tags after>" in the file
+    And the workflow's normal tags are "<tags after>" in n8n
     And nothing else in the file changed
 
     Examples: n8n is the system of record, so its set wins outright
@@ -88,7 +94,9 @@ Feature: Changing a workflow's tags
   Scenario: A reserved "n8n:" tag added in n8n never becomes a Nextcloud tag
     Given a managed "sync" workflow file in "Flows" whose normal tags are "foo"
     When the tag "n8n:sync" is added to the workflow in n8n
-    Then the workflow's normal tags are "foo" in n8n and in Nextcloud
+    Then the workflow's normal tags are "foo" in Nextcloud
+    And the workflow's normal tags are "foo" in the file
+    And the workflow's normal tags are "foo" in n8n
     And the file has no content tag "n8n:sync"
 
     # ── RULE: the mapping tag is the binding, not a label anyone may drop ─────
@@ -100,7 +108,9 @@ Feature: Changing a workflow's tags
     When I remove the "flows" mapping tag in Nextcloud
     Then the file still carries the "flows" mapping tag
     And the workflow in n8n still carries the "flows" tag
-    And the workflow's normal tags are "bar, baz" in n8n and in Nextcloud
+    And the workflow's normal tags are "bar, baz" in Nextcloud
+    And the workflow's normal tags are "bar, baz" in the file
+    And the workflow's normal tags are "bar, baz" in n8n
 
   @user @in-nextcloud @gesture @ui @todo
   Scenario: Removing the mapping tag from the file body does not unbind it either
