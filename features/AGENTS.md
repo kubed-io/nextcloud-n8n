@@ -1255,6 +1255,17 @@ anything about tags, on every single row. They are added back by the arrange
 and stripped from every assertion, and the scenarios that are genuinely ABOUT
 them name them explicitly.
 
+THE IDS ARE PART OF THE END STATE, NOT A SCENARIO OF THEIR OWN. n8n's API
+forces the shape — `tags` is readOnly on both create and update, so a body save
+can never carry tags; they go via `PUT /workflows/{id}/tags`, separately,
+always. A human editing the JSON writes `{"name": "prod"}` with no id, and that
+must work: we resolve the name for n8n and leave the file as typed, then write
+n8n's canonical `{id,name}` rows back. So the file is briefly "wrong" in a way
+that self-corrects, deliberately — and "the rows are canonical again" is simply
+what a settled tag change looks like, whichever surface it started on. It used
+to be a `@todo` scenario saying no more than one line of the payoff assertion
+now says, at the cost of a whole live run.
+
 THE SURFACES ARE THREE SCENARIOS, NOT THREE ROWS, and that is a rule from
 `.github/instructions/gherkin.instructions.md` rather than a preference:
 origin is exclusive, so a scenario is `@in-nextcloud` or `@in-n8n` and never
@@ -1270,17 +1281,6 @@ is folded into the gesture step instead, and the scenarios say only what a
 person did and what came of it. The same reasoning retires the `pushed` /
 `reconciled` phrasings and the `@unbuilt` catalog-sweep scenarios, whose only
 action was "the sweep ran".
-
-### A tag typed into the file comes back with its n8n id
-
-The body may be written LOOSELY. A human types `{"name": "prod"}` with no id,
-and that must work: we resolve the name to an id for n8n and leave the file as
-typed. The next pull rewrites the array with n8n's canonical `{id,name}` rows.
-So the file is briefly "wrong" in a way that self-corrects, deliberately.
-
-n8n's API forces the shape — `tags` is readOnly on both create and update, so
-a body save can never carry tags; they go via `PUT /workflows/{id}/tags`,
-separately, always.
 
 ### With async timing the change reaches n8n on the next queue tick
 

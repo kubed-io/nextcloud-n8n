@@ -59,13 +59,6 @@ Feature: Changing a workflow's tags
       |               | foo, bar           |
       | foo, bar, baz | qux, quux          |
 
-  # notes: ../AGENTS.md#a-tag-typed-into-the-file-comes-back-with-its-n8n-id
-  @user @in-nextcloud @gesture @ui @todo
-  Scenario: A tag typed into the file comes back with its n8n id
-    Given a managed "sync" workflow file in "flows" whose normal tags are "foo"
-    When I change the tags in the file to "foo, qux"
-    Then every tag in the file body carries an n8n id
-
   # notes: ../AGENTS.md#with-async-timing-the-change-reaches-n8n-on-the-next-queue-tick
   @user @in-nextcloud @gesture @ui @occ
   Scenario: With "async" timing the change reaches n8n on the next queue tick

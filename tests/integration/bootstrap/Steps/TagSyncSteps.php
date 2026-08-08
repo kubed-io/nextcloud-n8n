@@ -269,6 +269,13 @@ trait TagSyncSteps {
 	 * row, because which surface drifted is the first thing you want to know and
 	 * asserting them one at a time hides the other two behind the first failure.
 	 *
+	 * THE IDS ARE PART OF THE END STATE, NOT A SCENARIO. A tag n8n has never seen
+	 * has no id, and a human editing the JSON writes `{"name": "prod"}` with none —
+	 * so "the file's rows are canonical `{id,name}` again" is simply what a settled
+	 * tag change looks like, whichever surface it started on. It used to be a `@todo`
+	 * scenario of its own, which said no more than this line does and cost a whole
+	 * live run to say it.
+	 *
 	 * @Then the workflow's normal tags are :tags in n8n and in Nextcloud
 	 */
 	public function theNormalTagsAreEverywhere(string $tags): void {
@@ -279,6 +286,24 @@ trait TagSyncSteps {
 			$got,
 			'the tag surfaces disagree (want vs got shown above)',
 		);
+		$this->assertBodyTagsCarryIds();
+	}
+
+	/**
+	 * Every row in the file's `tags` array carries a non-empty n8n id.
+	 *
+	 * Tolerates an empty array on purpose: emptying the tags is one of the gestures
+	 * under test, and "no rows" is a correct end state rather than a missing id.
+	 */
+	private function assertBodyTagsCarryIds(): void {
+		$path = $this->tagLocateFile();
+		$wf = json_decode($this->davGet($path), true);
+		Assert::assertIsArray($wf, "managed file at $path is not JSON");
+		foreach ((array)($wf['tags'] ?? []) as $tag) {
+			Assert::assertIsArray($tag, 'a body tag entry is not an object');
+			$name = (string)($tag['name'] ?? '?');
+			Assert::assertNotSame('', (string)($tag['id'] ?? ''), "the body tag '$name' carries no n8n id");
+		}
 	}
 
 	/**
