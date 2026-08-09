@@ -37,13 +37,12 @@ use Psr\Log\LoggerInterface;
  * both watch a user edit, both honour the same `timing` knob — `sync` reconciles inline
  * during the request, `async` enqueues {@see ReconcileTagsJob} for the cron worker.
  *
- * It is deliberately NOT {@see ModeTagListener}. That listener owns the **reserved**
- * `n8n:ignore` control tag (exclude/restore); this one owns **content** tags (the actual
- * workflow labels). So the two split cleanly by namespace: a change whose tags are ALL
- * reserved (`n8n:*`) is ignored here (it's the control plane, or a marker a pull will
- * reconcile), and a change touching at least one content tag is a real label edit we act
- * on. The actual gating (managed? sync?), protected-tag lookup, guard, and best-effort
- * error handling live in {@see TagReconcileService} — shared with the async job.
+ * It owns CONTENT tags — the actual workflow labels — and splits from the app's own
+ * markers by namespace: a change whose tags are ALL reserved (`n8n:*`) is ignored here
+ * (those are the mode pills a pull reconciles), and a change touching at least one
+ * content tag is a real label edit we act on. The gating (managed? sync?), the unbind
+ * check, the guard, and the best-effort error handling live in
+ * {@see TagReconcileService} — shared with the async job.
  *
  * Loop safety: the reconcile writes pills inside {@see SyncGuard}, so the
  * `TagAssignedEvent`/`TagUnassignedEvent` it re-fires (including a force-kept mapping-tag
@@ -77,7 +76,7 @@ final class ContentTagListener implements IEventListener {
 		}
 		// Only a real CONTENT-tag edit is a surface-3 gesture. A change confined to the
 		// reserved namespace (`n8n:ignore` and friends) is the control plane — left to
-		// ModeTagListener / the next pull.
+		// the next pull.
 		if (!$this->touchesContentTag($event->getTags())) {
 			return;
 		}

@@ -124,7 +124,7 @@ final class TagSyncServiceTest extends TestCase {
 		);
 
 		$workflow = ['id' => 'wf-1', 'tags' => [['id' => 'a', 'name' => 'dns'], ['id' => 'b', 'name' => 'linux']]];
-		$this->service->reconcilePull(1, $workflow, $this->managed(), []);
+		$this->service->reconcilePull(1, $workflow, $this->managed());
 
 		sort($assigned);
 		self::assertSame([$this->tagId('dns'), $this->tagId('linux')], $assigned);
@@ -143,7 +143,7 @@ final class TagSyncServiceTest extends TestCase {
 		);
 
 		$workflow = ['id' => 'wf-1', 'tags' => [['id' => 'a', 'name' => 'linux'], ['id' => 'b', 'name' => 'n8n:sync']]];
-		$this->service->reconcilePull(1, $workflow, $this->managed(), []);
+		$this->service->reconcilePull(1, $workflow, $this->managed());
 
 		self::assertSame([$this->tagId('linux')], $assigned);
 		self::assertNotContains($this->tagId('n8n:sync'), $assigned);
@@ -165,15 +165,17 @@ final class TagSyncServiceTest extends TestCase {
 		);
 
 		$workflow = ['id' => 'wf-1', 'tags' => [['id' => 'a', 'name' => 'linux']]];
-		$this->service->reconcilePull(1, $workflow, $this->managed('[]'), []);
+		$this->service->reconcilePull(1, $workflow, $this->managed('[]'));
 
 		self::assertSame(['linux'], $stamped, 'baseline must be the source set, not source + local adds');
 	}
 
-	public function testPullForceKeepsProtectedMappingTag(): void {
-		// Baseline had {flows, linux}; n8n dropped the mapping tag "flows" (source is
-		// now just "linux"), so a plain three-way pull would remove the "flows" pill.
-		// Protection must keep it — removing it would visually unmap the file.
+	public function testPullDropsAMappingTagTheSourceNoLongerCarries(): void {
+		// THE FORCE-KEEP IS GONE, and this is its inverse. The mapping tag used to be
+		// pushed back onto both sides so a Nextcloud pill could never unbind a workflow;
+		// dropping it is now the sanctioned way to leave a mapping, so a pull mirrors
+		// its absence like any other tag. The mirror itself is pruned by SyncService,
+		// which is where "this workflow is no longer ours" belongs.
 		$this->fileHasTags(1, ['flows', 'linux']);
 		$this->tagManager->method('createTag')->willReturnCallback(fn (string $n): ISystemTag => $this->makeTag($n));
 		$this->tagManager->method('getTag')->willReturnCallback(fn (string $n): ISystemTag => $this->makeTag($n));
@@ -187,11 +189,10 @@ final class TagSyncServiceTest extends TestCase {
 			},
 		);
 
-		// Source has only "linux"; without protection "flows" would be unassigned.
 		$workflow = ['id' => 'wf-1', 'tags' => [['id' => 'a', 'name' => 'linux']]];
-		$this->service->reconcilePull(1, $workflow, $this->managed('["flows","linux"]'), ['flows']);
+		$this->service->reconcilePull(1, $workflow, $this->managed('["flows","linux"]'));
 
-		self::assertNotContains($this->tagId('flows'), $unassigned, 'the protected mapping tag must not be removed');
+		self::assertContains($this->tagId('flows'), $unassigned, 'a mapping tag the source dropped is no longer force-kept');
 	}
 
 	public function testPullForALinkDropsLocalAddsAsPureMirror(): void {
@@ -212,7 +213,7 @@ final class TagSyncServiceTest extends TestCase {
 		);
 
 		$workflow = ['id' => 'wf-1', 'tags' => [['id' => 'a', 'name' => 'linux']]];
-		$this->service->reconcilePull(1, $workflow, $this->linkManaged('[]'), []);
+		$this->service->reconcilePull(1, $workflow, $this->linkManaged('[]'));
 
 		self::assertContains($this->tagId('urgent'), $unassigned, 'a link must drop a local pill n8n does not carry');
 	}
@@ -247,7 +248,7 @@ final class TagSyncServiceTest extends TestCase {
 		);
 		$this->metadata->method('stampTags');
 
-		$this->service->reconcilePush(1, $this->managed('["flows"]'), ['flows']);
+		$this->service->reconcilePush(1, $this->managed('["flows"]'));
 
 		self::assertContains('n8nid:flows', $sent);
 		self::assertContains('n8nid:urgent', $sent);
@@ -274,7 +275,7 @@ final class TagSyncServiceTest extends TestCase {
 			},
 		);
 
-		$this->service->reconcilePush(1, $this->managed('["flows"]'), ['flows']);
+		$this->service->reconcilePush(1, $this->managed('["flows"]'));
 
 		sort($stamped);
 		self::assertSame(['flows', 'urgent'], $stamped);

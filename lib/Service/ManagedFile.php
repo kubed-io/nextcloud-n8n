@@ -57,24 +57,4 @@ final class ManagedFile {
 		return array_values(array_filter($decoded, 'is_string'));
 	}
 
-	/** True when the file carries an n8n workflow id — i.e. it is one of ours. */
-	public function isManaged(): bool {
-		return $this->workflowId !== '';
-	}
-
-	public function isSync(): bool {
-		return $this->mode === Mapping::MODE_SYNC;
-	}
-
-	public function isLink(): bool {
-		return $this->mode === Mapping::MODE_LINK;
-	}
-
-	public function isUnmapped(): bool {
-		return $this->mode === WorkflowMetadata::MODE_UNMAPPED;
-	}
-
-	public function isIgnored(): bool {
-		return $this->mode === WorkflowMetadata::MODE_IGNORED;
-	}
 }

@@ -16,7 +16,7 @@ namespace OCA\N8nSync\Service;
  * Before this class the same n8n-schema quirks lived in four places: the create
  * body in {@see CreateService}, the update body in {@see PushService}, and a
  * verbatim-duplicated `encodeReference`/`encodeSync` pair in both
- * {@see SyncService} and {@see ModeChangeService}. n8n's request schema is an
+ * {@see SyncService} and {@see PushService}. n8n's request schema is an
  * external, moving target; keeping it here means it changes in exactly one file.
  *
  * The schema gotchas, learned live:

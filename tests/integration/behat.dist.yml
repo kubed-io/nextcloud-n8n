@@ -78,7 +78,6 @@ default:
     tags:
       paths:
       - '%paths.base%/../../features/workflows/tags.feature'
-      - '%paths.base%/../../features/workflows/ignore.feature'
       contexts: *contexts
 
     core:

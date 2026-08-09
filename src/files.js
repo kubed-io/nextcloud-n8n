@@ -87,7 +87,7 @@ async function resolveUrl(node) {
  * WHY AN ASYNC MODE EXISTS AT ALL. `enabled()` is synchronous, so it can only
  * ever see what the listing carried, and on the first folder after a page load
  * that is nothing (the race documented at the top of this file). The editor's
- * unknown-mode default is deliberately PERMISSIVE, so that `unmapped`/`ignored`
+ * unknown-mode default is deliberately PERMISSIVE, so that `unmapped`
  * files — whose only opener is the text editor — are never left with no way to
  * open at all. The cost of that choice is that a `link` can slip into the menu
  * for exactly one folder per session, and editing a link is meaningless: the
@@ -186,7 +186,7 @@ registerFileAction({
   displayName: () => t(APP_ID, 'Open in n8n'),
   iconSvgInline: () => n8nMarkIcon,
 
-  // Offered for sync/link (a live workflow to open); HIDDEN for unmapped/ignored
+  // Offered for sync/link (a live workflow to open); HIDDEN for unmapped
   // (archived in n8n — nothing live to jump to). The opener set follows the file's
   // MODE, not its type (open-with.feature / saga §14.1). enabled() also keeps it
   // off plain JSON via isN8nFile.
@@ -199,27 +199,27 @@ registerFileAction({
     return true
   },
 
-  // Default click for sync/link; for unmapped/ignored this action is disabled, so
+  // Default click for sync/link; for unmapped this action is disabled, so
   // the lower-priority "Open with text editor" default wins instead (see below).
   default: DefaultType.DEFAULT,
   order: -50, // above other JSON claimers (Text ~0) and above the text opener
 })
 
 // "Open with text editor" — edit the raw JSON. Offered for every mode that holds
-// the full workflow on disk (sync / unmapped / ignored), and the DEFAULT click for
-// unmapped/ignored (no live workflow to open). HIDDEN for `link`: a link is only a
+// the full workflow on disk (sync / unmapped), and the DEFAULT click for
+// unmapped (no live workflow to open). HIDDEN for `link`: a link is only a
 // pointer, so there is nothing to edit and any change would break it. To edit a
 // link's workflow you change its folder mapping to sync — the mapping's mode is the
 // single source of truth, there is no per-file toggle (saga §15.3).
 // It is also marked DEFAULT, but at a *lower* priority (order -49) than "Open in
-// n8n" (-50): for sync both are enabled and n8n wins; for unmapped/ignored
+// n8n" (-50): for sync both are enabled and n8n wins; for unmapped
 // "Open in n8n" is disabled, so this becomes the default click; for link this
 // action is disabled and n8n is the only opener. (open-with.feature)
 registerFileAction({
   id: 'n8n_sync.edit',
   displayName: () => t(APP_ID, 'Open with text editor'),
   iconSvgInline: () => textIcon,
-  // Offered for any n8n file that holds editable JSON (sync/unmapped/ignored, and
+  // Offered for any n8n file that holds editable JSON (sync/unmapped, and
   // the permissive loading case); hidden for `link` (a pointer — nothing to edit).
   // Don't gate on window.OCA.Text here — it can be defined a touch later than our
   // row render; openInText() handles the (unlikely) case where Text's API isn't ready.
@@ -239,7 +239,7 @@ registerFileAction({
     return (await openInText(node)) ? null : false
   },
   default: DefaultType.DEFAULT,
-  order: -49, // below "Open in n8n"; the fallback default for unmapped/ignored
+  order: -49, // below "Open in n8n"; the fallback default for unmapped
 })
 
 // ── "New → n8n workflow" ───────────────────────────────────────────────────

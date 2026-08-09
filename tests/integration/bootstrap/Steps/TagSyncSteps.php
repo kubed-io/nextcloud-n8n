@@ -160,15 +160,18 @@ trait TagSyncSteps {
 	 * Remove the MAPPING tag itself — the one Nextcloud-side tag change that is not
 	 * about labelling, and the only place this file names the binding.
 	 *
-	 * Settles the mapping afterwards for the same reason the n8n steps do: the
-	 * question is what the mirror looks like once the change has been dealt with,
-	 * not whether a particular listener fired inside the request.
+	 * Deliberately does NOT run a sync afterwards. The unbind is REACTIVE: dropping
+	 * the tag takes the workflow out of the mapping there and then, and a sync here
+	 * would hide whether that happened by doing the same work a second time.
 	 *
 	 * @When I remove the :tag mapping tag in Nextcloud
 	 */
 	public function iRemoveTheMappingTag(string $tag): void {
-		$this->tagRemoveSystemTag($this->tagLocateFile(), $tag);
-		$this->runMappingSync('push', $tag);
+		$path = $this->tagLocateFile();
+		$this->tagRemoveSystemTag($path, $tag);
+		// The mirror is expected to be gone now, so the cached path must not be reused
+		// as though it still resolved.
+		$this->tagFilePath = '';
 	}
 
 	/**

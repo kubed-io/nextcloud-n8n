@@ -99,25 +99,23 @@ Feature: Changing a workflow's tags
     And the workflow's normal tags are "foo" in n8n
     And the file has no content tag "n8n:sync"
 
-    # ── RULE: the mapping tag is the binding, not a label anyone may drop ─────
-    # notes: ../AGENTS.md#the-mapping-tag-is-the-binding-not-a-label-anyone-may-drop
+    # ── RULE: the mapping tag is the membership, so dropping it leaves ────────
+    # notes: ../AGENTS.md#the-mapping-tag-is-the-membership-so-dropping-it-leaves
 
   @user @in-nextcloud @gesture @ui
-  Scenario: Removing the mapping tag in Nextcloud does not unbind the workflow
+  Scenario: Removing the mapping tag in Nextcloud takes the workflow out of the mapping
     Given a managed "sync" workflow file in "Flows" whose normal tags are "bar, baz"
     When I remove the "flows" mapping tag in Nextcloud
-    Then the file still carries the "flows" mapping tag
-    And the workflow in n8n still carries the "flows" tag
-    And the workflow's normal tags are "bar, baz" in Nextcloud
-    And the workflow's normal tags are "bar, baz" in the file
+    Then the file is gone from the mapped folder
+    And the workflow still exists in n8n, with its other tags
     And the workflow's normal tags are "bar, baz" in n8n
 
   @user @in-nextcloud @gesture @ui @todo
-  Scenario: Removing the mapping tag from the file body does not unbind it either
+  Scenario: Removing the mapping tag from the file takes it out too
     Given a managed "sync" workflow file in "Flows" whose normal tags are "bar, baz"
-    When I change the tags in the file to "bar, baz", dropping the "flows" mapping tag
-    Then the file still carries the "flows" mapping tag
-    And the file stays mapped to "flows"
+    When I remove the "flows" mapping tag from the file
+    Then the file is gone from the mapped folder
+    And the workflow's normal tags are "bar, baz" in n8n
 
   @n8n @in-n8n @ui @occ
   Scenario: A workflow that loses its mapping tag in n8n loses its mirror

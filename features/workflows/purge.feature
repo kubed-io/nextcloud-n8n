@@ -32,10 +32,3 @@ Feature: Purge the app's restorable files from Nextcloud
     And the admin purges the Nextcloud files
     When the "nextcloud:alpha" mapping is synced
     Then the workflow appears again as a file in the "nextcloud:alpha" folder
-
-  # notes: ../AGENTS.md#purge-keeps-an-ignored-file
-  @admin @ui @occ
-  Scenario: Purge keeps an ignored file
-    Given a managed "ignored" workflow file in the "nextcloud:alpha" folder
-    When the admin purges the Nextcloud files
-    Then that ignored file is left in place

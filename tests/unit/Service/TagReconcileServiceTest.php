@@ -26,8 +26,8 @@ use Psr\Log\NullLogger;
  * Unit tests for {@see TagReconcileService} — the orchestrator behind the reactive
  * tag triggers. Both directions are LIVE (saga §5.9):
  *
- *  - the **pill** path ({@see reconcileFile}) gates on managed+sync, resolves the
- *    mapping's protected tag, runs {@see TagSyncService::reconcilePush} inside the
+ *  - the **pill** path ({@see reconcileFile}) gates on managed+sync, answers an
+ *    UNBIND first, runs {@see TagSyncService::reconcilePush} inside the
  *    {@see SyncGuard}, and then WRITES the file's `tags` array so the body cannot lag;
  *  - the **body** path ({@see reconcileFromBody}) treats the file's JSON `tags` as the
  *    Nextcloud-side truth for that save, and leaves the file exactly as typed.
@@ -72,6 +72,16 @@ final class TagReconcileServiceTest extends TestCase {
 		$node = $this->createStub(File::class);
 		$node->method('getId')->willReturn($id);
 		return $node;
+	}
+
+	/**
+	 * A file still carrying its mapping tag — the ordinary case, and the precondition
+	 * for every reconcile test here. Dropping that tag is no longer an edit to merge:
+	 * it is an UNBIND, answered before the merge, so a test that forgot to say the tag
+	 * is still on the file would be testing the unbind instead of the reconcile.
+	 */
+	private function stillAMember(string $tag = 'flows'): void {
+		$this->tagSync->method('readNcContentTags')->willReturn([$tag]);
 	}
 
 	/**
@@ -120,35 +130,38 @@ final class TagReconcileServiceTest extends TestCase {
 		self::assertFalse($this->service->reconcileFile($this->node()));
 	}
 
-	// ── protected-tag resolution (pill path) ────────────────────────────────────
+	// ── membership (pill path) ──────────────────────────────────────────────────
 
-	public function testReconcilesSyncFileWithMappingTagProtected(): void {
+	public function testReconcilesASyncFileThatStillCarriesItsMappingTag(): void {
 		$managed = $this->managed(Mapping::MODE_SYNC, 'map-a');
 		$this->metadata->method('read')->willReturn($managed);
 		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
+		$this->stillAMember();
 
 		$this->tagSync->expects(self::once())
 			->method('reconcilePush')
-			->with(7, $managed, ['flows'])
+			->with(7, $managed)
 			->willReturn([]);
 
 		self::assertTrue($this->service->reconcileFile($this->node(7)));
 	}
 
-	public function testProtectedIsEmptyWhenMappingMissing(): void {
+	public function testNoUnbindWhenTheMappingIsGone(): void {
+		// A file whose mapping was deleted has no membership to leave, so its tags are
+		// reconciled like any other file's rather than read as an unbind.
 		$managed = $this->managed(Mapping::MODE_SYNC, 'gone');
 		$this->metadata->method('read')->willReturn($managed);
 		$this->mappings->method('getById')->willReturn(null);
 
 		$this->tagSync->expects(self::once())
 			->method('reconcilePush')
-			->with(1, $managed, [])
+			->with(1, $managed)
 			->willReturn([]);
 
 		self::assertTrue($this->service->reconcileFile($this->node()));
 	}
 
-	public function testProtectedIsEmptyWhenMappingIdBlank(): void {
+	public function testNoUnbindWhenTheMappingIdIsBlank(): void {
 		$managed = $this->managed(Mapping::MODE_SYNC, '');
 		$this->metadata->method('read')->willReturn($managed);
 		// A blank mapping id must not even hit the mapping lookup.
@@ -156,10 +169,87 @@ final class TagReconcileServiceTest extends TestCase {
 
 		$this->tagSync->expects(self::once())
 			->method('reconcilePush')
-			->with(1, $managed, [])
+			->with(1, $managed)
 			->willReturn([]);
 
 		self::assertTrue($this->service->reconcileFile($this->node()));
+	}
+
+	// ── the unbind: dropping the mapping tag leaves the mapping ─────────────────
+
+	public function testDroppingTheMappingTagRemovesItInN8nAndUnmirrorsTheFile(): void {
+		$managed = $this->managed(Mapping::MODE_SYNC, 'map-a');
+		$this->metadata->method('read')->willReturn($managed);
+		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
+		// The user dropped "flows"; "linux" is still on the file.
+		$this->tagSync->method('readNcContentTags')->willReturn(['linux']);
+
+		// The ONLY write to n8n is the one tag coming off. No merge, no full replace.
+		$this->tagSync->expects(self::once())->method('dropSourceTag')->with('wf-1', 'flows');
+		$this->tagSync->expects(self::never())->method('reconcilePush');
+
+		$node = $this->createMock(File::class);
+		$node->method('getId')->willReturn(1);
+		$node->expects(self::once())->method('delete');
+
+		self::assertTrue($this->service->reconcileFile($node));
+	}
+
+	public function testTheUnbindRunsInsideTheGuard(): void {
+		// The delete fires BeforeNodeDeletedEvent, which the delete listener would read
+		// as "the user threw this away" and archive the workflow in n8n. An unsync must
+		// not archive anything, so both writes are bracketed.
+		$this->metadata->method('read')->willReturn($this->managed(Mapping::MODE_SYNC));
+		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
+		$this->tagSync->method('readNcContentTags')->willReturn([]);
+
+		$seen = false;
+		$this->tagSync->method('dropSourceTag')->willReturnCallback(function () use (&$seen): void {
+			$seen = $this->guard->active();
+		});
+		$node = $this->createMock(File::class);
+		$node->method('getId')->willReturn(1);
+
+		$this->service->reconcileFile($node);
+
+		self::assertTrue($seen, 'the unbind did not run inside an active SyncGuard');
+		self::assertFalse($this->guard->active(), 'the guard leaked after the unbind');
+	}
+
+	public function testTheMirrorIsKeptWhenN8nCannotBeToldAboutTheUnbind(): void {
+		// Deleting the file anyway would strand a workflow that still carries the
+		// mapping tag — the next pull would mirror it straight back, and the user would
+		// watch their own gesture undo itself.
+		$this->metadata->method('read')->willReturn($this->managed(Mapping::MODE_SYNC));
+		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
+		$this->tagSync->method('readNcContentTags')->willReturn([]);
+		$this->tagSync->method('dropSourceTag')->willThrowException(new \RuntimeException('n8n 500'));
+
+		$node = $this->createMock(File::class);
+		$node->method('getId')->willReturn(1);
+		$node->expects(self::never())->method('delete');
+
+		self::assertFalse($this->service->reconcileFile($node));
+		self::assertFalse($this->guard->active(), 'the guard leaked after a failing unbind');
+	}
+
+	public function testDroppingTheMappingTagFromTheBodyAlsoUnbinds(): void {
+		// The file's `tags` array is a Nextcloud surface too, so the gesture reads the
+		// same there. Body says "linux" only; the mapping tag is gone.
+		$managed = $this->managed(Mapping::MODE_SYNC, 'map-a', '["flows","linux"]');
+		$this->metadata->method('read')->willReturn($managed);
+		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
+		$this->tagSync->method('contentTagsFromWorkflow')->willReturn(['linux']);
+		$this->tagSync->method('readNcContentTags')->willReturn(['flows', 'linux']);
+
+		$this->tagSync->expects(self::once())->method('dropSourceTag')->with('wf-1', 'flows');
+		$this->tagSync->expects(self::never())->method('reconcilePushFromBody');
+
+		$node = $this->createMock(File::class);
+		$node->method('getId')->willReturn(5);
+		$node->expects(self::once())->method('delete');
+
+		self::assertTrue($this->service->reconcileFromBody($node, '{"name":"WF","tags":[{"name":"linux"}]}'));
 	}
 
 	// ── guard + error handling (pill path) ──────────────────────────────────────
@@ -167,6 +257,7 @@ final class TagReconcileServiceTest extends TestCase {
 	public function testReconcileRunsInsideTheGuard(): void {
 		$this->metadata->method('read')->willReturn($this->managed(Mapping::MODE_SYNC));
 		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
+		$this->stillAMember();
 
 		$seen = false;
 		$this->tagSync->method('reconcilePush')->willReturnCallback(function () use (&$seen): array {
@@ -185,6 +276,7 @@ final class TagReconcileServiceTest extends TestCase {
 	public function testSwallowsReconcileFailure(): void {
 		$this->metadata->method('read')->willReturn($this->managed(Mapping::MODE_SYNC));
 		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
+		$this->stillAMember();
 		$this->tagSync->method('reconcilePush')->willThrowException(new \RuntimeException('n8n 500'));
 
 		// A tag hiccup is logged, not thrown — the user's pill click already landed.
@@ -203,6 +295,7 @@ final class TagReconcileServiceTest extends TestCase {
 	public function testPillEditWritesTheCanonicalRowsIntoTheBody(): void {
 		$this->metadata->method('read')->willReturn($this->managed(Mapping::MODE_SYNC));
 		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
+		$this->stillAMember();
 		$this->tagSync->method('reconcilePush')->willReturn([
 			['id' => 't1', 'name' => 'prod'],
 			['id' => 't9', 'name' => 'flows'],
@@ -231,6 +324,7 @@ final class TagReconcileServiceTest extends TestCase {
 	public function testPillEditNeverWritesReservedTagsIntoTheBody(): void {
 		$this->metadata->method('read')->willReturn($this->managed(Mapping::MODE_SYNC));
 		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
+		$this->stillAMember();
 		$this->tagSync->method('reconcilePush')->willReturn([
 			['id' => 't1', 'name' => 'prod'],
 			['id' => 't7', 'name' => 'n8n:ignore'],
@@ -252,6 +346,7 @@ final class TagReconcileServiceTest extends TestCase {
 	public function testPillEditDoesNotRewriteAnUnchangedBody(): void {
 		$this->metadata->method('read')->willReturn($this->managed(Mapping::MODE_SYNC));
 		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
+		$this->stillAMember();
 		$this->tagSync->method('reconcilePush')->willReturn([['id' => 't9', 'name' => 'flows']]);
 
 		$body = json_encode(['name' => 'WF', 'tags' => [['id' => 't9', 'name' => 'flows']]], N8nWorkflowBody::JSON_PRETTY);
@@ -266,6 +361,7 @@ final class TagReconcileServiceTest extends TestCase {
 	public function testPillEditToleratesANonObjectBody(): void {
 		$this->metadata->method('read')->willReturn($this->managed(Mapping::MODE_SYNC));
 		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
+		$this->stillAMember();
 		$this->tagSync->method('reconcilePush')->willReturn([['id' => 't9', 'name' => 'flows']]);
 
 		$written = null;
@@ -319,14 +415,14 @@ final class TagReconcileServiceTest extends TestCase {
 	public function testReconcileFromBodyPushesWhenTheBodyDisagreesWithThePills(): void {
 		$managed = $this->managed(Mapping::MODE_SYNC, 'map-a', '["foo"]');
 		$this->metadata->method('read')->willReturn($managed);
-		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
+		$this->mappings->method('getById')->willReturn($this->mapping('foo'));
 		// The user typed a bare {"name":"prod"} into the array; the pills lack it.
 		$this->tagSync->method('contentTagsFromWorkflow')->willReturn(['foo', 'prod']);
 		$this->tagSync->method('readNcContentTags')->willReturn(['foo']);
 
 		$this->tagSync->expects(self::once())
 			->method('reconcilePushFromBody')
-			->with(5, $managed, ['foo', 'prod'], ['flows'])
+			->with(5, $managed, ['foo', 'prod'])
 			->willReturn([['id' => 't1', 'name' => 'foo'], ['id' => 't2', 'name' => 'prod']]);
 
 		self::assertTrue($this->service->reconcileFromBody($this->node(5), '{"name":"WF","tags":[{"id":"t1","name":"foo"},{"name":"prod"}]}'));
@@ -341,7 +437,7 @@ final class TagReconcileServiceTest extends TestCase {
 	public function testReconcileFromBodyNeverRewritesTheFile(): void {
 		$managed = $this->managed(Mapping::MODE_SYNC, 'map-a', '["foo"]');
 		$this->metadata->method('read')->willReturn($managed);
-		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
+		$this->mappings->method('getById')->willReturn($this->mapping('foo'));
 		$this->tagSync->method('contentTagsFromWorkflow')->willReturn(['foo', 'prod']);
 		$this->tagSync->method('readNcContentTags')->willReturn(['foo']);
 		$this->tagSync->method('reconcilePushFromBody')->willReturn([['id' => 't2', 'name' => 'prod']]);
@@ -356,7 +452,7 @@ final class TagReconcileServiceTest extends TestCase {
 	public function testReconcileFromBodySwallowsAnN8nFailure(): void {
 		$managed = $this->managed(Mapping::MODE_SYNC, 'map-a', '["foo"]');
 		$this->metadata->method('read')->willReturn($managed);
-		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
+		$this->mappings->method('getById')->willReturn($this->mapping('foo'));
 		$this->tagSync->method('contentTagsFromWorkflow')->willReturn(['foo', 'prod']);
 		$this->tagSync->method('readNcContentTags')->willReturn(['foo']);
 		$this->tagSync->method('reconcilePushFromBody')->willThrowException(new \RuntimeException('n8n 500'));

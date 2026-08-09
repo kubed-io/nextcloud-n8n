@@ -44,16 +44,6 @@ final class OwnershipTags {
 	public const TAG_LINK = 'n8n:link';
 	public const TAG_UNMAPPED = 'n8n:unmapped';
 
-	/**
-	 * The user-set, n8n-side override/exclude markers (saga §14.8 `reserved-tags`).
-	 * Unlike the pills above, the app NEVER writes these onto its files automatically —
-	 * a user adds them by hand to override a mapping default per workflow. `n8n:ignore`
-	 * is the one that also has a Nextcloud-side effect (it drives `ignored` mode), so it
-	 * is recognised by {@see \OCA\N8nSync\Listener\ModeTagListener}; it is deliberately
-	 * kept OUT of {@see ALL} so it is never stripped as a competing assignment.
-	 */
-	public const TAG_IGNORE = 'n8n:ignore';
-
 	/** All tags this app currently manages — used to scrub competing assignments. */
 	public const ALL = [self::TAG_SYNC, self::TAG_LINK, self::TAG_UNMAPPED];
 

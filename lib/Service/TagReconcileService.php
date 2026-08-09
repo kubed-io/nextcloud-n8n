@@ -96,10 +96,15 @@ final class TagReconcileService {
 			// mapping survive in the body and reach n8n when it is moved in (saga §5.10).
 			return $this->syncBodyFromPills($node);
 		}
-		$protected = $this->protectedTagsFor($managed);
-		$this->guard->run(function () use ($fileId, $managed, $protected, $node): void {
+		// DROPPING THE MAPPING TAG IS AN UNBIND, NOT AN EDIT, so it is answered before
+		// the merge — the merge's job is to settle a set of LABELS, and the mapping tag
+		// is not one.
+		if ($this->unbindIfMappingTagDropped($node, $managed)) {
+			return true;
+		}
+		$this->guard->run(function () use ($fileId, $managed, $node): void {
 			try {
-				$rows = $this->tagSync->reconcilePush($fileId, $managed, $protected);
+				$rows = $this->tagSync->reconcilePush($fileId, $managed);
 				// THE LOCKSTEP, AND IT IS THE WHOLE POINT (saga §5.9). A pill edit used to
 				// carry the tag to n8n and leave the file body alone, which made the body
 				// the ONE surface that could go stale — and the only cause of it. That
@@ -189,10 +194,12 @@ final class TagReconcileService {
 			return true;
 		}
 
-		$protected = $this->protectedTagsFor($managed);
-		$this->guard->run(function () use ($fileId, $managed, $bodyContent, $protected): void {
+		if ($this->unbindIfMappingTagDropped($node, $managed, $bodyContent)) {
+			return true;
+		}
+		$this->guard->run(function () use ($fileId, $managed, $bodyContent): void {
 			try {
-				$this->tagSync->reconcilePushFromBody($fileId, $managed, $bodyContent, $protected);
+				$this->tagSync->reconcilePushFromBody($fileId, $managed, $bodyContent);
 			} catch (\Throwable $e) {
 				// The user's save already landed; a failure to carry its tags to n8n is
 				// logged and retried by the next sync, never surfaced as a broken save.
@@ -309,16 +316,65 @@ final class TagReconcileService {
 	}
 
 	/**
-	 * The mapping tags to force-keep for this file: its own mapping's binding tag, or
-	 * none if the mapping id is unset or no longer resolves.
+	 * Removing the MAPPING TAG in Nextcloud takes the workflow out of the mapping.
 	 *
-	 * @return list<string>
+	 * The tag a mapping binds to is not a label — it is the membership itself, so
+	 * dropping it is not an edit to reconcile but a request to leave. This used to be
+	 * REFUSED: the tag was force-kept on both sides so a pill could never unbind, and
+	 * the sanctioned way out was to hand-apply `n8n:ignore`, a reserved tag that
+	 * archived the workflow and left the file sitting in a mapped folder that no longer
+	 * owned it. That was a whole feature defending a gesture the user meant, and it
+	 * contradicted the app's own premise — a file in a mapped folder is IN the mapping.
+	 *
+	 * So it is honoured instead, and it costs n8n nothing:
+	 *
+	 *   1. the tag is removed from the workflow in n8n — the ONLY change made there;
+	 *      every other tag stays, the workflow itself is untouched and not archived;
+	 *   2. the mirror is removed from Nextcloud.
+	 *
+	 * NOT A DELETE, and the difference matters: nothing is lost, because the workflow
+	 * is still in n8n exactly as it was minus one tag. The file is not trashed either —
+	 * trashing a managed file MEANS something here (it archives the workflow), and
+	 * routing an unsync through it would fire that. It is unmirrored.
+	 *
+	 * A LINK NEVER REACHES THIS. Its pills are a read-only projection of n8n that the
+	 * next pull overwrites, so {@see reconcileFile} returns before here.
+	 *
+	 * @param list<string>|null $ncContent the tag names to judge — the file body's on
+	 *                                     the body path, else the pills
+	 * @return bool true when the file was unbound (the caller must stop)
 	 */
-	private function protectedTagsFor(ManagedFile $managed): array {
+	private function unbindIfMappingTagDropped(File $node, ManagedFile $managed, ?array $ncContent = null): bool {
 		if ($managed->mappingId === '') {
-			return [];
+			return false;
 		}
 		$mapping = $this->mappings->getById($managed->mappingId);
-		return $mapping !== null ? [$mapping->n8nTag] : [];
+		if ($mapping === null || $mapping->n8nTag === '') {
+			return false;
+		}
+		$names = $ncContent ?? $this->tagSync->readNcContentTags($node->getId());
+		if (in_array($mapping->n8nTag, $names, true)) {
+			return false; // still a member
+		}
+
+		try {
+			$this->guard->run(function () use ($node, $managed, $mapping): void {
+				$this->tagSync->dropSourceTag($managed->workflowId, $mapping->n8nTag);
+				$node->delete();
+			});
+		} catch (\Throwable $e) {
+			// LEAVE THE MIRROR ALONE ON FAILURE. If n8n could not be told, deleting the
+			// file would strand a workflow that still carries the mapping tag — the next
+			// pull would mirror it straight back, and the user would watch their gesture
+			// undo itself. Better to keep the file and let the next sync restore the tag.
+			$this->logger->warning('n8n_sync unbind failed; the mirror was kept', [
+				'app' => Application::APP_ID,
+				'fileId' => $node->getId(),
+				'workflowId' => $managed->workflowId,
+				'exception' => $e,
+			]);
+			return false;
+		}
+		return true;
 	}
 }

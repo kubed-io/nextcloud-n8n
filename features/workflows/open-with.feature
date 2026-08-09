@@ -21,7 +21,6 @@ Feature: Opening a workflow file (Open in n8n / Open with text editor)
       | sync     | offered           |
       | link     | offered           |
       | unmapped | hidden            |
-      | ignored  | hidden            |
 
   # ── Open with text editor ──────────────────────────────────────────────────────
 
@@ -36,7 +35,6 @@ Feature: Opening a workflow file (Open in n8n / Open with text editor)
       | sync     |
       | link     |
       | unmapped |
-      | ignored  |
 
   # ── Default click action follows the mode ───────────────────────────────────────
 
@@ -51,4 +49,3 @@ Feature: Opening a workflow file (Open in n8n / Open with text editor)
       | sync     | n8n         |
       | link     | n8n         |
       | unmapped | text editor |
-      | ignored  | text editor |

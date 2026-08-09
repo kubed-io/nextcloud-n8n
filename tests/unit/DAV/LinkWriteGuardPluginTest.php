@@ -27,7 +27,7 @@ use Sabre\DAV\INode;
  * Unit tests for {@see LinkWriteGuardPlugin} (saga §14.2c — a link is read-only on disk).
  *
  * The load-bearing rule: a `link`-mode workflow file refuses a WebDAV overwrite with a
- * Sabre {@see Forbidden} (a 403), while every other state (sync / unmapped / ignored /
+ * Sabre {@see Forbidden} (a 403), while every other state (sync / unmapped /
  * unmanaged) is left writable. Anything we can't classify is never blocked — fail open.
  * Collaborators are `final`, doubled via the unit bootstrap's `dg/bypass-finals`.
  */
@@ -94,10 +94,10 @@ final class LinkWriteGuardPluginTest extends TestCase {
 		self::assertTrue($this->fire($this->davFile()));
 	}
 
-	public function testAllowsOverwritingUnmappedAndIgnoredFiles(): void {
+	public function testAllowsOverwritingUnmappedFiles(): void {
 		$this->notifier->expects(self::never())->method('linkEditBlocked');
 
-		foreach ([WorkflowMetadata::MODE_UNMAPPED, WorkflowMetadata::MODE_IGNORED] as $mode) {
+		foreach ([WorkflowMetadata::MODE_UNMAPPED] as $mode) {
 			$metadata = $this->createMock(WorkflowMetadata::class);
 			$metadata->method('read')->willReturn(new ManagedFile('w1', $mode, '', '', ''));
 			$plugin = new LinkWriteGuardPlugin($metadata, $this->notifier, $this->userSession, new NullLogger());

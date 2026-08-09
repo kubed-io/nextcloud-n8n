@@ -13,12 +13,12 @@ use GuzzleHttp\Client;
 use PHPUnit\Framework\Assert;
 
 /**
- * Mode-change steps (saga Ch2 §14.2b `mode-change.feature`): the sync ⇄ link
- * re-mode driven by a system-tag change. Assigning `n8n:sync` / `n8n:link` to a
- * managed file fires `TagAssignedEvent` → {@see \OCA\N8nSync\Listener\ModeTagListener}
- * → {@see \OCA\N8nSync\Service\ModeChangeService}, which rewrites the body, re-stamps
- * the mode, and enforces one-mode-tag exclusivity. The listener runs synchronously, so
- * no job draining.
+ * SYSTEM-TAG PLUMBING, shared across the suite. This trait was written for a
+ * per-file sync ⇄ link re-mode driven by a hand-applied `n8n:*` tag; that toggle
+ * went when the mapping became the single source of a file's mode, and the last of
+ * it — the `n8n:ignore` exclude — went with the ignore feature.
+ *
+ * What survives is the transport every tag step in the suite leans on.
  *
  * System-tag assignment goes over the systemtags DAV endpoints (no occ for it):
  * resolve/create the tag id under `…/dav/systemtags`, then PUT the relation under

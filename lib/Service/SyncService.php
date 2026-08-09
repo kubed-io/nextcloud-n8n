@@ -56,7 +56,6 @@ final class SyncService {
 		private IJobList $jobList,
 		private SyncStatusService $status,
 		private IAppConfig $config,
-		private ReservedTagResolver $reservedTags,
 		private TagSyncService $tagSync,
 		private MirrorTimes $times,
 		private LoggerInterface $logger,
@@ -218,32 +217,15 @@ final class SyncService {
 			$failed = 0;
 			$unchanged = 0;
 
-			$ignoredIds = [];
-			$existingById = $this->indexByN8nId($targetFolder, $mapping, $ignoredIds);
+			$existingById = $this->indexByN8nId($targetFolder, $mapping);
 			$nameCounts = [];
 			$seenIds = [];
 
 			foreach ($this->n8n->eachWorkflow([$mapping->n8nTag]) as $workflow) {
 				$processed++;
-				// A file locally set to `ignored` (n8n:ignore on the NC side) is left
-				// strictly alone — skip re-pulling it. Its workflow is archived in n8n
-				// but still carries the mapping tag, so without this it would be
-				// written as a NEW collision-suffixed sync file and the next push would
-				// fail trying to update the archived workflow (saga §14.8 ignored mode).
-				if (isset($ignoredIds[(string)$workflow['id']])) {
-					continue;
-				}
-				// The workflow takes the mapping's mode, unless it carries `n8n:ignore`,
-				// which excludes it entirely (saga §14.8). An excluded workflow is never
-				// pulled — no file, and it is left out of $seenIds so prune does not
-				// depend on it. (resolve() returns the mapping mode, or null = ignore.)
-				$effectiveMode = $this->reservedTags->resolve($workflow, $mapping->mode);
-				if ($effectiveMode === null) {
-					continue;
-				}
 				$seenIds[(string)$workflow['id']] = true;
 				try {
-					if (!$this->writeWorkflow($targetFolder, $mapping, $workflow, $effectiveMode, $existingById, $nameCounts)) {
+					if (!$this->writeWorkflow($targetFolder, $mapping, $workflow, $mapping->mode, $existingById, $nameCounts)) {
 						$unchanged++;
 					}
 					$succeeded++;
@@ -364,10 +346,9 @@ final class SyncService {
 			if (!$managed?->isManaged()) {
 				continue;
 			}
-			// Push only files that are themselves `sync`. A `link` or `ignored` file
-			// must not be pushed even though the mapping might be sync (saga §14.8). A
-			// legacy file with no recorded mode (empty) is treated as sync for backward
-			// compatibility.
+			// Push only files that are themselves `sync`. A `link` must not be pushed
+			// even though the mapping might be sync. A legacy file with no recorded
+			// mode (empty) is treated as sync for backward compatibility.
 			if ($managed->mode !== '' && !$managed->isSync()) {
 				continue;
 			}
@@ -411,23 +392,19 @@ final class SyncService {
 	 *
 	 * @return array<string,\OCP\Files\Node>
 	 */
-	private function indexByN8nId(Folder $root, Mapping $mapping, array &$ignoredIds): array {
+	private function indexByN8nId(Folder $root, Mapping $mapping): array {
 		$index = [];
-		$this->collectManaged($root, $mapping, $index, $ignoredIds);
+		$this->collectManaged($root, $mapping, $index);
 		return $index;
 	}
 
 	/**
-	 * Ignored files are kept OUT of $index (so prune leaves them) but their n8n ids
-	 * are collected into $ignoredIds, so the pull can skip re-pulling them (see pullOne).
-	 *
 	 * @param array<string,\OCP\Files\Node> $index
-	 * @param array<string,true> $ignoredIds
 	 */
-	private function collectManaged(Folder $folder, Mapping $mapping, array &$index, array &$ignoredIds): void {
+	private function collectManaged(Folder $folder, Mapping $mapping, array &$index): void {
 		foreach ($folder->getDirectoryListing() as $node) {
 			if ($node instanceof Folder) {
-				$this->collectManaged($node, $mapping, $index, $ignoredIds);
+				$this->collectManaged($node, $mapping, $index);
 				continue;
 			}
 			if (!FilenameCodec::isWorkflowFile($node)) {
@@ -438,14 +415,6 @@ final class SyncService {
 				continue;
 			}
 			$id = $managed->workflowId;
-			// An `ignored` file stays put — it's excluded from sync on purpose
-			// (saga §14.8). Never index it, so prune can't delete it just because
-			// its (archived) workflow no longer carries the mapping tag; surface its
-			// id so the pull skips re-pulling the archived workflow as a duplicate.
-			if ($managed->isIgnored()) {
-				$ignoredIds[$id] = true;
-				continue;
-			}
 			$owner = $managed->mappingId;
 			if ($owner !== '' && $owner !== $mapping->id) {
 				continue; // owned by a different mapping sharing/nesting this subtree
@@ -610,7 +579,7 @@ final class SyncService {
 			return;
 		}
 		try {
-			$this->tagSync->reconcilePull($fileId, $workflow, $managed, [$mapping->n8nTag]);
+			$this->tagSync->reconcilePull($fileId, $workflow, $managed);
 		} catch (\Throwable $e) {
 			$this->logger->warning('n8n_sync tag pull failed', [
 				'app' => Application::APP_ID,
@@ -628,7 +597,7 @@ final class SyncService {
 	 */
 	private function reconcileTagsOnPush(int $fileId, ManagedFile $managed, Mapping $mapping): void {
 		try {
-			$this->tagSync->reconcilePush($fileId, $managed, [$mapping->n8nTag]);
+			$this->tagSync->reconcilePush($fileId, $managed);
 		} catch (\Throwable $e) {
 			$this->logger->warning('n8n_sync tag push failed', [
 				'app' => Application::APP_ID,
@@ -678,8 +647,8 @@ final class SyncService {
 	 * which suppresses {@see \OCA\N8nSync\Listener\DeleteToN8nListener}).
 	 *
 	 * Deliberately KEEPS anything a pull could not restore, so purge can never cost
-	 * data: `unmapped` and `ignored` files (their workflow is archived in n8n — they
-	 * are the user's standalone copies / templates) and untracked `.n8n.json`
+	 * data: `unmapped` files (their workflow is archived in n8n — they are the
+	 * user's standalone copies / templates) and untracked `.n8n.json`
 	 * (a plain document the app never created). Recurses subfolders.
 	 *
 	 * @return array{deleted:int, kept:int}
@@ -711,8 +680,8 @@ final class SyncService {
 			if ($managed === null || !$managed->isManaged()) {
 				continue; // untracked .n8n.json — the user's own, leave it
 			}
-			// Only sync/link can be restored by a pull; unmapped/ignored are archived
-			// in n8n (a pull won't bring them back), so they are kept as standalone files.
+			// Only sync/link can be restored by a pull; an unmapped file's workflow is
+			// archived in n8n (a pull won't bring it back), so it is kept standalone.
 			if (!$managed->isSync() && !$managed->isLink()) {
 				$kept++;
 				continue;
