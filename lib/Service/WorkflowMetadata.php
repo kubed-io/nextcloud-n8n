@@ -50,7 +50,7 @@ use Psr\Log\LoggerInterface;
  */
 final class WorkflowMetadata {
 	public const KEY_ID = 'n8n_id';
-	public const KEY_MODE = 'n8n_mode';       // sync | reference(=link) | unmapped | ignored — INDEXED
+	public const KEY_MODE = 'n8n_mode';       // sync | reference(=link) | unmapped — INDEXED
 	public const KEY_VERSION_ID = 'n8n_versionId';
 	/** sha1 of the file body at the last successful pull/push — the writeback loop guard. */
 	public const KEY_SYNCED_HASH = 'n8n_syncedHash';
@@ -66,7 +66,6 @@ final class WorkflowMetadata {
 
 	/** File-mode values not covered by {@see Mapping} (which only configures sync/link). */
 	public const MODE_UNMAPPED = 'unmapped';
-	public const MODE_IGNORED = 'ignored';
 
 	/**
 	 * The on-the-wire (stored) value for {@see Mapping::MODE_LINK}. `link` itself is

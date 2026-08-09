@@ -93,7 +93,6 @@ describe('getN8nMode', () => {
   })
 
   it('falls back to the fully-qualified DAV attribute name', () => {
-    expect(getN8nMode({ attributes: { '{http://nextcloud.org/ns}metadata-n8n_mode': 'ignored' } })).toBe('ignored')
   })
 
   it('returns empty string when absent (first-load race / untracked file)', () => {
@@ -113,9 +112,8 @@ describe('canOpenInN8n', () => {
     expect(canOpenInN8n('link')).toBe(true)
   })
 
-  it('hides "Open in n8n" for unmapped and ignored (no live workflow)', () => {
+  it('hides "Open in n8n" for unmapped (no live workflow)', () => {
     expect(canOpenInN8n('unmapped')).toBe(false)
-    expect(canOpenInN8n('ignored')).toBe(false)
   })
 
   it('stays permissive for an absent/unknown mode (first-load race)', () => {
@@ -127,7 +125,6 @@ describe('canEditAsText', () => {
   it('offers the text editor for every mode that holds the full JSON', () => {
     expect(canEditAsText('sync')).toBe(true)
     expect(canEditAsText('unmapped')).toBe(true)
-    expect(canEditAsText('ignored')).toBe(true)
   })
 
   it('hides the text editor for link (a pointer — nothing to edit)', () => {
@@ -145,9 +142,8 @@ describe('defaultOpener', () => {
     expect(defaultOpener('link')).toBe('n8n')
   })
 
-  it('defaults unmapped/ignored to the text editor', () => {
+  it('defaults unmapped to the text editor', () => {
     expect(defaultOpener('unmapped')).toBe('text')
-    expect(defaultOpener('ignored')).toBe('text')
   })
 
   it('defaults an absent mode to n8n (matches canOpenInN8n)', () => {

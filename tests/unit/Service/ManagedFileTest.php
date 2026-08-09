@@ -45,7 +45,6 @@ final class ManagedFileTest extends TestCase {
 			'sync' => $mf->isSync(),
 			'link' => $mf->isLink(),
 			'unmapped' => $mf->isUnmapped(),
-			'ignored' => $mf->isIgnored(),
 		];
 		foreach ($flags as $name => $value) {
 			self::assertSame($name === $expectedTrue, $value, "isMode($name) for mode=$mode");
@@ -57,7 +56,6 @@ final class ManagedFileTest extends TestCase {
 		yield 'sync' => [Mapping::MODE_SYNC, 'sync'];
 		yield 'link' => [Mapping::MODE_LINK, 'link'];
 		yield 'unmapped' => [WorkflowMetadata::MODE_UNMAPPED, 'unmapped'];
-		yield 'ignored' => [WorkflowMetadata::MODE_IGNORED, 'ignored'];
 	}
 
 	public function testEmptyModeMatchesNoPredicate(): void {
@@ -68,7 +66,6 @@ final class ManagedFileTest extends TestCase {
 		self::assertFalse($mf->isSync());
 		self::assertFalse($mf->isLink());
 		self::assertFalse($mf->isUnmapped());
-		self::assertFalse($mf->isIgnored());
 	}
 
 	public function testSyncedTagsDefaultsToEmptyList(): void {

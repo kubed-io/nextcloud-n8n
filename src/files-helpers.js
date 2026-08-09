@@ -64,7 +64,7 @@ export function isN8nFile(context) {
  * or an untracked file).
  *
  * @param {{attributes?: Record<string, unknown>}} [node]
- * @return {string}  '' | 'sync' | 'link' | 'unmapped' | 'ignored'
+ * @return {string}  '' | 'sync' | 'link' | 'unmapped'
  */
 export function getN8nMode(node) {
   const a = node?.attributes ?? {}
@@ -75,7 +75,7 @@ export function getN8nMode(node) {
 
 /**
  * Should "Open in n8n" be offered for a file in this mode? It is meaningful only
- * when a live workflow exists to open: `sync`/`link` have one, `unmapped`/`ignored`
+ * when a live workflow exists to open: `sync`/`link` have one, `unmapped`
  * do not (their workflow is archived in n8n — nothing to jump to). An absent mode
  * (the first-load race, or an untracked file) stays permissive → shown, matching
  * the pre-mode behaviour; the action no-ops harmlessly if there is no id to resolve.
@@ -84,12 +84,12 @@ export function getN8nMode(node) {
  * @return {boolean}
  */
 export function canOpenInN8n(mode) {
-  return mode !== 'unmapped' && mode !== 'ignored'
+  return mode !== 'unmapped'
 }
 
 /**
  * Which opener a plain row-click uses, by mode. `sync`/`link` (and the permissive
- * absent case) → the live workflow in n8n; `unmapped`/`ignored` → the text editor
+ * absent case) → the live workflow in n8n; `unmapped` → the text editor
  * on the local JSON. Mirrors {@see canOpenInN8n} so the default click and the
  * action visibility never disagree.
  *
@@ -104,7 +104,7 @@ export function defaultOpener(mode) {
  * Should "Open with text editor" be offered for a file in this mode? Every mode
  * holds the full workflow JSON on disk EXCEPT `link`, which is only a small pointer
  * (id/name/url) — there is nothing meaningful to edit, and any change would just
- * break the pointer. So `sync`, `unmapped`, `ignored` (and the permissive absent
+ * break the pointer. So `sync`, `unmapped` (and the permissive absent
  * case, matching {@see canOpenInN8n}) → shown; `link` → hidden. This is the mirror
  * of {@see canOpenInN8n}'s intent and what makes "open as text" the user-visible
  * difference between a `sync` file (editable JSON) and a `link` (open in n8n only).

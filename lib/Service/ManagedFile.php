@@ -73,8 +73,4 @@ final class ManagedFile {
 	public function isUnmapped(): bool {
 		return $this->mode === WorkflowMetadata::MODE_UNMAPPED;
 	}
-
-	public function isIgnored(): bool {
-		return $this->mode === WorkflowMetadata::MODE_IGNORED;
-	}
 }

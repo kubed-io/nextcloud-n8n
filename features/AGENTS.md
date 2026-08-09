@@ -977,37 +977,44 @@ refuses, because the two sides must not disagree about whether something
 exists. A name is cosmetic and self-heals, so reverting a rename under the
 user's cursor would cost more than the drift does.
 
-## workflows/ignore
+## workflows/ignore — RETIRED (the feature is gone, not just its file)
 
-`features/workflows/ignore.feature`
+`n8n:ignore` let you park a workflow file inside a mapped folder that no longer
+owned it: the file stayed put, the workflow was ARCHIVED in n8n, and every
+subsequent sync stepped around it. It was removed whole — the feature file, the
+`ReservedTagResolver`, the `ModeTagListener`, the entire `ModeChangeService`, the
+`ignored` file mode, and the skip branches it needed in the pull, the push and
+the purge.
 
-Reserved n8n tag — the optional, per-workflow EXCLUDE switch.
+WHY IT WENT. It contradicted the app's own premise. This app says a file in a
+mapped folder IS the workflow, on both sides; `ignored` invented a third state
+where the file sat in the mapping while belonging to neither system properly —
+present in Nextcloud, archived in n8n, skipped by every sync. It was a mode that
+existed to be excluded from the thing the mode was for.
 
-A mapping binds ONE n8n tag (ANY name — e.g. "team:flows", "myfoobarflows"; the
-"nextcloud:" prefix some examples use is just a convention, NOT required) to a
-folder + a mode (`sync` / `link`). That mode is AUTHORITATIVE for every workflow
-in the mapping — there is no per-workflow sync/link override. The only reserved
-tag the app honours is the exclude:
+It also cost more than it looked. `ignored` was a value every mode check had to
+know about, so it leaked into the pull index, the prune, the push filter, the
+purge predicate, the DAV write guard and the Files-app openers — six places
+reasoning about a state that only existed to opt out.
 
-  n8n:ignore  — exclude this one. Two facets:
-                • never-pulled workflow → no Nextcloud file at all;
-                • a file already IN a mapped folder → "ignored" mode (it stays put,
-                  keeps its id, is archived in n8n, and the sync skips it).
+AND THERE WERE ALREADY TWO WAYS OUT, both better:
 
-Authority is one-directional. The app NEVER writes n8n:ignore onto workflows in
-n8n; it only READS it (if present) as a per-workflow exclude at pull time. You add
-it yourself when you want the exception. The Nextcloud-side `n8n:sync` / `n8n:link`
-system tags the app stamps on managed files are AUTHORITATIVE + automatic and just
-mirror each file's mode (see the Tagging feature / view-workflow.feature) — they are
-not an override mechanism.
+  · MOVE THE FILE OUT of the mapped folder. It becomes `unmapped`, keeps its
+    full JSON, and lives on as an ordinary Nextcloud document. That is
+    `workflows/move.feature`, it is built, and it is what someone means by "keep
+    this in Nextcloud only".
+  · DROP THE MAPPING TAG, which is new here and is the replacement — see the
+    tags section below. The file leaves Nextcloud and the workflow stays in n8n
+    minus that one tag.
 
-So n8n:ignore is 100% optional: the mapping does everything on its own; the
-n8n-side ignore tag is just the escape hatch to leave one workflow out.
+The two are opposites and that is the point: one keeps the Nextcloud copy, the
+other keeps the n8n copy. `ignored` kept both and synced neither.
 
-The never-pulled ignore and the in-folder `ignored` mode are live (saga §14.8 B).
-The un-tag RESTORE — removing n8n:ignore unarchives the workflow and returns the
-file to the mapping's mode — is live too (saga §14.18), driven by a
-TagUnassignedEvent listener.
+WHAT THE REMOVAL DELETED, so a reader does not go looking for it: the reserved
+`n8n:ignore` tag, `WorkflowMetadata::MODE_IGNORED`, `ManagedFile::isIgnored()`,
+`$ignoredIds` in the pull, the purge's "keeps an ignored file" scenario, and the
+`ignored` rows in `open-with.feature`. The `n8n:sync` / `n8n:link` /
+`n8n:unmapped` MODE PILLS are a different thing and they stay.
 
 ## workflows/tags
 
@@ -1360,32 +1367,51 @@ as an end state of a sync, because that is the moment the exclusion has to
 hold. What `n8n:ignore` then DOES is `workflows/ignore.feature`'s subject, not
 this file's.
 
-### The mapping tag is the binding, not a label anyone may drop
+### The mapping tag is the membership, so dropping it leaves
 
-MAPPING-TAG PROTECTION (n8n-only, no Grafana analogue — Grafana maps by real
-folders): n8n maps a folder BY TAG, so the tag that binds a workflow to its
-folder is itself a content tag. It is shown as a pill for visibility but is
-PROTECTED: a reconcile FORCE-KEEPS it on both sides, so removing it from
-either Nextcloud surface — the pill OR the body `tags` array — never pushes a
-removal that would unbind the workflow and prune the mirror.
+n8n maps a folder BY TAG, so the tag that binds a workflow to its folder is
+itself a content tag. It is shown as an ordinary pill, and until now removing it
+was REFUSED: a reconcile force-kept it on both sides so no Nextcloud gesture
+could ever unbind a workflow.
 
-THE SCENARIOS SAY WHAT THE APP DOES, NOT WHAT IT MIGHT DO. There is a live
-design question about whether a deliberate drop should instead UNSYNC the file
-— push one last tag change, then remove the mirror while n8n keeps the rest —
-and it is a reasonable design, since nothing is lost when n8n still has the
-workflow. It is NOT what the code does, so it is not written as a scenario:
-a spec that describes an intention is indistinguishable from one describing a
-defect, and this file has been burned by that before. When it is built it
-replaces the two protection scenarios; until then they are the truth.
+That refusal is gone, and the gesture is honoured instead:
 
-Leaving a mapping is always an EXPLICIT gesture, and there are exactly two
-sanctioned forms, neither of which is a tag change: move the file out
-(`workflows/move.feature`) or tag it `n8n:ignore` (`workflows/ignore.feature`).
+  1. the tag is removed from the workflow in n8n — the ONLY change made there.
+     Every other tag stays, and the workflow is not archived, not deleted;
+  2. the mirror is removed from Nextcloud.
 
-THE n8n SIDE IS THE OPPOSITE, AND THAT ASYMMETRY IS THE POINT. The mapping tag
-is what makes a workflow the folder's, so removing it UPSTREAM says the
-workflow no longer belongs and the mirror follows. Nextcloud may not drop the
-binding; n8n may, because n8n is where membership is decided.
+NOTHING IS LOST, which is what makes it safe: the workflow is still in n8n
+exactly as it was minus one tag, so this is an UNSYNC rather than a delete. The
+file is not trashed either — trashing a managed file MEANS something here (it
+archives the workflow), and routing an unsync through the trash would fire that.
+
+WHY THE REFUSAL WAS WRONG. It was protecting the user from a gesture they meant.
+Removing the tag that puts a workflow in a mapping is the clearest possible way
+to say "take it out of the mapping", and the app answered by silently putting the
+tag back. The escape hatch it offered instead — hand-apply `n8n:ignore` — was a
+whole reserved-tag feature built to work around a refusal, and it has been
+removed with it (see `workflows/ignore` above).
+
+IF n8n CANNOT BE TOLD, THE MIRROR IS KEPT. Deleting the file while the workflow
+still carries the mapping tag would strand it: the next pull would mirror it
+straight back and the user would watch their own gesture undo itself. So the
+unbind is all-or-nothing, and a failure leaves everything as it was for the next
+sync to retry.
+
+AND THE MERGE MUST NOT RUN AFTERWARDS EITHER, which is subtler and was a real bug
+in the first cut of this. Once the mapping tag is missing from the Nextcloud side,
+falling through to the ordinary tag merge hands it a set with that tag absent —
+and the merge reads that as an ordinary removal and pushes it. The workflow would
+leave the mapping anyway, with the mirror still sitting in the folder. A
+half-unbind is worse than either outcome, so the gesture is answered exactly once,
+whether it succeeded or not.
+
+THE n8n SIDE IS THE SAME GESTURE FROM THE OTHER END. Removing the mapping tag
+from the workflow in n8n also ends the mirror — the file is pruned by the pull.
+Both directions now say the same thing, which they did not before.
+
+A LINK NEVER REACHES THIS. Its pills are a read-only projection of n8n that the
+next pull overwrites, so the reconcile returns before the unbind is considered.
 
 ### Changing tags on one mirror should converge its sibling (future fan-out)
 
@@ -1402,48 +1428,13 @@ tag as a local remove and bounce it. Converging all mirrors of one id on a tag
 change (fan-out by workflow id, not just by file) is the real fix and is
 deliberately OUT OF SCOPE; this scenario only PINS THE SHAPE.
 
-A SECOND hazard in the same setup: on the "flows" mirror the OTHER mapping's
-tag shows as an ORDINARY content tag — it is not THIS mapping's protected tag
-— so dropping it here would unbind the workflow from the other mapping. The
-protected set must therefore be the UNION of every mapping tag on the
-workflow. That was its own `@unbuilt` scenario and is now recorded here
-instead: its action was a push, and a hazard nobody can trigger yet is a note,
-not a specification.
-
-### The three-way merge, and the catalogs, have no scenarios
-
-Both are real and both are unit-tested; neither earns a live scenario, and the
-reasons are different enough to write down.
-
-THE MERGE. `n8n_syncedTags` banks the reserved-stripped tag set as of the last
-successful sync, and the reconcile three-way-merges against it — a tag is ADDED
-only if it was not in the baseline and REMOVED only if it was, and those are
-disjoint, so the merge is deterministic with no conflict to break. That baseline
-is what tells an add on one side from a remove on the other: `body {a,b}` vs
-`n8n {a,b,c}` is the SAME two sets whether the user deleted `c` or added `c`
-elsewhere while the body sat stale, and a fixed winner only picks which of two
-legitimate gestures to destroy.
-
-Two scenarios used to pin it, and both were the outlines' add and remove rows
-again with an extra `Given` — and that `Given` PERFORMED AN ACTION ("I have
-changed the Nextcloud tags to …"), which is a setup step doing a gesture. The
-merge is exercised on every row of every outline already; what a scenario cannot
-reach is the merge in ISOLATION, which is exactly what `TagMerge`'s unit tests
-do, purely and in milliseconds.
-
-THE CATALOGS. Tags exist at two levels: the ASSIGNMENT (this tag is on this
-workflow) and the DEFINITION (the catalog entry). Assignments are reconciled
-aggressively and both ways. DEFINITIONS are deliberately never auto-pruned —
-neither catalog is ours alone, a system tag may be pinned on files nobody here
-knows about, and deleting one because no MANAGED object uses it would strip it
-off bystanders.
-
-So there is no code that deletes a definition, and a scenario asserting that a
-definition survived was testing the ABSENCE of a feature nobody wrote — on the
-Nextcloud side, mostly testing Nextcloud. The design (an explicit, opt-in `occ`
-sweep, dry-run first, never on the reconcile hot path, whose predicate is
-orphaned-on-BOTH-sides) is recorded here so it is not rediscovered, and it gets
-scenarios when it gets code.
+THE UNBIND MAKES THIS SHARPER, and it is worth writing down before anyone builds
+the fan-out: on the "flows" mirror the OTHER mapping's tag ("reports") is an
+ordinary content pill, and dropping a mapping tag now UNBINDS. So a user tidying
+tags on one mirror can take the workflow out of a mapping they were not looking
+at. Whether the unbind should be scoped to THIS mirror's mapping tag only — or
+fan out honestly to both — is the open question, and it is why the unbind reads
+the file's own mapping rather than any tag that happens to map something.
 
 ### tags.feature — WHAT WAS RETIRED, AND WHY
 
@@ -1498,10 +1489,10 @@ only thing missing was an assertion, which was added there.
   · Moving the file out is the sanctioned unmap — it changes no tags →
     `workflows/move.feature`. A move never changes tags, so the assertion is
     "nothing happened" and belongs to the move that could have caused it.
-  · Ejecting via n8n:ignore keeps the file instead of pruning it →
-    `workflows/ignore.feature`, which already has the same gesture
-  · Removing the mapping pill as a deliberate eject is paired with n8n:ignore
-    → the same, and see the mapping-tag section above
+  · Ejecting via n8n:ignore keeps the file instead of pruning it — and then the
+    whole `n8n:ignore` feature went, see `workflows/ignore` above
+  · Removing the mapping pill as a deliberate eject is paired with n8n:ignore —
+    it IS the eject now, and it needs no reserved tag to say so
 
 NEGATIVE-ONLY, WITH SOMEONE ELSE'S ACTION. A save is `workflows/edit.feature`'s
 gesture, and "the tags did not move" is its end state, not a tag behaviour.

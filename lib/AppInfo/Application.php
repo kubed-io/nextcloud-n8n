@@ -20,7 +20,6 @@ use OCA\N8nSync\Listener\CreateInN8nListener;
 use OCA\N8nSync\Listener\DeleteToN8nListener;
 use OCA\N8nSync\Listener\LoadFilesScriptListener;
 use OCA\N8nSync\Listener\MimeRestampListener;
-use OCA\N8nSync\Listener\ModeTagListener;
 use OCA\N8nSync\Listener\MotionListener;
 use OCA\N8nSync\Listener\MoveGuardListener;
 use OCA\N8nSync\Listener\NameSyncListener;
@@ -147,22 +146,11 @@ final class Application extends App implements IBootstrap {
 		// a cheap global UPDATE keyed on the extension.
 		$context->registerEventListener(NodeRenamedEvent::class, MimeRestampListener::class);
 
-		// Exclude / restore by retag. The per-file sync/link toggle was removed in §15.3:
-		// the mapping's mode is the single source of truth, so only `n8n:ignore` is
-		// actionable: assigning it routes to ModeChangeService to archive the workflow
-		// and flip the file to `ignored`. Our own apply() re-touches tags under SyncGuard, so
-		// the listener bails when the guard is active (no recursion).
-		$context->registerEventListener(TagAssignedEvent::class, ModeTagListener::class);
-		// Removing n8n:ignore is the inverse: unarchive the workflow and return the file
-		// to its mapping's default mode (saga §14.8). Same listener, TagUnassignedEvent.
-		$context->registerEventListener(TagUnassignedEvent::class, ModeTagListener::class);
-
 		// §5.6.2 reactive tag sync (surface 3): a CONTENT pill add/remove on a managed
 		// sync file reconciles that tag to n8n on its own — the tag-side sibling of the
 		// body writeback, honouring the same `timing` knob (inline vs ReconcileTagsJob).
-		// Splits from ModeTagListener by namespace: that one owns reserved `n8n:ignore`,
-		// this one owns content tags. Loop-safe: its reconcile writes pills under
-		// SyncGuard, so the tag events it re-fires bail here.
+		// Loop-safe: its reconcile writes pills under SyncGuard, so the tag events it
+		// re-fires bail here.
 		$context->registerEventListener(TagAssignedEvent::class, ContentTagListener::class);
 		$context->registerEventListener(TagUnassignedEvent::class, ContentTagListener::class);
 

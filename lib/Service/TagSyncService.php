@@ -71,9 +71,8 @@ final class TagSyncService {
 	 * is a faithful, searchable projection of n8n and nothing more.
 	 *
 	 * @param array<string,mixed> $workflow the n8n workflow row (carries `tags`)
-	 * @param list<string> $protected mapping tags that must never be dropped
 	 */
-	public function reconcilePull(int $fileId, array $workflow, ManagedFile $managed, array $protected): void {
+	public function reconcilePull(int $fileId, array $workflow, ManagedFile $managed): void {
 		$source = $this->contentTags($this->tagNames($workflow));
 		$nc = $this->readNcContentTags($fileId);
 		$baseline = $managed->syncedTagList();
@@ -90,16 +89,16 @@ final class TagSyncService {
 		// read-only projection — the pull mirrors n8n's content tags exactly (plus the
 		// force-kept mapping tag), and a stray local pill is wiped on the next pull.
 		$localAdds = $managed->isSync() ? array_values(array_diff($nc, $baseline)) : [];
-		$desired = $this->withProtected(array_merge($source, $localAdds), $protected);
+		$desired = array_values(array_unique(array_merge($source, $localAdds)));
 
 		// Reuse the `$nc` we just read — nothing has touched the pills since.
 		$this->writeNcContentTags($fileId, $desired, $nc);
-		// Baseline = the source's content tags, plus the force-kept protected (mapping)
+		// Baseline = the source's content tags
 		// tags — but NOT the NC-local additions. A local add is not agreed until a push
 		// lands it in n8n, so it stays out of the baseline and the next push reads it as
 		// `nc − baseline` and propagates it. (Protected tags are in the baseline so a
 		// later genuine remove of one is still measured against a set that contained it.)
-		$this->metadata->stampTags($fileId, $this->withProtected($source, $protected));
+		$this->metadata->stampTags($fileId, $source);
 	}
 
 	/**
@@ -109,11 +108,10 @@ final class TagSyncService {
 	 * Returns n8n's canonical tag rows after the set, so callers can write the real
 	 * `{id,name}` objects back into the file body.
 	 *
-	 * @param list<string> $protected mapping tags that must never be dropped
 	 * @return list<array<string,mixed>> n8n's canonical tag rows (id+name+…) after the set
 	 */
-	public function reconcilePush(int $fileId, ManagedFile $managed, array $protected): array {
-		return $this->reconcilePushWith($fileId, $managed, $this->readNcContentTags($fileId), $protected);
+	public function reconcilePush(int $fileId, ManagedFile $managed): array {
+		return $this->reconcilePushWith($fileId, $managed, $this->readNcContentTags($fileId));
 	}
 
 	/**
@@ -124,11 +122,10 @@ final class TagSyncService {
 	 * NC surfaces never disagree. Returns n8n's canonical tag rows after the set.
 	 *
 	 * @param list<string> $bodyContentTags reserved-free content tags read from the body
-	 * @param list<string> $protected mapping tags that must never be dropped
 	 * @return list<array<string,mixed>> n8n's canonical tag rows after the set
 	 */
-	public function reconcilePushFromBody(int $fileId, ManagedFile $managed, array $bodyContentTags, array $protected): array {
-		return $this->reconcilePushWith($fileId, $managed, $bodyContentTags, $protected);
+	public function reconcilePushFromBody(int $fileId, ManagedFile $managed, array $bodyContentTags): array {
+		return $this->reconcilePushWith($fileId, $managed, $bodyContentTags);
 	}
 
 	/**
@@ -139,16 +136,15 @@ final class TagSyncService {
 	 * into the file body.
 	 *
 	 * @param list<string> $ncContent the NC-side content set to treat as truth
-	 * @param list<string> $protected mapping tags that must never be dropped
 	 * @return list<array<string,mixed>> n8n's canonical tag rows after the set
 	 */
-	private function reconcilePushWith(int $fileId, ManagedFile $managed, array $ncContent, array $protected): array {
+	private function reconcilePushWith(int $fileId, ManagedFile $managed, array $ncContent): array {
 		$workflow = $this->n8n->getWorkflow($managed->workflowId);
 		$sourceNames = $this->tagNames($workflow);
 		$source = $this->contentTags($sourceNames);
 		$baseline = $managed->syncedTagList();
 
-		$merged = $this->withProtected(TagMerge::merge($baseline, $this->contentTags($ncContent), $source), $protected);
+		$merged = TagMerge::merge($baseline, $this->contentTags($ncContent), $source);
 
 		// Converge both NC surfaces (pills read fresh — $ncContent may be body tags,
 		// not pills) and n8n on the merged set, preserving n8n's reserved markers.
@@ -291,15 +287,20 @@ final class TagSyncService {
 	}
 
 	/**
-	 * Force the protected (mapping) tags into a set — they must stay on both sides so
-	 * a dropped pill can never unmap the workflow.
+	 * Remove ONE tag from a workflow in n8n, leaving every other tag on it.
 	 *
-	 * @param list<string> $set
-	 * @param list<string> $protected
-	 * @return list<string>
+	 * The unbind's only write ({@see TagReconcileService::unbindIfMappingTagDropped}).
+	 * Reserved `n8n:*` markers are preserved along with the rest, because
+	 * {@see N8nClient::setWorkflowTags} is a full replace and this is a subtraction of
+	 * exactly one name, not a re-statement of what the workflow should carry.
 	 */
-	private function withProtected(array $set, array $protected): array {
-		return array_values(array_unique(array_merge($set, $this->contentTags($protected))));
+	public function dropSourceTag(string $workflowId, string $tag): void {
+		$workflow = $this->n8n->getWorkflow($workflowId);
+		$keep = array_values(array_filter(
+			$this->tagNames($workflow),
+			static fn (string $n): bool => $n !== $tag,
+		));
+		$this->pushSourceTags($workflowId, $this->tagNames($workflow), $keep);
 	}
 
 	/** Look up (or first-time create) a Nextcloud content tag — visible + assignable. */

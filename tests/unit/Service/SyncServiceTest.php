@@ -18,7 +18,6 @@ use OCA\N8nSync\Service\N8nClient;
 use OCA\N8nSync\Service\N8nWorkflowBody;
 use OCA\N8nSync\Service\OwnershipTags;
 use OCA\N8nSync\Service\PushService;
-use OCA\N8nSync\Service\ReservedTagResolver;
 use OCA\N8nSync\Service\StorageService;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\SyncService;
@@ -92,7 +91,6 @@ final class SyncServiceTest extends TestCase {
 			$this->createStub(IJobList::class),
 			$this->createStub(SyncStatusService::class),
 			$this->createStub(IAppConfig::class),
-			new ReservedTagResolver(),
 			$this->tagSync,
 			$this->times,
 			new NullLogger(),
@@ -194,7 +192,7 @@ final class SyncServiceTest extends TestCase {
 		// mapping's own tag as the protected set (it must never be pushed as removed).
 		$this->tagSync->expects(self::once())
 			->method('reconcilePush')
-			->with(1, self::isInstanceOf(ManagedFile::class), ['nextcloud:alpha']);
+			->with(1, self::isInstanceOf(ManagedFile::class));
 
 		$res = $this->service->pushOne($this->mapping());
 
@@ -257,7 +255,7 @@ final class SyncServiceTest extends TestCase {
 
 		$this->tagSync->expects(self::once())
 			->method('reconcilePull')
-			->with(10, self::isType('array'), self::isInstanceOf(ManagedFile::class), ['nextcloud:alpha']);
+			->with(10, self::isType('array'), self::isInstanceOf(ManagedFile::class));
 
 		$res = $this->service->pullOne($this->mapping(Mapping::MODE_SYNC, 'map-alpha'));
 
@@ -480,28 +478,6 @@ final class SyncServiceTest extends TestCase {
 		$this->pullWith($keep, $workflow);
 	}
 
-	// ── reserved-tag ignore + ignored mode (saga §14.8) ─────────────────────────
-
-	public function testPullResolvesIgnoreTagSoWorkflowIsNotPulled(): void {
-		// An n8n:ignore workflow is never written — no file is created for it.
-		$folder = $this->createMock(Folder::class);
-		$folder->method('getDirectoryListing')->willReturn([]);
-		$folder->expects(self::never())->method('newFile');
-
-		$this->storage->method('isAvailable')->willReturn(true);
-		$this->storage->method('ensureFolder')->willReturn($folder);
-
-		$this->n8n->method('eachWorkflow')->willReturn([
-			['id' => 'wf-x', 'name' => 'X', 'tags' => [['id' => 'i', 'name' => OwnershipTags::TAG_IGNORE]]],
-		]);
-
-		$res = $this->service->pullOne($this->mapping(Mapping::MODE_SYNC));
-
-		self::assertSame(1, $res['processed']);
-		self::assertSame(0, $res['succeeded']);
-		self::assertSame(0, $res['pruned']);
-	}
-
 	public function testPushOneSkipsALinkFileInASyncMapping(): void {
 		$syncFile = $this->file(1, 'A.n8n.json');
 		$linkFile = $this->file(2, 'B.n8n.json'); // a link-mode file is never pushed
@@ -528,36 +504,9 @@ final class SyncServiceTest extends TestCase {
 		self::assertSame(1, $res['succeeded']);
 	}
 
-	public function testPruneSkipsAnIgnoredFile(): void {
-		// An ignored file stays in the folder; even though its (archived) workflow is
-		// not returned under the tag, prune must NOT delete it.
-		$ignored = $this->createMock(File::class);
-		$ignored->method('getId')->willReturn(20);
-		$ignored->method('getName')->willReturn('Ign.n8n.json');
-		$ignored->expects(self::never())->method('delete');
-
-		$folder = $this->createStub(Folder::class);
-		$folder->method('getDirectoryListing')->willReturn([$ignored]);
-
-		$this->storage->method('isAvailable')->willReturn(true);
-		$this->storage->method('ensureFolder')->willReturn($folder);
-
-		$this->metadata->method('read')->willReturnCallback(function (int $fileId): ?ManagedFile {
-			return match ($fileId) {
-				20 => $this->managed('wf-ign', WorkflowMetadata::MODE_IGNORED, 'map-alpha'),
-				default => null,
-			};
-		});
-		$this->n8n->method('eachWorkflow')->willReturn([]);
-
-		$res = $this->service->pullOne($this->mapping(Mapping::MODE_SYNC, 'map-alpha'));
-
-		self::assertSame(0, $res['pruned']);
-	}
-
 	// ── purge (admin "Purge Nextcloud files") ────────────────────────────────────
 
-	public function testPurgeDeletesSyncAndLinkButKeepsUnmappedIgnoredUntracked(): void {
+	public function testPurgeDeletesSyncAndLinkButKeepsUnmappedAndUntracked(): void {
 		// The data-safety contract: purge removes only what a pull can restore
 		// (sync/link); unmapped + ignored (archived in n8n) and untracked files stay.
 		$sync = $this->fileExpectDelete(1, 'Sync.n8n.json', true);
@@ -578,7 +527,6 @@ final class SyncServiceTest extends TestCase {
 				1 => $this->managed('wf-1', Mapping::MODE_SYNC),
 				2 => $this->managed('wf-2', Mapping::MODE_LINK),
 				3 => $this->managed('wf-3', WorkflowMetadata::MODE_UNMAPPED),
-				4 => $this->managed('wf-4', WorkflowMetadata::MODE_IGNORED),
 				default => null, // untracked (no record)
 			};
 		});
@@ -586,7 +534,7 @@ final class SyncServiceTest extends TestCase {
 		$res = $this->service->purge();
 
 		self::assertSame(2, $res['deleted']); // sync + link
-		self::assertSame(2, $res['kept']);    // unmapped + ignored (untracked/non-n8n not counted)
+		self::assertSame(1, $res['kept']);    // unmapped (untracked/non-n8n not counted)
 	}
 
 	/** A managed File mock that asserts whether ::delete() is (or isn't) called. */
