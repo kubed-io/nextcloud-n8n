@@ -16,7 +16,6 @@ use OCA\N8nSync\Service\MappingService;
 use OCA\N8nSync\Service\MirrorTimes;
 use OCA\N8nSync\Service\N8nClient;
 use OCA\N8nSync\Service\N8nWorkflowBody;
-use OCA\N8nSync\Service\OwnershipTags;
 use OCA\N8nSync\Service\PushService;
 use OCA\N8nSync\Service\StorageService;
 use OCA\N8nSync\Service\SyncGuard;
@@ -83,7 +82,6 @@ final class SyncServiceTest extends TestCase {
 			$this->mappings,
 			$this->n8n,
 			$this->metadata,
-			$this->createStub(OwnershipTags::class),
 			$this->storage,
 			$guard,
 			$this->push,

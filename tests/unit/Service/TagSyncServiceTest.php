@@ -94,13 +94,17 @@ final class TagSyncServiceTest extends TestCase {
 
 	// ── readNcContentTags ──────────────────────────────────────────────────────
 
-	public function testReadNcContentTagsStripsReservedNamespace(): void {
-		$this->fileHasTags(1, ['prod', 'n8n:sync', 'linux', 'n8n:ignore']);
+	public function testReadNcContentTagsReturnsEveryTagOnTheFile(): void {
+		// NOTHING IS CARVED OUT ANY MORE. This used to assert that the app's own
+		// `n8n:*` pills were stripped here — they were on the same files as content
+		// tags and had to be told apart. Nothing writes a pill now, so a tag is a tag,
+		// and a name that merely looks reserved is somebody's label.
+		$this->fileHasTags(1, ['prod', 'linux', 'n8n-ish']);
 
 		$content = $this->service->readNcContentTags(1);
 
 		sort($content);
-		self::assertSame(['linux', 'prod'], $content);
+		self::assertSame(['linux', 'n8n-ish', 'prod'], $content);
 	}
 
 	public function testReadNcContentTagsEmptyWhenNoTags(): void {
@@ -128,25 +132,6 @@ final class TagSyncServiceTest extends TestCase {
 
 		sort($assigned);
 		self::assertSame([$this->tagId('dns'), $this->tagId('linux')], $assigned);
-	}
-
-	public function testPullExcludesReservedTagsFromContent(): void {
-		// A reserved tag on the n8n workflow must never become a content pill.
-		$this->fileHasTags(1, []);
-		$this->tagManager->method('createTag')->willReturnCallback(fn (string $n): ISystemTag => $this->makeTag($n));
-
-		$assigned = [];
-		$this->tagMapper->method('assignTags')->willReturnCallback(
-			function (string $objId, string $type, array $ids) use (&$assigned): void {
-				$assigned = array_merge($assigned, $ids);
-			},
-		);
-
-		$workflow = ['id' => 'wf-1', 'tags' => [['id' => 'a', 'name' => 'linux'], ['id' => 'b', 'name' => 'n8n:sync']]];
-		$this->service->reconcilePull(1, $workflow, $this->managed());
-
-		self::assertSame([$this->tagId('linux')], $assigned);
-		self::assertNotContains($this->tagId('n8n:sync'), $assigned);
 	}
 
 	public function testPullBaselineIsSourceOnlyNotNcLocalAdds(): void {
@@ -220,8 +205,8 @@ final class TagSyncServiceTest extends TestCase {
 
 	// ── reconcilePush ──────────────────────────────────────────────────────────
 
-	public function testPushWritesNcContentTagsToN8nPreservingReserved(): void {
-		// n8n workflow currently carries a hand-set reserved marker "n8n:ignore"
+	public function testPushWritesTheMergedSetToN8n(): void {
+		// A tag that merely LOOKS like one of the app's old markers
 		// plus "flows"; NC added "urgent". Push must send flows+urgent+the reserved
 		// marker (full-replace would otherwise drop the marker).
 		$this->fileHasTags(1, ['flows', 'urgent']);
@@ -233,7 +218,7 @@ final class TagSyncServiceTest extends TestCase {
 
 		$this->n8n->method('getWorkflow')->willReturn([
 			'id' => 'wf-1',
-			'tags' => [['id' => 'a', 'name' => 'flows'], ['id' => 'r', 'name' => 'n8n:ignore']],
+			'tags' => [['id' => 'a', 'name' => 'flows'], ['id' => 'r', 'name' => 'n8n-ish']],
 		]);
 		$this->n8n->method('ensureTags')->willReturnCallback(
 			fn (array $names): array => array_map(static fn (string $n): string => 'n8nid:' . $n, $names),
@@ -252,7 +237,9 @@ final class TagSyncServiceTest extends TestCase {
 
 		self::assertContains('n8nid:flows', $sent);
 		self::assertContains('n8nid:urgent', $sent);
-		self::assertContains('n8nid:n8n:ignore', $sent, 'the reserved marker on the n8n workflow must be preserved');
+		// It is an ordinary tag now, so the merge decides its fate like any other's:
+		// it is in n8n and not in the baseline, so it is an add and it survives.
+		self::assertContains('n8nid:n8n-ish', $sent);
 	}
 
 	public function testPushStampsMergedSetAsBaseline(): void {

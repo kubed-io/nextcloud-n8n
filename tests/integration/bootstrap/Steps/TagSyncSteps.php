@@ -29,7 +29,8 @@ use PHPUnit\Framework\Assert;
  * in its `Examples` column would be asserting the binding survived rather than
  * asserting anything about tags. It is added back automatically by the arrange and
  * stripped from every assertion; the two scenarios that are ABOUT it name it
- * explicitly. Reserved `n8n:*` tags are stripped the same way, for the same reason.
+ * explicitly. There is no reserved namespace any more — the app writes no tags of
+ * its own — so nothing else is hidden from an assertion.
  *
  * ## THE SYNC IS FOLDED INTO THE GESTURE, DELIBERATELY
  *
@@ -499,7 +500,7 @@ trait TagSyncSteps {
 	private function tagNormal(array $names): array {
 		$out = array_values(array_unique(array_filter(
 			$names,
-			fn (string $n): bool => $n !== '' && $n !== $this->tagMappingTag && !str_starts_with($n, 'n8n:'),
+			fn (string $n): bool => $n !== '' && $n !== $this->tagMappingTag,
 		)));
 		sort($out);
 		return $out;
@@ -571,7 +572,7 @@ trait TagSyncSteps {
 	 * @return list<string>
 	 */
 	private function tagN8nContent(string $id): array {
-		$names = array_filter($this->n8nWorkflowTagNames($id), static fn (string $n): bool => !str_starts_with($n, 'n8n:'));
+		$names = $this->n8nWorkflowTagNames($id);
 		sort($names);
 		return array_values($names);
 	}
@@ -582,7 +583,7 @@ trait TagSyncSteps {
 	 * @return list<string>
 	 */
 	private function tagContentPills(string $path): array {
-		$names = array_filter($this->fileSystemTags($path), static fn (string $n): bool => !str_starts_with($n, 'n8n:'));
+		$names = $this->fileSystemTags($path);
 		sort($names);
 		return array_values($names);
 	}

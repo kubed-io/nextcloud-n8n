@@ -13,7 +13,6 @@ use OCA\N8nSync\Service\CopyService;
 use OCA\N8nSync\Service\CreateService;
 use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\MappingService;
-use OCA\N8nSync\Service\OwnershipTags;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\Files\File;
@@ -38,14 +37,12 @@ final class CopyServiceTest extends TestCase {
 	private CreateService $createService;
 	private MappingService $mappings;
 	private WorkflowMetadata $metadata;
-	private OwnershipTags $tags;
 	private CopyService $service;
 
 	protected function setUp(): void {
 		$this->createService = $this->createMock(CreateService::class);
 		$this->mappings = $this->createMock(MappingService::class);
 		$this->metadata = $this->createMock(WorkflowMetadata::class);
-		$this->tags = $this->createMock(OwnershipTags::class);
 
 		// SyncGuard just brackets the callback in enter/leave — a stub that runs it inline.
 		$guard = $this->createStub(SyncGuard::class);
@@ -55,7 +52,6 @@ final class CopyServiceTest extends TestCase {
 			$this->createService,
 			$this->mappings,
 			$this->metadata,
-			$this->tags,
 			$guard,
 			new NullLogger(),
 		);
@@ -77,8 +73,6 @@ final class CopyServiceTest extends TestCase {
 		$mapping = $this->mapping();
 
 		$this->metadata->expects(self::once())->method('clear')->with(7);
-		$this->tags->expects(self::once())->method('clear')->with(7);
-		$this->mappings->expects(self::once())->method('resolveForPath')->willReturn($mapping);
 		$this->createService->expects(self::once())->method('createForFile')->with($node, $mapping);
 
 		$this->service->onCopy($node);
@@ -88,8 +82,6 @@ final class CopyServiceTest extends TestCase {
 		$node = $this->file(7);
 
 		$this->metadata->expects(self::once())->method('clear')->with(7);
-		$this->tags->expects(self::once())->method('clear')->with(7);
-		$this->mappings->expects(self::once())->method('resolveForPath')->willReturn(null);
 		$this->createService->expects(self::never())->method('createForFile');
 
 		$this->service->onCopy($node);

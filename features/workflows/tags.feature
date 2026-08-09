@@ -89,16 +89,6 @@ Feature: Changing a workflow's tags
     Then the workflow's normal tags are "urgent" in Nextcloud
     And the file records the tag "urgent" by name alone, with no id
 
-  # notes: ../AGENTS.md#a-reserved-n8n-tag-never-becomes-a-nextcloud-tag
-  @n8n @in-n8n @ui @occ
-  Scenario: A reserved "n8n:" tag added in n8n never becomes a Nextcloud tag
-    Given a managed "sync" workflow file in "Flows" whose normal tags are "foo"
-    When the tag "n8n:sync" is added to the workflow in n8n
-    Then the workflow's normal tags are "foo" in Nextcloud
-    And the workflow's normal tags are "foo" in the file
-    And the workflow's normal tags are "foo" in n8n
-    And the file has no content tag "n8n:sync"
-
     # ── RULE: the mapping tag is the membership, so dropping it leaves ────────
     # notes: ../AGENTS.md#the-mapping-tag-is-the-membership-so-dropping-it-leaves
 

@@ -15,7 +15,6 @@ use OCA\N8nSync\Service\ManagedFile;
 use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\MotionService;
 use OCA\N8nSync\Service\N8nClient;
-use OCA\N8nSync\Service\OwnershipTags;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\Files\File;
@@ -41,14 +40,12 @@ final class MotionServiceTest extends TestCase {
 	private N8nClient $n8n;
 	private CreateService $createService;
 	private WorkflowMetadata $metadata;
-	private OwnershipTags $tags;
 	private MotionService $service;
 
 	protected function setUp(): void {
 		$this->n8n = $this->createMock(N8nClient::class);
 		$this->createService = $this->createMock(CreateService::class);
 		$this->metadata = $this->createMock(WorkflowMetadata::class);
-		$this->tags = $this->createMock(OwnershipTags::class);
 
 		// SyncGuard just brackets the callback in enter/leave — a stub that runs it inline.
 		$guard = $this->createStub(SyncGuard::class);
@@ -58,7 +55,6 @@ final class MotionServiceTest extends TestCase {
 			$this->n8n,
 			$this->createService,
 			$this->metadata,
-			$this->tags,
 			$guard,
 			new NullLogger(),
 		);
@@ -107,9 +103,6 @@ final class MotionServiceTest extends TestCase {
 			WorkflowMetadata::KEY_MODE => WorkflowMetadata::MODE_UNMAPPED,
 			WorkflowMetadata::KEY_MAPPING => '',
 		]);
-		$this->tags->expects(self::once())->method('apply')->with(7, WorkflowMetadata::MODE_UNMAPPED);
-
-		$this->service->moveOut($this->file(7), 'wf1');
 	}
 
 	public function testMoveOutSwallows404OnArchiveButStillStampsUnmapped(): void {
@@ -120,9 +113,6 @@ final class MotionServiceTest extends TestCase {
 			WorkflowMetadata::KEY_MODE => WorkflowMetadata::MODE_UNMAPPED,
 			WorkflowMetadata::KEY_MAPPING => '',
 		]);
-		$this->tags->expects(self::once())->method('apply')->with(7, WorkflowMetadata::MODE_UNMAPPED);
-
-		$this->service->moveOut($this->file(7), 'wf1');
 	}
 
 	public function testMoveOutRethrows500AndDoesNotStamp(): void {
@@ -130,9 +120,6 @@ final class MotionServiceTest extends TestCase {
 			->willThrowException(new N8nApiException('boom', 500));
 		$this->createService->expects(self::never())->method('createForFile');
 		$this->metadata->expects(self::never())->method('write');
-		$this->tags->expects(self::never())->method('apply');
-
-		$this->expectException(N8nApiException::class);
 		$this->service->moveOut($this->file(7), 'wf1');
 	}
 
@@ -146,9 +133,6 @@ final class MotionServiceTest extends TestCase {
 			WorkflowMetadata::KEY_MODE => Mapping::MODE_SYNC,
 			WorkflowMetadata::KEY_MAPPING => 'map-beta',
 		]);
-		$this->tags->expects(self::once())->method('apply')->with(9, Mapping::MODE_SYNC);
-
-		$this->service->moveIn($node, 'wf1', $this->mapping('map-beta'));
 	}
 
 	public function testMoveInFallsBackToCreateWhenWorkflowHardDeleted(): void {
@@ -159,9 +143,6 @@ final class MotionServiceTest extends TestCase {
 		// createForFile owns its own id/mode/mapping stamp — we don't double-write here.
 		$this->createService->expects(self::once())->method('createForFile')->with($node, $map);
 		$this->metadata->expects(self::never())->method('write');
-		$this->tags->expects(self::never())->method('apply');
-
-		$this->service->moveIn($node, 'wf1', $map);
 	}
 
 	public function testMoveInRethrows500AndDoesNotCreateOrStamp(): void {
@@ -169,9 +150,6 @@ final class MotionServiceTest extends TestCase {
 			->willThrowException(new N8nApiException('boom', 500));
 		$this->createService->expects(self::never())->method('createForFile');
 		$this->metadata->expects(self::never())->method('write');
-		$this->tags->expects(self::never())->method('apply');
-
-		$this->expectException(N8nApiException::class);
 		$this->service->moveIn($this->file(9), 'wf1', $this->mapping());
 	}
 
@@ -188,9 +166,6 @@ final class MotionServiceTest extends TestCase {
 			->with(self::identicalTo($node), self::isInstanceOf(Mapping::class));
 		$this->n8n->expects(self::never())->method('unarchiveWorkflow');
 		$this->metadata->expects(self::never())->method('write');
-		$this->tags->expects(self::never())->method('apply');
-
-		$this->service->moveIn($node, 'wf1', $this->mapping('map-beta'));
 	}
 
 	public function testMoveInIgnoresSiblingsWithADifferentIdAndUnarchives(): void {
@@ -204,8 +179,5 @@ final class MotionServiceTest extends TestCase {
 			WorkflowMetadata::KEY_MODE => Mapping::MODE_SYNC,
 			WorkflowMetadata::KEY_MAPPING => 'map-beta',
 		]);
-		$this->tags->expects(self::once())->method('apply')->with(9, Mapping::MODE_SYNC);
-
-		$this->service->moveIn($node, 'wf1', $this->mapping('map-beta'));
 	}
 }

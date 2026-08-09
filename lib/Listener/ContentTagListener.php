@@ -74,12 +74,10 @@ final class ContentTagListener implements IEventListener {
 		if ($event->getObjectType() !== 'files' || $this->guard->active()) {
 			return;
 		}
-		// Only a real CONTENT-tag edit is a surface-3 gesture. A change confined to the
-		// reserved namespace (`n8n:ignore` and friends) is the control plane — left to
-		// the next pull.
-		if (!$this->touchesContentTag($event->getTags())) {
-			return;
-		}
+		// EVERY TAG IS A CONTENT TAG NOW. This used to gate on the change touching
+		// something outside the app's `n8n:` namespace, because the mode pills lived on
+		// the same files and their writes had to be told apart from a user's. Nothing
+		// writes a pill any more, so a tag change is a tag change.
 
 		// A tag change does NOT always have a session. `occ tag:files:add`, and any
 		// other CLI or background caller, dispatches the same event with nobody
@@ -143,20 +141,5 @@ final class ContentTagListener implements IEventListener {
 		} catch (\Throwable) {
 			return '';
 		}
-	}
-
-	/**
-	 * True when at least one of the changed tag ids is a **content** tag (outside the
-	 * reserved `n8n:` namespace). Unresolvable ids are skipped.
-	 *
-	 * @param array<int|string> $tagIds
-	 */
-	private function touchesContentTag(array $tagIds): bool {
-		foreach ($this->tagManager->getTagsByIds($tagIds) as $tag) {
-			if (!str_starts_with($tag->getName(), TagSyncService::RESERVED_PREFIX)) {
-				return true;
-			}
-		}
-		return false;
 	}
 }

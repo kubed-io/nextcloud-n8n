@@ -69,10 +69,9 @@ final class Application extends App implements IBootstrap {
 		//
 		// Note: there is intentionally no "guard" panel. Ownership of an
 		// n8n_sync file is determined by the file itself — the `.n8n.json`
-		// extension, the `n8n_id` Files-Metadata stamp, and/or one of the
-		// `n8n:sync` / `n8n:link` system tags. Anything carrying those
-		// markers inside a mapped folder is fair game for sync; anything
-		// without them is ignored. No setting needed.
+		// extension and the `n8n_id` Files-Metadata stamp. Anything carrying
+		// those markers inside a mapped folder is fair game for sync; anything
+		// without them is left alone. No setting needed.
 		//
 		// Section layout (by priority): Instance URL (5) → REST API (10) → Test
 		// connection (15, classic panel via info.xml) → Webhook (20) →

@@ -1014,7 +1014,46 @@ WHAT THE REMOVAL DELETED, so a reader does not go looking for it: the reserved
 `n8n:ignore` tag, `WorkflowMetadata::MODE_IGNORED`, `ManagedFile::isIgnored()`,
 `$ignoredIds` in the pull, the purge's "keeps an ignored file" scenario, and the
 `ignored` rows in `open-with.feature`. The `n8n:sync` / `n8n:link` /
-`n8n:unmapped` MODE PILLS are a different thing and they stay.
+`n8n:unmapped` MODE PILLS went the same way one PR later — see below.
+
+## the n8n: namespace — RETIRED ENTIRELY
+
+The app wrote three pills on every managed file, one per mode: `n8n:sync`,
+`n8n:link`, `n8n:unmapped`. They are gone, and with them the whole idea of a
+reserved namespace.
+
+WHY. Since the per-file sync↔link toggle was removed, the mapping decides a
+file's mode and the file's own `n8n_mode` metadata records it — which is what
+every code path actually reads. The pill was a second copy of that truth, kept in
+lockstep by the app, editable by nobody, and load-bearing for nothing.
+
+AND IT WAS THE EXPENSIVE COPY. Because the pills sat on the same files as the
+user's real tags, every tag path had to carve them back out: `contentTags()`,
+`readNcContentTags()`, the merge inputs, the baseline stamp, the body writeback,
+and a listener gate that asked "did this change touch a real tag?". That
+exclusion WAS most of the fiddly part of tag sync, and it existed only because we
+put the pills there. Removing them deleted `RESERVED_PREFIX`, `isReserved()`,
+`contentTags()` and `touchesContentTag()` outright: a tag is now just a string on
+both sides.
+
+THE UPGRADE IS A DELETION, NOT A FILTER, and this is the part worth reading. A
+leftover `n8n:sync` pill would become an ordinary content tag on the next
+reconcile and be PUSHED TO n8n — so simply dropping the filter would seed every
+mirrored workflow with a tag nobody chose. `Migration\RemoveModePills` deletes
+the four retired DEFINITIONS once on upgrade, which removes them from every file
+at once and leaves the namespace genuinely empty.
+
+Deleting a tag definition is something this app otherwise refuses to do — a
+catalog is shared and a definition may be pinned on files it knows nothing about.
+These four are the exception because the app MINTED them and no human chose them.
+They are our litter, not someone's label.
+
+WHAT A USER LOSES: the coloured pill that said "this file is synced". The mode is
+still on the file as DAV metadata (`view.feature`), the Files-app openers still
+branch on it, and the folder a file sits in already says whether it is mapped.
+The siblings — `nextcloud-grafana`, `nextcloud-penpot` — are getting the same
+treatment; penpot's folder-level `penpot` tag is a different thing (a marker AND
+the user's opt-in) and stays.
 
 ## workflows/tags
 
@@ -1040,10 +1079,9 @@ Two label systems, made equal (minus our control tags):
                      searchable via DAV REPORT).
 
 THE RULE OF EQUALITY: after a reconcile a managed workflow's n8n tags and its
-Nextcloud system tags hold the same strings, with ONE exclusion — the app's
-reserved namespace `n8n:*` (`n8n:sync`, `n8n:link`, `n8n:ignore`, and any future
-control tag). Reserved tags are the app's control plane: never pushed to n8n,
-never imported from n8n as content.
+Nextcloud system tags hold the same strings. No exclusions — there used to be a
+reserved `n8n:*` namespace for the app's own mode pills, and both the pills and
+the namespace are gone (see `the n8n: namespace — RETIRED ENTIRELY` above).
 
 THREE EDIT SURFACES — the object body is the third: tags are part of the object,
 so a sync file's on-disk JSON already has a `tags` array. That makes three
@@ -1354,18 +1392,6 @@ surface that survives being moved, copied, or carried out of Nextcloud — so
 when the file is later dropped into a mapped folder, the tags are still there
 to seed n8n. That adoption is `workflows/create.feature`'s to own, and it is
 specced there; this file only pins the local pair it depends on.
-
-### A reserved n8n: tag never becomes a Nextcloud tag
-
-THE RULE OF EQUALITY has exactly one exclusion: the app's reserved namespace
-`n8n:*` (`n8n:sync`, `n8n:link`, `n8n:ignore`, and any future control tag).
-Reserved tags are the app's control plane — never pushed to n8n, never
-imported from n8n as content.
-
-It is stated here as a tag CHANGE (someone adds `n8n:sync` in n8n) rather than
-as an end state of a sync, because that is the moment the exclusion has to
-hold. What `n8n:ignore` then DOES is `workflows/ignore.feature`'s subject, not
-this file's.
 
 ### The mapping tag is the membership, so dropping it leaves
 

@@ -106,6 +106,10 @@ identify the service this app integrates with.
       <!-- Rewrites any legacy-shaped folder mappings once on upgrade. Idempotent;
            see lib/Migration/MigrateMappings.php + MappingService::migrate(). -->
       <step>OCA\N8nSync\Migration\MigrateMappings</step>
+      <!-- Deletes the retired n8n:sync/n8n:link/n8n:unmapped/n8n:ignore pills once.
+           Without it a leftover pill would become an ordinary content tag and be
+           pushed to n8n. Idempotent; see lib/Migration/RemoveModePills.php. -->
+      <step>OCA\N8nSync\Migration\RemoveModePills</step>
     </post-migration>
     <uninstall>
       <!-- Mirror image of RegisterMimetype: reverts the core-tree mimetype/icon

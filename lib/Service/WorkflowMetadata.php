@@ -147,8 +147,8 @@ final class WorkflowMetadata {
 	 * Stamp the full sync-metadata set for a managed file in one call: id, mode,
 	 * versionId, the body hash (the push loop-guard, computed here from $body), and
 	 * the originating mapping. The single home for the five-key shape that the pull
-	 * reconciler and create-on-land both write — callers apply the ownership tag
-	 * separately ({@see OwnershipTags::apply}).
+	 * reconciler and create-on-land both write. The mode lives here and only here:
+	 * there is no pill mirroring it any more.
 	 */
 	public function stampSynced(int $fileId, string $id, string $mode, string $versionId, string $body, string $mappingId): void {
 		$this->write($fileId, [

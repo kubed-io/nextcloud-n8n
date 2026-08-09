@@ -32,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING:** the `n8n:sync` / `n8n:link` / `n8n:unmapped` pills are gone. The mapping already decides a file's mode and the file still carries it as metadata, so the pills were a second copy nobody could edit. They are deleted on upgrade, which also removes them from the tag picker.
+
 - **Removing the tag that maps a workflow now takes it out of the mapping.** The file leaves Nextcloud and the workflow stays in n8n with only that tag removed — nothing is deleted and nothing is archived. Previously the tag was silently put back.
 - **BREAKING:** the `n8n:ignore` tag is gone. Move a file out of its mapped folder to keep it in Nextcloud only, or drop the mapping tag to keep it in n8n only. Files currently marked ignored become ordinary workflow files again on the next sync.
 

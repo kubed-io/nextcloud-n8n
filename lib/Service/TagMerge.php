@@ -41,9 +41,9 @@ namespace OCA\N8nSync\Service;
  * reconcile does with the result ({@see TagSyncService}). This class stays a pure,
  * symmetric function of its three inputs.
  *
- * The reserved namespace ({@see TagSyncService::RESERVED_PREFIX}) and any protected
- * tags (n8n's folder-binding mapping tag) are handled by {@see TagSyncService} before
- * and after this merge — this class only ever sees plain content tags.
+ * It sees the sets exactly as they are. There used to be two classes of tag carved
+ * out before it ran — the app's own `n8n:*` mode pills and the force-kept mapping
+ * tag — and neither exists any more.
  */
 final class TagMerge {
 	/**

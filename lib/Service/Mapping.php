@@ -43,8 +43,9 @@ use JsonSerializable;
  *
  * A mapping's mode is authoritative for every workflow it pulls — there is **no**
  * per-workflow or per-file `sync`↔`link` override (that toggle was removed in saga
- * §15.3). The only per-workflow exception is the `n8n:ignore` exclude tag, read at
- * pull time (saga §14.8); this object carries the folder-level mode.
+ * §15.3), and no per-workflow exclude either — `n8n:ignore` was removed with the
+ * rest of the reserved namespace. This object carries the folder-level mode, and it
+ * is the only thing that decides a mirrored file's mode.
  *
  * Mode model (saga Ch3 §14): a mapping's mode is exactly **`sync`** or **`link`**.
  * `writeback` is gone (the old `sync + two-way` is now just `sync`); `backup`
