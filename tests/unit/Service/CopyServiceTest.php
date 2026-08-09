@@ -73,6 +73,7 @@ final class CopyServiceTest extends TestCase {
 		$mapping = $this->mapping();
 
 		$this->metadata->expects(self::once())->method('clear')->with(7);
+		$this->mappings->expects(self::once())->method('resolveForPath')->willReturn($mapping);
 		$this->createService->expects(self::once())->method('createForFile')->with($node, $mapping);
 
 		$this->service->onCopy($node);
@@ -82,6 +83,7 @@ final class CopyServiceTest extends TestCase {
 		$node = $this->file(7);
 
 		$this->metadata->expects(self::once())->method('clear')->with(7);
+		$this->mappings->expects(self::once())->method('resolveForPath')->willReturn(null);
 		$this->createService->expects(self::never())->method('createForFile');
 
 		$this->service->onCopy($node);

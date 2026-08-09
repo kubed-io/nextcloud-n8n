@@ -103,6 +103,8 @@ final class MotionServiceTest extends TestCase {
 			WorkflowMetadata::KEY_MODE => WorkflowMetadata::MODE_UNMAPPED,
 			WorkflowMetadata::KEY_MAPPING => '',
 		]);
+
+		$this->service->moveOut($this->file(7), 'wf1');
 	}
 
 	public function testMoveOutSwallows404OnArchiveButStillStampsUnmapped(): void {
@@ -113,6 +115,8 @@ final class MotionServiceTest extends TestCase {
 			WorkflowMetadata::KEY_MODE => WorkflowMetadata::MODE_UNMAPPED,
 			WorkflowMetadata::KEY_MAPPING => '',
 		]);
+
+		$this->service->moveOut($this->file(7), 'wf1');
 	}
 
 	public function testMoveOutRethrows500AndDoesNotStamp(): void {
@@ -120,6 +124,8 @@ final class MotionServiceTest extends TestCase {
 			->willThrowException(new N8nApiException('boom', 500));
 		$this->createService->expects(self::never())->method('createForFile');
 		$this->metadata->expects(self::never())->method('write');
+
+		$this->expectException(N8nApiException::class);
 		$this->service->moveOut($this->file(7), 'wf1');
 	}
 
@@ -133,6 +139,8 @@ final class MotionServiceTest extends TestCase {
 			WorkflowMetadata::KEY_MODE => Mapping::MODE_SYNC,
 			WorkflowMetadata::KEY_MAPPING => 'map-beta',
 		]);
+
+		$this->service->moveIn($node, 'wf1', $this->mapping('map-beta'));
 	}
 
 	public function testMoveInFallsBackToCreateWhenWorkflowHardDeleted(): void {
@@ -143,6 +151,8 @@ final class MotionServiceTest extends TestCase {
 		// createForFile owns its own id/mode/mapping stamp — we don't double-write here.
 		$this->createService->expects(self::once())->method('createForFile')->with($node, $map);
 		$this->metadata->expects(self::never())->method('write');
+
+		$this->service->moveIn($node, 'wf1', $map);
 	}
 
 	public function testMoveInRethrows500AndDoesNotCreateOrStamp(): void {
@@ -150,6 +160,8 @@ final class MotionServiceTest extends TestCase {
 			->willThrowException(new N8nApiException('boom', 500));
 		$this->createService->expects(self::never())->method('createForFile');
 		$this->metadata->expects(self::never())->method('write');
+
+		$this->expectException(N8nApiException::class);
 		$this->service->moveIn($this->file(9), 'wf1', $this->mapping());
 	}
 
@@ -166,6 +178,8 @@ final class MotionServiceTest extends TestCase {
 			->with(self::identicalTo($node), self::isInstanceOf(Mapping::class));
 		$this->n8n->expects(self::never())->method('unarchiveWorkflow');
 		$this->metadata->expects(self::never())->method('write');
+
+		$this->service->moveIn($node, 'wf1', $this->mapping('map-beta'));
 	}
 
 	public function testMoveInIgnoresSiblingsWithADifferentIdAndUnarchives(): void {
@@ -179,5 +193,7 @@ final class MotionServiceTest extends TestCase {
 			WorkflowMetadata::KEY_MODE => Mapping::MODE_SYNC,
 			WorkflowMetadata::KEY_MAPPING => 'map-beta',
 		]);
+
+		$this->service->moveIn($node, 'wf1', $this->mapping('map-beta'));
 	}
 }

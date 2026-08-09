@@ -14,7 +14,6 @@ use OCA\N8nSync\BackgroundJob\ReconcileTagsJob;
 use OCA\N8nSync\Service\FilenameCodec;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\TagReconcileService;
-use OCA\N8nSync\Service\TagSyncService;
 use OCA\N8nSync\Service\TeamFolderService;
 use OCP\BackgroundJob\IJobList;
 use OCP\EventDispatcher\Event;
