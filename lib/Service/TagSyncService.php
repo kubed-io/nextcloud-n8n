@@ -303,7 +303,6 @@ final class TagSyncService {
 		$this->pushSourceTags($workflowId, $this->tagNames($workflow), $keep);
 	}
 
-
 	/** Look up (or first-time create) a Nextcloud content tag — visible + assignable. */
 	private function ensureTag(string $name): ISystemTag {
 		try {

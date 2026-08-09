@@ -108,7 +108,6 @@ trait TagSyncSteps {
 
 		$this->tagSetN8n(array_merge([$mapping], $normal));
 		$this->runMappingSync('pull', $mapping);
-
 	}
 
 	/**
