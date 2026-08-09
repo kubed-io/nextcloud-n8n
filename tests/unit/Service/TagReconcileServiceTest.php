@@ -320,19 +320,22 @@ final class TagReconcileServiceTest extends TestCase {
 	}
 
 	/**
-	 * RESERVED MARKERS MUST NOT REACH THE BODY. `reconcilePush()` returns the final n8n
-	 * set, which deliberately re-sends any `n8n:*` marker the workflow already had —
-	 * correct for n8n (setWorkflowTags is a full replace) and wrong for the file. The
-	 * body is CONTENT, and it is the one portable surface: a reserved marker written
-	 * here would travel with the file and seed itself as a content tag on adoption.
+	 * MALFORMED ROWS MUST NOT REACH THE BODY. n8n's response is normalised before it is
+	 * written, because a nameless `{}` or a bare `{"id":…}` in a user's file is worse
+	 * than a missing tag — the file is the one portable surface, and whatever lands
+	 * here travels with it.
+	 *
+	 * This used to also assert that `n8n:*` markers were filtered out. There are none
+	 * any more, so the row that used to carry one now carries a name that merely looks
+	 * like one, and it is expected to SURVIVE: it is an ordinary tag.
 	 */
-	public function testPillEditNeverWritesReservedTagsIntoTheBody(): void {
+	public function testPillEditNeverWritesMalformedRowsIntoTheBody(): void {
 		$this->metadata->method('read')->willReturn($this->managed(Mapping::MODE_SYNC));
 		$this->mappings->method('getById')->willReturn($this->mapping('flows'));
 		$this->stillAMember();
 		$this->tagSync->method('reconcilePush')->willReturn([
 			['id' => 't1', 'name' => 'prod'],
-			['id' => 't7', 'name' => 'n8n:ignore'],
+			['id' => 't7', 'name' => 'n8n-ish'],
 			['id' => 't8'],                       // malformed: no name at all
 			['id' => 't0', 'name' => ''],         // malformed: blank name
 			['id' => 't9', 'name' => 'flows'],
@@ -344,7 +347,7 @@ final class TagReconcileServiceTest extends TestCase {
 
 		self::assertNotNull($written);
 		$names = array_column(json_decode($written, true)['tags'], 'name');
-		self::assertSame(['flows', 'prod'], $names, 'a reserved or nameless row leaked into the file body');
+		self::assertSame(['flows', 'n8n-ish', 'prod'], $names, 'a nameless row leaked into the file body');
 	}
 
 	/** A pill toggle resolving to the same set must not churn the file. */

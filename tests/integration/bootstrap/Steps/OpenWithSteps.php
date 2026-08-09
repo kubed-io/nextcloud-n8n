@@ -176,22 +176,6 @@ trait OpenWithSteps {
 				$this->putManagedFile($this->currentFolder . '/Opener.n8n.json', 'Opener');
 				$this->iMoveTheFileToAnUnmappedFolder(); // sets currentFilePath + expectedArchived=true
 				break;
-			case 'ignored':
-				// `ignored` now exists (reserved-tags slice): a managed sync file
-				// hand-tagged `n8n:ignore` in NC stays in its folder, keeps its id,
-				// is archived in n8n, and its mode becomes `ignored` — the same path
-				// reserved-tags.feature exercises (assignSystemTag is shared from
-				// ModeChangeSteps via the composed FeatureContext).
-				$this->setupSyncMappingAndFolder('sync', 'nextcloud:openwith-ignored');
-				$this->putManagedFile($this->currentFolder . '/Opener.n8n.json', 'Opener');
-				$this->assignSystemTag($this->currentFilePath, 'n8n:ignore');
-				Assert::assertSame(
-					'ignored',
-					$this->davReadMetadata($this->currentFilePath, self::META_MODE),
-					'arrange precondition failed: tagging n8n:ignore did not set mode=ignored',
-				);
-				$this->expectedArchived = true;
-				break;
 			default:
 				throw new \InvalidArgumentException("unknown mode '$mode'");
 		}

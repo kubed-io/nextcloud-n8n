@@ -44,7 +44,6 @@ final class MotionService {
 		private N8nClient $n8n,
 		private CreateService $createService,
 		private WorkflowMetadata $metadata,
-		private OwnershipTags $ownershipTags,
 		private SyncGuard $guard,
 		private LoggerInterface $logger,
 	) {
@@ -75,7 +74,6 @@ final class MotionService {
 				WorkflowMetadata::KEY_MODE => WorkflowMetadata::MODE_UNMAPPED,
 				WorkflowMetadata::KEY_MAPPING => '', // ejected — no longer in a mapping
 			]);
-			$this->ownershipTags->apply($node->getId(), WorkflowMetadata::MODE_UNMAPPED);
 		});
 	}
 
@@ -126,7 +124,6 @@ final class MotionService {
 				WorkflowMetadata::KEY_MODE => Mapping::MODE_SYNC,
 				WorkflowMetadata::KEY_MAPPING => $tgtMapping->id,
 			]);
-			$this->ownershipTags->apply($node->getId(), Mapping::MODE_SYNC);
 		});
 	}
 

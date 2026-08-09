@@ -53,21 +53,6 @@ trait MoveSteps {
 		$this->putManagedFile($this->currentFolder . '/Mover.n8n.json', 'Mover');
 		$this->lastVersionId = $this->davReadMetadata($this->currentFilePath, self::META_VERSION_ID);
 		$this->expectedArchived = false; // sync/link create leaves the workflow live
-
-		// $mode USED TO BE IGNORED ENTIRELY — every caller got a `sync` file whatever
-		// they asked for. Harmless while only sync/link called it (a create leaves the
-		// workflow live either way), and a silent lie the moment anything asked for
-		// `ignored`: the scenario would arrange the opposite of its own Given and then
-		// assert against it. A step must honour the parameter it accepts.
-		if ($mode === 'ignored') {
-			$this->assignSystemTag($this->currentFilePath, 'n8n:ignore');
-			Assert::assertSame(
-				'ignored',
-				$this->davReadMetadata($this->currentFilePath, self::META_MODE),
-				'arrange precondition failed: tagging n8n:ignore did not set mode=ignored',
-			);
-			$this->expectedArchived = true;
-		}
 	}
 
 	/**

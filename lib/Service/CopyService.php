@@ -40,7 +40,6 @@ final class CopyService {
 		private CreateService $createService,
 		private MappingService $mappings,
 		private WorkflowMetadata $metadata,
-		private OwnershipTags $ownershipTags,
 		private SyncGuard $guard,
 		private LoggerInterface $logger,
 	) {
@@ -70,7 +69,6 @@ final class CopyService {
 	private function stripIdentity(File $node): void {
 		$this->guard->run(function () use ($node): void {
 			$this->metadata->clear($node->getId());
-			$this->ownershipTags->clear($node->getId());
 		});
 	}
 }

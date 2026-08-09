@@ -278,14 +278,14 @@ final class TagReconcileService {
 			// the one PORTABLE surface — a reserved marker written here would travel with
 			// the file and seed itself as a content tag on adoption somewhere else.
 			//
-			// Blank names are dropped in the same pass. Every current caller already
+			// Every current caller already
 			// guarantees non-empty (pushSourceTags filters them, readNcContentTags cannot
 			// produce one), so this is defence in depth — but the alternative is a
 			// nameless `{}` or a bare `{"id":…}` written into a user's file, and this
 			// method should not depend on all three of its callers staying careful.
 			$rows = array_values(array_filter($rows, static function (array $r): bool {
 				$name = (string)($r['name'] ?? '');
-				return $name !== '' && !str_starts_with($name, TagSyncService::RESERVED_PREFIX);
+				return $name !== '';
 			}));
 			usort($rows, static fn (array $a, array $b): int => strcmp((string)($a['name'] ?? ''), (string)($b['name'] ?? '')));
 			// `tags` is a LIST, so an array of arrays encodes correctly as a JSON array

@@ -48,7 +48,6 @@ final class SyncService {
 		private MappingService $mappings,
 		private N8nClient $n8n,
 		private WorkflowMetadata $metadata,
-		private OwnershipTags $tags,
 		private StorageService $storage,
 		private SyncGuard $guard,
 		private PushService $push,
@@ -425,9 +424,9 @@ final class SyncService {
 
 	/**
 	 * Reconcile a single workflow into $folder (update-in-place by id, else fresh
-	 * write with collision suffix). Metadata + ownership tag follow the body. The
-	 * mode written is the mapping's mode (or `null`/skip for an n8n:ignore'd
-	 * workflow — saga §14.8), resolved by the caller into $effectiveMode.
+	 * write with collision suffix). Metadata follows the body, and the mode written
+	 * is the mapping's — there is no per-workflow override and no pill to keep in
+	 * step with it.
 	 *
 	 * **Change-detected** (saga Ch5 §5.11): an existing mirror is rewritten only when
 	 * its bytes actually differ from what n8n would write. This used to be an
@@ -489,7 +488,6 @@ final class SyncService {
 				$existing->putContent($body);
 			}
 			$this->metadata->stampSynced($fileId, $id, $effectiveMode, $versionId, $body, $mapping->id);
-			$this->tags->apply($fileId, $effectiveMode);
 			$this->reconcileTagsOnPull($fileId, $workflow, $mapping);
 			$this->applySourceTimes($existing, $workflow, $wrote);
 			return $wrote;
@@ -511,7 +509,6 @@ final class SyncService {
 
 		$file = $folder->newFile($candidate, $body);
 		$this->metadata->stampSynced($file->getId(), $id, $effectiveMode, $versionId, $body, $mapping->id);
-		$this->tags->apply($file->getId(), $effectiveMode);
 		$this->reconcileTagsOnPull($file->getId(), $workflow, $mapping);
 		$this->applySourceTimes($file, $workflow, true);
 		return true;
