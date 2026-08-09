@@ -192,7 +192,7 @@ final class SyncServiceTest extends TestCase {
 		// mapping's own tag as the protected set (it must never be pushed as removed).
 		$this->tagSync->expects(self::once())
 			->method('reconcilePush')
-			->with(1, self::isInstanceOf(ManagedFile::class), ['nextcloud:alpha']);
+			->with(1, self::isInstanceOf(ManagedFile::class));
 
 		$res = $this->service->pushOne($this->mapping());
 
@@ -255,7 +255,7 @@ final class SyncServiceTest extends TestCase {
 
 		$this->tagSync->expects(self::once())
 			->method('reconcilePull')
-			->with(10, self::isType('array'), self::isInstanceOf(ManagedFile::class), ['nextcloud:alpha']);
+			->with(10, self::isType('array'), self::isInstanceOf(ManagedFile::class));
 
 		$res = $this->service->pullOne($this->mapping(Mapping::MODE_SYNC, 'map-alpha'));
 

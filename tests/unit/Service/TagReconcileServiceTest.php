@@ -229,8 +229,13 @@ final class TagReconcileServiceTest extends TestCase {
 		$node->method('getId')->willReturn(1);
 		$node->expects(self::never())->method('delete');
 
-		self::assertFalse($this->service->reconcileFile($node));
+		// TRUE, not false: the gesture was handled. Returning false would fall through
+		// to the ordinary merge, which would read the missing mapping tag as a plain
+		// removal and push it — unbinding the workflow in n8n with the mirror left
+		// behind. A half-unbind is worse than either outcome.
+		self::assertTrue($this->service->reconcileFile($node));
 		self::assertFalse($this->guard->active(), 'the guard leaked after a failing unbind');
+		$this->tagSync->expects(self::never())->method('reconcilePush');
 	}
 
 	public function testDroppingTheMappingTagFromTheBodyAlsoUnbinds(): void {

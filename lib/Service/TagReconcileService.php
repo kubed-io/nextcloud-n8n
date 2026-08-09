@@ -357,23 +357,28 @@ final class TagReconcileService {
 			return false; // still a member
 		}
 
+		// FROM HERE THE MERGE MUST NOT RUN, whether or not the unbind succeeds — which
+		// is why this returns true even on failure. Falling through would hand the
+		// merge a Nextcloud set with the mapping tag missing, and the merge would read
+		// that as an ordinary removal and push it: the workflow would leave the mapping
+		// anyway, without the mirror being cleaned up. A half-unbind is worse than
+		// either outcome.
 		try {
 			$this->guard->run(function () use ($node, $managed, $mapping): void {
 				$this->tagSync->dropSourceTag($managed->workflowId, $mapping->n8nTag);
 				$node->delete();
 			});
 		} catch (\Throwable $e) {
-			// LEAVE THE MIRROR ALONE ON FAILURE. If n8n could not be told, deleting the
-			// file would strand a workflow that still carries the mapping tag — the next
-			// pull would mirror it straight back, and the user would watch their gesture
-			// undo itself. Better to keep the file and let the next sync restore the tag.
+			// LEAVE THE MIRROR ALONE. If n8n could not be told, deleting the file would
+			// strand a workflow that still carries the mapping tag — the next pull would
+			// mirror it straight back, and the user would watch their gesture undo
+			// itself. Keep everything as it was and let the next sync settle it.
 			$this->logger->warning('n8n_sync unbind failed; the mirror was kept', [
 				'app' => Application::APP_ID,
 				'fileId' => $node->getId(),
 				'workflowId' => $managed->workflowId,
 				'exception' => $e,
 			]);
-			return false;
 		}
 		return true;
 	}

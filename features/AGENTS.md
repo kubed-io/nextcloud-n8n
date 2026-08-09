@@ -1398,6 +1398,14 @@ straight back and the user would watch their own gesture undo itself. So the
 unbind is all-or-nothing, and a failure leaves everything as it was for the next
 sync to retry.
 
+AND THE MERGE MUST NOT RUN AFTERWARDS EITHER, which is subtler and was a real bug
+in the first cut of this. Once the mapping tag is missing from the Nextcloud side,
+falling through to the ordinary tag merge hands it a set with that tag absent —
+and the merge reads that as an ordinary removal and pushes it. The workflow would
+leave the mapping anyway, with the mirror still sitting in the folder. A
+half-unbind is worse than either outcome, so the gesture is answered exactly once,
+whether it succeeded or not.
+
 THE n8n SIDE IS THE SAME GESTURE FROM THE OTHER END. Removing the mapping tag
 from the workflow in n8n also ends the mirror — the file is pruned by the pull.
 Both directions now say the same thing, which they did not before.
