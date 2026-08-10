@@ -236,11 +236,9 @@ trait MoveSteps {
 
 		// Move the synced file OUT → it becomes the unmapped copy (id preserved, workflow archived).
 		$this->iMoveTheFileToAnUnmappedFolder();
-		Assert::assertSame(
-			'unmapped',
-			$this->davReadMetadata($this->currentFilePath, self::META_MODE),
-			'setup: the moved-out copy is not unmapped',
-		);
+		if ($this->davReadMetadata($this->currentFilePath, self::META_MODE) !== 'unmapped') {
+			throw new \RuntimeException('setup: the moved-out copy is not unmapped');
+		}
 		$this->collisionIncomingPath = $this->currentFilePath;
 
 		// Bring the workflow back to life and pull the mapping so a fresh SYNCED file is
@@ -248,17 +246,26 @@ trait MoveSteps {
 		$this->n8nUnarchiveWorkflow($this->collisionWorkflowId);
 		$this->runMappingSync('pull', $sourceTag);
 
-		$this->collisionSyncedPath = $sourceFolder . '/Mover.n8n.json';
-		Assert::assertSame(
-			$this->collisionWorkflowId,
-			$this->davReadMetadataId($this->collisionSyncedPath),
-			'setup: the pulled synced file does not carry the shared workflow id',
-		);
-		Assert::assertSame(
-			'sync',
-			$this->davReadMetadata($this->collisionSyncedPath, self::META_MODE),
-			'setup: the pulled file is not in sync mode',
-		);
+		// FOUND BY WORKFLOW ID, not by filename. This assumed `Mover.n8n.json`, the name
+		// one arrange happened to use — so the moment a scenario arranged its file any
+		// other way, the setup asserted against a path that was never written and the
+		// failure read as "the pulled file does not carry the shared id". The pull also
+		// names a mirror after its WORKFLOW, so the filename is n8n's to choose anyway.
+		$this->collisionSyncedPath = '';
+		foreach ($this->propfindWorkflowIds($sourceFolder) as $href => $wid) {
+			if ($wid === $this->collisionWorkflowId) {
+				$this->collisionSyncedPath = $this->hrefToFilesPath((string)$href);
+				break;
+			}
+		}
+		if ($this->collisionSyncedPath === '') {
+			throw new \RuntimeException(
+				"setup: the pull wrote no file for workflow {$this->collisionWorkflowId} into $sourceFolder",
+			);
+		}
+		if ($this->davReadMetadata($this->collisionSyncedPath, self::META_MODE) !== 'sync') {
+			throw new \RuntimeException("setup: the pulled file at {$this->collisionSyncedPath} is not in sync mode");
+		}
 
 		// The incoming copy (still unmapped, outside alpha) is what the scenario moves in next.
 		$this->currentFilePath = $this->collisionIncomingPath;
