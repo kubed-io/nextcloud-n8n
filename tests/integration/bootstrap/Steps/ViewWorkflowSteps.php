@@ -9,7 +9,6 @@ declare(strict_types=1);
 
 namespace OCA\N8nSync\Tests\Integration\Steps;
 
-use Behat\Gherkin\Node\TableNode;
 use PHPUnit\Framework\Assert;
 
 /**
@@ -37,17 +36,8 @@ trait ViewWorkflowSteps {
 
 	private const N8N_MIME = 'application/n8n+json';
 
-	/** The mapping the current file belongs to, for the `the mapping's id` cell. */
-	private string $currentMappingId = '';
-
 	/** @var list<string> what the folder listing returned, for the icon assertion */
 	private array $viewedFiles = [];
-
-	/** Carried between the PROPPATCH When and its Then. */
-	private string $proppatchKey = '';
-	private ?string $proppatchOriginal = null;
-	private int $proppatchStatus = 0;
-	private string $proppatchBody = '';
 
 	// ── Given ─────────────────────────────────────────────────────────────────
 
@@ -57,40 +47,6 @@ trait ViewWorkflowSteps {
 		// plain sync file is the simplest. (The mode-specific rows use the
 		// "in :mode mode" step owned by OpenWithSteps.)
 		$this->arrangeManagedFile('sync');
-	}
-
-	/**
-	 * @Given a workflow :name mirrored into that folder
-	 *
-	 * The follow-on to `a mapping with the following values:`, which describes the
-	 * mapping but does not create its folder — it is a pre-state for scenarios
-	 * about the mapping itself, where nothing is ever stored in it.
-	 *
-	 * "That folder" is the one the table just named. It is read back from the store
-	 * rather than taken from the table, which is what makes the scenario's claim
-	 * honest: the file lands where the APP put the mapping's folder, not where the
-	 * test assumed it would be. The preceding step resets the store, so there is
-	 * exactly one mapping to find.
-	 */
-	public function aWorkflowMirroredIntoThatFolder(string $name): void {
-		$mappings = $this->listMappings();
-		if (count($mappings) !== 1) {
-			$this->fail('expected exactly one mapping in the store, found ' . count($mappings));
-		}
-		$mapping = $mappings[0];
-
-		$folder = (string)($mapping['team_folder'] ?? '');
-		if ($folder === '') {
-			$this->fail('the mapping stored no folder to mirror into');
-		}
-		$this->currentMappingId = (string)($mapping['id'] ?? '');
-		$this->currentTag = (string)($mapping['n8n_tag'] ?? '');
-		$this->currentFolder = $folder;
-
-		$this->davMkdir($folder);
-		// A PUT into a mapped folder is create-on-land: the app makes the workflow
-		// in n8n and stamps the file. putManagedFile fails loudly if it did not.
-		$this->putManagedFile($folder . '/' . $name . '.n8n.json', $name);
 	}
 
 	// ── the CLI view: what n8n holds, read without the mirror ──────────────────
@@ -146,29 +102,23 @@ trait ViewWorkflowSteps {
 
 	// ── Then: mimetype + icon ───────────────────────────────────────────────────
 
-	/** @Then its mimetype is :mime */
-	public function itsMimetypeIs(string $mime): void {
-		Assert::assertSame($mime, $this->davContentType($this->currentFilePath), 'the file does not carry the custom mimetype');
-	}
-
 	/**
-	 * @When the user views the contents of the mapped folder
+	 * @When I open :folder in the Files app
 	 *
 	 * Opening a folder in the Files app is a Depth-1 PROPFIND — the same request the
 	 * browser makes — so this lists the folder for real and remembers what came
 	 * back. The assertion is in the matching Then.
 	 */
-	public function theUserViewsTheContentsOfTheMappedFolder(): void {
-		Assert::assertNotSame('', $this->currentFolder, 'no mapped folder — a Given must set one');
+	public function iOpenTheFolderInTheFilesApp(string $folder): void {
+		$this->currentFolder = $folder;
 		$this->viewedFiles = array_map(
 			fn (string $href): string => $this->hrefToFilesPath($href),
-			array_values($this->mappedFilesByWorkflowId($this->currentFolder)),
+			array_values($this->mappedFilesByWorkflowId($folder)),
 		);
 	}
 
 	/**
 	 * @Then the mapped folder shows the workflows with the n8n icon
-	 * @Then the Files app shows the n8n icon instead of a generic JSON icon
 	 *
 	 * EVERY FILE THE USER JUST SAW, not merely the last one arranged. A folder of
 	 * workflows where one row renders as a generic document is exactly the failure
@@ -226,121 +176,15 @@ trait ViewWorkflowSteps {
 		}
 	}
 
-	/**
-	 * @Then the response carries the properties the app manages:
-	 *
-	 * Reads each `nc:metadata-*` prop back with a Depth-0 PROPFIND that only counts
-	 * values returned in a 200 block, so a prop the server reports as 404 fails
-	 * here rather than reading as an empty string.
-	 *
-	 * THE VALUE COLUMN TAKES THREE FORMS, and no more — a table that can say
-	 * anything stops being readable:
-	 *
-	 *   set                  present and non-empty; the value is opaque by design
-	 *   the workflow's id    the id the app stamped when the file landed
-	 *   the mapping's id     the mapping the file came from
-	 *   anything else        an exact literal (the mode's stored value)
-	 *
-	 * The two `the …'s id` forms exist because presence is too weak for them: an id
-	 * that is merely non-empty could be any workflow's, and the whole point of
-	 * publishing it is that it names THIS one.
-	 */
-	public function theResponseCarriesTheManagedProperties(TableNode $table): void {
-		Assert::assertNotSame('', $this->currentFilePath, 'no file to inspect — a Given must arrange one');
-
-		foreach ($table->getHash() as $row) {
-			$prop = trim((string)($row['property'] ?? ''));
-			$expected = trim((string)($row['value'] ?? ''));
-			$key = $this->metadataKeyFromProp($prop);
-			$actual = $this->davReadMetadata($this->currentFilePath, $key);
-
-			if ($actual === null || $actual === '') {
-				$this->fail("PROPFIND did not return $prop on {$this->currentFilePath} in a 200 block");
-			}
-
-			$want = match ($expected) {
-				'set' => null,
-				"the workflow's id" => (string)$this->lastWorkflowId,
-				"the mapping's id" => $this->currentMappingId,
-				default => $expected,
-			};
-			if ($want === null) {
-				continue;
-			}
-			if ($want === '') {
-				$this->fail("the scenario asked for '$expected' but the arrange never recorded one");
-			}
-			Assert::assertSame($want, $actual, "$prop carried the wrong value");
-		}
-	}
-
-	/** @Then its :prop property is :value */
-	public function itsPropertyIs(string $prop, string $value): void {
-		$key = $this->metadataKeyFromProp($prop);
-		Assert::assertSame($value, $this->davReadMetadata($this->currentFilePath, $key), "$prop did not carry the expected value");
-	}
-
-	// ── When/Then: metadata is read-only (PROPPATCH rejected) ────────────────────
-
-	/** @When a client tries to change :prop via PROPPATCH */
-	public function aClientTriesToChangeViaProppatch(string $prop): void {
-		$this->proppatchKey = $this->metadataKeyFromProp($prop);
-		$this->proppatchOriginal = $this->davReadMetadata($this->currentFilePath, $this->proppatchKey);
-		$res = $this->davProppatch($this->currentFilePath, $prop, 'tampered-by-client');
-		$this->proppatchStatus = $res->getStatusCode();
-		$this->proppatchBody = (string)$res->getBody();
-	}
-
-	/** @Then the change is rejected — the sync engine owns these properties */
-	public function theChangeIsRejected(): void {
-		// The load-bearing guarantee: the value did not change. (NC reports the
-		// forbidden prop as a 403 inside the 207 multistatus — also asserted.)
-		Assert::assertSame(
-			$this->proppatchOriginal,
-			$this->davReadMetadata($this->currentFilePath, $this->proppatchKey),
-			'the property changed — PROPPATCH was NOT rejected (these props must be read-only)',
-		);
-		$rejected = $this->proppatchStatus >= 400
-			|| str_contains($this->proppatchBody, '403')
-			|| stripos($this->proppatchBody, 'forbidden') !== false;
-		Assert::assertTrue($rejected, "PROPPATCH did not report a rejection (HTTP {$this->proppatchStatus}):\n{$this->proppatchBody}");
-	}
-
 	// ── REPORT (indexed query) — @todo until the DAV-search plumbing is proven ────
-
-	/** @Given a :modeA workflow file and a :modeB workflow file in the same user's storage */
-	public function twoWorkflowFilesInStorage(string $modeA, string $modeB): void {
-		throw new \RuntimeException('REPORT-by-indexed-mode harness pending (view-workflow.feature scenario is @blocked)');
-	}
 
 	/** @When a DAV REPORT searches for files where :prop is :value */
 	public function aDavReportSearchesForFilesWhere(string $prop, string $value): void {
 		throw new \RuntimeException('DAV REPORT on nc:metadata-* not yet wired — confirm the search plumbing against the pod, then flip this @todo');
 	}
 
-	/** @Then only the sync file is returned */
-	public function onlyTheSyncFileIsReturned(): void {
+	/** @Then only the file in :folder is returned */
+	public function onlyTheFileInIsReturned(string $folder): void {
 		throw new \RuntimeException('DAV REPORT on nc:metadata-* not yet wired — scenario is @todo');
-	}
-
-	// ── DAV plumbing ──────────────────────────────────────────────────────────────
-
-	/** `nc:metadata-n8n_mode` → `n8n_mode` (the key davReadMetadata wants). */
-	private function metadataKeyFromProp(string $prop): string {
-		$local = str_contains($prop, ':') ? substr($prop, (int)strpos($prop, ':') + 1) : $prop;
-		return str_starts_with($local, 'metadata-') ? substr($local, strlen('metadata-')) : $local;
-	}
-
-	/** Attempt to set a single nc:metadata-* prop via PROPPATCH; returns the raw response. */
-	private function davProppatch(string $path, string $prop, string $value): \Psr\Http\Message\ResponseInterface {
-		$local = str_contains($prop, ':') ? substr($prop, (int)strpos($prop, ':') + 1) : $prop;
-		$body = '<?xml version="1.0"?>'
-			. '<d:propertyupdate xmlns:d="DAV:" xmlns:nc="http://nextcloud.org/ns">'
-			. '<d:set><d:prop><nc:' . $local . '>' . htmlspecialchars($value, ENT_XML1) . '</nc:' . $local . '></d:prop></d:set>'
-			. '</d:propertyupdate>';
-		return $this->davClient()->request('PROPPATCH', $this->davEncode($path), [
-			'headers' => ['Content-Type' => 'application/xml'],
-			'body' => $body,
-		]);
 	}
 }
