@@ -194,8 +194,7 @@ trait CreateSteps {
 	 * The engine behind every "holds this DAV metadata" step, shared so `the file
 	 * holds:` and `the copy holds:` cannot drift into two vocabularies.
 	 *
-	 * @param array<string,callable(string,?string):void> $extra value keywords only the
-	 *        calling file needs, checked before the shared ones
+	 * @param array<string,callable(string,?string):void> $extra per-file value keywords
 	 */
 	private function assertManagedMetadata(string $path, TableNode $table, array $extra = []): void {
 		foreach ($table->getRowsHash() as $key => $expected) {

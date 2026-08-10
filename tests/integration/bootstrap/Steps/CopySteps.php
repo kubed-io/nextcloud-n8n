@@ -110,7 +110,7 @@ trait CopySteps {
 	 * its id, that its workflow was not restored, that it was not duplicated —
 	 * because all three are the same sentence: the original did not move.
 	 *
-	 * @Then the original is unchanged
+	 * @Then the original file and its workflow are unchanged
 	 */
 	public function theOriginalIsUnchanged(): void {
 		Assert::assertSame(

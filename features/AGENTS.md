@@ -365,7 +365,25 @@ simply kept, and the case is dull; across mappings it is REPLACED, and that is t
 rule worth reading. Same outline because it is one rule — the copy belongs where
 it landed — with the block titles saying which half of it each row exercises.
 
-TAGS ARE A COLUMN, NOT A SCENARIO. `A copy carries the tags that travelled in
+### A copy carries the tags that travelled in its body
+
+IT IS A SCENARIO AGAIN, AND ONLY BECAUSE OF ITS STATUS. This was folded into the
+outline above as an `Examples` column — tags are pre/post state, so they belong to
+the scenario that already performs the gesture — and CI rejected it: adoption
+reads a file's body tags only in `create.feature`'s `@unbuilt` scenarios, so a
+copy today lands carrying nothing but its mapping tag. Asserting the tags on a
+LIVE outline asserted a feature nobody has written.
+
+A row cannot be `@unbuilt` while its siblings run, so the claim needs a scenario
+of its own until adoption lands. When it does, this folds back into the outline
+as the column it wants to be.
+
+The `in Nextcloud` half is the part that will stay hard: Nextcloud does not copy
+system tags at all, so the pills a copy ends up with can only come from the app
+re-applying them out of the body. That is the same mechanism adoption needs, and
+it is why the two are one piece of work rather than two.
+
+TAGS ARE A COLUMN, NOT A SCENARIO — WHEN THE BEHAVIOUR EXISTS. `A copy carries the tags that travelled in
 its body` was this same outline with tags asserted instead of metadata — the
 gesture, the rule and the arrange were identical. Tags and metadata are PRE AND
 POST STATE, so both belong to the scenario that already performs the gesture:

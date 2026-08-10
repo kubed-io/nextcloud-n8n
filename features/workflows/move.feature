@@ -94,7 +94,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
       | n8n_id      | its own, not the one it arrived with |
       | n8n_mapping | the mapping's id                     |
       | n8n_mode    | the mapping's mode                   |
-    And the original is unchanged
+    And the original file and its workflow are unchanged
 
   # notes: ../AGENTS.md#the-tags-a-file-arrives-with-are-the-tags-its-workflow-ends-up-with
   @user @in-nextcloud @gesture @ui

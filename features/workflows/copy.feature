@@ -30,7 +30,7 @@ Feature: Copying a workflow file always makes a new instance
 
   @user @in-nextcloud @gesture @ui
   Scenario Outline: A copy landing in a mapped folder is a brand-new workflow there
-    Given a workflow file in "<source>" whose tags are "<tags>"
+    Given a workflow file in "<source>"
     When I copy the file into "<destination>"
     Then the copy holds this DAV metadata:
       | n8n_id         | its own, not the original's |
@@ -38,20 +38,27 @@ Feature: Copying a workflow file always makes a new instance
       | n8n_mode       | the mapping's mode          |
       | n8n_versionId  | set                         |
       | n8n_syncedHash | set                         |
-    And the copy's normal tags are "<tags>" in n8n and in Nextcloud
     And the copy's workflow carries the "<destination>" mapping tag, and no other mapping's
-    And the original is unchanged
+    And the original file and its workflow are unchanged
 
     Examples: within one mapping, the binding is simply kept
-      | source  | destination | tags          |
-      | Demo    | Demo        | prod, billing |
-      | Scratch | Demo        | prod, billing |
+      | source  | destination |
+      | Demo    | Demo        |
+      | Scratch | Demo        |
 
     Examples: and across mappings it is REPLACED — the copy belongs where it landed
-      | source   | destination | tags |
-      | Demo     | Pointers    |      |
-      | Demo     | Shared      | prod |
-      | Pointers | Demo        | prod |
+      | source   | destination |
+      | Demo     | Pointers    |
+      | Demo     | Shared      |
+      | Pointers | Demo        |
+
+  # notes: ../AGENTS.md#a-copy-carries-the-tags-that-travelled-in-its-body
+  @user @in-nextcloud @gesture @ui @unbuilt
+  Scenario: A copy carries the tags that travelled in its body
+    Given a workflow file in "Demo" whose tags are "prod, billing"
+    When I copy the file into "Shared"
+    Then the copy's normal tags are "prod, billing" in n8n and in Nextcloud
+    And the copy's workflow carries the "Shared" mapping tag, and no other mapping's
 
   # notes: ../AGENTS.md#a-copy-landing-outside-every-mapping-keeps-its-tags-as-a-breadcrumb
   @user @in-nextcloud @gesture @ui
@@ -61,7 +68,7 @@ Feature: Copying a workflow file always makes a new instance
     Then the copy holds no n8n DAV metadata at all
     And no workflow is created in n8n for the copy
     And the copy's body still carries the tags "<tags left in the body>"
-    And the original is unchanged
+    And the original file and its workflow are unchanged
 
     Examples: the identity is stripped; the labels are not
       | source   | tags left in the body    |
