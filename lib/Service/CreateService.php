@@ -77,27 +77,26 @@ final class CreateService {
 		// this thing's tags — there are no pills yet on a freshly-landed file, no baseline,
 		// and the workflow did not exist a moment ago. So the body seeds n8n. This is also
 		// where tags added while the file sat OUTSIDE any mapping finally reach n8n.
-		$rows = $this->applyMappingTagAdditive($id, $created, $mapping->n8nTag, $this->tagSync->contentTagsFromWorkflow(
+		$this->applyMappingTagAdditive($id, $created, $mapping->n8nTag, $this->tagSync->contentTagsFromWorkflow(
 			is_array($decoded = json_decode($content, true)) ? $decoded : [],
 		));
 
-		// THE BODY LEARNS ITS TAGS, and this is the only moment it can. n8n's schema
-		// forbids tags on create, so they are set by a SECOND call — which means the
-		// file the user wrote knows nothing about the mapping tag the workflow now
-		// carries. Left alone, the body stays wrong until some later pull rewrites it.
+		// THE BODY DOES NOT LEARN ITS TAGS HERE, AND IT CANNOT. n8n's schema forbids
+		// `tags` on create, so they go up in a SECOND call — and that call knows exactly
+		// what the workflow ends up carrying, so writing them straight into the file
+		// looks obvious. It is not possible from here: this runs INSIDE the handler for
+		// the very write that created the file, so `putContent()` on the same node hits
+		// Nextcloud's lock and the whole create fails. Tried; it took out every arrange
+		// in the suite that lands a file in a mapped folder.
 		//
-		// It matters because the body is the ONE surface that travels: pills die with
-		// a copy and metadata is stripped from one, so a file carried out of its
-		// mapping remembers where it came from only if the tag is in its bytes
-		// (`copy.feature`). Writing it here also keeps the three surfaces in step from
-		// the first instant rather than from the first sync.
-		$content = $this->withBodyTags($node, $content, $rows);
-
+		// The body catches up on the first pull, which rewrites it from n8n's canonical
+		// row. Until then `pills ⇄ body` holds trivially — both are empty.
+		//
 		// Re-fetch ourselves the new content if n8n re-shaped anything?
-		// No — POST /workflows echoes the body back as-stored. The hash is taken from
-		// whatever the file now holds, which is the body above once the tags landed in
-		// it — sha1 must match what NodeWrittenListener computes from
-		// $node->getContent() on the next save, or that save reads as a fresh edit.
+		// No — POST /workflows echoes the body back as-stored, so the file the
+		// user wrote is what's now in n8n. Use the original $content for the
+		// loop-guard hash (sha1 must match what NodeWrittenListener computes
+		// from $node->getContent() on the next save).
 		$this->stampFile($node, $mapping, $id, $versionId, $content);
 
 		return $id;
@@ -147,10 +146,8 @@ final class CreateService {
 	 *
 	 * @param array<string,mixed> $created the workflow as returned by POST
 	 * @param list<string> $bodyTags content tag names the arriving file already carried
-	 * @return list<array<string,mixed>> n8n's canonical tag rows after the set, or []
-	 *         when the call failed (the caller leaves the body alone)
 	 */
-	private function applyMappingTagAdditive(string $workflowId, array $created, string $tagName, array $bodyTags): array {
+	private function applyMappingTagAdditive(string $workflowId, array $created, string $tagName, array $bodyTags): void {
 		try {
 			$existing = [];
 			foreach (($created['tags'] ?? []) as $t) {
@@ -162,14 +159,7 @@ final class CreateService {
 			// batch form — one tag-list GET for the whole set instead of one per name.
 			$names = $tagName === '' ? $bodyTags : array_merge([$tagName], $bodyTags);
 			$merged = array_values(array_unique(array_merge($existing, $this->n8n->ensureTags($names))));
-			$rows = [];
-			foreach ($this->n8n->setWorkflowTags($workflowId, $merged) as $row) {
-				if (is_array($row) && is_string($row['name'] ?? null) && $row['name'] !== '') {
-					$rows[] = $row;
-				}
-			}
-
-			return $rows;
+			$this->n8n->setWorkflowTags($workflowId, $merged);
 		} catch (\Throwable $e) {
 			$this->logger->warning('n8n_sync: failed to assign tags to created workflow', [
 				'app' => Application::APP_ID,
@@ -178,51 +168,7 @@ final class CreateService {
 				'bodyTags' => $bodyTags,
 				'exception' => $e,
 			]);
-
-			return [];
 		}
-	}
-
-	/**
-	 * Write n8n's canonical tag rows into the file's `tags` array and return the
-	 * bytes the file now holds.
-	 *
-	 * Runs inside the {@see SyncGuard}: the write re-fires NodeWrittenEvent, and
-	 * without the bracket the writeback listener would read it as a user edit and
-	 * push the file straight back.
-	 *
-	 * A no-op — returning the original bytes — when there is nothing to write or the
-	 * body is not a JSON object. A file the user is mid-way through authoring is not
-	 * worth rewriting for a tag.
-	 *
-	 * @param list<array<string,mixed>> $rows
-	 */
-	private function withBodyTags(File $node, string $content, array $rows): string {
-		if ($rows === []) {
-			return $content;
-		}
-		try {
-			$wf = json_decode($content, false, 512, JSON_THROW_ON_ERROR);
-		} catch (\JsonException) {
-			return $content;
-		}
-		if (!$wf instanceof \stdClass) {
-			return $content;
-		}
-
-		usort($rows, static fn (array $a, array $b): int => strcmp((string)$a['name'], (string)$b['name']));
-		$wf->tags = array_map(static fn (array $r): object => (object)$r, $rows);
-		// Encoded from the stdClass, not through encodeSync(): that takes an array, and
-		// an assoc round-trip flattens the empty `connections`/`settings` objects to
-		// `[]`, which n8n rejects on the next push.
-		$new = json_encode($wf, N8nWorkflowBody::JSON_PRETTY);
-		if ($new === $content) {
-			return $content;
-		}
-
-		$this->guard->run(static fn () => $node->putContent($new));
-
-		return $new;
 	}
 
 	/**

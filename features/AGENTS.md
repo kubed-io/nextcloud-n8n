@@ -418,15 +418,20 @@ copy out of a mapped folder keeps whatever its body held, mapping tag included,
 and now wears it as a pill too — not because copy has a special rule about
 breadcrumbs, but because it follows the one rule that was already written down.
 
-AND THE OTHER END IS CLOSED TOO. The create path used to leave a file's body with
-no `tags` at all — n8n's schema forbids tags on create, so they go up in a second
-call, and nothing wrote them back down. That second call knows exactly what the
-workflow ends up carrying, so the body is written in the same breath and
-`pills ⇄ body` is true from the first instant rather than from the first sync.
+THE OTHER END CANNOT BE CLOSED THE OBVIOUS WAY, and this is worth writing down
+because it looks so obvious. On create, n8n's schema forbids `tags`, so they go up
+in a SECOND call — and that call knows exactly what the workflow ends up carrying,
+so writing them straight into the file seems like two lines. It is not possible
+from there: `createForFile` runs INSIDE the handler for the very write that
+created the file, so `putContent()` on the same node hits Nextcloud's lock and the
+whole create fails. Tried; it took out every arrange in the suite that lands a
+file in a mapped folder, and the failure surfaces as "create-on-land did not run"
+rather than as anything about locking.
 
-The hash stamped for the writeback loop-guard is taken from the bytes the file
-holds AFTER that write. Taking it from the pre-tag bytes would make the very next
-save look like a fresh edit and push it straight back.
+So a freshly created file's body has no `tags` until the first pull rewrites it
+from n8n's canonical row. `pills ⇄ body` still holds in the meantime — both are
+empty — which is why the copy path only has to make them agree, not invent
+content.
 
 ### Adoption takes the tags from the body alone
 
