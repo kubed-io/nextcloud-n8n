@@ -25,7 +25,8 @@ Feature: Emptying the trash is the only permanent delete
   @user @in-nextcloud @gesture @ui
   Scenario: Purging a sync file permanently deletes its workflow
     Given a workflow file in "Automations"
-    And the file is in the trash
+    And the file is in the Nextcloud trash
+    And the workflow is in n8n's archive
     When I purge it from the trash
     Then the workflow in n8n is "gone, permanently deleted"
 
@@ -33,7 +34,8 @@ Feature: Emptying the trash is the only permanent delete
   @user @in-nextcloud @gesture @ui
   Scenario: Purging a file that left its mapping leaves n8n alone
     Given an unmapped workflow file that still carries its "n8n_id"
-    And the file is in the trash
+    And the file is in the Nextcloud trash
+    And the workflow is in n8n's archive
     When I purge it from the trash
     Then the workflow in n8n is "archived, hidden but preserved"
 
@@ -41,6 +43,8 @@ Feature: Emptying the trash is the only permanent delete
   @n8n @in-n8n @ui @occ @unbuilt
   Scenario: A workflow deleted in n8n leaves the trashed file alone
     Given a workflow file in "Automations"
-    And the file is in the trash
+    And the file is in the Nextcloud trash
+    And the workflow is in n8n's archive
     When the workflow is permanently deleted in n8n
     Then the file is still in the Nextcloud trash
+    And no longer exists in n8n

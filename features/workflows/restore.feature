@@ -25,7 +25,8 @@ Feature: Restoring a workflow file from the trash
   @user @in-nextcloud @gesture @ui
   Scenario: Restoring a sync file unarchives its workflow
     Given a workflow file in "Automations"
-    And the file is in the trash
+    And the file is in the Nextcloud trash
+    And the workflow is in n8n's archive
     When I restore it from the trash
     Then the workflow in n8n is "live, unarchived"
     And the file holds this DAV metadata:
@@ -37,7 +38,8 @@ Feature: Restoring a workflow file from the trash
   @user @in-nextcloud @gesture @ui
   Scenario: Restoring a file that had already left its mapping reaches nothing
     Given an unmapped workflow file that still carries its "n8n_id"
-    And the file is in the trash
+    And the file is in the Nextcloud trash
+    And the workflow is in n8n's archive
     When I restore it from the trash
     Then the workflow in n8n is "archived, hidden but preserved"
 
@@ -47,8 +49,8 @@ Feature: Restoring a workflow file from the trash
   @user @in-nextcloud @gesture @ui @unbuilt
   Scenario: Restoring a file whose workflow was deleted in n8n gives it a new one
     Given a workflow file in "Automations"
-    And the file is in the trash
-    And the workflow has been permanently deleted in n8n
+    And the file is in the Nextcloud trash
+    And the workflow is gone from n8n entirely
     When I restore it from the trash
     Then a matching workflow is created in n8n
     And the file holds this DAV metadata:
@@ -60,8 +62,8 @@ Feature: Restoring a workflow file from the trash
   @user @in-nextcloud @gesture @ui @unbuilt
   Scenario: Restoring a file whose workflow is already live again is not a conflict
     Given a workflow file in "Automations"
-    And the file is in the trash
-    And the workflow is already live in n8n again
+    And the file is in the Nextcloud trash
+    And the workflow is live in n8n again
     When I restore it from the trash
     Then the workflow in n8n is "live, unarchived"
     And there is exactly one file for that workflow
@@ -82,7 +84,8 @@ Feature: Restoring a workflow file from the trash
   @n8n @in-n8n @ui @occ @unbuilt
   Scenario: Unarchiving a workflow in n8n brings its file back out of the trash
     Given a workflow file in "Automations"
-    And the file is in the trash
+    And the file is in the Nextcloud trash
+    And the workflow is in n8n's archive
     When someone unarchives the workflow in n8n
     Then the file is back in "Automations"
     And there is exactly one file for that workflow

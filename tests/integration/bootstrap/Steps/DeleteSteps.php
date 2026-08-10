@@ -70,7 +70,12 @@ trait DeleteSteps {
 	 * Getting there requires a trash move, but that is the step's problem, not the
 	 * scenario's.
 	 *
-	 * @Given the file is in the trash
+	 * NAMES ITS SYSTEM, because a trashed file has a state in BOTH and a scenario
+	 * that mentions only one is hiding half its setup. `the file is in the Nextcloud
+	 * trash` says where the FILE is; `the workflow is in n8n's archive` says where
+	 * the WORKFLOW is. One line per place, each staging its own side.
+	 *
+	 * @Given the file is in the Nextcloud trash
 	 */
 	public function theFileIsInTheTrash(): void {
 		$this->iMoveItToTheTrash();
@@ -172,6 +177,47 @@ trait DeleteSteps {
 			$this->davExists($this->currentFilePath),
 			"the file did not come back to $folder",
 		);
+	}
+
+	/**
+	 * THE n8n SIDE OF A TRASHED FILE, stated on its own line.
+	 *
+	 * Usually this is already true — trashing a sync file archives its workflow —
+	 * so the step ASSERTS rather than performs, and a scenario saying it is
+	 * declaring the pre-state it depends on rather than arranging something new. It
+	 * archives only when the workflow is still live, which is how an `unmapped`
+	 * file's scenario gets there: its workflow was archived by the move-out, long
+	 * before the trashing.
+	 *
+	 * The value of writing it down is that the three trash files read as a matrix:
+	 * every scenario says where the file is AND where the workflow is, so a reader
+	 * can see at a glance which combination is under test.
+	 *
+	 * @Given the workflow is in n8n's archive
+	 */
+	public function theWorkflowIsInN8nsArchive(): void {
+		$id = (string)$this->lastWorkflowId;
+		Assert::assertNotSame('', $id, 'no workflow under test');
+		$wf = $this->n8nGetWorkflow($id);
+		Assert::assertIsArray($wf, "workflow $id is gone from n8n, so it cannot be in the archive");
+		if (!(bool)($wf['isArchived'] ?? false)) {
+			$this->n8nArchiveWorkflow($id);
+		}
+	}
+
+	/** @Given the workflow is gone from n8n entirely */
+	public function theWorkflowIsGoneFromN8nEntirely(): void {
+		$id = (string)$this->lastWorkflowId;
+		Assert::assertNotSame('', $id, 'no workflow under test');
+		$this->n8nDeleteWorkflow($id);
+		Assert::assertNull($this->n8nGetWorkflow($id), "workflow $id is still in n8n");
+	}
+
+	/** @Given the workflow is live in n8n again */
+	public function theWorkflowIsLiveInN8nAgain(): void {
+		$id = (string)$this->lastWorkflowId;
+		Assert::assertNotSame('', $id, 'no workflow under test');
+		$this->n8nUnarchiveWorkflow($id);
 	}
 
 	/** @When I purge it from the trash */

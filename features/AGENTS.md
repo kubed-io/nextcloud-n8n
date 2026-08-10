@@ -438,6 +438,18 @@ rather than thorough: a `sync` mapping in an admin folder, a `link` mapping, and
 `sync` mapping in a Team Folder. Together they let one outline cover both modes
 and both storage kinds without arranging anything per-scenario.
 
+SAY WHERE THE THING IS IN BOTH SYSTEMS. A trashed file has a state in Nextcloud
+AND a state in n8n, and a scenario naming only one is hiding half its setup:
+
+    And the file is in the Nextcloud trash
+    And the workflow is in n8n's archive
+
+One line per place, each staging its own side. The payoff is that the three trash
+files read as a MATRIX — every scenario says where the file is and where the
+workflow is, so which combination is under test is visible without inferring it
+from the title. `the file is in the trash` left the n8n half to be guessed, and
+guessing is how "purging an unmapped file deletes its workflow" got written down.
+
 A `Given` STATES WHAT IS TRUE; IT DOES NOT PERFORM. Past tense is not a
 loophole — `I have moved it to the trash` and `I have changed the tags to …` are
 actions wearing a disguise, and a scenario with two gestures in it cannot say
@@ -612,14 +624,22 @@ restores the relationship, and nothing else pretends to.
 
 ### A workflow deleted in n8n leaves the trashed file alone
 
-A pull prunes mirrors whose workflow is gone — but a file in the TRASH is not a
-mirror any more, it is something a user is deciding about. Reaching into the
-trash to purge it because n8n changed would take that decision away, and the
-Nextcloud trash is the one place a user expects nothing to happen without them.
+A PURGE IN n8n DOES NOT PURGE THE NEXTCLOUD TRASH, and the reason is the one case
+that matters: once n8n has destroyed the workflow, the file in the Nextcloud trash
+is the LAST COPY OF IT IN EXISTENCE. Reaching in to delete that, on a schedule,
+unprompted, is the single most destructive thing this app could do.
 
-Written as the n8n-side gesture (`the workflow is permanently deleted in n8n`)
-rather than as a sync run, and it belongs here rather than in `delete.feature`
-because what it is really about is what a purge may and may not do.
+"A purge is a purge" is the tempting symmetry and it is wrong here. The penpot
+sibling settled this first and states it as a rule about the reconciler's field
+of view: it walks the mapped folder's directory listing, so a mirror already in
+the trash is not merely spared — it is NOT SEEN AT ALL. A whole class of question
+("both trashes hold it and then the remote purges — now what?") stops existing,
+because nothing was looking.
+
+THE PRICE IS NAMED THERE TOO: a workflow that comes back while its old mirror
+sits in the trash gets a NEW file beside the trashed one, because the pull cannot
+re-adopt what it cannot see. That is the trade — a duplicate you can delete,
+versus a deletion you cannot undo.
 
 ### Moving a duplicate in mints a brand-new workflow
 
