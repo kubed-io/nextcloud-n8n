@@ -9,7 +9,6 @@ declare(strict_types=1);
 
 namespace OCA\N8nSync\Tests\Integration\Steps;
 
-use Behat\Gherkin\Node\TableNode;
 use PHPUnit\Framework\Assert;
 
 /**

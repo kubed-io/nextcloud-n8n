@@ -49,6 +49,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Immutable fields on the admin cards no longer say "(fixed)".
 - The REST API card shows whether an API key is already stored.
 - Pushing a workflow's tags no longer costs one n8n call per tag.
+- Internal: every property the app stamps on a file is now proven read-only to WebDAV clients, not just the workflow id (no behaviour change).
 
 ### Fixed
 
