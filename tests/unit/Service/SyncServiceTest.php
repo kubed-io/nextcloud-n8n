@@ -502,7 +502,6 @@ final class SyncServiceTest extends TestCase {
 		self::assertSame(1, $res['succeeded']);
 	}
 
-
 	/** A managed File mock that asserts whether ::delete() is (or isn't) called. */
 	private function fileExpectDelete(int $id, string $name, bool $shouldDelete): File {
 		$node = $this->createMock(File::class);

@@ -22,7 +22,6 @@ use OCA\N8nSync\Tests\Integration\Steps\MappingSteps;
 use OCA\N8nSync\Tests\Integration\Steps\ModeChangeSteps;
 use OCA\N8nSync\Tests\Integration\Steps\MoveSteps;
 use OCA\N8nSync\Tests\Integration\Steps\OpenWithSteps;
-use OCA\N8nSync\Tests\Integration\Steps\PurgeSteps;
 use OCA\N8nSync\Tests\Integration\Steps\RenameSteps;
 use OCA\N8nSync\Tests\Integration\Steps\ReservedTagsSteps;
 use OCA\N8nSync\Tests\Integration\Steps\SyncSteps;
@@ -77,7 +76,6 @@ final class FeatureContext implements Context {
 	use DeleteSteps;
 	use MoveSteps;
 	use OpenWithSteps;
-	use PurgeSteps;
 	use CopySteps;
 	use ModeChangeSteps;
 	use SyncSteps;

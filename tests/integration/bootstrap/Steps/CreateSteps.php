@@ -194,8 +194,8 @@ trait CreateSteps {
 	 * The engine behind every "holds this DAV metadata" step, shared so `the file
 	 * holds:` and `the copy holds:` cannot drift into two vocabularies.
 	 *
-	 * @param array<string,callable(string,?string):void> $extra value keywords only
-	 *        the calling file needs, checked before the shared ones
+	 * @param array<string,callable(string,?string):void> $extra value keywords only the
+	 *        calling file needs, checked before the shared ones
 	 */
 	private function assertManagedMetadata(string $path, TableNode $table, array $extra = []): void {
 		foreach ($table->getRowsHash() as $key => $expected) {
@@ -212,7 +212,7 @@ trait CreateSteps {
 			// not usable here — the workflow was hard-deleted in n8n, or a sibling in the
 			// landing folder already tracks it. Both end with a fresh id, and asserting
 			// "different from what it arrived with" is what tells the two apart.
-			if ($expected === "its own, not the one it arrived with") {
+			if ($expected === 'its own, not the one it arrived with') {
 				Assert::assertNotNull($actual, "the file carries no $key — the move-in never registered it");
 				Assert::assertNotSame('', $actual, "the file has an empty $key");
 				Assert::assertNotSame(

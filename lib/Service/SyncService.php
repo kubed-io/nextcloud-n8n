@@ -624,7 +624,7 @@ final class SyncService {
 			}
 			$managed = $this->metadata->read($node->getId());
 			if ($managed?->isManaged()) {
-				// SyncGuard suppresses DeleteToN8nListener (§17.7). Purge cleans
+				// SyncGuard suppresses DeleteToN8nListener (§17.7). This cleans
 				// up the local mirror because the mapping is gone — n8n itself
 				// is untouched by definition, regardless of mode/writeback.
 				$this->guard->run(function () use ($node): void {
@@ -635,5 +635,4 @@ final class SyncService {
 		}
 		return $count;
 	}
-
 }

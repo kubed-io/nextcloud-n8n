@@ -422,7 +422,6 @@ trait MoveSteps {
 		Assert::assertSame($this->expectedArchived, (bool)($wf['isArchived'] ?? false), 'the workflow archived-state changed when it should not have');
 	}
 
-
 	/**
 	 * The workflow's tags on both surfaces, as one claim — see
 	 * {@see CopySteps::theCopysNormalTagsAre} for why they are asserted together.
