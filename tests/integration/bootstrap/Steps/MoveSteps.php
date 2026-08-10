@@ -267,6 +267,13 @@ trait MoveSteps {
 			throw new \RuntimeException("setup: the pulled file at {$this->collisionSyncedPath} is not in sync mode");
 		}
 
+		// THIS ARRANGE REDEFINES "the original". The file the Given made was moved out
+		// to become the incoming copy, so the file now standing in the mapping — the one
+		// the scenario's last line says must be untouched — is the mirror the pull just
+		// wrote. Re-point the role and re-baseline it here, while it is still pristine.
+		$this->originalPath = $this->collisionSyncedPath;
+		$this->copyOriginalBefore = $this->readManagedMetadata($this->collisionSyncedPath);
+
 		// The incoming copy (still unmapped, outside alpha) is what the scenario moves in next.
 		$this->currentFilePath = $this->collisionIncomingPath;
 		$this->lastWorkflowId = $this->collisionWorkflowId;

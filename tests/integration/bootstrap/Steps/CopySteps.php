@@ -56,7 +56,8 @@ trait CopySteps {
 		if (is_string($this->lastWorkflowId) && $this->lastWorkflowId !== '') {
 			$this->createdWorkflowIds[] = $this->lastWorkflowId;
 		}
-		$this->copyOriginalBefore = $this->readManagedMetadata($this->currentFilePath);
+		$this->originalPath = $this->currentFilePath;
+		$this->copyOriginalBefore = $this->readManagedMetadata($this->originalPath);
 	}
 
 	/**
@@ -119,14 +120,31 @@ trait CopySteps {
 	 * @Then the original file and its workflow are unchanged
 	 */
 	public function theOriginalIsUnchanged(): void {
-		Assert::assertSame(
-			$this->copyOriginalBefore,
-			$this->readManagedMetadata($this->currentFilePath),
-			"the copy changed the original's metadata",
-		);
+		if ($this->originalPath === '') {
+			throw new \RuntimeException('no original was captured — a Given must establish one');
+		}
+		$now = $this->readManagedMetadata($this->originalPath);
+		if ($now !== $this->copyOriginalBefore) {
+			// SPELLED OUT, NOT ASSERTED. A PHPUnit array diff inside Behat is eaten by
+			// the Registry TypeError (see MappingSteps::fail), and this step's message
+			// IS the diagnosis — it names which key drifted and to what.
+			$keys = array_unique([...array_keys($this->copyOriginalBefore), ...array_keys($now)]);
+			sort($keys);
+			$drift = [];
+			foreach ($keys as $key) {
+				$was = (string)($this->copyOriginalBefore[$key] ?? '');
+				$is = (string)($now[$key] ?? '');
+				if ($was !== $is) {
+					$drift[] = "$key: '$was' became '$is'";
+				}
+			}
+			throw new \RuntimeException(
+				"the original at {$this->originalPath} changed — " . implode('; ', $drift),
+			);
+		}
 		$id = (string)($this->copyOriginalBefore['n8n_id'] ?? '');
-		if ($id !== '') {
-			Assert::assertIsArray($this->n8nGetWorkflow($id), 'the original workflow disappeared from n8n');
+		if ($id !== '' && !is_array($this->n8nGetWorkflow($id))) {
+			throw new \RuntimeException("the original's workflow $id disappeared from n8n");
 		}
 	}
 
@@ -203,7 +221,7 @@ trait CopySteps {
 	 * @Then the copy's body is byte-for-byte the original's
 	 */
 	public function theCopysBodyIsByteForByteTheOriginals(): void {
-		$original = $this->davGet($this->currentFilePath);
+		$original = $this->davGet($this->originalPath);
 		$copy = $this->davGet($this->copyFilePath);
 		if ($original !== $copy) {
 			throw new \RuntimeException(
