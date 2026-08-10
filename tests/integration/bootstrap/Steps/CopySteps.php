@@ -196,36 +196,53 @@ trait CopySteps {
 	}
 
 	/**
-	 * THE BODY IS WHAT SURVIVES LEAVING, and this is the one assertion in the file
-	 * that reads the file's own bytes rather than its metadata or its pills.
+	 * NEXTCLOUD COPIES BYTES, so the copy's content is the original's content. The
+	 * app's whole contribution to a copy landing outside every mapping is what it
+	 * takes OFF — the identity — and this asserts it kept its hands off the rest.
 	 *
-	 * A copy landing outside every mapping is stripped of IDENTITY — the id, the
-	 * mapping, the mode, the hash — because none of that is true of it any more. Its
-	 * LABELS are not identity, so they stay, INCLUDING the tag of the mapping it came
-	 * from: out here that string binds nothing, and keeping it is a breadcrumb saying
-	 * where the file was born. It costs nothing and it is the only record left.
-	 *
-	 * Pills are not asserted, deliberately: Nextcloud does not copy system tags, so a
-	 * copy has none whatever the app does. The body is the surface that travels.
-	 *
-	 * @Then the copy's body still carries the tags :tags
+	 * @Then the copy's body is byte-for-byte the original's
 	 */
-	public function theCopysBodyStillCarriesTheTags(string $tags): void {
-		$want = array_values(array_filter(array_map('trim', explode(',', $tags))));
-		sort($want);
+	public function theCopysBodyIsByteForByteTheOriginals(): void {
+		$original = $this->davGet($this->currentFilePath);
+		$copy = $this->davGet($this->copyFilePath);
+		if ($original !== $copy) {
+			throw new \RuntimeException(
+				"the copy's body differs from the original's: " . strlen($original)
+				. ' bytes became ' . strlen($copy),
+			);
+		}
+	}
 
+	/**
+	 * THE INVARIANT A COPY WOULD OTHERWISE BREAK. Nextcloud copies bytes but not
+	 * system tags, so a copy lands with a `tags` array and no pills — and the app
+	 * promises those two agree for any `.n8n.json`, mapped or not. This asserts the
+	 * copy path put that right.
+	 *
+	 * @Then the copy's pills match its body
+	 */
+	public function theCopysPillsMatchItsBody(): void {
 		$wf = json_decode($this->davGet($this->copyFilePath), true);
-		Assert::assertIsArray($wf, "the copy at {$this->copyFilePath} is not JSON");
-		$got = [];
+		if (!is_array($wf)) {
+			throw new \RuntimeException("the copy at {$this->copyFilePath} is not JSON");
+		}
+		$body = [];
 		foreach ((array)($wf['tags'] ?? []) as $row) {
 			$name = is_array($row) ? (string)($row['name'] ?? '') : '';
 			if ($name !== '') {
-				$got[] = $name;
+				$body[] = $name;
 			}
 		}
-		sort($got);
+		sort($body);
+		$pills = $this->fileSystemTags($this->copyFilePath);
+		sort($pills);
 
-		Assert::assertSame($want, $got, "the copy's body tags are not what travelled with it");
+		if ($body !== $pills) {
+			throw new \RuntimeException(
+				"the copy's body says [" . implode(', ', $body) . '] but its pills say ['
+				. implode(', ', $pills) . ']',
+			);
+		}
 	}
 
 	/** @Then no workflow is created in n8n for the copy */

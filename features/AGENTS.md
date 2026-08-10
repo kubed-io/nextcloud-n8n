@@ -391,46 +391,42 @@ one `Examples` column for what the file carried, one `Then` for where it ended
 up. A copy that lands outside every mapping keeps its body tags too, and says so
 in the same shape.
 
-### A copy landing outside every mapping keeps its tags as a breadcrumb
+### A copy landing outside every mapping is a plain document
 
-IDENTITY IS STRIPPED; LABELS ARE NOT. A copy that lands outside every mapping
-loses its id, its mapping, its mode and its hash — none of which is true of it any
-more — but the tags in its BODY stay, and the one that proves it is the MAPPING
-TAG of the folder it came from.
+WHAT NEXTCLOUD WOULD DO decides the body: it copies BYTES. It does not read them,
+edit them, or strip anything out of them. So the app's whole contribution to a
+copy landing outside every mapping is what it takes OFF — the identity in the DAV
+metadata, which stopped being true the instant the copy existed.
 
-THE SCENARIO CARRIES ONLY THAT TAG, and CI is why. A file created in a mapped
-folder has its body rewritten from n8n's canonical row, and adoption does not yet
-read a file's own body tags (`create.feature`, `@unbuilt`) — so tags a person
-typed in do not survive becoming managed in the first place, let alone the copy.
-The mapping tag does survive, because n8n put it there. Asserting the rest was
-asserting adoption, in a scenario about copying.
+BUT A COPY BREAKS AN INVARIANT WE ALREADY PROMISED, and that is the interesting
+part. `pills ⇄ body, always, for any .n8n.json` (saga §5.10) is a rule this app
+made about every workflow file, mapped or not, because that pair needs no remote
+system. A copy is the one moment the two provably diverge: Nextcloud copies the
+bytes (so the `tags` array comes along) and does NOT copy system tags (so the
+copy has no pills). Doing nothing would leave every copy breaking our own rule
+the instant it existed.
 
-That last part looks wrong at a glance and is the point. A mapping tag only binds
-a workflow while the file is inside that mapping; out here the string binds
-nothing, so removing it would be tidying that destroys information. Kept, it is a
-breadcrumb: the only record left of where this file was born, in the one surface
-that survives being copied, moved, or carried out of Nextcloud entirely. And it
-means dropping the file back into that mapping later does the obvious thing.
+THE BODY WINS, WHICH IS THE SAME DIRECTION AS ADOPTION. The copy path derives the
+pills from the body it inherited. The alternative — strip the body's tags to match
+the empty pills — was rejected for a concrete reason: it would destroy the seed a
+copy landing IN a mapping is about to need, since adoption reads tags from the
+body and the body is the only surface that survives being copied at all. Copy and
+adoption are now two uses of one rule rather than two special cases.
 
-The step reads the FILE'S BYTES rather than its pills, and that is not an
-oversight either: Nextcloud does not copy system tags at all, so a copy has none
-whatever the app does. The body is the surface that travels — which is the same
-reason adoption reads tags from it.
+That also answers the "breadcrumb" question this scenario used to ask directly. A
+copy out of a mapped folder keeps whatever its body held, mapping tag included,
+and now wears it as a pill too — not because copy has a special rule about
+breadcrumbs, but because it follows the one rule that was already written down.
 
-THE ANTI-HIJACK CLAIM IS PRE/POST STATE AS WELL. `the original is unchanged`
-reads the original's whole managed surface before the copy and compares it
-after. It replaced three steps — the original keeps its id, its workflow is not
-restored, it is not duplicated — which were three ways of saying the original did
-not move. Stated as a comparison it is also stronger: it would catch a mode or a
-mapping id changing, which none of the three would have.
+AND THE OTHER END IS CLOSED TOO. The create path used to leave a file's body with
+no `tags` at all — n8n's schema forbids tags on create, so they go up in a second
+call, and nothing wrote them back down. That second call knows exactly what the
+workflow ends up carrying, so the body is written in the same breath and
+`pills ⇄ body` is true from the first instant rather than from the first sync.
 
-
-
-The copy's half of the same rule, in `workflows/copy.feature`. A copy is a NEW
-workflow with its own id — the file's identity is deliberately stripped — but the
-tags in its body are not identity, they are content, and they travel with the
-bytes. That is what makes the body the durable surface: pills would not survive
-the copy, and neither would metadata the copy is required to shed.
+The hash stamped for the writeback loop-guard is taken from the bytes the file
+holds AFTER that write. Taking it from the pre-tag bytes would make the very next
+save look like a fresh edit and push it straight back.
 
 ### Adoption takes the tags from the body alone
 

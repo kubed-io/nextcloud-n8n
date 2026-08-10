@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\N8nSync\Service;
 
+use OCA\N8nSync\AppInfo\Application;
 use OCP\Files\File;
 use Psr\Log\LoggerInterface;
 
@@ -40,6 +41,7 @@ final class CopyService {
 		private CreateService $createService,
 		private MappingService $mappings,
 		private WorkflowMetadata $metadata,
+		private TagSyncService $tagSync,
 		private SyncGuard $guard,
 		private LoggerInterface $logger,
 	) {
@@ -51,6 +53,7 @@ final class CopyService {
 	 */
 	public function onCopy(File $node): void {
 		$this->stripIdentity($node);
+		$this->adoptBodyTags($node);
 
 		$mapping = $this->mappings->resolveForPath($node->getPath());
 		if ($mapping === null) {
@@ -70,5 +73,46 @@ final class CopyService {
 		$this->guard->run(function () use ($node): void {
 			$this->metadata->clear($node->getId());
 		});
+	}
+
+	/**
+	 * Give the copy the pills its own body asks for.
+	 *
+	 * A COPY IS THE ONE MOMENT THE TWO NEXTCLOUD SURFACES PROVABLY DIVERGE, and the
+	 * app has already promised they do not: a file's pills and its `tags` array are
+	 * kept as one set, mapped or not, because that pair needs no remote system
+	 * (saga §5.10). Nextcloud copies BYTES — so the copy inherits the body's tags —
+	 * but it does not copy system tags, so the copy lands with none. Left alone,
+	 * every copy is a file breaking our own rule the instant it exists.
+	 *
+	 * THE BODY WINS, WHICH IS THE SAME DIRECTION AS ADOPTION. The body is the only
+	 * surface that survives being copied, moved, or carried out of Nextcloud, which
+	 * is exactly why adoption seeds n8n from it. Deriving the pills from it here
+	 * makes copy and adoption two uses of one rule rather than two special cases —
+	 * and it is why the alternative (stripping the body's tags to match the empty
+	 * pills) would be wrong: it would destroy the seed a copy landing in a mapping
+	 * is about to need.
+	 *
+	 * Purely local: no n8n call, nothing to fail over. If the copy then lands in a
+	 * mapping, {@see CreateService::createForFile} reads the same body and carries
+	 * the same tags up.
+	 */
+	private function adoptBodyTags(File $node): void {
+		try {
+			$decoded = json_decode($node->getContent(), true);
+			$tags = $this->tagSync->contentTagsFromWorkflow(is_array($decoded) ? $decoded : []);
+			if ($tags === []) {
+				return;
+			}
+			$this->guard->run(fn () => $this->tagSync->writeNcContentTags($node->getId(), $tags));
+		} catch (\Throwable $e) {
+			// The copy exists and its body is intact; pills that failed to land are
+			// cosmetic and the next reconcile settles them. Never fail a copy for this.
+			$this->logger->warning('n8n_sync copy: could not apply the body tags as pills', [
+				'app' => Application::APP_ID,
+				'fileId' => $node->getId(),
+				'exception' => $e,
+			]);
+		}
 	}
 }
