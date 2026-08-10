@@ -586,13 +586,29 @@ the end state it wanted is the end state that exists.
 The n8n-origin twin of a restore. The sync is how the news arrives, not the
 behaviour, so it is folded into the gesture.
 
-### Purging a file that left its mapping still deletes its workflow
+### An unmapped file is just a file
 
-Its workflow is archived rather than live, but it is still THE workflow this file
-was the source of truth for — and the user has now said the irreversible thing.
-`@unbuilt`: the hard-delete path reads the file's mode, which is `unmapped` by
-then, so it currently returns early and the archived workflow is left behind
-forever. That is a leak, and the scenario is where it is written down.
+UNMAPPED MEANS n8n IS NOT INVOLVED. Not "involved a bit less", not "involved for
+destructive operations only" — a file that has left its mapping is an ordinary
+Nextcloud document that happens to remember an id, and every gesture on it is
+Nextcloud's alone.
+
+I HAD THIS BACKWARDS AND WROTE IT DOWN AS A LEAK. The scenario said purging an
+unmapped file should permanently delete its archived workflow, on the reasoning
+that the workflow was still "the one this file was the source of truth for" and
+the user had said the irreversible thing. That is exactly the argument that makes
+it dangerous: the file is outside every mapping precisely BECAUSE the user took
+it out, and emptying a trash in Nextcloud is not consent to destroy something in
+another system that Nextcloud no longer claims to mirror.
+
+`DeleteService::hardDelete` already gets this right — it returns early for any
+mode that is not `sync`, so the archived workflow survives. The scenario is LIVE
+rather than `@unbuilt`, and it pins the behaviour so nobody "fixes" the early
+return into a leak.
+
+THE WAY BACK IS THE MOVE, and it is the only way: moving the file into a mapped
+folder unarchives its workflow and re-adopts it (`move.feature`). One gesture
+restores the relationship, and nothing else pretends to.
 
 ### A workflow deleted in n8n leaves the trashed file alone
 
