@@ -7,47 +7,51 @@ Feature: Looking at a workflow file
 
   Background:
     Given the app is connected to n8n
+    And a mapping with the following values:
+      | tag     | nextcloud:alpha |
+      | folder  | Automations     |
+      | mode    | sync            |
+      | storage | admin folder    |
+    And a mapping with the following values:
+      | tag     | nextcloud:links |
+      | folder  | Pointers        |
+      | mode    | link            |
+      | storage | admin folder    |
 
+  # notes: ../AGENTS.md#the-mappings-in-the-background
   # notes: ../AGENTS.md#view-workflow
+
+    # ── RULE: a mirror reads as a workflow, not as the JSON it happens to be ───
 
   @user @ui
   Scenario: A mapped folder shows its workflows as workflows
-    Given a folder mapped as "sync" to the n8n tag "nextcloud:alpha"
-    And n8n has workflows tagged "nextcloud:alpha"
-    And the "nextcloud:alpha" mapping has been synced
-    When the user views the contents of the mapped folder
+    Given a workflow file in "Automations"
+    And a workflow file in "Automations"
+    When I open "Automations" in the Files app
     Then the mapped folder shows the workflows with the n8n icon
     # notes: ../AGENTS.md#a-mapped-folder-shows-its-workflows-as-workflows
 
+    # ── RULE: a client can read what the app knows about the file ──────────────
+
   @user @dav
   Scenario Outline: Viewing the DAV properties on a file shows n8n specific details
-    Given a mapping with the following values:
-      | tag    | <tag>    |
-      | mode   | <mode>   |
-      | folder | <folder> |
-    And a workflow "<workflow>" mirrored into that folder
+    Given a workflow file in "<folder>"
     When a WebDAV client requests the file's properties
-    Then the response carries the properties the app manages:
-      | property                   | value             |
-      | nc:metadata-n8n_id         | the workflow's id |
-      | nc:metadata-n8n_mapping    | the mapping's id  |
-      | nc:metadata-n8n_mode       | <stored mode>     |
-      | nc:metadata-n8n_versionId  | set               |
-      | nc:metadata-n8n_syncedHash | set               |
+    Then the file holds this DAV metadata:
+      | n8n_id         | the workflow's id  |
+      | n8n_mapping    | the mapping's id   |
+      | n8n_mode       | the mapping's mode |
+      | n8n_versionId  | set                |
+      | n8n_syncedHash | set                |
 
     Examples: both modes a mapping can hold
-      | mode | stored mode | tag                 | folder    | workflow |
-      | sync | sync        | nextcloud:view-sync | bananacat | fuzzler  |
-      | link | reference   | nextcloud:view-link | applepie  | wobbler  |
+      | folder      |
+      | Automations |
+      | Pointers    |
 
     # notes: ../AGENTS.md#viewing-the-dav-properties-on-a-file-shows-n8n-specific-details
 
-  @user @dav
-  Scenario: What the app manages, only the app changes
-    Given a managed workflow file
-    When a client tries to change "nc:metadata-n8n_id" via PROPPATCH
-    Then the change is rejected — the sync engine owns these properties
-    # notes: ../AGENTS.md#what-the-app-manages-only-the-app-changes
+    # ── RULE: what n8n holds is readable without a mirror ──────────────────────
 
   @admin @occ
   Scenario: Listing the workflows n8n holds
@@ -68,6 +72,7 @@ Feature: Looking at a workflow file
   # notes: ../AGENTS.md#finding-workflows-by-their-mode
   @user @dav @blocked
   Scenario: Finding workflows by their mode
-    Given a "sync" workflow file and a "link" workflow file in the same user's storage
+    Given a workflow file in "Automations"
+    And a workflow file in "Pointers"
     When a DAV REPORT searches for files where "nc:metadata-n8n_mode" is "sync"
-    Then only the sync file is returned
+    Then only the file in "Automations" is returned

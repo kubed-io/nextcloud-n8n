@@ -686,4 +686,74 @@ trait SyncSteps {
 			}
 		}
 	}
+
+	// ── the metadata is the app's record: a client may read it, never write it ──
+
+	/** @var array<string,array{status:int,body:string,before:?string}> one entry per property tried */
+	private array $proppatchAttempts = [];
+
+	/**
+	 * EVERY PROPERTY THE APP STAMPS, not a representative one. They are immutable as
+	 * a set — a single writable key would let a client rewrite the app's record of
+	 * what it last agreed with n8n, and the next sync would believe it.
+	 *
+	 * @When a client tries to change every property the app stamps via PROPPATCH
+	 */
+	public function aClientTriesToChangeEveryManagedProperty(): void {
+		if ($this->currentFilePath === '') {
+			throw new \RuntimeException('no file to tamper with — a Given must arrange one');
+		}
+		$this->proppatchAttempts = [];
+		foreach (self::MANAGED_KEYS as $key) {
+			$before = $this->davReadMetadata($this->currentFilePath, $key);
+			$res = $this->davProppatch($this->currentFilePath, $key, 'tampered-by-client');
+			$this->proppatchAttempts[$key] = [
+				'status' => $res->getStatusCode(),
+				'body' => (string)$res->getBody(),
+				'before' => $before,
+			];
+		}
+	}
+
+	/**
+	 * Nextcloud reports a forbidden prop as a 403 INSIDE the 207 multistatus, so the
+	 * outer status alone proves nothing — the body has to be read for the refusal.
+	 * The values themselves are the caller's next assertion, stated in the feature as
+	 * the metadata table, so this step only claims the refusal.
+	 *
+	 * @Then every change is refused
+	 */
+	public function everyChangeIsRefused(): void {
+		if ($this->proppatchAttempts === []) {
+			throw new \RuntimeException('nothing was tried — the When did not run');
+		}
+		$accepted = [];
+		foreach ($this->proppatchAttempts as $key => $attempt) {
+			$refused = $attempt['status'] >= 400
+				|| str_contains($attempt['body'], '403')
+				|| stripos($attempt['body'], 'forbidden') !== false;
+			if (!$refused) {
+				$accepted[] = "$key (HTTP {$attempt['status']})";
+			}
+		}
+		if ($accepted !== []) {
+			throw new \RuntimeException(
+				'PROPPATCH was not refused for: ' . implode(', ', $accepted)
+				. ' — these properties must be read-only to every client',
+			);
+		}
+	}
+
+	/** Attempt to set one nc:metadata-* prop via PROPPATCH; returns the raw response. */
+	private function davProppatch(string $path, string $key, string $value): \Psr\Http\Message\ResponseInterface {
+		$prop = 'metadata-' . $key;
+		$body = '<?xml version="1.0"?>'
+			. '<d:propertyupdate xmlns:d="DAV:" xmlns:nc="http://nextcloud.org/ns">'
+			. '<d:set><d:prop><nc:' . $prop . '>' . htmlspecialchars($value, ENT_XML1) . '</nc:' . $prop . '></d:prop></d:set>'
+			. '</d:propertyupdate>';
+		return $this->davClient()->request('PROPPATCH', $this->davEncode($path), [
+			'headers' => ['Content-Type' => 'application/xml'],
+			'body' => $body,
+		]);
+	}
 }

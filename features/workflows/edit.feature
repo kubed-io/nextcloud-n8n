@@ -42,6 +42,21 @@ Feature: Editing a workflow
     Then the workflow in n8n still holds the nodes it had
     And the workflow in n8n is "archived, hidden but preserved"
 
+    # ── RULE: the metadata is the app's record, and nobody else may edit it ────
+
+  # notes: ../AGENTS.md#what-the-app-manages-only-the-app-changes
+  @user @dav
+  Scenario: A client cannot edit the metadata the app stamps
+    Given a workflow file in "Automations"
+    When a client tries to change every property the app stamps via PROPPATCH
+    Then every change is refused
+    And the file holds this DAV metadata:
+      | n8n_id         | the workflow's id  |
+      | n8n_mapping    | the mapping's id   |
+      | n8n_mode       | the mapping's mode |
+      | n8n_versionId  | set                |
+      | n8n_syncedHash | set                |
+
     # ── RULE: an edit made in n8n reaches the mirror, dates and all ────────────
     # notes: ../AGENTS.md#an-edit-made-in-n8n-reaches-the-mirror
 
