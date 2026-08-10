@@ -184,7 +184,7 @@ def expansions(text, examples):
 # undefined-step pass below, which skips any step still holding a `<placeholder>`.
 outline_holes = []
 
-undefined = []
+undefined, ambiguous = [], []
 for feature in features:
     lines = feature.read_text(encoding='utf-8').splitlines()
     feature_tags, tags = set(), set()
@@ -245,8 +245,14 @@ for feature in features:
             for concrete in expansions(text, examples):
                 if '<' in concrete:
                     continue  # a placeholder with no Examples column to fill it
-                if not any(c.match(concrete) for c in compiled):
+                hits = [p for c, p in zip(compiled, patterns) if c.match(concrete)]
+                if not hits:
                     undefined.append(f'{feature.relative_to(root / "features")}: {concrete}')
+                elif len(hits) > 1:
+                    ambiguous.append(
+                        f'{feature.relative_to(root / "features")}: {concrete}\n'
+                        + '\n'.join(f'        matches: {h}' for h in hits)
+                    )
 
 if outline_holes:
     fail = True
@@ -255,6 +261,21 @@ if outline_holes:
     for h in outline_holes:
         print(f'    {h}')
     print('  Give it an Examples table, or make it a plain Scenario.')
+
+# TWO DEFINITIONS MATCHING ONE STEP is a failure Behat reports at RUN time, and
+# this check could not see it: it only ever asked whether a step matched at all.
+# `the original is unchanged` was also matched by `the :key is unchanged` — the
+# `:name` placeholder happily eats the word "original" — so the step was defined
+# twice over and every scenario using it died with "Ambiguous match", after a
+# full integration leg had booted a Nextcloud and an n8n to find out.
+if ambiguous:
+    fail = True
+    print('\u2718 AMBIGUOUS STEPS — more than one definition matches these, which Behat')
+    print('  reports as a failure at run time, after the whole stack has booted:')
+    for a in ambiguous:
+        print(f'    {a}')
+    print('  Reword one of them. A `:name` placeholder matches any single token,')
+    print('  so a short generic phrase can swallow a longer specific one.')
 
 if undefined:
     fail = True

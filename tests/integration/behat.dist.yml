@@ -70,6 +70,8 @@ default:
       - '%paths.base%/../../features/workflows/create.feature'
       - '%paths.base%/../../features/workflows/copy.feature'
       - '%paths.base%/../../features/workflows/delete.feature'
+      - '%paths.base%/../../features/workflows/restore.feature'
+      - '%paths.base%/../../features/workflows/purge.feature'
       - '%paths.base%/../../features/workflows/edit.feature'
       - '%paths.base%/../../features/workflows/move.feature'
       - '%paths.base%/../../features/workflows/rename.feature'
@@ -84,7 +86,6 @@ default:
       paths:
       - '%paths.base%/../../features/workflows/view.feature'
       - '%paths.base%/../../features/workflows/open-with.feature'
-      - '%paths.base%/../../features/workflows/purge.feature'
       - '%paths.base%/../../features/lifecycle.feature'
       contexts: *contexts
 

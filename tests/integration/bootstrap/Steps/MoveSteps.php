@@ -19,6 +19,9 @@ use PHPUnit\Framework\Assert;
  * Composed into {@see \OCA\N8nSync\Tests\Integration\FeatureContext}.
  */
 trait MoveSteps {
+	/** The id the moving file carried IN, for telling a mint from a restore. */
+	private string $idArrivedWith = '';
+
 	/**
 	 * A managed sync/link file in one of the Background's mapped folders, addressed
 	 * by its TAG. Kept for copy/purge/reserved-tags, which still declare their
@@ -47,10 +50,19 @@ trait MoveSteps {
 		$this->arrangeManagedFileIn($folder, $mode);
 	}
 
-	/** Shared body of the two arranges above. */
+	/**
+	 * Shared body of the two arranges above.
+	 *
+	 * THE NAME IS UNIQUE PER SCENARIO, and it has to be. It was a fixed
+	 * `Mover.n8n.json`, which was fine while one scenario per run moved a file into
+	 * a given folder — the moment two did, the second MOVE hit the first's leftover
+	 * and Nextcloud refused it with a 412 before this app saw anything. The failure
+	 * reads as a storage or permissions problem and is neither.
+	 */
 	private function arrangeManagedFileIn(string $folder, string $mode): void {
 		$this->currentFolder = $folder;
-		$this->putManagedFile($this->currentFolder . '/Mover.n8n.json', 'Mover');
+		$name = 'Mover-' . bin2hex(random_bytes(3));
+		$this->putManagedFile($this->currentFolder . '/' . $name . '.n8n.json', $name);
 		$this->lastVersionId = $this->davReadMetadata($this->currentFilePath, self::META_VERSION_ID);
 		$this->expectedArchived = false; // sync/link create leaves the workflow live
 	}
@@ -131,9 +143,18 @@ trait MoveSteps {
 
 	/** @When I move the file into :folder */
 	public function iMoveTheFileInto(string $folder): void {
+		// THE ID IT ARRIVED WITH, pinned before the move overwrites it. A move-in can
+		// MINT a new workflow, and `its own, not the one it arrived with` has to
+		// compare against what the file carried IN — re-reading afterwards compares the
+		// new id with itself, which passes for a restore and fails for a mint.
+		$this->idArrivedWith = (string)($this->davReadMetadataId($this->currentFilePath) ?? '');
 		$dest = $folder . '/' . basename($this->currentFilePath);
 		$this->davMove($this->currentFilePath, $dest);
 		$this->currentFilePath = $dest;
+		// THE FILE IS SOMEWHERE ELSE NOW, and the metadata table resolves "the
+		// mapping's id" from where the file IS. Leaving this pointing at the source
+		// asked which mapping owns the folder the file just left.
+		$this->currentFolder = $folder;
 		$this->expectedArchived = false; // move-in restores (unarchives) the workflow
 		// A move-in can MINT a workflow: create-on-land for an untracked file, or the
 		// create-fallback when the old id was hard-deleted in n8n. Re-capture whatever
@@ -201,8 +222,9 @@ trait MoveSteps {
 	 * alpha (id W) and the original, now unmapped, copy waits outside (also id W).
 	 *
 	 * @Given an unmapped copy of that same workflow with the same :key outside any mapping
+	 * @Given an unmapped copy of that same workflow with the same :key in :folder
 	 */
-	public function anUnmappedCopyOfThatSameWorkflow(string $key): void {
+	public function anUnmappedCopyOfThatSameWorkflow(string $key, string $folder = ''): void {
 		Assert::assertNotNull($this->lastWorkflowId, 'no workflow id from the managed sync file');
 		$this->collisionWorkflowId = $this->lastWorkflowId;
 
@@ -214,11 +236,9 @@ trait MoveSteps {
 
 		// Move the synced file OUT → it becomes the unmapped copy (id preserved, workflow archived).
 		$this->iMoveTheFileToAnUnmappedFolder();
-		Assert::assertSame(
-			'unmapped',
-			$this->davReadMetadata($this->currentFilePath, self::META_MODE),
-			'setup: the moved-out copy is not unmapped',
-		);
+		if ($this->davReadMetadata($this->currentFilePath, self::META_MODE) !== 'unmapped') {
+			throw new \RuntimeException('setup: the moved-out copy is not unmapped');
+		}
 		$this->collisionIncomingPath = $this->currentFilePath;
 
 		// Bring the workflow back to life and pull the mapping so a fresh SYNCED file is
@@ -226,17 +246,33 @@ trait MoveSteps {
 		$this->n8nUnarchiveWorkflow($this->collisionWorkflowId);
 		$this->runMappingSync('pull', $sourceTag);
 
-		$this->collisionSyncedPath = $sourceFolder . '/Mover.n8n.json';
-		Assert::assertSame(
-			$this->collisionWorkflowId,
-			$this->davReadMetadataId($this->collisionSyncedPath),
-			'setup: the pulled synced file does not carry the shared workflow id',
-		);
-		Assert::assertSame(
-			'sync',
-			$this->davReadMetadata($this->collisionSyncedPath, self::META_MODE),
-			'setup: the pulled file is not in sync mode',
-		);
+		// FOUND BY WORKFLOW ID, not by filename. This assumed `Mover.n8n.json`, the name
+		// one arrange happened to use — so the moment a scenario arranged its file any
+		// other way, the setup asserted against a path that was never written and the
+		// failure read as "the pulled file does not carry the shared id". The pull also
+		// names a mirror after its WORKFLOW, so the filename is n8n's to choose anyway.
+		$this->collisionSyncedPath = '';
+		foreach ($this->propfindWorkflowIds($sourceFolder) as $href => $wid) {
+			if ($wid === $this->collisionWorkflowId) {
+				$this->collisionSyncedPath = $this->hrefToFilesPath((string)$href);
+				break;
+			}
+		}
+		if ($this->collisionSyncedPath === '') {
+			throw new \RuntimeException(
+				"setup: the pull wrote no file for workflow {$this->collisionWorkflowId} into $sourceFolder",
+			);
+		}
+		if ($this->davReadMetadata($this->collisionSyncedPath, self::META_MODE) !== 'sync') {
+			throw new \RuntimeException("setup: the pulled file at {$this->collisionSyncedPath} is not in sync mode");
+		}
+
+		// THIS ARRANGE REDEFINES "the original". The file the Given made was moved out
+		// to become the incoming copy, so the file now standing in the mapping — the one
+		// the scenario's last line says must be untouched — is the mirror the pull just
+		// wrote. Re-point the role and re-baseline it here, while it is still pristine.
+		$this->originalPath = $this->collisionSyncedPath;
+		$this->copyOriginalBefore = $this->readManagedMetadata($this->collisionSyncedPath);
 
 		// The incoming copy (still unmapped, outside alpha) is what the scenario moves in next.
 		$this->currentFilePath = $this->collisionIncomingPath;
@@ -419,6 +455,33 @@ trait MoveSteps {
 		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
 		Assert::assertIsArray($wf, "workflow {$this->lastWorkflowId} unexpectedly disappeared from n8n");
 		Assert::assertSame($this->expectedArchived, (bool)($wf['isArchived'] ?? false), 'the workflow archived-state changed when it should not have');
+	}
+
+	/**
+	 * The workflow's tags on both surfaces, as one claim — see
+	 * {@see CopySteps::theCopysNormalTagsAre} for why they are asserted together.
+	 * This one reads the file the move landed, rather than a copy.
+	 *
+	 * @Then the workflow's normal tags are :tags in n8n and in Nextcloud
+	 */
+	public function theMovedWorkflowsNormalTagsAre(string $tags): void {
+		$want = array_values(array_filter(array_map('trim', explode(',', $tags))));
+		sort($want);
+
+		$mappingTag = $this->mappingTagForFolder($this->currentFolder);
+		$strip = fn (array $names): array => array_values(array_filter(
+			$names,
+			static fn (string $n): bool => $n !== '' && $n !== $mappingTag,
+		));
+
+		$id = (string)$this->davReadMetadataId($this->currentFilePath);
+		Assert::assertNotSame('', $id, 'the moved file has no workflow to read tags from');
+		$inN8n = $strip($this->n8nWorkflowTagNames($id));
+		sort($inN8n);
+		$inNextcloud = $strip($this->fileSystemTags($this->currentFilePath));
+		sort($inNextcloud);
+
+		Assert::assertSame(['n8n' => $want, 'Nextcloud' => $want], ['n8n' => $inN8n, 'Nextcloud' => $inNextcloud]);
 	}
 
 	/** @Then the move is refused with a message */

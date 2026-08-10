@@ -624,7 +624,7 @@ final class SyncService {
 			}
 			$managed = $this->metadata->read($node->getId());
 			if ($managed?->isManaged()) {
-				// SyncGuard suppresses DeleteToN8nListener (§17.7). Purge cleans
+				// SyncGuard suppresses DeleteToN8nListener (§17.7). This cleans
 				// up the local mirror because the mapping is gone — n8n itself
 				// is untouched by definition, regardless of mode/writeback.
 				$this->guard->run(function () use ($node): void {
@@ -634,59 +634,5 @@ final class SyncService {
 			}
 		}
 		return $count;
-	}
-
-	/**
-	 * The admin "Purge Nextcloud files" action (purge.feature): remove every
-	 * **restorable** managed file — `sync` and `link`, whose workflow is still live
-	 * and tagged in n8n — from every mapping's folder, so a later "Sync from n8n"
-	 * brings them all back. n8n is never contacted (the delete runs under SyncGuard,
-	 * which suppresses {@see \OCA\N8nSync\Listener\DeleteToN8nListener}).
-	 *
-	 * Deliberately KEEPS anything a pull could not restore, so purge can never cost
-	 * data: `unmapped` files (their workflow is archived in n8n — they are the
-	 * user's standalone copies / templates) and untracked `.n8n.json`
-	 * (a plain document the app never created). Recurses subfolders.
-	 *
-	 * @return array{deleted:int, kept:int}
-	 */
-	public function purge(): array {
-		$deleted = 0;
-		$kept = 0;
-		foreach ($this->mappings->list() as $mapping) {
-			$folder = $this->storage->findFolder($mapping);
-			if ($folder === null) {
-				continue;
-			}
-			$this->purgeFolder($folder, $deleted, $kept);
-		}
-		return ['deleted' => $deleted, 'kept' => $kept];
-	}
-
-	/** Recursive worker for {@see purge()}. */
-	private function purgeFolder(Folder $folder, int &$deleted, int &$kept): void {
-		foreach ($folder->getDirectoryListing() as $node) {
-			if ($node instanceof Folder) {
-				$this->purgeFolder($node, $deleted, $kept);
-				continue;
-			}
-			if (!FilenameCodec::isWorkflowFile($node)) {
-				continue;
-			}
-			$managed = $this->metadata->read($node->getId());
-			if ($managed === null || !$managed->isManaged()) {
-				continue; // untracked .n8n.json — the user's own, leave it
-			}
-			// Only sync/link can be restored by a pull; an unmapped file's workflow is
-			// archived in n8n (a pull won't bring it back), so it is kept standalone.
-			if (!$managed->isSync() && !$managed->isLink()) {
-				$kept++;
-				continue;
-			}
-			$this->guard->run(function () use ($node): void {
-				$node->delete();
-			});
-			$deleted++;
-		}
 	}
 }

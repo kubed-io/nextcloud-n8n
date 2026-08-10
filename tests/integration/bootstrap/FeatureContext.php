@@ -22,7 +22,6 @@ use OCA\N8nSync\Tests\Integration\Steps\MappingSteps;
 use OCA\N8nSync\Tests\Integration\Steps\ModeChangeSteps;
 use OCA\N8nSync\Tests\Integration\Steps\MoveSteps;
 use OCA\N8nSync\Tests\Integration\Steps\OpenWithSteps;
-use OCA\N8nSync\Tests\Integration\Steps\PurgeSteps;
 use OCA\N8nSync\Tests\Integration\Steps\RenameSteps;
 use OCA\N8nSync\Tests\Integration\Steps\ReservedTagsSteps;
 use OCA\N8nSync\Tests\Integration\Steps\SyncSteps;
@@ -77,7 +76,6 @@ final class FeatureContext implements Context {
 	use DeleteSteps;
 	use MoveSteps;
 	use OpenWithSteps;
-	use PurgeSteps;
 	use CopySteps;
 	use ModeChangeSteps;
 	use SyncSteps;
@@ -137,6 +135,16 @@ final class FeatureContext implements Context {
 	/** State carried between steps within a scenario. */
 	private string $currentFolder = '';
 	private string $currentFilePath = '';
+	/**
+	 * THE FILE THE SCENARIO CALLS "the original" — which is NOT $currentFilePath.
+	 *
+	 * $currentFilePath is a cursor: it follows whatever the last gesture touched, so
+	 * a move or a rename repoints it. "The original" is a role, and it has to stay
+	 * put while the gesture happens somewhere else, or a post-condition about the
+	 * original silently reads the thing that just moved. Kept apart so an arrange
+	 * that redefines which file plays the role can say so.
+	 */
+	private string $originalPath = '';
 	private ?string $lastWorkflowId = null;
 	private string $currentTag = '';
 	private int $lastDeleteStatus = 0;
@@ -210,6 +218,7 @@ final class FeatureContext implements Context {
 		$this->createdFolders = [];
 		$this->currentFolder = '';
 		$this->currentFilePath = '';
+		$this->originalPath = '';
 		$this->lastWorkflowId = null;
 	}
 }

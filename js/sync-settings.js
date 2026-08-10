@@ -21,41 +21,12 @@
 		root.dataset.bound = '1';
 
 		root.addEventListener('click', function (e) {
-			var purgeBtn = e.target.closest('.js-purge');
-			if (purgeBtn) { purge(purgeBtn); return; }
 			var btn = e.target.closest('.js-run');
 			if (!btn) { return; }
 			var row = btn.closest('.n8n-sync-manual__row');
 			if (!row) { return; }
 			run(row, btn);
 		});
-	}
-
-	// Purge: delete the restorable (sync/link) files this app created. Destructive,
-	// so confirm first. Synchronous + local (no n8n), so a plain POST → toast counts.
-	function purge(btn) {
-		var ok = window.confirm(t('n8n_sync',
-			'Remove the sync & link workflow files this app created from Nextcloud? '
-			+ 'n8n is not touched, and you can restore them with “Sync from n8n”. '
-			+ 'Unmapped and standalone files are kept.'));
-		if (!ok) { return; }
-		var prev = btn.textContent;
-		btn.disabled = true;
-		btn.textContent = t('n8n_sync', 'Purging…');
-		api('POST', OC.generateUrl('/apps/n8n_sync/sync/purge'))
-			.then(function (res) {
-				flash('success', t('n8n_sync', 'Removed {deleted} file(s); kept {kept}.', {
-					deleted: (res && res.deleted) || 0,
-					kept: (res && res.kept) || 0,
-				}));
-			})
-			.catch(function (err) {
-				flash('error', (err && err.message) || t('n8n_sync', 'Purge failed.'));
-			})
-			.then(function () {
-				btn.disabled = false;
-				btn.textContent = prev;
-			});
 	}
 
 	// Bulk sync is asynchronous: the POST enqueues a background job and returns

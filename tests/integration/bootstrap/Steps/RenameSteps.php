@@ -20,22 +20,31 @@ use PHPUnit\Framework\Assert;
  */
 trait RenameSteps {
 	/**
-	 * Create a managed sync file with a specific name (so the rename has a known
-	 * "before"). Reuses the create-on-land path: a WebDAV PUT into a sync mapping.
+	 * A workflow file with a known name in a NAMED folder — the "before" half of
+	 * every rename here. The Background says what the folder is, so this arrange does
+	 * not restate the mode.
 	 *
-	 * @Given a managed :mode workflow file named :filename
+	 * @Given a workflow file named :filename in :folder
+	 * @Given a workflow file named :filename in a subfolder of :folder
 	 */
-	public function aManagedWorkflowFileNamed(string $mode, string $filename): void {
-		$tag = 'nextcloud:rename-' . bin2hex(random_bytes(3));
-		$this->setupSyncMappingAndFolder($mode, $tag);
+	public function aWorkflowFileNamedIn(string $filename, string $folder): void {
+		if (str_contains((string)func_get_arg(1), 'subfolder')) {
+			$folder .= '/Nested';
+		}
+		$this->davMkdir($folder);
+		$this->currentFolder = $folder;
 		$stem = preg_replace('/\.n8n\.json$/', '', $filename) ?? $filename;
-		$this->putManagedFile($this->currentFolder . '/' . $filename, $stem);
+		$this->putManagedFile($folder . '/' . $filename, $stem);
 	}
 
 	/**
-	 * Create a managed sync file with a generated name. The same step text backs
-	 * the "…file", "…file with a known n8n_id" phrasings — all we need is a
-	 * managed sync file; the extra clauses are just narrative.
+	 * A managed file with a generated name, in a mapping of its own.
+	 *
+	 * KEPT FOR THE FILES THAT HAVE NOT BEEN CONVERTED YET — `delete.feature` and
+	 * friends still say "a managed sync workflow file" without naming a folder,
+	 * which works because this arrange makes one for them. Files brought up to the
+	 * standard say where their file is instead, and use the folder-named arrange
+	 * above.
 	 *
 	 * @Given a managed :mode workflow file
 	 * @Given a managed :mode workflow file with a known :key
@@ -55,7 +64,10 @@ trait RenameSteps {
 		$this->drainJobs('OCA\\N8nSync\\BackgroundJob\\ReconcileNameJob');
 	}
 
-	/** @When I edit the file and change the JSON :field field to :value */
+	/**
+	 * @When I change the JSON :field field to :value
+	 * @When I edit the file and change the JSON :field field to :value
+	 */
 	public function iEditTheJsonField(string $field, string $value): void {
 		$body = (string)$this->davGet($this->currentFilePath);
 		// Object decode, because this PUTs the whole body back: an assoc round-trip
@@ -102,10 +114,41 @@ trait RenameSteps {
 		$this->currentFilePath = $expected;
 	}
 
-	/** @When the file is renamed by any of the above means */
-	public function theFileIsRenamedByAnyMeans(): void {
-		// Exercise the filename→everywhere path (the simplest of the two).
-		$this->iRenameTheFileTo('Renamed Link Check.n8n.json');
+	/**
+	 * THE WHOLE POINT OF THIS FILE, IN ONE ASSERTION: the name is the same value in
+	 * all three places it lives — the filename stem, the JSON `name`, and the
+	 * workflow in n8n.
+	 *
+	 * It replaced three separate `Then`s that each checked one place, and a fourth
+	 * (`Renaming never breaks the link`) that checked the id survived. Split up, a
+	 * scenario could assert two of the three and look complete while the third had
+	 * drifted — which is the only failure mode that matters here, since any one of
+	 * them being right is not the claim. The claim is that they AGREE.
+	 *
+	 * @Then the name is :name in the filename, the JSON, and n8n
+	 */
+	public function theNameIsEverywhere(string $name): void {
+		$expected = $this->currentFolder . '/' . $name . '.n8n.json';
+		Assert::assertTrue($this->davExists($expected), "expected the file at $expected, but it isn't there");
+		$this->currentFilePath = $expected;
+
+		$body = (string)$this->davGet($this->currentFilePath);
+		$wf = json_decode($body, true);
+		Assert::assertIsArray($wf, "file is not JSON:\n$body");
+
+		Assert::assertNotNull($this->lastWorkflowId, 'no workflow id captured');
+		$remote = $this->n8nGetWorkflow($this->lastWorkflowId);
+		Assert::assertIsArray($remote, "n8n has no workflow {$this->lastWorkflowId}");
+
+		Assert::assertSame(
+			['filename' => $name, 'JSON' => $name, 'n8n' => $name],
+			[
+				'filename' => basename($this->currentFilePath, '.n8n.json'),
+				'JSON' => (string)($wf['name'] ?? ''),
+				'n8n' => (string)($remote['name'] ?? ''),
+			],
+			'the three places a name lives do not agree',
+		);
 	}
 
 	/** @Then the :key metadata is unchanged */

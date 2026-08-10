@@ -81,6 +81,17 @@ final class CreateService {
 			is_array($decoded = json_decode($content, true)) ? $decoded : [],
 		));
 
+		// THE BODY DOES NOT LEARN ITS TAGS HERE, AND IT CANNOT. n8n's schema forbids
+		// `tags` on create, so they go up in a SECOND call — and that call knows exactly
+		// what the workflow ends up carrying, so writing them straight into the file
+		// looks obvious. It is not possible from here: this runs INSIDE the handler for
+		// the very write that created the file, so `putContent()` on the same node hits
+		// Nextcloud's lock and the whole create fails. Tried; it took out every arrange
+		// in the suite that lands a file in a mapped folder.
+		//
+		// The body catches up on the first pull, which rewrites it from n8n's canonical
+		// row. Until then `pills ⇄ body` holds trivially — both are empty.
+		//
 		// Re-fetch ourselves the new content if n8n re-shaped anything?
 		// No — POST /workflows echoes the body back as-stored, so the file the
 		// user wrote is what's now in n8n. Use the original $content for the

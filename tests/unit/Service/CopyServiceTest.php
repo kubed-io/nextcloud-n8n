@@ -14,6 +14,7 @@ use OCA\N8nSync\Service\CreateService;
 use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\MappingService;
 use OCA\N8nSync\Service\SyncGuard;
+use OCA\N8nSync\Service\TagSyncService;
 use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\Files\File;
 use PHPUnit\Framework\Attributes\CoversClass;
@@ -52,6 +53,7 @@ final class CopyServiceTest extends TestCase {
 			$this->createService,
 			$this->mappings,
 			$this->metadata,
+			$this->createStub(TagSyncService::class),
 			$guard,
 			new NullLogger(),
 		);

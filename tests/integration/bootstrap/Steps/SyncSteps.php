@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\N8nSync\Tests\Integration\Steps;
 
+use Behat\Gherkin\Node\TableNode;
 use PHPUnit\Framework\Assert;
 
 /**
@@ -30,6 +31,9 @@ use PHPUnit\Framework\Assert;
  * Composed into {@see \OCA\N8nSync\Tests\Integration\FeatureContext}.
  */
 trait SyncSteps {
+	/** The node name written by the last file edit, for the writeback assertions. */
+	private string $editedNodeName = '';
+
 	/** The workflow whose mapping tag was stripped, for the prune assertion. */
 	private string $untaggedWorkflowId = '';
 
@@ -128,30 +132,167 @@ trait SyncSteps {
 		$this->davPut($this->reconcileUnmappedPath, $this->reconcileUnmappedBody);
 	}
 
-	/** @Given the :tag folder has sync workflow files with local changes */
-	public function theFolderHasSyncFilesWithLocalChanges(string $tag): void {
-		$folder = $this->folderNameForTag($tag);
-		// Two files authored in NC → create-on-land registers each as a workflow.
-		foreach (['Pushable-One', 'Pushable-Two'] as $base) {
-			$path = $folder . '/' . $base . '-' . bin2hex(random_bytes(3)) . '.n8n.json';
-			$this->putManagedFile($path, $base);
-			$id = $this->lastWorkflowId;
-			Assert::assertNotNull($id, "managed file $path was not stamped with an n8n_id");
-			// Make a LOCAL change the push must carry up: rename the workflow body.
-			$changed = json_encode([
-				'name' => 'Locally Changed ' . $base,
-				'nodes' => [],
-				'connections' => new \stdClass(),
-				'settings' => new \stdClass(),
-			], JSON_THROW_ON_ERROR);
-			$this->davPut($path, $changed);
-			$this->reconcileSyncFiles[$path] = $id;
-		}
-		$this->currentFolder = $folder;
-		$this->currentTag = $tag;
+	// ── When ──────────────────────────────────────────────────────────────────
+
+	/**
+	 * Edit the file's nodes and save it — the gesture a person actually performs.
+	 *
+	 * The push is folded in, as everywhere else: nobody edits a workflow in order to
+	 * run a push, and whether the writeback happens inline or on the worker's next
+	 * tick is our plumbing. The job is drained so the step behaves the same under
+	 * either `timing`.
+	 *
+	 * @When I edit the file's nodes and save
+	 */
+	public function iEditTheFilesNodesAndSave(): void {
+		$path = $this->currentFilePath;
+		// Object decode: an assoc round-trip flattens the empty `connections` and
+		// `settings` objects to `[]`, which n8n rejects on the next push.
+		$wf = json_decode($this->davGet($path), false, 512, JSON_THROW_ON_ERROR);
+		Assert::assertInstanceOf(\stdClass::class, $wf, "managed file at $path is not a JSON object");
+		$this->editedNodeName = 'Edited-' . bin2hex(random_bytes(3));
+		$wf->nodes = [(object)[
+			'name' => $this->editedNodeName,
+			'type' => 'n8n-nodes-base.noOp',
+			'typeVersion' => 1,
+			'position' => [0, 0],
+			'parameters' => new \stdClass(),
+		]];
+		$this->davPut($path, json_encode($wf, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT));
+		$this->drainJobs('OCA\\N8nSync\\BackgroundJob\\PushWorkflowJob');
 	}
 
-	// ── When ──────────────────────────────────────────────────────────────────
+	/**
+	 * Someone edits the workflow in n8n and the news reaches the mirror — the pull
+	 * folded into the gesture, as everywhere else.
+	 *
+	 * @When someone edits the workflow's nodes in n8n
+	 */
+	public function someoneEditsTheWorkflowInN8n(): void {
+		$id = (string)$this->davReadMetadataId($this->currentFilePath);
+		Assert::assertNotSame('', $id, 'no workflow behind the file under test');
+		$wf = $this->n8nGetWorkflow($id);
+		Assert::assertIsArray($wf, "workflow $id is gone from n8n");
+
+		$this->editedNodeName = 'EditedInN8n-' . bin2hex(random_bytes(3));
+		$this->n8nUpdateWorkflow($id, [
+			'name' => (string)($wf['name'] ?? 'Edited'),
+			'nodes' => [(object)[
+				'name' => $this->editedNodeName,
+				'type' => 'n8n-nodes-base.noOp',
+				'typeVersion' => 1,
+				'position' => [0, 0],
+				'parameters' => new \stdClass(),
+			]],
+			'connections' => new \stdClass(),
+			'settings' => new \stdClass(),
+		]);
+		$this->runMappingSync('pull', $this->currentTag);
+	}
+
+	/**
+	 * THE MIRROR WEARS ITS WORKFLOW'S CLOCK, not the sync's. A mirrored folder whose
+	 * files all say "modified a few seconds ago" after every scheduled run is a
+	 * folder where a real edit is invisible, which is the bug this pins.
+	 *
+	 * @Then the file's "Modified" is when the workflow last changed in n8n
+	 */
+	public function theFilesModifiedIsTheWorkflowsUpdatedAt(): void {
+		$id = (string)$this->davReadMetadataId($this->currentFilePath);
+		$wf = $this->n8nGetWorkflow($id);
+		Assert::assertIsArray($wf, "workflow $id is gone from n8n");
+		$updatedAt = strtotime((string)($wf['updatedAt'] ?? ''));
+		Assert::assertIsInt($updatedAt, 'n8n did not report an updatedAt to compare against');
+		Assert::assertSame(
+			$updatedAt,
+			$this->davReadTime($this->currentFilePath, 'getlastmodified'),
+			"the mirror's Modified is not the workflow's updatedAt",
+		);
+	}
+
+	/** @Then the file holds the workflow's nodes as n8n has them */
+	public function theFileHoldsTheWorkflowsNodes(): void {
+		$wf = json_decode($this->davGet($this->currentFilePath), true);
+		Assert::assertIsArray($wf, 'the mirror is not JSON');
+		$names = [];
+		foreach ((array)($wf['nodes'] ?? []) as $node) {
+			if (is_array($node) && is_string($node['name'] ?? null)) {
+				$names[] = $node['name'];
+			}
+		}
+		Assert::assertSame([$this->editedNodeName], $names, 'the mirror does not carry the nodes n8n has');
+	}
+
+	/**
+	 * A LINK'S BODY, SAID OUT LOUD. "does not hold the workflow" was a negative that
+	 * never named what IS there — and what is there is a specific, documented shape:
+	 * an `n8n.reference/v1` pointer carrying the id, the name and a deep link.
+	 *
+	 * @Then the file holds a pointer:
+	 */
+	public function theFileHoldsAPointer(TableNode $table): void {
+		$body = json_decode($this->davGet($this->currentFilePath), true);
+		Assert::assertIsArray($body, 'the link is not JSON');
+		Assert::assertArrayNotHasKey('nodes', $body, 'a link carries the workflow body; it should hold only a pointer');
+
+		$id = (string)$this->davReadMetadataId($this->currentFilePath);
+		$wf = $this->n8nGetWorkflow($id);
+		Assert::assertIsArray($wf, "workflow $id is gone from n8n");
+
+		foreach ($table->getRowsHash() as $key => $expected) {
+			$actual = (string)($body[trim($key)] ?? '');
+			$want = match (trim($expected)) {
+				"the workflow's id" => $id,
+				"the workflow's name" => (string)($wf['name'] ?? ''),
+				'a deep link to it in n8n' => null,
+				default => trim($expected),
+			};
+			if ($want === null) {
+				Assert::assertStringContainsString($id, $actual, "$key is not a deep link to the workflow");
+				continue;
+			}
+			Assert::assertSame($want, $actual, "the pointer's $key is wrong");
+		}
+	}
+
+	/**
+	 * THE EDIT ARRIVED: n8n's workflow carries the node the file now carries.
+	 *
+	 * Compares NODE NAMES rather than whole bodies, because n8n rewrites parts of
+	 * what it is given (ids, versionId, its own timestamps) and a byte comparison
+	 * would fail for reasons that have nothing to do with the edit.
+	 *
+	 * @Then the workflow in n8n holds the file's nodes
+	 */
+	public function theWorkflowHoldsWhatTheFileHolds(): void {
+		Assert::assertContains(
+			$this->editedNodeName,
+			$this->n8nWorkflowNodeNames((string)$this->davReadMetadataId($this->currentFilePath)),
+			'the edit never reached n8n',
+		);
+	}
+
+	/** @Then the workflow in n8n still holds the nodes it had */
+	public function theWorkflowDoesNotHoldWhatTheFileHolds(): void {
+		Assert::assertNotContains(
+			$this->editedNodeName,
+			$this->n8nWorkflowNodeNames((string)$this->davReadMetadataId($this->currentFilePath)),
+			'an edit outside every mapping reached n8n anyway',
+		);
+	}
+
+	/** The node names on a workflow in n8n. @return list<string> */
+	private function n8nWorkflowNodeNames(string $id): array {
+		$wf = $this->n8nGetWorkflow($id);
+		Assert::assertIsArray($wf, "workflow $id is gone from n8n");
+		$names = [];
+		foreach ((array)($wf['nodes'] ?? []) as $node) {
+			if (is_array($node) && is_string($node['name'] ?? null)) {
+				$names[] = $node['name'];
+			}
+		}
+		return $names;
+	}
 
 	/**
 	 * THE TRIGGER IS DATA, NOT A BEHAVIOUR. Three ways to start one sync — the
@@ -174,11 +315,6 @@ trait SyncSteps {
 		}
 
 		$this->runMappingSync('pull', $scope === 'one mapping' ? $this->currentTag : null);
-	}
-
-	/** @When the admin pushes to n8n */
-	public function theAdminPushesToN8n(): void {
-		$this->runMappingSync('push', $this->currentTag);
 	}
 
 	/**
@@ -378,24 +514,6 @@ trait SyncSteps {
 	}
 
 	// ── Then (push) ───────────────────────────────────────────────────────────
-
-	/** @Then each sync file in the folder is pushed to its workflow in n8n */
-	public function eachSyncFileIsPushedToItsWorkflow(): void {
-		Assert::assertNotEmpty($this->reconcileSyncFiles, 'no sync files were set up to push');
-		foreach ($this->reconcileSyncFiles as $path => $id) {
-			$wf = $this->n8nGetWorkflow($id);
-			Assert::assertIsArray($wf, "workflow $id (from $path) is gone from n8n");
-			Assert::assertStringContainsString('Locally Changed', (string)($wf['name'] ?? ''), "the local change to $path was not pushed up to workflow $id");
-		}
-	}
-
-	/** @Then /^the unmapped file is not pushed \(it is outside the mapping's scope\)$/ */
-	public function theUnmappedFileIsNotPushed(): void {
-		// It carries no n8n_id, so there is nothing in n8n to mirror; it must also
-		// be left exactly as planted (a push never reaches outside the mapping).
-		Assert::assertTrue($this->davExists($this->reconcileUnmappedPath), 'the unmapped file vanished during a push');
-		Assert::assertSame($this->reconcileUnmappedBody, $this->davGet($this->reconcileUnmappedPath), 'the unmapped file was modified by a push');
-	}
 
 	// ── helpers: drive the occ sync surface ───────────────────────────────────
 

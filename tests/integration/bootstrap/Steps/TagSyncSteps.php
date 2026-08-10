@@ -143,14 +143,13 @@ trait TagSyncSteps {
 	 * step that silently dropped it would unbind the workflow as a side effect of
 	 * every scenario in this file.
 	 *
-	 * TWO PHRASINGS, ONE FUNCTION. `I have changed …` is the same gesture read as a
-	 * pre-state — a scenario needs both when the Nextcloud change is the ARRANGE and
-	 * something else is the action. Behat ignores the keyword when matching, so the
-	 * two sentences must genuinely differ or they register as one duplicate step and
-	 * fail every scenario in the suite.
+	 * ONE PHRASING, AND IT IS A `When`. There used to be a past-tense twin here for
+	 * scenarios that needed the tag change as an arrange — but a Given states what is
+	 * TRUE, and "I have changed the tags" is an action wearing the past tense. Any
+	 * scenario needing that pre-state should say what the tags ARE instead, which the
+	 * arrange already takes as an argument.
 	 *
 	 * @When I change the Nextcloud tags to :tags
-	 * @Given I have changed the Nextcloud tags to :tags
 	 */
 	public function iChangeTheNextcloudTagsTo(string $tags): void {
 		$this->applyNextcloudTags(self::tagList($tags));
@@ -410,7 +409,7 @@ trait TagSyncSteps {
 	 * is gone" reads identically whether the app unmirrored it or deleted it.
 	 *
 	 * NAMED FOR WHAT IT ASSERTS, not for its sentence: `theWorkflowStillExistsInN8n`
-	 * is already PurgeSteps', and two traits composed into one context may not both
+	 * was already another trait's, and two traits composed into one context may not both
 	 * define a method name — PHP fatals on the collision before Behat sees a single
 	 * step, so every leg dies at once with a message about traits rather than tests.
 	 *
