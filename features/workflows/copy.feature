@@ -7,36 +7,64 @@ Feature: Copying a workflow file always makes a new instance
 
   Background:
     Given the app is connected to n8n
-    And a folder mapped as "sync" to the n8n tag "nextcloud:alpha"
+    And a mapping with the following values:
+      | tag     | nextcloud:demo |
+      | folder  | Demo           |
+      | mode    | sync           |
+      | storage | admin folder   |
+    And a mapping with the following values:
+      | tag     | nextcloud:pointers |
+      | folder  | Pointers           |
+      | mode    | link               |
+      | storage | admin folder       |
+    And a mapping with the following values:
+      | tag     | nextcloud:shared |
+      | folder  | Shared           |
+      | mode    | sync             |
+      | storage | team folder      |
+      | groups  | admin            |
+    And a folder "Scratch" that is not mapped
+
+    # ── RULE: the copy belongs to where it LANDS, never to where it came from ──
+    # notes: ../AGENTS.md#the-copy-belongs-to-where-it-lands
 
   @user @in-nextcloud @gesture @ui
-  Scenario: Copy within a mapped sync folder becomes a new workflow in n8n
-    Given a managed "sync" workflow file in the "nextcloud:alpha" folder
-    When I copy the file within the "nextcloud:alpha" folder
-    Then the copy carries no inherited "n8n_id"
-    And the copy is registered as a NEW workflow in n8n with its own id
-    And the original file and workflow are unchanged
-    And there are now two distinct workflows in n8n
+  Scenario Outline: A copy landing in a mapped folder is a brand-new workflow there
+    Given a workflow file in "<source>" whose tags are "<tags>"
+    When I copy the file into "<destination>"
+    Then the copy holds this DAV metadata:
+      | n8n_id         | its own, not the original's |
+      | n8n_mapping    | the mapping's id            |
+      | n8n_mode       | the mapping's mode          |
+      | n8n_versionId  | set                         |
+      | n8n_syncedHash | set                         |
+    And the copy's normal tags are "<tags>" in n8n and in Nextcloud
+    And the copy's workflow carries the "<destination>" mapping tag, and no other mapping's
+    And the original is unchanged
 
+    Examples: within one mapping, the binding is simply kept
+      | source  | destination | tags          |
+      | Demo    | Demo        | prod, billing |
+      | Scratch | Demo        | prod, billing |
+
+    Examples: and across mappings it is REPLACED — the copy belongs where it landed
+      | source   | destination | tags |
+      | Demo     | Pointers    |      |
+      | Demo     | Shared      | prod |
+      | Pointers | Demo        | prod |
+
+  # notes: ../AGENTS.md#a-copy-landing-outside-every-mapping-keeps-its-tags-as-a-breadcrumb
   @user @in-nextcloud @gesture @ui
-  Scenario: Copy to outside any mapping is a plain untracked file
-    Given a managed "sync" workflow file in the "nextcloud:alpha" folder
-    When I copy the file to a folder that is not mapped
-    Then the copy has no n8n metadata
+  Scenario Outline: A copy landing outside every mapping is a plain document
+    Given a workflow file in "<source>" whose tags are "prod"
+    When I copy the file into "Scratch"
+    Then the copy holds no n8n DAV metadata at all
     And no workflow is created in n8n for the copy
-    And the copy is treated as a plain document
+    And the copy's body still carries the tags "<tags left in the body>"
+    And the original is unchanged
 
-  @user @in-nextcloud @gesture @ui
-  Scenario: Copy of an unmapped file strips its metadata wherever it lands
-    Given an unmapped workflow file that still carries its "n8n_id"
-    When I copy the file to a folder that is not mapped
-    Then the copy has no n8n metadata
-    And the original unmapped file keeps its "n8n_id"
-
-  @user @in-nextcloud @gesture @ui
-  Scenario: Copy of an unmapped file into a mapping becomes a new workflow
-    Given an unmapped workflow file that still carries its "n8n_id"
-    When I copy the file into the "nextcloud:alpha" folder
-    Then the copy carries no inherited "n8n_id"
-    And the copy is registered as a NEW workflow in n8n with its own id
-    And the original unmapped file's workflow is not restored or duplicated
+    Examples: the identity is stripped; the labels are not
+      | source   | tags left in the body    |
+      | Demo     | prod, nextcloud:demo     |
+      | Pointers | prod, nextcloud:pointers |
+      | Scratch  | prod                     |

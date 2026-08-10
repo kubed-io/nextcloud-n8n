@@ -201,8 +201,9 @@ trait MoveSteps {
 	 * alpha (id W) and the original, now unmapped, copy waits outside (also id W).
 	 *
 	 * @Given an unmapped copy of that same workflow with the same :key outside any mapping
+	 * @Given an unmapped copy of that same workflow with the same :key in :folder
 	 */
-	public function anUnmappedCopyOfThatSameWorkflow(string $key): void {
+	public function anUnmappedCopyOfThatSameWorkflow(string $key, string $folder = ''): void {
 		Assert::assertNotNull($this->lastWorkflowId, 'no workflow id from the managed sync file');
 		$this->collisionWorkflowId = $this->lastWorkflowId;
 
@@ -419,6 +420,53 @@ trait MoveSteps {
 		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
 		Assert::assertIsArray($wf, "workflow {$this->lastWorkflowId} unexpectedly disappeared from n8n");
 		Assert::assertSame($this->expectedArchived, (bool)($wf['isArchived'] ?? false), 'the workflow archived-state changed when it should not have');
+	}
+
+	/**
+	 * Move the file OUT to a named folder as a PRE-STATE — the past-tense twin of the
+	 * move-out gesture, for a scenario whose action is the move back IN.
+	 *
+	 * A Given may not perform the behaviour under test, but it may state what is
+	 * already true; "this file has been out of its mapping for a while" is exactly
+	 * that, and arranging it any other way would mean hand-stamping metadata the app
+	 * is supposed to own.
+	 *
+	 * @Given I have moved it out to :folder
+	 */
+	public function iHaveMovedItOutTo(string $folder): void {
+		$this->iMoveTheFileIntoFolder($folder);
+		Assert::assertSame(
+			'unmapped',
+			$this->davReadMetadata($this->currentFilePath, self::META_MODE),
+			"setup: the file moved out to $folder is not unmapped",
+		);
+	}
+
+	/**
+	 * The workflow's tags on both surfaces, as one claim — see
+	 * {@see CopySteps::theCopysNormalTagsAre} for why they are asserted together.
+	 * This one reads the file the move landed, rather than a copy.
+	 *
+	 * @Then the workflow's normal tags are :tags in n8n and in Nextcloud
+	 */
+	public function theMovedWorkflowsNormalTagsAre(string $tags): void {
+		$want = array_values(array_filter(array_map('trim', explode(',', $tags))));
+		sort($want);
+
+		$mappingTag = $this->mappingTagForFolder($this->currentFolder);
+		$strip = fn (array $names): array => array_values(array_filter(
+			$names,
+			static fn (string $n): bool => $n !== '' && $n !== $mappingTag,
+		));
+
+		$id = (string)$this->davReadMetadataId($this->currentFilePath);
+		Assert::assertNotSame('', $id, 'the moved file has no workflow to read tags from');
+		$inN8n = $strip($this->n8nWorkflowTagNames($id));
+		sort($inN8n);
+		$inNextcloud = $strip($this->fileSystemTags($this->currentFilePath));
+		sort($inNextcloud);
+
+		Assert::assertSame(['n8n' => $want, 'Nextcloud' => $want], ['n8n' => $inN8n, 'Nextcloud' => $inNextcloud]);
 	}
 
 	/** @Then the move is refused with a message */

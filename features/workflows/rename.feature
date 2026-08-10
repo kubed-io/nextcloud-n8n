@@ -1,93 +1,74 @@
 # Notes, decisions and history for this feature: ../AGENTS.md#workflowsrename
 
-Feature: Renaming keeps file, JSON, and n8n in agreement
+Feature: Renaming keeps the file, the JSON, and n8n in agreement
   As a Nextcloud user
-  I want renames to propagate everywhere
+  I want a rename made anywhere to reach the other two places
   So that the file name, its JSON name, and the n8n workflow name never drift
 
   Background:
-    Given the app is installed and enabled
+    Given the app is connected to n8n
+    And a mapping with the following values:
+      | tag     | nextcloud:alpha |
+      | folder  | Automations     |
+      | mode    | sync            |
+      | storage | admin folder    |
+    And a mapping with the following values:
+      | tag     | nextcloud:links |
+      | folder  | Pointers        |
+      | mode    | link            |
+      | storage | admin folder    |
+
+    # ── RULE: a name is one value living in three places ───────────────────────
+    # notes: ../AGENTS.md#a-name-is-one-value-living-in-three-places
 
   @user @in-nextcloud @gesture @ui
-  Scenario: Renaming the file updates the backend JSON name and n8n
-    Given a managed "sync" workflow file named "Old Name.n8n.json"
+  Scenario: Renaming the file carries the new name into the JSON and n8n
+    Given a workflow file named "Old Name.n8n.json" in "Automations"
     When I rename the file to "New Name.n8n.json"
-    Then the JSON "name" field inside the file becomes "New Name"
-    And the workflow is renamed to "New Name" in n8n
+    Then the name is "New Name" in the filename, the JSON, and n8n
+    And the file holds this DAV metadata:
+      | n8n_id      | the workflow's id |
+      | n8n_mapping | the mapping's id  |
 
   @user @in-nextcloud @gesture @ui
-  Scenario: Editing the JSON name renames the file and updates n8n
-    Given a managed "sync" workflow file
-    When I edit the file and change the JSON "name" field to "Renamed In JSON"
-    Then the file is renamed to "Renamed In JSON.n8n.json"
-    And the workflow is renamed to "Renamed In JSON" in n8n
+  Scenario: Editing the name inside the file renames the file and the workflow
+    Given a workflow file named "Old Name.n8n.json" in "Automations"
+    When I change the JSON "name" field to "New Name"
+    Then the name is "New Name" in the filename, the JSON, and n8n
+    And the file holds this DAV metadata:
+      | n8n_id      | the workflow's id |
+      | n8n_mapping | the mapping's id  |
 
-  @user @in-nextcloud @gesture @ui
-  Scenario: Renaming never breaks the link
-    Given a managed "sync" workflow file with a known "n8n_id"
-    When the file is renamed by any of the above means
-    Then the "n8n_id" metadata is unchanged
-
-    # notes: ../AGENTS.md#renaming-a-workflow-in-n8n-renames-the-mirrored-file
-
+  # notes: ../AGENTS.md#a-rename-made-in-n8n-reaches-the-mirrored-file
   @n8n @in-n8n @occ @todo
-  Scenario: Renaming a workflow in n8n renames the mirrored file
-    Given a managed "sync" workflow file named "Old Name.n8n.json"
+  Scenario Outline: A rename made in n8n reaches the mirrored file
+    Given a workflow file named "Old Name.n8n.json" in "<folder>"
     When the workflow is renamed to "New Name" in n8n
-    And the "nextcloud:alpha" mapping is pulled
-    Then the file is renamed to "New Name.n8n.json"
-    And the "n8n_id" metadata is unchanged
-    And no second file is created for the same workflow
+    Then the name is "New Name" in the filename, the JSON, and n8n
+    And the file holds this DAV metadata:
+      | n8n_id      | the workflow's id |
+      | n8n_mapping | the mapping's id  |
+    And there is exactly one file for that workflow
+
+    Examples: a link's body is a pointer, but its NAME still mirrors
+      | folder      |
+      | Automations |
+      | Pointers    |
+
+    # ── RULE: a workflow always has a name, so the app never has to invent one ──
+    # notes: ../AGENTS.md#a-workflow-always-has-a-name
+
+  @user @in-nextcloud @gesture @ui @unbuilt
+  Scenario: A rename to a blank name is refused
+    Given a workflow file named "Old Name.n8n.json" in "Automations"
+    When I rename the file to a name that is only whitespace
+    Then the rename is refused
+    And the name is "Old Name" in the filename, the JSON, and n8n
 
   @n8n @in-n8n @occ @todo
-  Scenario: A rename in n8n reaches a link the same way
-    Given a managed "link" workflow file named "Old Name.n8n.json"
-    When the workflow is renamed to "New Name" in n8n
-    And the "nextcloud:links" mapping is pulled
-    Then the file is renamed to "New Name.n8n.json"
-    # A link holds a pointer rather than the workflow, but its NAME still mirrors —
-    # the filename is how a human finds it, and that is true in either mode.
-
-  @n8n @in-n8n @occ @todo
-  Scenario: The app never invents a substitute name
-    Given a workflow in n8n whose name is empty
-    When the "nextcloud:alpha" mapping is pulled
+  Scenario: A workflow that arrives from n8n with no name is filed under its id
+    Given n8n holds a workflow tagged "nextcloud:alpha" whose name is empty
+    When the "nextcloud:alpha" mapping is synced
     Then the file is named after the workflow id
     # Falling back to the id is honest and reversible. Inventing "Untitled" would
     # collide the moment a second nameless workflow appeared.
-
-  @n8n @in-n8n @occ @todo
-  Scenario: A renamed workflow keeps its place in a subfolder
-    Given a managed "sync" workflow file moved into a subfolder of its mapping
-    When the workflow is renamed to "New Name" in n8n
-    And the "nextcloud:alpha" mapping is pulled
-    Then the file is renamed in the subfolder it was in
-    # The pull renames within the file's OWN folder. Yanking it back to the mapping
-    # root because the name changed would undo a deliberate user gesture.
-
-    # ══ THE EDGES OF A NEXTCLOUD-SIDE RENAME ═══════════════════════════════════
-
-  @user @in-nextcloud @gesture @ui @todo
-  Scenario: Renaming an untracked ".n8n.json" file is not a failure
-    Given an untracked ".n8n.json" file outside every mapped folder
-    When I rename it
-    Then the rename succeeds
-    And n8n is not contacted
-
-  @user @in-nextcloud @gesture @ui @todo
-  Scenario: A failed propagation never reverts the local rename
-    Given a managed "sync" workflow file named "Old Name.n8n.json"
-    And n8n is unreachable
-    When I rename the file to "New Name.n8n.json"
-    Then the file stays renamed in Nextcloud
-    And the workflow name in n8n is retried on the next sync
-    # notes: ../AGENTS.md#a-failed-propagation-never-reverts-the-local-rename
-
-  @user @in-nextcloud @gesture @ui @unbuilt
-  Scenario: A rename to an empty or whitespace-only name is refused
-    Given a managed "sync" workflow file
-    When I rename the file to a name that is only whitespace
-    Then the rename is refused
-    And n8n is not contacted
-    # n8n requires a name on a workflow, so sending a blank one would 400. Refusing
-    # locally keeps the failure where the user can see it.

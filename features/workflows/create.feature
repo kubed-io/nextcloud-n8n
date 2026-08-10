@@ -7,69 +7,46 @@ Feature: Create a workflow from Nextcloud
 
   Background:
     Given the app is connected to n8n
+    And a mapping with the following values:
+      | tag     | nextcloud:demo |
+      | folder  | Demo           |
+      | mode    | sync           |
+      | storage | admin folder   |
+    And a mapping with the following values:
+      | tag     | nextcloud:pointers |
+      | folder  | Pointers           |
+      | mode    | link               |
+      | storage | admin folder       |
+    And a mapping with the following values:
+      | tag     | nextcloud:shared |
+      | folder  | Shared           |
+      | mode    | sync             |
+      | storage | team folder      |
+      | groups  | admin            |
+    And a folder "Scratch" that is not mapped
+
+    # ── RULE: a workflow file in a mapped folder IS a workflow ─────────────────
 
   @user @in-nextcloud @gesture @ui
-  Scenario: New file in a mapped sync folder becomes a real workflow
-    Given a folder mapped as "sync" to the n8n tag "nextcloud:demo"
-    When I create a new ".n8n.json" file in that folder via the Files "New" menu
+  Scenario Outline: New file in a mapped folder becomes a real workflow
+    When I create a new ".n8n.json" file in "<folder>" via the Files "New" menu
     Then a matching workflow is created in n8n
-    And the workflow carries the "nextcloud:demo" tag
-    And the file is stamped with the workflow's "n8n_id"
-    And the file carries its n8n metadata
+    And the workflow carries the mapping's tag
+    And the file holds this DAV metadata:
+      | n8n_id         | the workflow's id  |
+      | n8n_mapping    | the mapping's id   |
+      | n8n_mode       | the mapping's mode |
+      | n8n_versionId  | set                |
+      | n8n_syncedHash | set                |
+
+    Examples: the folder is the whole input — the Background said what each one is
+      | folder   |
+      | Demo     |
+      | Pointers |
+      | Shared   |
 
   @user @in-nextcloud @gesture @ui
   Scenario: A workflow file created outside any mapped folder stays unmanaged
-    Given a folder that is not mapped
-    When I create a ".n8n.json" file in that folder
+    When I create a ".n8n.json" file in "Scratch"
     Then no workflow is created in n8n
-    And the file has no "n8n_id" metadata
-    And the file is treated as a plain document (unmapped state)
-
-    # notes: ../AGENTS.md#a-file-that-arrives-with-tags-in-its-body-carries-them-into-n8n
-
-  @user @in-nextcloud @gesture @ui @unbuilt
-  Scenario: A file that arrives with tags in its body carries them into n8n
-    Given a folder mapped as "sync" to the n8n tag "nextcloud:demo"
-    And a ".n8n.json" file whose body carries the tags "prod", "billing", and "critical"
-    When I place that file in the mapped folder
-    Then a matching workflow is created in n8n
-    And the workflow carries the tags "prod", "billing", "critical", and "nextcloud:demo"
-    And the file has the Nextcloud system tags "prod", "billing", and "critical"
-    And every tag in the file body carries an n8n id
-    # The mapping tag JOINS them — adoption is additive, never a replace. The body
-    # arrives with bare {name} entries and n8n mints the ids: loose by design.
-
-  @user @in-nextcloud @gesture @ui @unbuilt
-  Scenario: A file that arrives with no tags adopts with only the mapping tag
-    Given a folder mapped as "sync" to the n8n tag "nextcloud:demo"
-    And a ".n8n.json" file whose body carries no tags
-    When I place that file in the mapped folder
-    Then the workflow carries only the "nextcloud:demo" tag
-    # Nothing to seed. A missing `tags` array is not an error.
-
-  @user @in-nextcloud @gesture @ui @unbuilt
-  Scenario: A round trip out of Nextcloud and back keeps the workflow's tags
-    Given a folder mapped as "sync" to the n8n tag "nextcloud:demo"
-    And a managed workflow file tagged "prod" and "billing"
-    When the file is copied out of Nextcloud and its workflow is deleted in n8n
-    And the copy is placed back in the mapped folder
-    Then the workflow recreated in n8n carries the tags "prod", "billing", and "nextcloud:demo"
-    # notes: ../AGENTS.md#a-round-trip-out-of-nextcloud-and-back-keeps-the-workflows-tags
-
-  @user @in-nextcloud @gesture @ui @unbuilt
-  Scenario: Adoption takes the tags from the body alone
-    Given a folder mapped as "sync" to the n8n tag "nextcloud:demo"
-    And a ".n8n.json" file whose body carries the tag "prod"
-    When I place that file in the mapped folder
-    Then the tags are taken from the body alone
-    And no existing workflow's tags are read to decide them
-    # There is no baseline and no remote counterpart yet, so there is nothing to
-    # merge against — the three-way merge does not apply at adoption.
-
-  # notes: ../AGENTS.md#a-file-created-in-a-nested-mapping-belongs-to-the-nearest-one
-  @user @in-nextcloud @gesture @ui @todo
-  Scenario: A file created in a nested mapping belongs to the nearest one
-    Given a folder mapped to the n8n tag "nextcloud:outer"
-    And a subfolder of it mapped to the n8n tag "nextcloud:inner"
-    When I create a new workflow file in the subfolder
-    Then the file belongs to the "nextcloud:inner" mapping, not "nextcloud:outer"
+    And the file holds no n8n DAV metadata at all

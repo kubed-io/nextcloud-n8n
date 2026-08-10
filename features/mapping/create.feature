@@ -75,6 +75,23 @@ Feature: Admin configures folder mappings
     # notes: ../AGENTS.md#an-n8n-tag-may-only-be-mapped-once
 
 
+  # notes: ../AGENTS.md#a-folder-inside-another-mappings-folder-may-not-be-mapped
+  @admin @occ @ui @unbuilt
+  Scenario Outline: A folder inside another mapping's folder may not be mapped
+    Given a mapping with the following values:
+      | tag    | nextcloud:alpha |
+      | folder | alpha           |
+    When the admin maps the tag "nextcloud:beta" with:
+      | folder | <folder> |
+    Then the mapping is rejected
+    And the refusal explains "already inside"
+    And there is exactly 1 configured mapping
+
+    Examples: at any depth, and in either direction
+      | folder            |
+      | alpha/nested      |
+      | alpha/deep/nested |
+
   @admin @occ @ui @unbuilt
   Scenario: Two mappings may not target the same folder
     Given a mapping with the following values:

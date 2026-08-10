@@ -60,6 +60,61 @@ trait DeleteSteps {
 		$this->lastDeleteStatus = $this->davDeleteStatus($this->currentFilePath);
 	}
 
+	/**
+	 * The trashing as a PRE-STATE — for a scenario whose action is the restore or
+	 * the purge that follows. Past tense, because a Given states what is already
+	 * true rather than performing the behaviour under test.
+	 *
+	 * @Given I have moved it to the trash
+	 */
+	public function iHaveMovedItToTheTrash(): void {
+		$this->iMoveItToTheTrash();
+		Assert::assertNotNull(
+			$this->trashbinPathFor($this->currentFilePath),
+			'setup: the file is not in the trash',
+		);
+	}
+
+	/**
+	 * THE WORKFLOW'S STATE IN n8n, NAMED — the post-state half of every gesture in
+	 * the trash lifecycle, and the reason those three files read as mirror images of
+	 * each other rather than as unrelated assertions.
+	 *
+	 * The four states a workflow can be in from Nextcloud's point of view, and what
+	 * each one means:
+	 *
+	 *   archived, hidden but preserved   n8n has it, marked archived — reversible
+	 *   live, unarchived                 n8n has it, not archived
+	 *   live and untouched               n8n has it and this app never wrote to it
+	 *   gone, permanently deleted        n8n does not have it at all
+	 *
+	 * `live, unarchived` and `live and untouched` describe the same n8n row and are
+	 * deliberately two phrases: the first is the RESULT of a restore, the second is
+	 * the claim that a gesture did not reach n8n at all. A scenario should say which
+	 * one it means.
+	 *
+	 * @Then the workflow in n8n is :state
+	 */
+	public function theWorkflowInN8nIs(string $state): void {
+		$id = (string)$this->lastWorkflowId;
+		Assert::assertNotSame('', $id, 'no workflow under test');
+		$wf = $this->n8nGetWorkflow($id);
+
+		if ($state === 'gone, permanently deleted') {
+			Assert::assertNull($wf, "workflow $id is still in n8n, but the purge should have deleted it");
+			return;
+		}
+
+		Assert::assertIsArray($wf, "workflow $id is gone from n8n, but this gesture should have preserved it");
+		$archived = (bool)($wf['isArchived'] ?? false);
+		$want = match ($state) {
+			'archived, hidden but preserved' => true,
+			'live, unarchived', 'live and untouched' => false,
+			default => throw new \RuntimeException("unknown workflow state '$state' — see the step's docblock for the four"),
+		};
+		Assert::assertSame($want, $archived, "workflow $id is " . ($archived ? 'archived' : 'live') . ", expected: $state");
+	}
+
 	/** @When I purge it from the trash */
 	public function iPurgeItFromTheTrash(): void {
 		$trashPath = $this->trashbinPathFor($this->currentFilePath);

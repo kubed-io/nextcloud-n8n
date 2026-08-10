@@ -502,38 +502,6 @@ final class SyncServiceTest extends TestCase {
 		self::assertSame(1, $res['succeeded']);
 	}
 
-	// ── purge (admin "Purge Nextcloud files") ────────────────────────────────────
-
-	public function testPurgeDeletesSyncAndLinkButKeepsUnmappedAndUntracked(): void {
-		// The data-safety contract: purge removes only what a pull can restore
-		// (sync/link); unmapped + ignored (archived in n8n) and untracked files stay.
-		$sync = $this->fileExpectDelete(1, 'Sync.n8n.json', true);
-		$link = $this->fileExpectDelete(2, 'Link.n8n.json', true);
-		$unmapped = $this->fileExpectDelete(3, 'Template.n8n.json', false);
-		$ignored = $this->fileExpectDelete(4, 'Parked.n8n.json', false);
-		$untracked = $this->fileExpectDelete(5, 'Draft.n8n.json', false);
-		$notOurs = $this->fileExpectDelete(6, 'notes.txt', false);
-
-		$folder = $this->createStub(Folder::class);
-		$folder->method('getDirectoryListing')->willReturn([$sync, $link, $unmapped, $ignored, $untracked, $notOurs]);
-
-		$this->mappings->method('list')->willReturn([$this->mapping(Mapping::MODE_SYNC)]);
-		$this->storage->method('findFolder')->willReturn($folder);
-
-		$this->metadata->method('read')->willReturnCallback(function (int $fileId): ?ManagedFile {
-			return match ($fileId) {
-				1 => $this->managed('wf-1', Mapping::MODE_SYNC),
-				2 => $this->managed('wf-2', Mapping::MODE_LINK),
-				3 => $this->managed('wf-3', WorkflowMetadata::MODE_UNMAPPED),
-				default => null, // untracked (no record)
-			};
-		});
-
-		$res = $this->service->purge();
-
-		self::assertSame(2, $res['deleted']); // sync + link
-		self::assertSame(1, $res['kept']);    // unmapped (untracked/non-n8n not counted)
-	}
 
 	/** A managed File mock that asserts whether ::delete() is (or isn't) called. */
 	private function fileExpectDelete(int $id, string $name, bool $shouldDelete): File {

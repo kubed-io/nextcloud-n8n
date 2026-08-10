@@ -32,6 +32,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING:** the admin "Purge Nextcloud files" button is gone, along with `occ n8n_sync:purge`. It deleted every mirrored file in one click on the promise that a sync would bring them back — which was only true for files that were faithful mirrors, and the ones that were not are exactly the ones you would miss. Removing a mapping still cleans up its own files.
+
 - **BREAKING:** the `n8n:sync` / `n8n:link` / `n8n:unmapped` pills are gone. The mapping already decides a file's mode and the file still carries it as metadata, so the pills were a second copy nobody could edit. They are deleted on upgrade, which also removes them from the tag picker.
 
 - **Removing the tag that maps a workflow now takes it out of the mapping.** The file leaves Nextcloud and the workflow stays in n8n with only that tag removed — nothing is deleted and nothing is archived. Previously the tag was silently put back.
