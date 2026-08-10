@@ -1810,12 +1810,16 @@ mappings tag-first. The tag-addressed steps were kept alongside the new
 folder-addressed ones for that reason; those three want the same treatment.
 
 
-BOTH MAPPINGS ARE ADMIN FOLDERS, AND THAT IS DELIBERATE. A Team Folder is a
-different STORAGE, and a WebDAV MOVE between storages is refused with a 412 before
-this app sees anything — so a move scenario whose destination is a Team Folder
-tests Nextcloud's storage boundary rather than the move behaviour it claims to.
-`create.feature` shows the Team-Folder mapping off instead, where landing a file
-in one is the whole point.
+ONE OF THEM IS A TEAM FOLDER, DELIBERATELY. Moving between an admin folder and a
+Team Folder is a move across STORAGES, which is the case most likely to break and
+the one no other file exercises — groupfolders is installed on every CI leg for
+exactly this reason.
+
+A 412 HERE IS NOT A STORAGE PROBLEM, and it cost a cycle to learn: the arrange
+used a fixed filename, so the second scenario to move a file into a given folder
+hit the first one's leftover and Nextcloud refused the overwrite. The name is
+unique per scenario now. Worth remembering, because the failure reads as a
+permissions or mount problem and is neither.
 ### Restoring when the n8n workflow was hard-deleted falls back to create
 
 The unmapped file kept its id, but the workflow was hard-deleted in n8n in the

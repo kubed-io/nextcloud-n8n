@@ -47,10 +47,19 @@ trait MoveSteps {
 		$this->arrangeManagedFileIn($folder, $mode);
 	}
 
-	/** Shared body of the two arranges above. */
+	/**
+	 * Shared body of the two arranges above.
+	 *
+	 * THE NAME IS UNIQUE PER SCENARIO, and it has to be. It was a fixed
+	 * `Mover.n8n.json`, which was fine while one scenario per run moved a file into
+	 * a given folder — the moment two did, the second MOVE hit the first's leftover
+	 * and Nextcloud refused it with a 412 before this app saw anything. The failure
+	 * reads as a storage or permissions problem and is neither.
+	 */
 	private function arrangeManagedFileIn(string $folder, string $mode): void {
 		$this->currentFolder = $folder;
-		$this->putManagedFile($this->currentFolder . '/Mover.n8n.json', 'Mover');
+		$name = 'Mover-' . bin2hex(random_bytes(3));
+		$this->putManagedFile($this->currentFolder . '/' . $name . '.n8n.json', $name);
 		$this->lastVersionId = $this->davReadMetadata($this->currentFilePath, self::META_VERSION_ID);
 		$this->expectedArchived = false; // sync/link create leaves the workflow live
 	}

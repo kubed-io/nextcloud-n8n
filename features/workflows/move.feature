@@ -13,10 +13,11 @@ Feature: Moving a workflow file is the same workflow leaving and returning
       | mode    | sync         |
       | storage | admin folder |
     And a mapping with the following values:
-      | tag     | beta         |
-      | folder  | Pipelines    |
-      | mode    | sync         |
-      | storage | admin folder |
+      | tag     | beta        |
+      | folder  | Pipelines   |
+      | mode    | sync        |
+      | storage | team folder |
+      | groups  | admin       |
     And a mapping with the following values:
       | tag     | links        |
       | folder  | Pointers     |
