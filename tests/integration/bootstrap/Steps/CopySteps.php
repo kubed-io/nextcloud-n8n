@@ -37,8 +37,9 @@ trait CopySteps {
 	 */
 	public function aWorkflowFileIn(string $folder, string $tags = ''): void {
 		$this->davMkdir($folder);
-		$path = $folder . '/Source-' . bin2hex(random_bytes(3)) . '.n8n.json';
-		$body = ['name' => 'Source', 'nodes' => [], 'connections' => new \stdClass(), 'settings' => new \stdClass()];
+		$name = 'Source-' . bin2hex(random_bytes(3));
+		$path = $folder . '/' . $name . '.n8n.json';
+		$body = ['name' => $name, 'nodes' => [], 'connections' => new \stdClass(), 'settings' => new \stdClass()];
 		$names = array_values(array_filter(array_map('trim', explode(',', $tags))));
 		if ($names !== []) {
 			$body['tags'] = array_map(static fn (string $n): object => (object)['name' => $n], $names);
@@ -46,11 +47,16 @@ trait CopySteps {
 		$this->davPut($path, json_encode($body, JSON_THROW_ON_ERROR));
 		$this->currentFolder = $folder;
 		$this->currentFilePath = $path;
-		$this->lastWorkflowId = $this->davReadMetadataId($path);
+		// CREATE-ON-LAND RENAMES THE FILE to match the workflow's name, so the path we
+		// PUT to may already be gone. Re-resolve before anything reads it.
+		if (!$this->davExists($path)) {
+			$this->currentFilePath = $folder . '/' . $name . '.n8n.json';
+		}
+		$this->lastWorkflowId = $this->davReadMetadataId($this->currentFilePath);
 		if (is_string($this->lastWorkflowId) && $this->lastWorkflowId !== '') {
 			$this->createdWorkflowIds[] = $this->lastWorkflowId;
 		}
-		$this->copyOriginalBefore = $this->readManagedMetadata($path);
+		$this->copyOriginalBefore = $this->readManagedMetadata($this->currentFilePath);
 	}
 
 	/**

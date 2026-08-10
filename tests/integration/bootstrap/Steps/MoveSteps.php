@@ -134,6 +134,10 @@ trait MoveSteps {
 		$dest = $folder . '/' . basename($this->currentFilePath);
 		$this->davMove($this->currentFilePath, $dest);
 		$this->currentFilePath = $dest;
+		// THE FILE IS SOMEWHERE ELSE NOW, and the metadata table resolves "the
+		// mapping's id" from where the file IS. Leaving this pointing at the source
+		// asked which mapping owns the folder the file just left.
+		$this->currentFolder = $folder;
 		$this->expectedArchived = false; // move-in restores (unarchives) the workflow
 		// A move-in can MINT a workflow: create-on-land for an untracked file, or the
 		// create-fallback when the old id was hard-deleted in n8n. Re-capture whatever

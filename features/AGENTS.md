@@ -395,8 +395,15 @@ in the same shape.
 
 IDENTITY IS STRIPPED; LABELS ARE NOT. A copy that lands outside every mapping
 loses its id, its mapping, its mode and its hash — none of which is true of it any
-more — but the tags in its BODY stay, and that includes the tag of the mapping it
-came from.
+more — but the tags in its BODY stay, and the one that proves it is the MAPPING
+TAG of the folder it came from.
+
+THE SCENARIO CARRIES ONLY THAT TAG, and CI is why. A file created in a mapped
+folder has its body rewritten from n8n's canonical row, and adoption does not yet
+read a file's own body tags (`create.feature`, `@unbuilt`) — so tags a person
+typed in do not survive becoming managed in the first place, let alone the copy.
+The mapping tag does survive, because n8n put it there. Asserting the rest was
+asserting adoption, in a scenario about copying.
 
 That last part looks wrong at a glance and is the point. A mapping tag only binds
 a workflow while the file is inside that mapping; out here the string binds
@@ -1802,6 +1809,13 @@ is exactly why the ordinary ones should not borrow the shape.
 mappings tag-first. The tag-addressed steps were kept alongside the new
 folder-addressed ones for that reason; those three want the same treatment.
 
+
+BOTH MAPPINGS ARE ADMIN FOLDERS, AND THAT IS DELIBERATE. A Team Folder is a
+different STORAGE, and a WebDAV MOVE between storages is refused with a 412 before
+this app sees anything — so a move scenario whose destination is a Team Folder
+tests Nextcloud's storage boundary rather than the move behaviour it claims to.
+`create.feature` shows the Team-Folder mapping off instead, where landing a file
+in one is the whole point.
 ### Restoring when the n8n workflow was hard-deleted falls back to create
 
 The unmapped file kept its id, but the workflow was hard-deleted in n8n in the

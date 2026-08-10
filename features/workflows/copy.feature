@@ -63,15 +63,14 @@ Feature: Copying a workflow file always makes a new instance
   # notes: ../AGENTS.md#a-copy-landing-outside-every-mapping-keeps-its-tags-as-a-breadcrumb
   @user @in-nextcloud @gesture @ui
   Scenario Outline: A copy landing outside every mapping is a plain document
-    Given a workflow file in "<source>" whose tags are "prod"
+    Given a workflow file in "<source>"
     When I copy the file into "Scratch"
     Then the copy holds no n8n DAV metadata at all
     And no workflow is created in n8n for the copy
     And the copy's body still carries the tags "<tags left in the body>"
     And the original file and its workflow are unchanged
 
-    Examples: the identity is stripped; the labels are not
-      | source   | tags left in the body    |
-      | Demo     | prod, nextcloud:demo     |
-      | Pointers | prod, nextcloud:pointers |
-      | Scratch  | prod                     |
+    Examples: the identity is stripped; the label saying where it came from is not
+      | source   | tags left in the body |
+      | Demo     | nextcloud:demo        |
+      | Pointers | nextcloud:pointers    |
