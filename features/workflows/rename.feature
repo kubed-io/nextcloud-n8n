@@ -66,9 +66,9 @@ Feature: Renaming keeps the file, the JSON, and n8n in agreement
     And the name is "Old Name" in the filename, the JSON, and n8n
 
   @n8n @in-n8n @occ @todo
-  Scenario: A workflow that arrives from n8n with no name is filed under its id
-    Given n8n holds a workflow tagged "nextcloud:alpha" whose name is empty
-    When the "nextcloud:alpha" mapping is synced
+  Scenario: Renaming a workflow to nothing in n8n files it under its id
+    Given a workflow file named "Old Name.n8n.json" in "Automations"
+    When the workflow is renamed to "" in n8n
     Then the file is named after the workflow id
     # Falling back to the id is honest and reversible. Inventing "Untitled" would
     # collide the moment a second nameless workflow appeared.

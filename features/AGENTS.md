@@ -825,22 +825,74 @@ can assert it the same way.
 
 `features/workflows/edit.feature`
 
-EDITING IS THE BEHAVIOUR; THE PUSH IS HOW IT TRAVELS.
+An edit made on either side reaching the other, and the metadata that proves it
+landed.
 
 ### A local edit reaches its workflow in n8n
 
-This was "the admin clicks Sync to n8n", which described a button rather than
-anything anyone wants. Nobody edits a workflow in order to press a button — they
-edit it so n8n gets the change, and the app offers three ways for that to happen
-(on save, on the button, on the schedule). Those are mechanisms; this is what
-they are for.
+`When the admin pushes to n8n` used to be the action, which is the mistake this
+whole pass exists to remove: nobody edits a workflow in order to run a push. The
+gesture is editing the file and saving it, and the push is how the change travels.
+
+THE TWO STAMPS ARE THE POINT OF THE METADATA TABLE HERE. `n8n_versionId` and
+`n8n_syncedHash` are the app's memory of what the two sides last agreed on, and an
+edit is exactly when they must move:
+
+  · a versionId that lags means the next pull thinks n8n is ahead and overwrites
+    the edit that just landed;
+  · a hash that lags means the next save is read as a fresh edit and pushed again,
+    which is the writeback loop the guard exists to prevent.
+
+Neither shows up in a "the edit reached n8n" assertion, which is why they are
+stated as post-state rather than trusted.
+
+### An edit made in n8n reaches the mirror
+
+THE OTHER HALF, and the one that was missing entirely. `edit.feature` only ever
+described Nextcloud-side edits, so the direction that runs on a schedule — the
+one a user is most likely to be surprised by — had no scenario at all.
+
+THE MIRROR WEARS THE WORKFLOW'S CLOCK, and `Modified` is a ROW IN THE METADATA
+TABLE rather than a line beside it. It is state the file carries, read in the same
+glance as the rest — stating it separately said the same thing twice, in two
+shapes. That a mirrored folder whose files all read "modified a few seconds ago"
+after every scheduled run is a folder where a real edit is invisible is the reason
+it is asserted at all; the clock is a fact about the workflow, not about when our
+plumbing ran.
+
+### A sync holds the workflow, a link holds a pointer
+
+The one thing the two modes genuinely differ on, so it is two scenarios rather
+than an outline: a sync file's body IS the workflow and must carry the edit; a
+link's body is a pointer.
+
+AND THE LINK SAYS WHAT IT HOLDS. `the file does not hold what the workflow holds`
+was a negative that never named what IS there, which is a specific documented
+shape — an `n8n.reference/v1` pointer with the id, the name and a deep link — so
+the scenario states that shape in a table. A negative assertion passes on an empty
+file, a truncated file, and a file full of something else entirely.
+
+EVERYTHING ELSE IS THE SAME, INCLUDING THE METADATA — the id, the mapping, the
+mode, the version and the hash all move for a link exactly as they do for a sync,
+because a link is mirrored just as attentively; it simply mirrors less. Both
+scenarios state the full table for that reason. An outline over the mode would
+have hidden the difference that matters while pretending the rest was the
+question.
 
 ### A file outside every mapping is never pushed
 
-Its own scenario rather than a second `Then` on the one above: "my edit travels"
-and "a file I never mapped does not" are different promises, and a reader looking
-for the second should not have to find it inside the first.
+An edit to a file the app does not manage reaches nothing, because no listener is
+watching it. Stated as the workflow's state rather than "n8n is not contacted":
+the observable that matters is n8n being unchanged, and a request-counting
+assertion would pass just as happily on a no-op write.
 
+### workflows/edit — WHAT WAS RETIRED
+
+`A workflow nobody edited leaves its mirror untouched` was not a behaviour.
+"Nobody edits" is the absence of a gesture, and a scenario cannot be about
+something not happening — the run it wrapped is `connection/sync-now.feature`'s
+subject, where a sync that finds nothing to do is what a RUN does rather than
+what a person did.
 
 ## workflows/rename
 

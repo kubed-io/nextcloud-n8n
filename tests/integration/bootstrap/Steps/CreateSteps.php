@@ -172,6 +172,8 @@ trait CreateSteps {
 	 *
 	 *   the workflow's id                 the id the app stamped when the file landed
 	 *   its own, not the one it arrived with   a MINT: different from the id carried in
+	 *   n8n's current one                 matches the workflow's versionId right now
+	 *   the file's hash                   sha1 of the file's current bytes
 	 *   the mapping's id                  the mapping owning the folder the file is in
 	 *   the mapping's mode                that mapping's mode, in its stored form
 	 *   the "<tag>" mapping's id          a NAMED mapping, for a Background with several
@@ -219,6 +221,40 @@ trait CreateSteps {
 					$actual,
 					"the file kept the $key it arrived with; this move should have minted a new one",
 				);
+				continue;
+			}
+
+			// `Modified` IS NOT A METADATA KEY, and it is in this table anyway. It is
+			// state the file carries, read by the same person in the same glance as the
+			// rest, and splitting it onto a line of its own said the same thing twice.
+			if ($key === 'Modified') {
+				$id = (string)$this->davReadMetadataId($path);
+				$wf = $this->n8nGetWorkflow($id);
+				Assert::assertIsArray($wf, "workflow $id is gone from n8n");
+				$updatedAt = strtotime((string)($wf['updatedAt'] ?? ''));
+				Assert::assertIsInt($updatedAt, 'n8n did not report an updatedAt to compare against');
+				Assert::assertSame(
+					$updatedAt,
+					$this->davReadTime($path, 'getlastmodified'),
+					"the mirror's Modified is not the workflow's updatedAt",
+				);
+				continue;
+			}
+
+			// THE TWO STAMPS AN EDIT MOVES, and the reason edit.feature spells them out:
+			// they are the app's memory of "what did we last agree on", and an edit is
+			// exactly when they must move. A version that lags means the next pull thinks
+			// n8n is ahead; a hash that lags means the next save is read as a fresh edit
+			// and pushed again.
+			if ($expected === "n8n's current one") {
+				$id = (string)$this->davReadMetadataId($path);
+				$wf = $this->n8nGetWorkflow($id);
+				Assert::assertIsArray($wf, "workflow $id is gone from n8n");
+				Assert::assertSame((string)($wf['versionId'] ?? ''), $actual, "$key is not n8n's current versionId");
+				continue;
+			}
+			if ($expected === "the file's hash") {
+				Assert::assertSame(sha1($this->davGet($path)), $actual, "$key is not the hash of the file's current bytes");
 				continue;
 			}
 
