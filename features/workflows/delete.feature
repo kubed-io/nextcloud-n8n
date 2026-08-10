@@ -37,6 +37,14 @@ Feature: Trashing a workflow file
     And the file stays in "Pointers"
     And the workflow in n8n is "live and untouched"
 
+  # notes: ../AGENTS.md#a-link-leaves-when-its-workflow-does
+  @n8n @in-n8n @ui @occ
+  Scenario: Archiving a workflow in n8n removes its link entirely
+    Given a workflow file in "Pointers"
+    When someone archives the workflow in n8n
+    Then the file is gone from "Pointers"
+    And the file is not in the Nextcloud trash
+
   # notes: ../AGENTS.md#a-trash-is-aborted-if-n8n-is-unreachable
   @user @in-nextcloud @gesture @ui @blocked
   Scenario: A trash is aborted if n8n is unreachable

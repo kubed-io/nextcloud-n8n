@@ -66,11 +66,23 @@ Feature: Restoring a workflow file from the trash
     Then the workflow in n8n is "live, unarchived"
     And there is exactly one file for that workflow
 
+  # notes: ../AGENTS.md#a-link-comes-back-when-its-workflow-does
+  @n8n @in-n8n @ui @occ
+  Scenario: Unarchiving the workflow in n8n brings its link back
+    Given a workflow file in "Pointers"
+    And someone has archived the workflow in n8n
+    When someone unarchives the workflow in n8n
+    Then the file is back in "Pointers"
+    And the file holds this DAV metadata:
+      | n8n_id      | the workflow's id  |
+      | n8n_mapping | the mapping's id   |
+      | n8n_mode    | the mapping's mode |
+
   # notes: ../AGENTS.md#unarchiving-a-workflow-in-n8n-brings-its-file-back-out-of-the-trash
   @n8n @in-n8n @ui @occ @unbuilt
   Scenario: Unarchiving a workflow in n8n brings its file back out of the trash
     Given a workflow file in "Automations"
     And the file is in the trash
-    When the workflow is unarchived in n8n
+    When someone unarchives the workflow in n8n
     Then the file is back in "Automations"
     And there is exactly one file for that workflow

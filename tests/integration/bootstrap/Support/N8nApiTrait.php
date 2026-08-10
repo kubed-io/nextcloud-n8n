@@ -73,6 +73,16 @@ trait N8nApiTrait {
 		);
 	}
 
+	/** Archive a workflow (POST /workflows/{id}/archive) — hidden in n8n, preserved. */
+	private function n8nArchiveWorkflow(string $id): void {
+		$res = $this->n8nClient()->request('POST', 'workflows/' . rawurlencode($id) . '/archive');
+		Assert::assertContains(
+			$res->getStatusCode(),
+			[200, 204],
+			"archive n8n workflow $id failed: " . (string)$res->getBody(),
+		);
+	}
+
 	/** Bring an archived workflow back to life (POST /workflows/{id}/unarchive). */
 	private function n8nUnarchiveWorkflow(string $id): void {
 		$res = $this->n8nClient()->request('POST', 'workflows/' . rawurlencode($id) . '/unarchive');

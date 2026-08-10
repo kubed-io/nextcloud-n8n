@@ -120,6 +120,60 @@ trait DeleteSteps {
 		Assert::assertSame($want, $archived, "workflow $id is " . ($archived ? 'archived' : 'live') . ", expected: $state");
 	}
 
+	/**
+	 * Archive the workflow in n8n and let the mirror catch up — the n8n-origin
+	 * gesture, with the sync folded in as everywhere else.
+	 *
+	 * @When someone archives the workflow in n8n
+	 * @Given someone has archived the workflow in n8n
+	 */
+	public function archiveTheWorkflowInN8n(): void {
+		$id = (string)$this->lastWorkflowId;
+		Assert::assertNotSame('', $id, 'no workflow under test to archive');
+		$this->n8nArchiveWorkflow($id);
+		$this->runMappingSync('pull', $this->currentTag);
+	}
+
+	/**
+	 * @When someone unarchives the workflow in n8n
+	 */
+	public function unarchiveTheWorkflowInN8n(): void {
+		$id = (string)$this->lastWorkflowId;
+		Assert::assertNotSame('', $id, 'no workflow under test to unarchive');
+		$this->n8nUnarchiveWorkflow($id);
+		$this->runMappingSync('pull', $this->currentTag);
+	}
+
+	/** @Then the file is gone from :folder */
+	public function theFileIsGoneFrom(string $folder): void {
+		Assert::assertFalse(
+			$this->davExists($this->currentFilePath),
+			"the file is still at {$this->currentFilePath}, but its workflow left the mapping",
+		);
+	}
+
+	/**
+	 * NOT IN THE TRASH EITHER, and for a link that is the whole point: it was never
+	 * Nextcloud's to keep, so there is nothing to restore FROM. A trashed link would
+	 * be a pointer to a workflow that is still perfectly fine, sitting in a bin.
+	 *
+	 * @Then the file is not in the Nextcloud trash
+	 */
+	public function theFileIsNotInTheTrash(): void {
+		Assert::assertNull(
+			$this->trashbinPathFor($this->currentFilePath),
+			'the file was put in the trash, but a pruned link is simply gone',
+		);
+	}
+
+	/** @Then the file is back in :folder */
+	public function theFileIsBackIn(string $folder): void {
+		Assert::assertTrue(
+			$this->davExists($this->currentFilePath),
+			"the file did not come back to $folder",
+		);
+	}
+
 	/** @When I purge it from the trash */
 	public function iPurgeItFromTheTrash(): void {
 		$trashPath = $this->trashbinPathFor($this->currentFilePath);

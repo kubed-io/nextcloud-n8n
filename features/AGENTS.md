@@ -540,6 +540,32 @@ about a file the app never knew.
 
 Neither is a behaviour. Both were the absence of one.
 
+### A link leaves when its workflow does
+
+THE PRUNE IS THE DELETE, and it is the only one a link has. Archiving the
+workflow in n8n takes it out of the mapping, so the next sync finds the mirror
+orphaned and removes it — not to the trash, GONE. That is the counterpart of
+`A link cannot be deleted from Nextcloud`: n8n owns whether the pointer exists,
+so n8n is where you say it should stop.
+
+NOT IN THE TRASH IS THE LOAD-BEARING HALF. A trashed link would be a pointer to a
+workflow that is still perfectly fine, sitting in a bin — and worse, it would
+imply a restore gesture that cannot exist. There is nothing to restore FROM: the
+file held no content, and the workflow it pointed at is n8n's business. Bringing
+the workflow back in n8n is what brings the file back, and that is a PULL, not a
+restore (see `A link comes back when its workflow does`, in `restore.feature`).
+
+### A link comes back when its workflow does
+
+The n8n-side round trip, and it needs nothing from Nextcloud: unarchive the
+workflow and the next sync mirrors it in again as an ordinary link, with fresh
+metadata. Nextcloud remembered nothing in between, which is exactly why the
+delete side must not put the file in the trash.
+
+IT LIVES IN `restore.feature` BECAUSE IT IS A RESTORE, even though nobody
+restored anything in Nextcloud. The gesture is n8n-origin and the payoff is what
+comes back into the mapped folder.
+
 ### A trash is aborted if n8n is unreachable
 
 The delete listener throws `AbortedEventException` when the soft-delete fails, so
