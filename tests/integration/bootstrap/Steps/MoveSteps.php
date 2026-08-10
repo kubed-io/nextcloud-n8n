@@ -19,6 +19,9 @@ use PHPUnit\Framework\Assert;
  * Composed into {@see \OCA\N8nSync\Tests\Integration\FeatureContext}.
  */
 trait MoveSteps {
+	/** The id the moving file carried IN, for telling a mint from a restore. */
+	private string $idArrivedWith = '';
+
 	/**
 	 * A managed sync/link file in one of the Background's mapped folders, addressed
 	 * by its TAG. Kept for copy/purge/reserved-tags, which still declare their
@@ -140,6 +143,11 @@ trait MoveSteps {
 
 	/** @When I move the file into :folder */
 	public function iMoveTheFileInto(string $folder): void {
+		// THE ID IT ARRIVED WITH, pinned before the move overwrites it. A move-in can
+		// MINT a new workflow, and `its own, not the one it arrived with` has to
+		// compare against what the file carried IN — re-reading afterwards compares the
+		// new id with itself, which passes for a restore and fails for a mint.
+		$this->idArrivedWith = (string)($this->davReadMetadataId($this->currentFilePath) ?? '');
 		$dest = $folder . '/' . basename($this->currentFilePath);
 		$this->davMove($this->currentFilePath, $dest);
 		$this->currentFilePath = $dest;

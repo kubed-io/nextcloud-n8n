@@ -581,8 +581,15 @@ Neither is a behaviour. Both were the absence of one.
 ### A link leaves when its workflow does
 
 THE PRUNE IS THE DELETE, and it is the only one a link has. Archiving the
-workflow in n8n takes it out of the mapping, so the next sync finds the mirror
-orphaned and removes it — not to the trash, GONE. That is the counterpart of
+workflow in n8n should take it out of the mapping, so the next sync finds the
+mirror orphaned and removes it — not to the trash, GONE.
+
+`@unbuilt`, AND THE REASON IS ONE LINE OF THE PULL. It lists workflows BY TAG
+(`eachWorkflow(['nextcloud:links'])`) and archiving does not remove a tag, so an
+archived workflow still comes back in the listing and its mirror is never
+orphaned. Making this true means the pull has to treat "archived in n8n" as "not
+in the mapping" — a second predicate beside the tag, not a bigger change than
+that, but a real one. That is the counterpart of
 `A link cannot be deleted from Nextcloud`: n8n owns whether the pointer exists,
 so n8n is where you say it should stop.
 

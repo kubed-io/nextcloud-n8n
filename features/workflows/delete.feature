@@ -38,7 +38,7 @@ Feature: Trashing a workflow file
     And the workflow in n8n is "live and untouched"
 
   # notes: ../AGENTS.md#a-link-leaves-when-its-workflow-does
-  @n8n @in-n8n @ui @occ
+  @n8n @in-n8n @ui @occ @unbuilt
   Scenario: Archiving a workflow in n8n removes its link entirely
     Given a workflow file in "Pointers"
     When someone archives the workflow in n8n

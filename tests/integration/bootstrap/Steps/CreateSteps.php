@@ -216,11 +216,12 @@ trait CreateSteps {
 			if ($expected === 'its own, not the one it arrived with') {
 				Assert::assertNotNull($actual, "the file carries no $key — the move-in never registered it");
 				Assert::assertNotSame('', $actual, "the file has an empty $key");
-				Assert::assertNotSame(
-					(string)($this->lastWorkflowId ?? ''),
-					$actual,
-					"the file kept the $key it arrived with; this move should have minted a new one",
-				);
+				$arrived = $this->idArrivedWith !== '' ? $this->idArrivedWith : (string)($this->lastWorkflowId ?? '');
+				if ($arrived === $actual) {
+					throw new \RuntimeException(
+						"$key is still '$actual' — the id the file arrived with. This gesture should have minted a new one",
+					);
+				}
 				continue;
 			}
 
