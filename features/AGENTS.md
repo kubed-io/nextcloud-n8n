@@ -438,6 +438,14 @@ rather than thorough: a `sync` mapping in an admin folder, a `link` mapping, and
 `sync` mapping in a Team Folder. Together they let one outline cover both modes
 and both storage kinds without arranging anything per-scenario.
 
+A `Given` STATES WHAT IS TRUE; IT DOES NOT PERFORM. Past tense is not a
+loophole — `I have moved it to the trash` and `I have changed the tags to …` are
+actions wearing a disguise, and a scenario with two gestures in it cannot say
+which one it is about. The fix is to name the STATE: `the file is in the trash`,
+`the file has left its mapping`. Reaching that state may well require a gesture
+inside the step, and that is the step's business; what the scenario claims is
+that the state holds before the action under test.
+
 AND EVERY SCENARIO IS SOMEBODY'S GESTURE. Three scenarios here described tags
 arriving with a file, and every one of them was a move or a copy wearing a create
 scenario's name — see `The tags a file arrives with are the tags its workflow ends

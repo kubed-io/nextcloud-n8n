@@ -423,22 +423,21 @@ trait MoveSteps {
 	}
 
 	/**
-	 * Move the file OUT to a named folder as a PRE-STATE — the past-tense twin of the
-	 * move-out gesture, for a scenario whose action is the move back IN.
+	 * THE FILE IS OUTSIDE EVERY MAPPING, stated as a fact.
 	 *
-	 * A Given may not perform the behaviour under test, but it may state what is
-	 * already true; "this file has been out of its mapping for a while" is exactly
-	 * that, and arranging it any other way would mean hand-stamping metadata the app
-	 * is supposed to own.
+	 * A Given says what is already true rather than performing a gesture — so this
+	 * is "the file has left its mapping", not "I moved it out". It reaches that
+	 * state by moving the file, because hand-stamping `unmapped` metadata would be
+	 * arranging a state the app is supposed to own and might not agree with.
 	 *
-	 * @Given I have moved it out to :folder
+	 * @Given the file has left its mapping
 	 */
-	public function iHaveMovedItOutTo(string $folder): void {
-		$this->iMoveTheFileIntoFolder($folder);
+	public function theFileHasLeftItsMapping(): void {
+		$this->iMoveTheFileIntoFolder('Scratch');
 		Assert::assertSame(
 			'unmapped',
 			$this->davReadMetadata($this->currentFilePath, self::META_MODE),
-			"setup: the file moved out to $folder is not unmapped",
+			'setup: the file is not unmapped after leaving its mapping',
 		);
 	}
 

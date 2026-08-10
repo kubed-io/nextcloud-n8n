@@ -25,7 +25,7 @@ Feature: Restoring a workflow file from the trash
   @user @in-nextcloud @gesture @ui
   Scenario: Restoring a sync file unarchives its workflow
     Given a workflow file in "Automations"
-    And I have moved it to the trash
+    And the file is in the trash
     When I restore it from the trash
     Then the workflow in n8n is "live, unarchived"
     And the file holds this DAV metadata:
@@ -37,8 +37,8 @@ Feature: Restoring a workflow file from the trash
   @user @in-nextcloud @gesture @ui
   Scenario: Restoring a file that had already left its mapping reaches nothing
     Given a workflow file in "Automations"
-    And I have moved it out to "Scratch"
-    And I have moved it to the trash
+    And the file has left its mapping
+    And the file is in the trash
     When I restore it from the trash
     Then the workflow in n8n is "archived, hidden but preserved"
 
@@ -48,7 +48,7 @@ Feature: Restoring a workflow file from the trash
   @user @in-nextcloud @gesture @ui @unbuilt
   Scenario: Restoring a file whose workflow was deleted in n8n gives it a new one
     Given a workflow file in "Automations"
-    And I have moved it to the trash
+    And the file is in the trash
     And the workflow has been permanently deleted in n8n
     When I restore it from the trash
     Then a matching workflow is created in n8n
@@ -61,7 +61,7 @@ Feature: Restoring a workflow file from the trash
   @user @in-nextcloud @gesture @ui @unbuilt
   Scenario: Restoring a file whose workflow is already live again is not a conflict
     Given a workflow file in "Automations"
-    And I have moved it to the trash
+    And the file is in the trash
     And the workflow is already live in n8n again
     When I restore it from the trash
     Then the workflow in n8n is "live, unarchived"
@@ -71,7 +71,7 @@ Feature: Restoring a workflow file from the trash
   @n8n @in-n8n @ui @occ @unbuilt
   Scenario: Unarchiving a workflow in n8n brings its file back out of the trash
     Given a workflow file in "Automations"
-    And I have moved it to the trash
+    And the file is in the trash
     When the workflow is unarchived in n8n
     Then the file is back in "Automations"
     And there is exactly one file for that workflow

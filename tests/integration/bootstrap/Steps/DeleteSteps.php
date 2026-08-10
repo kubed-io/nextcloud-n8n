@@ -61,13 +61,18 @@ trait DeleteSteps {
 	}
 
 	/**
-	 * The trashing as a PRE-STATE — for a scenario whose action is the restore or
-	 * the purge that follows. Past tense, because a Given states what is already
-	 * true rather than performing the behaviour under test.
+	 * WHERE THE FILE IS, stated as a fact — for a scenario whose action is the
+	 * restore or the purge that follows.
 	 *
-	 * @Given I have moved it to the trash
+	 * A Given says what is already TRUE; it does not perform a gesture. `I have
+	 * moved it to the trash` read as an action in the past tense, which is still an
+	 * action — and the file being in the trash is a state, so it says that instead.
+	 * Getting there requires a trash move, but that is the step's problem, not the
+	 * scenario's.
+	 *
+	 * @Given the file is in the trash
 	 */
-	public function iHaveMovedItToTheTrash(): void {
+	public function theFileIsInTheTrash(): void {
 		$this->iMoveItToTheTrash();
 		Assert::assertNotNull(
 			$this->trashbinPathFor($this->currentFilePath),

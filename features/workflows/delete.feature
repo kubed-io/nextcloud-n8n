@@ -39,7 +39,7 @@ Feature: Trashing a workflow file
   @user @in-nextcloud @gesture @ui
   Scenario: Trashing a file that already left its mapping reaches nothing
     Given a workflow file in "Automations"
-    And I have moved it out to "Scratch"
+    And the file has left its mapping
     When I move it to the trash
     Then the workflow in n8n is "archived, hidden but preserved"
 
