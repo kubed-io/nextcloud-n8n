@@ -422,24 +422,6 @@ trait MoveSteps {
 		Assert::assertSame($this->expectedArchived, (bool)($wf['isArchived'] ?? false), 'the workflow archived-state changed when it should not have');
 	}
 
-	/**
-	 * THE FILE IS OUTSIDE EVERY MAPPING, stated as a fact.
-	 *
-	 * A Given says what is already true rather than performing a gesture — so this
-	 * is "the file has left its mapping", not "I moved it out". It reaches that
-	 * state by moving the file, because hand-stamping `unmapped` metadata would be
-	 * arranging a state the app is supposed to own and might not agree with.
-	 *
-	 * @Given the file has left its mapping
-	 */
-	public function theFileHasLeftItsMapping(): void {
-		$this->iMoveTheFileIntoFolder('Scratch');
-		Assert::assertSame(
-			'unmapped',
-			$this->davReadMetadata($this->currentFilePath, self::META_MODE),
-			'setup: the file is not unmapped after leaving its mapping',
-		);
-	}
 
 	/**
 	 * The workflow's tags on both surfaces, as one claim — see

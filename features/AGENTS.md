@@ -442,7 +442,8 @@ A `Given` STATES WHAT IS TRUE; IT DOES NOT PERFORM. Past tense is not a
 loophole — `I have moved it to the trash` and `I have changed the tags to …` are
 actions wearing a disguise, and a scenario with two gestures in it cannot say
 which one it is about. The fix is to name the STATE: `the file is in the trash`,
-`the file has left its mapping`. Reaching that state may well require a gesture
+`an unmapped workflow file that still carries its "n8n_id"`. Reaching that state
+may well require a gesture
 inside the step, and that is the step's business; what the scenario claims is
 that the state holds before the action under test.
 
@@ -501,29 +502,43 @@ Nothing a trashing does to n8n may be irreversible, because the user has not sai
 anything irreversible yet. For a `sync` file that means ARCHIVING the workflow —
 hidden, preserved, and one call away from coming back.
 
-### Trashing a link leaves its workflow alone
+### A link cannot be deleted from Nextcloud
 
-A link's workflow was never Nextcloud's. The file is a pointer; deleting a
-pointer deletes a pointer.
+A LINK IS A READ-ONLY PROJECTION, AND THAT INCLUDES ITS EXISTENCE. The file is a
+pointer to a workflow that lives in n8n; n8n decides whether the workflow exists,
+so n8n decides whether the pointer does. Deleting the pointer locally is the same
+category of gesture as moving one out of its mapping, which is already refused.
 
-THIS USED TO STRIP THE MAPPING TAG, and the scenario said so. That is a real
-question worth revisiting rather than a settled rule: once the file is in the
-Nextcloud trash and the workflow is untouched in n8n, the mapping has nothing to
-mirror it into anyway, and NOT stripping the tag makes the restore trivial —
-the file comes back and the workflow is still tagged, so the mirror is simply
-true again. Stripping means the restore has to re-tag, which is a second write
-that can fail on its own.
+THE WAY TO GET RID OF A LINK IS TO ARCHIVE THE WORKFLOW IN n8n. The next sync
+finds it gone from the mapping and prunes the file — no trash step in between,
+because there is nothing to restore FROM: a trashed link would be a pointer to a
+workflow that is still perfectly fine, sitting in a bin. And if the workflow comes
+back in n8n, the file is pulled in again like any other link. The round trip works
+without Nextcloud remembering anything.
 
-### Trashing a file that already left its mapping reaches nothing
+`@unbuilt` — the app currently UNTAGS the workflow on a link delete, which is the
+old design: it treated removing the file as removing the membership. That made
+the delete a mapping edit in disguise, and left the user with a workflow silently
+dropped out of its mapping because they tidied a folder.
 
-Its workflow was archived when the file was moved out, so the trashing finds
-nothing left to do. Stated as the workflow's state rather than as "n8n is not
-contacted", because the observable that matters is that n8n is unchanged — a
-request-counting assertion would pass just as happily on a no-op write.
+IT ALSO COLLAPSES TWO SCENARIOS ELSEWHERE. A link that cannot be trashed cannot
+be purged from the trash or restored from it either, so `purge.feature` and
+`restore.feature` lost their link rows. One refusal replaces three descriptions of
+what a link does in a bin it never reaches.
+
+### workflows/delete — WHAT WAS RETIRED
+
+`Trashing a file that already left its mapping reaches nothing` had a second
+gesture hiding in its Given: the file was moved out and THEN trashed, so the
+scenario performed two actions and asserted about the first one's side effects.
+Stripped back it says "an unmapped file goes to the Nextcloud trash", which is
+Nextcloud doing its job — the workflow was archived by the MOVE, and the trashing
+reaches nothing because there is nothing left for it to reach.
 
 `Deleting an untracked workflow file touches nothing in n8n` was the same claim
-about a file the app never knew, and is gone: no listener sees an untracked file,
-so the scenario tested Nextcloud.
+about a file the app never knew.
+
+Neither is a behaviour. Both were the absence of one.
 
 ### A trash is aborted if n8n is unreachable
 
@@ -544,12 +559,6 @@ the end state it wanted is the end state that exists.
 
 The n8n-origin twin of a restore. The sync is how the news arrives, not the
 behaviour, so it is folded into the gesture.
-
-### Purging a link leaves its workflow alone
-
-`DeleteService::hardDelete` returns early for anything that is not `sync`. A
-link's workflow was never Nextcloud's, and emptying the trash does not change
-whose it is.
 
 ### Purging a file that left its mapping still deletes its workflow
 

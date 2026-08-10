@@ -28,20 +28,14 @@ Feature: Trashing a workflow file
     When I move it to the trash
     Then the workflow in n8n is "archived, hidden but preserved"
 
-  # notes: ../AGENTS.md#trashing-a-link-leaves-its-workflow-alone
-  @user @in-nextcloud @gesture @ui
-  Scenario: Trashing a link leaves its workflow alone
+  # notes: ../AGENTS.md#a-link-cannot-be-deleted-from-nextcloud
+  @user @in-nextcloud @gesture @ui @unbuilt
+  Scenario: Deleting a link is refused
     Given a workflow file in "Pointers"
-    When I move it to the trash
-    Then the workflow in n8n is "live and untouched"
-
-  # notes: ../AGENTS.md#trashing-a-file-that-already-left-its-mapping-reaches-nothing
-  @user @in-nextcloud @gesture @ui
-  Scenario: Trashing a file that already left its mapping reaches nothing
-    Given a workflow file in "Automations"
-    And the file has left its mapping
-    When I move it to the trash
-    Then the workflow in n8n is "archived, hidden but preserved"
+    When I try to move it to the trash
+    Then the delete is refused with a message
+    And the file stays in "Pointers"
+    And the workflow in n8n is "live and untouched"
 
   # notes: ../AGENTS.md#a-trash-is-aborted-if-n8n-is-unreachable
   @user @in-nextcloud @gesture @ui @blocked

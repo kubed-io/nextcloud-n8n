@@ -29,19 +29,10 @@ Feature: Emptying the trash is the only permanent delete
     When I purge it from the trash
     Then the workflow in n8n is "gone, permanently deleted"
 
-  # notes: ../AGENTS.md#purging-a-link-leaves-its-workflow-alone
-  @user @in-nextcloud @gesture @ui
-  Scenario: Purging a link leaves its workflow alone
-    Given a workflow file in "Pointers"
-    And the file is in the trash
-    When I purge it from the trash
-    Then the workflow in n8n is "live and untouched"
-
   # notes: ../AGENTS.md#purging-a-file-that-left-its-mapping-still-deletes-its-workflow
   @user @in-nextcloud @gesture @ui @unbuilt
   Scenario: Purging a file that left its mapping still deletes its workflow
-    Given a workflow file in "Automations"
-    And the file has left its mapping
+    Given an unmapped workflow file that still carries its "n8n_id"
     And the file is in the trash
     When I purge it from the trash
     Then the workflow in n8n is "gone, permanently deleted"

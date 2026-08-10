@@ -36,8 +36,7 @@ Feature: Restoring a workflow file from the trash
   # notes: ../AGENTS.md#restoring-a-file-that-left-its-mapping-reaches-nothing
   @user @in-nextcloud @gesture @ui
   Scenario: Restoring a file that had already left its mapping reaches nothing
-    Given a workflow file in "Automations"
-    And the file has left its mapping
+    Given an unmapped workflow file that still carries its "n8n_id"
     And the file is in the trash
     When I restore it from the trash
     Then the workflow in n8n is "archived, hidden but preserved"

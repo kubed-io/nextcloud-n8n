@@ -64,8 +64,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
 
   @user @in-nextcloud @gesture @ui
   Scenario: Moving an unmapped file back into a mapping restores the workflow
-    Given a workflow file in "Automations"
-    And the file has left its mapping
+    Given an unmapped workflow file that still carries its "n8n_id"
     When I move the file into "Pipelines"
     Then the workflow is unarchived in n8n
     And the file holds this DAV metadata:
@@ -76,8 +75,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
   # notes: ../AGENTS.md#restoring-when-the-n8n-workflow-was-hard-deleted-falls-back-to-create
   @user @in-nextcloud @gesture @ui
   Scenario: Restoring when the n8n workflow was hard-deleted falls back to create
-    Given a workflow file in "Automations"
-    And the file has left its mapping
+    Given an unmapped workflow file that still carries its "n8n_id"
     And that workflow no longer exists in n8n
     When I move the file into "Pipelines"
     Then a matching workflow is created in n8n
