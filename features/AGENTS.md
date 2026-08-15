@@ -418,16 +418,43 @@ extension — to it our file is a `.json` called `Fleet Health.n8n`. There is a
 `suffix` option and no way for an app to pass one, so **the rule cannot be
 changed**.
 
-It can be got AHEAD of, and there is exactly one place: the chosen name arrives as
-the COPY request's `Destination` header, and Sabre fires `beforeMethod:COPY` while
-that header is still a string. `CopyNamePlugin` rewrites it, so the file is BORN as
-`Fleet Health (1).n8n.json` and never exists under the other name. That matters
-because the alternative — rename it afterwards from a job — leaves a window that has
-to be tolerated for `(1)`, `(2)` and every `(N)` after them, in every predicate that
-ever looks at a filename.
+### The copy cannot be renamed before the client has looked at it
 
-`FilenameCodec::canonicalise()` still reads the other spelling and `ReconcileNameJob`
-still repairs it, for copies that never touch WebDAV. Belt and braces.
+It can be got AHEAD of — the chosen name arrives as the COPY's `Destination` header,
+and Sabre fires `beforeMethod:COPY` while that header is still a string — and doing
+so is **the wrong thing to do**. A plugin rewriting it really does make the file be
+born as `Fleet Health (1).n8n.json`. It shipped in the grafana sibling, and the Files
+app answered:
+
+    The file does not exist anymore
+
+Its copy action is the reason:
+
+```js
+await client.copyFile(source, destination)
+if (node.dirname === target.path) {            // copying into the SAME folder
+    const { data } = await client.stat(destination)   // the path IT chose
+    emit('files:node:created', ...)
+}
+...
+if (404 === e.response?.status) throw new Error('The file does not exist anymore')
+```
+
+The client stats the destination it picked, and **only when the copy landed in the
+folder it came from** — precisely and only the case that collides, so the plugin fired
+exactly when the stat would notice. Measured both ways on a live instance:
+
+    intercepting   COPY 201 → STAT 404 → error dialog, no file until a refresh
+    deferring      COPY 201 → STAT 207 → correct name one tick later
+
+So the rename waits for `ReconcileNameJob`, and the file wears Nextcloud's spelling
+for up to one cron tick. **That is not a tolerance that has to be widened per
+counter**: `canonicalise()` reads `(1)`, `(2)` and `(17)` with one `\d+`, and every
+predicate goes through it, so `(N)` costs a regex rather than a case.
+
+**n8n is right immediately either way**, which is what makes deferring cheap:
+`CreateService` reads the display name off the filename before the POST, and it reads
+Nextcloud's spelling perfectly well. Only the name on disk lags.
 
 **The name it reads is `display`, not `name`.** `FilenameCodec::parse()` returns
 both, and they differ by exactly the collision counter. Taking the counter-stripped

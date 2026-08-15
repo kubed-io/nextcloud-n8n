@@ -193,9 +193,13 @@ final class FilenameCodec {
 	 * no metadata, no workflow in n8n, and a file that looks managed and is not.
 	 *
 	 * We do not get to choose this name — Nextcloud's web client picks it, on our
-	 * files, whenever a copy lands beside its source. So it has to be read.
-	 * {@see \OCA\N8nSync\DAV\CopyNamePlugin} gets ahead of it for copies that arrive
-	 * over WebDAV; this stays the reader for everything else.
+	 * files, whenever a copy lands beside its source. Nor can we get ahead of it: the
+	 * file HAS to exist under that name until the client has stat'd it, or the Files
+	 * app reports the copy as missing (see
+	 * {@see \OCA\N8nSync\BackgroundJob\ReconcileNameJob::canonicaliseSpelling()}).
+	 *
+	 * So it has to be read, and reading it is load-bearing rather than a courtesy. Any
+	 * `(N)` costs one `\d+` here rather than a case per counter.
 	 */
 	public static function canonicalise(string $name): string {
 		if (preg_match('/^(.+)\.n8n \((\d+)\)\.json$/', $name, $m) !== 1) {

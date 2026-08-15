@@ -130,8 +130,13 @@ final class ReconcileNameJob extends QueuedJob {
 	 * Nextcloud names a colliding copy `Board.n8n (1).json`, counting before the last
 	 * extension because to Nextcloud our file is a `.json` called `Board.n8n`. Ours is
 	 * `Board (1).n8n.json`, with the counter on the workflow's name.
-	 * {@see \OCA\N8nSync\DAV\CopyNamePlugin} already sees to that for copies made over
-	 * WebDAV, which is all of them from the Files app; this is the backstop for the rest.
+	 * THIS IS THE ONLY THING THAT RENAMES A COPIED FILE, and it deliberately runs late.
+	 * Rewriting the COPY's `Destination` header from a Sabre plugin gets the name right
+	 * before the file exists — and breaks the Files app, which stats the path IT chose
+	 * the moment the copy returns, and does so only when the copy landed in the folder it
+	 * came from, which is exactly the case that collides. Measured live: intercepting
+	 * gives COPY 201 then STAT 404 and an error dialog; deferring gives COPY 201, STAT
+	 * 207, and the right name a tick later. See CopyService for the whole story.
 	 *
 	 * **EXACTLY THE CANONICAL NAME, OR NOTHING.** This must not go through
 	 * {@see renameTo()}, which steps the counter until it finds a free name: with

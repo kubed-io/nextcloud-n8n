@@ -50,12 +50,20 @@ use Psr\Log\LoggerInterface;
  *      third thing.
  *   2. **The file is renamed into our spelling**, `Board (1).n8n.json`, so the counter
  *      sits on the workflow's name instead of inside its extension.
- *      {@see \OCA\N8nSync\DAV\CopyNamePlugin} does that before the copy happens;
- *      {@see FilenameCodec::canonicalise()} and the job below are the backstop for
- *      copies that never touch WebDAV.
+ *      {@see FilenameCodec::canonicalise()} has always READ Nextcloud's spelling; this
+ *      is the write that stops the user having to look at it.
  *
  * Both are file writes, so both are deferred to {@see ReconcileNameJob} — the copy's own
  * hook holds locks on the file it just made, and `putContent()` there throws.
+ *
+ * **AND THE RENAME CANNOT BE PULLED FORWARD INTO THE REQUEST, however tempting.** A Sabre
+ * plugin can rewrite the COPY's `Destination` header, and doing so really does make the
+ * file be BORN correctly named — but the Files app then reports *"The file does not exist
+ * anymore"* and shows no new file until a manual refresh. Its copy action stats the path
+ * IT chose the instant the copy returns, and only when the copy landed in the folder it
+ * came from, which is precisely and only the case that collides. Measured both ways on a
+ * live instance: intercepting gives COPY 201 then STAT 404; deferring gives COPY 201 then
+ * STAT 207 and a correct name one tick later.
  *
  * Failures are logged and swallowed: the NC copy already happened, and a copy that
  * failed to register is just an untracked `.n8n.json` the user can re-save to retry.
