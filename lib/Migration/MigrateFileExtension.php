@@ -114,22 +114,38 @@ final class MigrateFileExtension implements IRepairStep {
 	#[\Override]
 	public function run(IOutput $output): void {
 		$renamed = 0;
-		$failed = 0;
-		/** @var array<int,true> $seen file ids already handled — a Team Folder is mounted per member */
-		$seen = [];
+		/**
+		 * File ids that are SETTLED — renamed, or confirmed to need nothing. A Team Folder
+		 * is mounted once per member, so without this the same file is offered by every
+		 * member's search and would be renamed again on the second pass, moving an
+		 * already-correct `Fleet Health.n8n` to `Fleet Health.n8n (1).n8n`.
+		 *
+		 * @var array<int,true>
+		 */
+		$done = [];
+		/**
+		 * File ids a rename has FAILED on so far, which is not the same thing as settled.
+		 * A Team Folder can be mounted read-only for one group and writable for another,
+		 * and `callForSeenUsers` yields in no particular order — so a failure under the
+		 * first member's mount must leave the file open for the next member to try. An id
+		 * here is still retried; it is only counted at the end if nobody ever managed it.
+		 *
+		 * @var array<int,true>
+		 */
+		$failed = [];
 
-		$this->guard->run(function () use (&$renamed, &$failed, &$seen): void {
-			$this->userManager->callForSeenUsers(function (IUser $user) use (&$renamed, &$failed, &$seen): void {
-				$this->migrateForUser($user->getUID(), $renamed, $failed, $seen);
+		$this->guard->run(function () use (&$renamed, &$failed, &$done): void {
+			$this->userManager->callForSeenUsers(function (IUser $user) use (&$renamed, &$failed, &$done): void {
+				$this->migrateForUser($user->getUID(), $renamed, $failed, $done);
 			});
 		});
 
-		if ($renamed > 0 || $failed > 0) {
+		if ($renamed > 0 || $failed !== []) {
 			$output->info(sprintf(
 				'n8n_sync: renamed %d workflow file(s) to %s (%d could not be renamed)',
 				$renamed,
 				FilenameCodec::EXT,
-				$failed,
+				count($failed),
 			));
 		}
 	}
@@ -141,9 +157,10 @@ final class MigrateFileExtension implements IRepairStep {
 	 * query per user rather than a directory walk per folder — and it reaches files in
 	 * folders this app has never heard of, which is the whole point.
 	 *
-	 * @param array<int,true> $seen
+	 * @param array<int,true> $failed
+	 * @param array<int,true> $done
 	 */
-	private function migrateForUser(string $uid, int &$renamed, int &$failed, array &$seen): void {
+	private function migrateForUser(string $uid, int &$renamed, array &$failed, array &$done): void {
 		try {
 			$userFolder = $this->rootFolder->getUserFolder($uid);
 			$hits = $userFolder->search(self::SEARCH_TERM);
@@ -159,24 +176,31 @@ final class MigrateFileExtension implements IRepairStep {
 		}
 
 		foreach ($hits as $node) {
-			if (!$node instanceof File || isset($seen[$node->getId()])) {
+			if (!$node instanceof File || isset($done[$node->getId()])) {
 				continue;
 			}
-			$seen[$node->getId()] = true;
 
 			$wanted = self::newName($node->getName());
 			if ($wanted === null) {
-				continue; // already migrated, or never one of ours
+				// Already migrated, or never one of ours. Settled either way — and this is
+				// how a file another member already renamed is recognised on this pass.
+				$done[$node->getId()] = true;
+				continue;
 			}
 			try {
 				$parent = $node->getParent();
 				$target = $this->freeName($parent, $wanted);
 				$node->move($parent->getPath() . '/' . $target);
 				$renamed++;
+				$done[$node->getId()] = true;
+				unset($failed[$node->getId()]);
 			} catch (\Throwable $e) {
-				$failed++;
+				// NOT marked done: the next member's mount may be the writable one. The id
+				// is remembered so the final count is distinct FILES rather than attempts.
+				$failed[$node->getId()] = true;
 				$this->logger->warning('n8n_sync: could not migrate a workflow file to the new extension', [
 					'app' => Application::APP_ID,
+					'user' => $uid,
 					'fileId' => $node->getId(),
 					'from' => $node->getName(),
 					'to' => $wanted,

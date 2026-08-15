@@ -61,11 +61,23 @@ final class MigrateFileExtensionTest extends TestCase {
 	 */
 	private array $brokenUsers = [];
 
+	/**
+	 * Users for whom every `move()` fails — a Team Folder mounted read-only for their
+	 * group, which groupfolders genuinely supports.
+	 *
+	 * @var list<string>
+	 */
+	private array $readOnlyUsers = [];
+
+	/** The user `callForSeenUsers` is currently yielding, so the harness can vary by mount. */
+	private string $currentUser = '';
+
 	protected function setUp(): void {
 		$this->moves = [];
 		$this->occupied = [];
 		$this->users = ['alice'];
 		$this->brokenUsers = [];
+		$this->readOnlyUsers = [];
 	}
 
 	public function testTheRetiredExtensionIsRenamedToTheNewOne(): void {
@@ -168,6 +180,24 @@ final class MigrateFileExtensionTest extends TestCase {
 	}
 
 	/**
+	 * A RENAME THAT FAILED IS NOT A RENAME THAT IS SETTLED. A Team Folder is mounted once
+	 * per member and groupfolders supports per-group permissions, so the same file can be
+	 * read-only under one member's mount and writable under another's — and
+	 * `callForSeenUsers` yields in no particular order, so which one goes first is luck.
+	 *
+	 * Marking the id as handled on the failed attempt would let that luck decide whether
+	 * the file is migrated at all, and an unmigrated file is invisible to the app forever,
+	 * which is the whole thing this class exists to prevent.
+	 */
+	public function testAFileTheFirstMemberCannotRenameIsRetriedByTheNext(): void {
+		$this->users = ['readonly', 'alice'];
+		$this->readOnlyUsers = ['readonly'];
+		$this->migrate(['Shared.n8n.json']);
+
+		self::assertSame(['Shared.n8n.json -> /alice/files/Demo/Shared.n8n'], $this->moves);
+	}
+
+	/**
 	 * A user whose home cannot be opened does not abandon everyone else's files. The
 	 * broken user goes FIRST, because the failure mode being pinned is an exception
 	 * escaping the callback and ending the whole `callForSeenUsers` walk.
@@ -198,10 +228,14 @@ final class MigrateFileExtensionTest extends TestCase {
 	 * @param string $throwsOn a filename whose move() blows up
 	 */
 	private function migrate(array $files, array $subfolders = [], string $throwsOn = ''): void {
-		$hits = $this->tree('/alice/files/Demo', $files, $subfolders, $throwsOn);
-
+		// A FRESH TREE PER CALL, because each user gets their own mount of the same file
+		// and the ids are what tie them together. Returning one shared array would let a
+		// stub that failed for the first user fail identically for the second, hiding the
+		// retry this class now does.
 		$userFolder = $this->createStub(Folder::class);
-		$userFolder->method('search')->willReturn($hits);
+		$userFolder->method('search')->willReturnCallback(
+			fn (): array => $this->tree('/alice/files/Demo', $files, $subfolders, $throwsOn),
+		);
 		$root = $this->createStub(IRootFolder::class);
 		$root->method('getUserFolder')->willReturnCallback(function (string $uid) use ($userFolder): Folder {
 			if (in_array($uid, $this->brokenUsers, true)) {
@@ -213,6 +247,7 @@ final class MigrateFileExtensionTest extends TestCase {
 		$users = $this->createStub(IUserManager::class);
 		$users->method('callForSeenUsers')->willReturnCallback(function (callable $fn): void {
 			foreach ($this->users as $uid) {
+				$this->currentUser = $uid;
 				$u = $this->createStub(IUser::class);
 				$u->method('getUID')->willReturn($uid);
 				$fn($u);
@@ -257,7 +292,7 @@ final class MigrateFileExtensionTest extends TestCase {
 		$file->method('getId')->willReturn(crc32($parentPath . '/' . $name));
 		$file->method('getParent')->willReturn($parent);
 		$file->method('move')->willReturnCallback(function (string $target) use ($name, $throwsOn, $file): Node {
-			if ($name === $throwsOn) {
+			if ($name === $throwsOn || in_array($this->currentUser, $this->readOnlyUsers, true)) {
 				throw new \RuntimeException('locked');
 			}
 			$this->moves[] = $name . ' -> ' . $target;
