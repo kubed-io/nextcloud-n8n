@@ -271,10 +271,12 @@ namespace OCP\Migration {
 	// user's files and renames them, which is the one thing in the extension cut worth
 	// unit-testing rather than only running on a real upgrade.
 	//
-	// SIGNATURES MIRROR CORE'S, untyped and all (`lib/public/Migration/IOutput.php`).
-	// Tightening them here would let an implementation compile against a stricter
-	// contract than the server actually offers, and the suite would be the last place
-	// to notice.
+	// SIGNATURES ARE COPIED FROM CORE VERBATIM (`lib/public/Migration/IOutput.php`),
+	// including the inconsistency: `debug()` is typed `string ... : void` and the other
+	// five are untyped. That is genuinely what core declares — do not "tidy" either half.
+	// Tightening a signature here would let an implementation compile against a stricter
+	// contract than the server offers, and loosening `debug()` would do the same in
+	// reverse; the suite would be the last place to notice either.
 	if (!interface_exists(IOutput::class, false)) {
 		interface IOutput {
 			public function debug(string $message): void;

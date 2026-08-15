@@ -144,6 +144,11 @@ async function openInText(node) {
   document.body.appendChild(overlay)
 
   const sel = (s) => overlay.querySelector(s)
+  // NOT RUN THROUGH t(): this header shows the FILENAME being edited, and a filename
+  // is data rather than UI copy. A localised fallback would render as a plausible-
+  // looking file that does not exist ("arbeitsablauf.n8n"), which is worse than an
+  // untranslated placeholder. The fallback only fires if a node reaches us with no
+  // basename at all.
   sel('.n8n-sync-text-title').textContent = node.basename || 'workflow.n8n'
   const ta = sel('.n8n-sync-text-area')
   const setStatus = (m) => { sel('.n8n-sync-text-status').textContent = m }
@@ -246,8 +251,9 @@ registerFileAction({
 // Always offered, in any folder (we deliberately don't gate on a mapping). A
 // new file outside a mapped folder is just a `.n8n` with our icon and
 // empty metadata — not synced. Drop it into a mapped folder to make it real in
-// n8n (see the move-in/create-on-land path). The NodeWrittenListener re-stamps
-// the custom mimetype on write, so the icon is correct immediately.
+// n8n (see the move-in/create-on-land path). `.n8n` is the file's last extension,
+// so the server detects our mimetype on write and the icon is correct immediately —
+// nothing re-stamps it afterwards any more.
 const STARTER_WORKFLOW = JSON.stringify({
   name: 'New workflow',
   nodes: [],
