@@ -48,9 +48,45 @@ env:
 
 jobs:
 
+  # WHICH NEXTCLOUDS THIS RUN COVERS, decided by what triggered it.
+  #
+  # A PR runs the CEILING ONLY. That is where the work is aimed and where a real
+  # break shows up, and it keeps review cheap. `main` runs every major in info.xml's
+  # range — floor, middle and ceiling — so the whole claim is executed on every merge
+  # instead of once per push to every branch.
+  #
+  # The bet, stated plainly so it can be revisited: a change that works on the newest
+  # Nextcloud and breaks an older one is RARE, and when it happens it is a bug found
+  # after merge rather than a regression shipped — `main` is the gate before a
+  # release, not the PR. If that stops being true, move the range back onto the PR
+  # and pay the legs.
+  #
+  # Computed here rather than with an `if` on the matrix, because a matrix cannot be
+  # conditioned in place — a job has to hand it over as JSON.
+  versions:
+    name: Which Nextclouds
+    runs-on: ubuntu-latest
+    outputs:
+      matrix: ${{ steps.pick.outputs.matrix }}
+    steps:
+    - name: Pick the server versions for this trigger
+      id: pick
+      env:
+        # Bound, not interpolated into the script — see the env: note at the top.
+        EVENT: ${{ github.event_name }}
+      run: |
+        if [ "$EVENT" = "pull_request" ]; then
+          matrix='["stable34"]'
+        else
+          matrix='["stable32", "stable33", "stable34"]'
+        fi
+        echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
+        echo "Nextcloud versions for this $EVENT run: $matrix" >> "$GITHUB_STEP_SUMMARY"
+
   integration:
     name: Integration ${{ matrix.suite }} (${{ matrix.server-versions }})
     runs-on: ubuntu-latest
+    needs: versions
 
     # ── THE SUITE AXIS DIVIDES THE SCENARIOS ─────────────────────────────────
     # Four legs each run a slice of features/, in parallel, so wall time is set
@@ -76,12 +112,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # THE TWO ENDS OF info.xml's RANGE, not just one. A version we advertise
-        # support for and never execute is a claim, not a fact — and "33" is not
-        # one thing: a sibling app hit behaviour that differs between 33.0.4 and
-        # 33.0.8, which cost hours because CI and the live instance sat on
-        # different patch releases. SQLite is the fast integration path.
-        server-versions: ['stable33', 'stable34']
+        # A VERSION WE ADVERTISE AND NEVER EXECUTE IS A CLAIM, NOT A FACT — and
+        # "33" is not one thing: a sibling app hit behaviour that differs between
+        # 33.0.4 and 33.0.8, which cost hours because CI and the live instance sat
+        # on different patch releases. Which versions run is decided by the
+        # `versions` job above. SQLite is the fast integration path.
+        server-versions: ${{ fromJSON(needs.versions.outputs.matrix) }}
         suite: [admin, workflow, tags, core]
 
     services:
