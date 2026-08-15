@@ -55,7 +55,12 @@ final class DeleteService {
 			$this->callIdempotent(fn () => $this->n8n->archiveWorkflow($id), $id, 'archive');
 			return;
 		}
-		// link → untag (additive: remove just our tag).
+		// LINK NO LONGER REACHES THIS. {@see \OCA\N8nSync\Listener\DeleteToN8nListener}
+		// refuses a link delete outright — a pointer is not Nextcloud's to remove — so
+		// the only mode that arrives here besides `sync` is `unmapped`, whose file left
+		// its mapping and should take its tag with it. Kept rather than deleted because
+		// untagging is the right answer for that case and the branch is still the one
+		// that serves it.
 		if ($mapping === null) {
 			$this->logger->info('n8n_sync delete: no mapping resolvable; skipping untag', [
 				'app' => Application::APP_ID,

@@ -19,6 +19,7 @@ use OCA\N8nSync\Service\N8nWorkflowBody;
 use OCA\N8nSync\Service\PushService;
 use OCA\N8nSync\Service\StorageService;
 use OCA\N8nSync\Service\SyncGuard;
+use OCA\N8nSync\Service\TrashControl;
 use OCA\N8nSync\Service\SyncService;
 use OCA\N8nSync\Service\SyncStatusService;
 use OCA\N8nSync\Service\TagSyncService;
@@ -29,6 +30,7 @@ use OCP\Files\Folder;
 use OCP\IAppConfig;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Psr\Container\ContainerInterface;
 use Psr\Log\NullLogger;
 
 /**
@@ -55,6 +57,8 @@ final class SyncServiceTest extends TestCase {
 	private PushService $push;
 	private MappingService $mappings;
 	private TagSyncService $tagSync;
+	private TrashControl $trash;
+	private SyncGuard $guard;
 	private MirrorTimes $times;
 	private SyncService $service;
 
@@ -72,20 +76,39 @@ final class SyncServiceTest extends TestCase {
 
 		$this->mappings = $this->createStub(MappingService::class);
 		$this->tagSync = $this->createMock(TagSyncService::class);
+
+		// A REAL TrashControl, not a stub: its whole job is to run the callback it is
+		// given, and a stub would swallow the `delete()` the link-prune assertion
+		// depends on. Pausing the trash is files_trashbin's business and is covered on
+		// its own in TrashControlTest.
+		$this->trash = new TrashControl($this->createStub(ContainerInterface::class), new NullLogger());
 		// MirrorTimes reaches into the storage/cache stack, so it is mocked here and
 		// covered on its own in MirrorTimesTest — the reconciler only owes the mapping.
 		$this->times = $this->createMock(MirrorTimes::class);
+		$this->guard = $guard;
+		$this->rebuildService();
+	}
+
+	/**
+	 * Rebuild the service from the current collaborators.
+	 *
+	 * A test that swaps one has to rebuild, because the service takes them by
+	 * constructor — swapping after construction would leave the old one wired in while
+	 * the test believed otherwise.
+	 */
+	private function rebuildService(): void {
 		$this->service = new SyncService(
 			$this->mappings,
 			$this->n8n,
 			$this->metadata,
 			$this->storage,
-			$guard,
+			$this->guard,
 			$this->push,
 			$this->createStub(IJobList::class),
 			$this->createStub(SyncStatusService::class),
 			$this->createStub(IAppConfig::class),
 			$this->tagSync,
+			$this->trash,
 			$this->times,
 			new NullLogger(),
 		);
@@ -372,6 +395,67 @@ final class SyncServiceTest extends TestCase {
 
 		self::assertSame(1, $res['processed']);
 		self::assertSame(0, $res['pruned']);
+	}
+
+	/**
+	 * A LINK'S MIRROR LEAVES WITHOUT A TRASH ENTRY, and the mode is the only thing that
+	 * decides it. A link is a read-only projection: once its workflow is out of the
+	 * mapping's tag there is nothing for a restore to reconnect to, so a trashed pointer
+	 * would offer the user a recovery that reconnects nothing.
+	 *
+	 * The claim is that the delete happens INSIDE the bypass, which is why the callback
+	 * is invoked for real rather than merely counted — a `withoutTrash()` that was called
+	 * and then dropped its callback would satisfy a bare `expects(once())` while deleting
+	 * nothing at all.
+	 */
+	public function testALinksMirrorIsRemovedThroughTheTrashBypass(): void {
+		$stale = $this->createMock(File::class);
+		$stale->method('getId')->willReturn(11);
+		$stale->method('getName')->willReturn('Pointer.n8n');
+		$stale->expects(self::once())->method('delete');
+
+		$this->trash = $this->createMock(TrashControl::class);
+		$this->trash->expects(self::once())
+			->method('withoutTrash')
+			->willReturnCallback(static fn (callable $fn): mixed => $fn());
+
+		$res = $this->pullWithSingleStaleMirror($stale, Mapping::MODE_LINK, 'map-link');
+
+		self::assertSame(1, $res['pruned']);
+	}
+
+	/** A sync mirror keeps the trash — its file is the workflow's content, and an archive is reversible. */
+	public function testASyncMirrorIsRemovedIntoTheTrash(): void {
+		$stale = $this->createMock(File::class);
+		$stale->method('getId')->willReturn(11);
+		$stale->method('getName')->willReturn('Gone.n8n');
+		$stale->expects(self::once())->method('delete');
+
+		$this->trash = $this->createMock(TrashControl::class);
+		$this->trash->expects(self::never())
+			->method('withoutTrash');
+
+		$res = $this->pullWithSingleStaleMirror($stale, Mapping::MODE_SYNC, 'map-alpha');
+
+		self::assertSame(1, $res['pruned']);
+	}
+
+	/**
+	 * One mirror in the folder, nothing under the tag in n8n — so the pull prunes it and
+	 * the only question left is HOW.
+	 *
+	 * @return array{processed:int, succeeded:int, failed:int, pruned:int, unchanged:int}
+	 */
+	private function pullWithSingleStaleMirror(File $stale, string $mode, string $mappingId): array {
+		$folder = $this->createStub(Folder::class);
+		$folder->method('getDirectoryListing')->willReturn([$stale]);
+		$this->storage->method('isAvailable')->willReturn(true);
+		$this->storage->method('ensureFolder')->willReturn($folder);
+		$this->metadata->method('read')->willReturn($this->managed('wf-gone', $mode, $mappingId));
+		$this->n8n->method('eachWorkflow')->willReturn([]);
+
+		$this->rebuildService();
+		return $this->service->pullOne($this->mapping($mode, $mappingId));
 	}
 
 	// ── pull change-detection (saga Ch5 §5.11) ──────────────────────────────────

@@ -13,6 +13,7 @@ use OCA\N8nSync\AppInfo\Application;
 use OCA\N8nSync\BackgroundJob\ManualSyncJob;
 use OCP\BackgroundJob\IJobList;
 use OCP\Files\Folder;
+use OCP\Files\Node;
 use OCP\IAppConfig;
 use Psr\Log\LoggerInterface;
 
@@ -54,6 +55,7 @@ final class SyncService {
 		private SyncStatusService $status,
 		private IAppConfig $config,
 		private TagSyncService $tagSync,
+		private TrashControl $trash,
 		private MirrorTimes $times,
 		private LoggerInterface $logger,
 	) {
@@ -266,7 +268,7 @@ final class SyncService {
 				continue;
 			}
 			try {
-				$node->delete();
+				$this->removeMirror($node, $mapping);
 				$pruned++;
 			} catch (\Throwable $e) {
 				$this->logger->warning('prune stale file failed', [
@@ -278,6 +280,29 @@ final class SyncService {
 			}
 		}
 		return $pruned;
+	}
+
+	/**
+	 * Remove a mirror whose workflow is no longer live in the mapping — and decide, from
+	 * the mapping's MODE, whether the user gets it back.
+	 *
+	 *   sync  → the Nextcloud trash. The file IS the workflow's content, and the thing
+	 *           that happened in n8n (an archive) is itself reversible, so the local
+	 *           gesture must be too. Restoring the file unarchives the workflow.
+	 *   link  → gone, with no trash entry. A link is a read-only projection; once the
+	 *           workflow is out of the tag there is nothing for a restore to reconnect
+	 *           to, and a trashed pointer would offer the user exactly that. The
+	 *           workflow itself is untouched in n8n, which is the whole point of a link.
+	 *
+	 * {@see TrashControl} explains why pausing the trash is the only supported way to
+	 * make a delete permanent, and why it is the right one for a Team Folder.
+	 */
+	private function removeMirror(Node $node, Mapping $mapping): void {
+		if ($mapping->mode !== Mapping::MODE_LINK) {
+			$node->delete();
+			return;
+		}
+		$this->trash->withoutTrash(static fn () => $node->delete());
 	}
 
 	/**

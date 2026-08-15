@@ -132,7 +132,28 @@ trait WebDavTrait {
 
 	/** DELETE a file, returning the raw status (so abort scenarios can inspect it). */
 	private function davDeleteStatus(string $path): int {
-		return $this->davClient()->request('DELETE', $this->davEncode($path))->getStatusCode();
+		$res = $this->davClient()->request('DELETE', $this->davEncode($path));
+		$this->lastDeleteMessage = self::davErrorMessage((string)$res->getBody());
+		return $res->getStatusCode();
+	}
+
+	/**
+	 * The human-readable half of a Sabre error body.
+	 *
+	 * Nextcloud answers a refused DAV call with `<d:error><s:message>…</s:message>`, and
+	 * that message is the only thing the Files app can show the user. A refusal that
+	 * carries none is indistinguishable, in the UI, from a delete that quietly did not
+	 * happen — so the tests read it rather than trusting the status code alone.
+	 *
+	 * Parsed with a regex rather than SimpleXML because the body is not guaranteed to be
+	 * XML at all (a proxy error page, an empty 403), and a parse failure here would blame
+	 * the assertion instead of the app.
+	 */
+	private static function davErrorMessage(string $body): string {
+		if (preg_match('~<s:message>(.*?)</s:message>~s', $body, $m) === 1) {
+			return html_entity_decode(trim($m[1]), ENT_QUOTES | ENT_XML1, 'UTF-8');
+		}
+		return '';
 	}
 
 	/**

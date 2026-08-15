@@ -61,6 +61,43 @@ trait DeleteSteps {
 	}
 
 	/**
+	 * THE SAME DAV DELETE, asked as a question rather than an instruction. `I move it to
+	 * the trash` claims the delete succeeded and would fail the scenario on the status
+	 * code alone; `I try to` records what happened and leaves the verdict to the Thens,
+	 * which is what a refusal scenario needs.
+	 *
+	 * @When I try to move it to the trash
+	 * @When I try to delete it
+	 */
+	public function iTryToMoveItToTheTrash(): void {
+		$this->lastDeleteStatus = $this->davDeleteStatus($this->currentFilePath);
+	}
+
+	/**
+	 * REFUSED, AND THE USER WAS TOLD. A 403 with an empty body is a refusal the Files
+	 * app renders as nothing at all, so the message is asserted too — the difference
+	 * between "Nextcloud would not do that, and here is why" and a delete that silently
+	 * does not happen.
+	 *
+	 * 403 rather than any 4xx: the app throws `AbortedEventException` from
+	 * `BeforeNodeDeletedEvent`, which Nextcloud's DAV layer renders as Forbidden.
+	 *
+	 * @Then the delete is refused with a message
+	 */
+	public function theDeleteIsRefusedWithAMessage(): void {
+		Assert::assertSame(
+			403,
+			$this->lastDeleteStatus,
+			'the delete was not refused — a link is not Nextcloud\'s to remove',
+		);
+		Assert::assertNotSame(
+			'',
+			trim($this->lastDeleteMessage),
+			'the delete was refused with no message, so the user is told nothing',
+		);
+	}
+
+	/**
 	 * WHERE THE FILE IS, stated as a fact — for a scenario whose action is the
 	 * restore or the purge that follows.
 	 *

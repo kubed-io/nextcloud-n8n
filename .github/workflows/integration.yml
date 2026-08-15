@@ -118,7 +118,7 @@ jobs:
         # on different patch releases. Which versions run is decided by the
         # `versions` job above. SQLite is the fast integration path.
         server-versions: ${{ fromJSON(needs.versions.outputs.matrix) }}
-        suite: [admin, workflow, tags, core]
+        suite: [admin, authoring, lifecycle, tags, core]
 
     services:
       # n8n with the instance owner pre-provisioned via env (no signup wizard,

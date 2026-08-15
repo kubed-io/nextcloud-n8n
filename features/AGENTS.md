@@ -698,26 +698,24 @@ hidden, preserved, and one call away from coming back.
 ### A link cannot be deleted from Nextcloud
 
 A LINK IS A READ-ONLY PROJECTION, AND THAT INCLUDES ITS EXISTENCE. The file is a
-pointer to a workflow that lives in n8n; n8n decides whether the workflow exists,
-so n8n decides whether the pointer does. Deleting the pointer locally is the same
-category of gesture as moving one out of its mapping, which is already refused.
+pointer to a workflow that lives in n8n and is perfectly fine; removing the pointer
+only makes the mapped folder disagree with the tag it mirrors, and the next pull
+writes the file straight back. So the delete was never durable — it was just silent.
+Refusing says so at the moment the user asks.
 
-THE WAY TO GET RID OF A LINK IS TO ARCHIVE THE WORKFLOW IN n8n. The next sync
-finds it gone from the mapping and prunes the file — no trash step in between,
-because there is nothing to restore FROM: a trashed link would be a pointer to a
-workflow that is still perfectly fine, sitting in a bin. And if the workflow comes
-back in n8n, the file is pulled in again like any other link. The round trip works
-without Nextcloud remembering anything.
+**It used to strip the mapping tag instead**, which is a much bigger thing than the
+gesture asked for: deleting one file in Nextcloud un-mapped the workflow in n8n, for
+everybody. `DeleteToN8nListener` now refuses before `DeleteService::softDelete()` is
+reached, and answers 403 with a message naming the way out — remove the workflow from
+the mapping's tag in n8n, which is a decision about the mapping rather than about one
+file.
 
-`@unbuilt` — the app currently UNTAGS the workflow on a link delete, which is the
-old design: it treated removing the file as removing the membership. That made
-the delete a mapping edit in disguise, and left the user with a workflow silently
-dropped out of its mapping because they tidied a folder.
+This is the same rule `LinkWriteGuardPlugin` already enforced for CONTENT. Existence
+was the half that was missing.
 
-IT ALSO COLLAPSES TWO SCENARIOS ELSEWHERE. A link that cannot be trashed cannot
-be purged from the trash or restored from it either, so `purge.feature` and
-`restore.feature` lost their link rows. One refusal replaces three descriptions of
-what a link does in a bin it never reaches.
+The scenario asserts the status, the message, and that the file is still there. A
+refusal that returned 403 and deleted the file anyway would pass on the status alone,
+and a refusal with an empty body is one the Files app renders as nothing happening.
 
 ### workflows/delete — WHAT WAS RETIRED
 
@@ -765,25 +763,24 @@ back over DAV and asks for its `name` — a trash entry with an emptied body wou
 
 ### A link leaves when its workflow does
 
-THE PRUNE IS THE DELETE, and it is the only one a link has. Archiving the
-workflow in n8n should take it out of the mapping, so the next sync finds the
-mirror orphaned and removes it — not to the trash, GONE.
+The mirror image of the rule above, and the reason both can be true at once: a link is
+Nextcloud's to *show*, never to *own*. The user may not delete it, and it disappears
+by itself the moment the workflow leaves the mapping's tag — archived in n8n, or
+untagged there.
 
-`@unbuilt`, AND THE REASON IS ONE LINE OF THE PULL. It lists workflows BY TAG
-(`eachWorkflow(['nextcloud:links'])`) and archiving does not remove a tag, so an
-archived workflow still comes back in the listing and its mirror is never
-orphaned. Making this true means the pull has to treat "archived in n8n" as "not
-in the mapping" — a second predicate beside the tag, not a bigger change than
-that, but a real one. That is the counterpart of
-`A link cannot be deleted from Nextcloud`: n8n owns whether the pointer exists,
-so n8n is where you say it should stop.
+**No trash entry, and that is the point.** A `sync` file goes to the trash because its
+file IS the workflow's content and the thing that happened in n8n is reversible;
+restoring it unarchives the workflow. A link has nothing to restore FROM — the workflow
+is still perfectly fine, sitting in n8n's archive — so a trashed pointer would offer
+the user a recovery that reconnects nothing.
 
-NOT IN THE TRASH IS THE LOAD-BEARING HALF. A trashed link would be a pointer to a
-workflow that is still perfectly fine, sitting in a bin — and worse, it would
-imply a restore gesture that cannot exist. There is nothing to restore FROM: the
-file held no content, and the workflow it pointed at is n8n's business. Bringing
-the workflow back in n8n is what brings the file back, and that is a PULL, not a
-restore (see `A link comes back when its workflow does`, in `restore.feature`).
+`SyncService::removeMirror()` is the fork, and the mode is the whole of it.
+{@see TrashControl} explains the mechanism: `ITrashManager::pauseTrash()` is the only
+public seam that makes a Nextcloud delete permanent, and — the reason it is worth
+reaching for rather than deleting the trash entry afterwards — it is backend-agnostic,
+so it covers a Team Folder's trash exactly as it covers a home. Team Folders are what
+this app's mappings actually use, and a `Trashbin::`-based purge would have quietly
+missed them.
 
 ### A link comes back when its workflow does
 

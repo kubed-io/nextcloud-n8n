@@ -148,6 +148,8 @@ final class FeatureContext implements Context {
 	private ?string $lastWorkflowId = null;
 	private string $currentTag = '';
 	private int $lastDeleteStatus = 0;
+	/** The `<s:message>` from the last refused DAV delete — what the user is actually told. */
+	private string $lastDeleteMessage = '';
 	private ?string $lastVersionId = null;
 	private int $lastMoveStatus = 0;
 	/** Whether the workflow under test is expected to be archived in n8n right now. */

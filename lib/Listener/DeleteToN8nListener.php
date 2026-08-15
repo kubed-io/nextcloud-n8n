@@ -12,6 +12,7 @@ namespace OCA\N8nSync\Listener;
 use OCA\N8nSync\AppInfo\Application;
 use OCA\N8nSync\Service\DeleteService;
 use OCA\N8nSync\Service\FilenameCodec;
+use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\MappingService;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\WorkflowMetadata;
@@ -96,6 +97,24 @@ final class DeleteToN8nListener implements IEventListener {
 		$mapping = $managed->mappingId !== ''
 			? $this->mappings->getById($managed->mappingId)
 			: null;
+
+		// A LINK IS NOT NEXTCLOUD'S TO DELETE. The file is a read-only projection of a
+		// workflow that lives in n8n and is perfectly fine; removing the pointer only
+		// makes the mapped folder disagree with the tag it mirrors, and the next pull
+		// writes the file straight back — so the delete was never durable, it was just
+		// silent. Refusing says so at the moment the user asks.
+		//
+		// This is the same rule the DAV write guard already enforces for content
+		// ({@see \OCA\N8nSync\DAV\LinkWriteGuardPlugin}); existence is the half that
+		// was missing. The way OUT of a link folder is to remove the mapping, or to
+		// untag the workflow in n8n — both of which are decisions about the mapping
+		// rather than about one file.
+		if ($mode === Mapping::MODE_LINK) {
+			throw new AbortedEventException(
+				'This file is a link to a workflow in n8n, so it cannot be deleted from Nextcloud. '
+				. 'Remove the workflow from the mapping\'s tag in n8n instead.',
+			);
+		}
 
 		try {
 			$this->deleteService->softDelete($id, $mode, $mapping);
