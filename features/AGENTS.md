@@ -863,6 +863,37 @@ versus a deletion you cannot undo.
 
 `features/workflows/restore.feature`
 
+### A restore has to work on both trashes
+
+**A Team Folder has its own trash, and only one of the two ever restored.**
+`NodeRestoredEvent` is dispatched by `Files_Trashbin\Trashbin::restore()` and nowhere
+else; groupfolders implements `ITrashBackend::restoreItem()` and emits no typed event
+at all. So a workflow file restored from a Team Folder's trash came back to its folder
+with its workflow still archived in n8n — and this app's mappings use Team Folders.
+
+Reported from live use, and the state it leaves is worse than a no-op. The file sits in
+a MAPPED folder while its workflow is invisible in n8n, which is a contradiction the app
+itself acts on: the next pull sees an archived workflow, decides the mirror should not
+be there, and trashes the file again. The user restores, waits, and watches it vanish.
+A loop, with no error anywhere.
+
+Both backends DO emit the legacy `\OCA\Files_Trashbin\Trashbin` `post_restore` hook, so
+one handler covers both — the same shape as the purge, which had the same bug for the
+same reason (a signal that exists for the home storage and not the one in use).
+
+**The scenario is an Outline over the storage, not two scenarios.** The end state does
+not differ — file back where it was, workflow live, metadata intact — and the Gherkin
+says what is true, not which Nextcloud signal delivered it. What the second Examples row
+buys is coverage: the admin-folder row passed for months while the Team Folder case was
+broken in production, and a green suite said so confidently. Splitting the two into
+separate scenarios would imply the OUTCOME depends on the backend, which would be a
+worse lie than the gap it fixed.
+
+**Both entry points are kept.** A home-storage restore now reaches n8n twice, which is
+deliberate: unarchiving is idempotent, and one redundant call on the backend that
+already worked is cheaper than betting it on a legacy hook behaving identically in every
+Nextcloud version.
+
 ### A restore is the trashing, undone
 
 Every scenario here is the mirror of one in `delete.feature`, and that is the
