@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\N8nSync\Tests\Unit\Service;
 
+use OCA\N8nSync\BackgroundJob\ReconcileNameJob;
 use OCA\N8nSync\Service\CopyService;
 use OCA\N8nSync\Service\CreateService;
 use OCA\N8nSync\Service\Mapping;
@@ -16,7 +17,10 @@ use OCA\N8nSync\Service\MappingService;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\TagSyncService;
 use OCA\N8nSync\Service\WorkflowMetadata;
+use OCP\BackgroundJob\IJobList;
 use OCP\Files\File;
+use OCP\IUser;
+use OCP\IUserSession;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Psr\Log\NullLogger;
@@ -38,6 +42,7 @@ final class CopyServiceTest extends TestCase {
 	private CreateService $createService;
 	private MappingService $mappings;
 	private WorkflowMetadata $metadata;
+	private IJobList $jobList;
 	private CopyService $service;
 
 	protected function setUp(): void {
@@ -49,12 +54,21 @@ final class CopyServiceTest extends TestCase {
 		$guard = $this->createStub(SyncGuard::class);
 		$guard->method('run')->willReturnCallback(fn (callable $fn) => $fn());
 
+		$this->jobList = $this->createMock(IJobList::class);
+
+		$user = $this->createStub(IUser::class);
+		$user->method('getUID')->willReturn('alice');
+		$session = $this->createStub(IUserSession::class);
+		$session->method('getUser')->willReturn($user);
+
 		$this->service = new CopyService(
 			$this->createService,
 			$this->mappings,
 			$this->metadata,
 			$this->createStub(TagSyncService::class),
 			$guard,
+			$this->jobList,
+			$session,
 			new NullLogger(),
 		);
 	}
@@ -76,7 +90,10 @@ final class CopyServiceTest extends TestCase {
 
 		$this->metadata->expects(self::once())->method('clear')->with(7);
 		$this->mappings->expects(self::once())->method('resolveForPath')->willReturn($mapping);
-		$this->createService->expects(self::once())->method('createForFile')->with($node, $mapping);
+		// TRUE, NOT DEFAULTED. The flag is what tells CreateService that Nextcloud just
+		// named this file, so the workflow it makes in n8n wears the copy's name rather
+		// than the one it was copied from.
+		$this->createService->expects(self::once())->method('createForFile')->with($node, $mapping, true);
 
 		$this->service->onCopy($node);
 	}
@@ -87,7 +104,27 @@ final class CopyServiceTest extends TestCase {
 		$this->metadata->expects(self::once())->method('clear')->with(7);
 		$this->mappings->expects(self::once())->method('resolveForPath')->willReturn(null);
 		$this->createService->expects(self::never())->method('createForFile');
+		$this->jobList->expects(self::never())->method('add');
 
 		$this->service->onCopy($node);
+	}
+
+	/**
+	 * THE NAME NEXTCLOUD PICKED HAS TO REACH THE FILE, and the copy's own hook cannot
+	 * put it there: Nextcloud still holds locks on the target while the copy events run,
+	 * so `putContent()` here throws. So the work is handed to {@see ReconcileNameJob},
+	 * which runs once they are gone.
+	 *
+	 * `name_from_filename` because a copy IS a naming: Nextcloud just gave this file a
+	 * name, exactly as a rename does, and in both cases the filename is the authority.
+	 */
+	public function testACopyHandsItsNameToTheReconcileJob(): void {
+		$this->mappings->method('resolveForPath')->willReturn($this->mapping());
+		$this->jobList->expects(self::once())->method('add')->with(
+			ReconcileNameJob::class,
+			['fileId' => 7, 'userId' => 'alice', 'action' => 'name_from_filename'],
+		);
+
+		$this->service->onCopy($this->file(7));
 	}
 }

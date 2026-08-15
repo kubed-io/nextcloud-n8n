@@ -22,6 +22,12 @@ use OCP\EventDispatcher\IEventListener;
  * We attach {@see LinkWriteGuardPlugin}, which refuses WebDAV overwrites of
  * `link`-mode workflow files (saga §14.2c).
  *
+ * A SECOND PLUGIN LIVED HERE BRIEFLY AND HAD TO GO. `CopyNamePlugin` rewrote a COPY's
+ * `Destination` header so a colliding copy was born under our spelling rather than
+ * Nextcloud's. It worked, and it broke the Files app, which stats the path IT chose the
+ * moment the copy returns. The rename is deferred to {@see \OCA\N8nSync\BackgroundJob\ReconcileNameJob}
+ * instead — see `features/AGENTS.md#the-copy-cannot-be-renamed-before-the-client-has-looked-at-it`.
+ *
  * @implements IEventListener<SabrePluginAddEvent>
  */
 final class RegisterDavPluginsListener implements IEventListener {

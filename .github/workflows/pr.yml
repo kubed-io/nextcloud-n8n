@@ -6,6 +6,12 @@ on:
   pull_request:
     branches:
     - main
+    # `labeled`/`unlabeled` are here so the `no changelog` escape hatch below actually
+    # takes effect. Without them the default trigger set is opened/synchronize/reopened,
+    # the check has already run and failed by the time anyone reaches for the label, and
+    # the only way to clear it is a manual re-run or an empty commit. A documented
+    # escape hatch that needs a second, undocumented step is not one.
+    types: [opened, synchronize, reopened, labeled, unlabeled]
 
 permissions:
   contents: read

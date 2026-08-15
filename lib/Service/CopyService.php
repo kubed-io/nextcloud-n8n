@@ -10,7 +10,10 @@ declare(strict_types=1);
 namespace OCA\N8nSync\Service;
 
 use OCA\N8nSync\AppInfo\Application;
+use OCA\N8nSync\BackgroundJob\ReconcileNameJob;
+use OCP\BackgroundJob\IJobList;
 use OCP\Files\File;
+use OCP\IUserSession;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -32,6 +35,35 @@ use Psr\Log\LoggerInterface;
  *      as a NEW workflow in n8n ({@see CreateService::createForFile}, which mints a
  *      fresh id — it never reads any id out of the JSON body). A copy that landed
  *      outside any mapping is left as a plain, untracked document.
+ *   3. **Settle its name**, which is the part that was missing.
+ *
+ * ## THE NAME NEXTCLOUD PICKED IS THE COPY'S REAL NAME
+ *
+ * A copy landing beside its source collides, so Nextcloud names it — `Board.n8n (1).json`,
+ * counting before the last extension because to Nextcloud our file is a `.json` called
+ * `Board.n8n`. Two things follow, and neither used to happen:
+ *
+ *   1. **That name is the copy's name, in all three places.** `createForFile` puts the
+ *      filename's display name on the body so n8n is right from the first write, and
+ *      step 3 writes it into the file's JSON `name` to match. Without it a copy reached
+ *      n8n under the ORIGINAL's name — two workflows, one name, and a file claiming a
+ *      third thing.
+ *   2. **The file is renamed into our spelling**, `Board (1).n8n.json`, so the counter
+ *      sits on the workflow's name instead of inside its extension.
+ *      {@see FilenameCodec::canonicalise()} has always READ Nextcloud's spelling; this
+ *      is the write that stops the user having to look at it.
+ *
+ * Both are file writes, so both are deferred to {@see ReconcileNameJob} — the copy's own
+ * hook holds locks on the file it just made, and `putContent()` there throws.
+ *
+ * **AND THE RENAME CANNOT BE PULLED FORWARD INTO THE REQUEST, however tempting.** A Sabre
+ * plugin can rewrite the COPY's `Destination` header, and doing so really does make the
+ * file be BORN correctly named — but the Files app then reports *"The file does not exist
+ * anymore"* and shows no new file until a manual refresh. Its copy action stats the path
+ * IT chose the instant the copy returns, and only when the copy landed in the folder it
+ * came from, which is precisely and only the case that collides. Measured both ways on a
+ * live instance: intercepting gives COPY 201 then STAT 404; deferring gives COPY 201 then
+ * STAT 207 and a correct name one tick later.
  *
  * Failures are logged and swallowed: the NC copy already happened, and a copy that
  * failed to register is just an untracked `.n8n.json` the user can re-save to retry.
@@ -43,6 +75,8 @@ final class CopyService {
 		private WorkflowMetadata $metadata,
 		private TagSyncService $tagSync,
 		private SyncGuard $guard,
+		private IJobList $jobList,
+		private IUserSession $userSession,
 		private LoggerInterface $logger,
 	) {
 	}
@@ -60,8 +94,35 @@ final class CopyService {
 			return; // landed outside any mapping — a plain, untracked file
 		}
 
-		// Inside a mapping → a brand-new workflow with its own fresh id.
-		$this->createService->createForFile($node, $mapping);
+		// Inside a mapping → a brand-new workflow with its own fresh id, carrying the
+		// name Nextcloud just gave the file rather than the one it was copied from.
+		$this->createService->createForFile($node, $mapping, true);
+
+		$this->settleName($node);
+	}
+
+	/**
+	 * Hand the copy's name to {@see ReconcileNameJob}, which runs once the locks this
+	 * hook holds are gone: rename the file out of Nextcloud's spelling into ours if it
+	 * somehow arrived wearing it, and write the resulting display name into the JSON.
+	 *
+	 * `name_from_filename` is the right action because a copy IS a naming — the file was
+	 * just given a name by Nextcloud, exactly as a rename gives it one by hand, and both
+	 * make the filename the authority. The job re-checks everything and no-ops when a
+	 * copy needed neither, which is the ordinary case.
+	 */
+	private function settleName(File $node): void {
+		// The job resolves the file per-user, because team-folder files are mounted that
+		// way — same reason the async push job takes one.
+		$uid = $this->userSession->getUser()?->getUID() ?? $node->getOwner()?->getUID() ?? '';
+		if ($uid === '') {
+			return;
+		}
+		$this->jobList->add(ReconcileNameJob::class, [
+			'fileId' => $node->getId(),
+			'userId' => $uid,
+			'action' => 'name_from_filename',
+		]);
 	}
 
 	/**

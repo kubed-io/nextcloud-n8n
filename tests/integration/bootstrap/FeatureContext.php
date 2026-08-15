@@ -161,6 +161,22 @@ final class FeatureContext implements Context {
 	/** The copy made by a copy step, and the workflow id (if any) it was registered as. */
 	private string $copyFilePath = '';
 	private ?string $copyWorkflowId = null;
+	/**
+	 * Workflow ids a scenario duplicated inside n8n, oldest first.
+	 *
+	 * @var list<string>
+	 */
+	private array $n8nDuplicateIds = [];
+	/**
+	 * The folder a scenario last named the whole contents of, and the names it found.
+	 *
+	 * Held so a following step can re-read the SAME set — "these names survive another
+	 * sync" is a before/after claim, and re-deriving the "before" after the sync would
+	 * compare the folder with itself and pass no matter what happened.
+	 */
+	private string $namedFolder = '';
+	/** @var list<string> */
+	private array $namedFiles = [];
 
 	public function __construct() {
 		$this->occ = getenv('OCC') ?: 'php occ';

@@ -56,10 +56,30 @@ final class CreateService {
 	 *
 	 * Returns the new n8n workflow id on success. Throws on any unrecoverable
 	 * failure; the listener turns that into a notification.
+	 *
+	 * @param bool $namedByNextcloud the caller KNOWS Nextcloud just named this file, so
+	 *                               the filename — counter and all — is what the workflow
+	 *                               is called. Only a copy sets this; see below.
 	 */
-	public function createForFile(File $node, Mapping $mapping): string {
+	public function createForFile(File $node, Mapping $mapping, bool $namedByNextcloud = false): string {
 		$content = $node->getContent();
 		$wf = $this->parseFileBody($content);
+
+		// A COPY IS A NAMING, and the bytes cannot know it. The body is the original's,
+		// so its `name` still says the original's name; the file it landed in is called
+		// whatever Nextcloud picked to dodge the collision. Left alone, a copy made
+		// beside its source reached n8n as a second workflow named exactly like the
+		// first, while its file said `(1)` — three places, two answers.
+		//
+		// The filename is the authority here for the same reason it is on a rename: it
+		// is the thing that just changed. Note `toCreateBody()` only falls back to the
+		// basename when the body carries NO name at all, which a copy never is.
+		if ($namedByNextcloud) {
+			$display = FilenameCodec::displayName($node->getName());
+			if ($display !== '') {
+				$wf->name = $display;
+			}
+		}
 
 		$body = N8nWorkflowBody::toCreateBody($wf, $node->getName());
 		$created = $this->n8n->createWorkflow($body);

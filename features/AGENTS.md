@@ -391,6 +391,145 @@ one `Examples` column for what the file carried, one `Then` for where it ended
 up. A copy that lands outside every mapping keeps its body tags too, and says so
 in the same shape.
 
+### A copy made in Nextcloud is named by Nextcloud
+
+**Who performed the gesture decides who names the result.** A copy made in the
+Files app is named by Nextcloud — it has to be, because the bytes it copied would
+otherwise collide with the file they came from — and that name is then the copy's
+real name in all three places: the filename, the JSON `name`, and the workflow in
+n8n.
+
+Left to itself, none of that happened. Copying `Fleet Health.n8n.json` beside
+itself produced, on the live instance:
+
+    file    Fleet Health.n8n (1).json     <- Nextcloud's spelling, never rewritten
+    JSON    "name": "Fleet Health"        <- the ORIGINAL's name, copied verbatim
+    n8n      Fleet Health                 <- a second workflow, same name
+
+Three places, two answers. The body cannot be blamed for it: a copy's bytes ARE the
+original's, so of course its `name` says the original's name. The only party that
+knows a copy happened is the file's name.
+
+**Nextcloud's SERVER does not name a copy at all.** WebDAV COPY means "copy to
+exactly this path"; if something is already there and `Overwrite: F`, the answer is
+a flat 412. The name is chosen in the BROWSER, by `getUniqueName()` from
+`@nextcloud/files`, which counts from 1 and puts the counter before the LAST
+extension — to it our file is a `.json` called `Fleet Health.n8n`. There is a
+`suffix` option and no way for an app to pass one, so **the rule cannot be
+changed**.
+
+### The copy cannot be renamed before the client has looked at it
+
+It can be got AHEAD of — the chosen name arrives as the COPY's `Destination` header,
+and Sabre fires `beforeMethod:COPY` while that header is still a string — and doing
+so is **the wrong thing to do**. A plugin rewriting it really does make the file be
+born as `Fleet Health (1).n8n.json`. It shipped in the grafana sibling, and the Files
+app answered:
+
+    The file does not exist anymore
+
+Its copy action is the reason:
+
+```js
+await client.copyFile(source, destination)
+if (node.dirname === target.path) {            // copying into the SAME folder
+    const { data } = await client.stat(destination)   // the path IT chose
+    emit('files:node:created', ...)
+}
+...
+if (404 === e.response?.status) throw new Error('The file does not exist anymore')
+```
+
+The client stats the destination it picked, and **only when the copy landed in the
+folder it came from** — precisely and only the case that collides, so the plugin fired
+exactly when the stat would notice. Measured both ways on a live instance:
+
+    intercepting   COPY 201 → STAT 404 → error dialog, no file until a refresh
+    deferring      COPY 201 → STAT 207 → correct name one tick later
+
+So the rename waits for `ReconcileNameJob`, and the file wears Nextcloud's spelling
+for up to one cron tick. **That is not a tolerance that has to be widened per
+counter**: `canonicalise()` reads `(1)`, `(2)` and `(17)` with one `\d+`, and every
+predicate goes through it, so `(N)` costs a regex rather than a case.
+
+**n8n is right immediately either way**, which is what makes deferring cheap:
+`CreateService` reads the display name off the filename before the POST, and it reads
+Nextcloud's spelling perfectly well. Only the name on disk lags.
+
+**The name it reads is `display`, not `name`.** `FilenameCodec::parse()` returns
+both, and they differ by exactly the collision counter. Taking the counter-stripped
+one — the field a PULL wants, so a mirror already wearing `(1)` is matched to its
+workflow next time — is what let the copy reach n8n under the original's name.
+`FilenameCodec::displayName()` exists so that mistake has to be made deliberately.
+
+This is the sibling of the same fix in `nextcloud-grafana` (PR #51), found there
+first. penpot is immune: its extension is a single segment, so Nextcloud's counter
+lands harmlessly before it.
+
+### A copy made in n8n is named by n8n
+
+The mirror image, and the one exception to *a name is one value living in three
+places*.
+
+n8n permits two workflows to share a name — verified on a live instance holding two
+called `Emby Items` with different ids — and Nextcloud cannot permit two files in a
+folder to share a name. Both constraints are real, and only one of them is
+Nextcloud's business. So the counter goes on the FILENAME and stops there: the JSON
+`name` and the n8n workflow keep saying the duplicated name, because that is what
+their owner called them.
+
+    Fleet Health.n8n.json      name "Fleet Health"   n8n: Fleet Health
+    Fleet Health (1).n8n.json  name "Fleet Health"   n8n: Fleet Health
+
+Same filename shape as a Nextcloud-side copy, deliberately: Nextcloud's constraint
+is satisfied identically either way. What differs is whether the counter travels.
+Outward it must — it is the real name. Inward it must not — renaming someone's
+workflow because our filesystem is fussy is overreach.
+
+**Which one takes the suffix is knowable, not arbitrary.** The app holds the prior
+state: the file already carrying that name had it first, so the arriving workflow is
+the one that gets suffixed. Renaming the incumbent instead would move a file the user
+never touched.
+
+`NameSyncListener` splits on the same line: a RENAME is the user typing the whole
+filename, so the counter travels to the JSON name and to n8n; a WRITE is the user
+setting a name, so the counter is stripped before comparing and saving a duplicate's
+mirror enqueues nothing.
+
+### The second suffix, and the pull that used to fight it
+
+Three workflows, not two, because **two is the case that passes by accident**: a
+counter that only ever reaches `(1)` is indistinguishable from an app that appends a
+fixed string, and the second suffix is where an off-by-one would live.
+
+**The word "still" in the last line is doing real work.** Landing three names is the
+easy half; KEEPING them is where `SyncService` was wrong. For an existing mirror it
+asked for `FilenameCodec::format($displayName, $id, false, 0)` — collision index
+zero, unconditionally — so on every single tick both duplicates were told to go and
+take the name the first mirror was sitting on.
+
+It "worked" because the move threw and the catch logged `rename skipped
+(collision?)`. An exception is not a naming policy, and that log line's own question
+mark says nobody was sure it was one. Anything that made the move succeed — the
+incumbent deleted in n8n, a differently-ordered pull — and the mirrors would start
+swapping names underneath the user.
+
+`desiredMirrorName()` replaces it: prefer the plain name, else the first free
+counter, and count the file's OWN current name as free. That last clause is what lets
+a legitimate duplicate keep the suffix it has, and it also means a mirror whose twin
+was deleted gets its unsuffixed name back instead of wearing a counter forever.
+
+**The second sync that proves it does not get a line of its own.** It is a mechanism
+— how the claim is checked, not what the user ends up with — so it lives inside the
+`are still named` step, which reads the folder, syncs once more, and checks that
+neither the names nor the filenames moved. A scenario saying "and sync again" out
+loud would be narrating the app's plumbing; `still` already means the state held.
+
+**And neither arrange could have caught any of this.** `I copy the file into` invented
+a fresh random destination, so the suite copied a workflow into the folder it was
+already in and never once collided. There was no n8n-side duplicate scenario at all.
+Both are fixed here.
+
 ### A copy landing outside every mapping is a plain document
 
 WHAT NEXTCLOUD WOULD DO decides the body: it copies BYTES. It does not read them,
