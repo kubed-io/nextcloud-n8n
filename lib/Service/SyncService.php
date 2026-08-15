@@ -302,7 +302,13 @@ final class SyncService {
 			$node->delete();
 			return;
 		}
-		$this->trash->withoutTrash(static fn () => $node->delete());
+		// A STATEMENT BODY, not an arrow function. `Node::delete()` is `void`, and while
+		// PHP evaluates a void call in expression position to null quite happily, writing
+		// it as `fn () => $node->delete()` implies a result that does not exist — it read
+		// as a bug to a reviewer, which is reason enough.
+		$this->trash->withoutTrash(static function () use ($node): void {
+			$node->delete();
+		});
 	}
 
 	/**
