@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Archiving a workflow in n8n now moves its file to the Nextcloud trash. Archiving does not remove the mapping's tag, so the app kept mirroring archived workflows as live ones and the file just sat there.
 - A copy is named once: the filename, the JSON name and the n8n name all say `Fleet Health (1)`.
 - Workflows in one mapping may share a name; their files take a numbered suffix and keep it.
 

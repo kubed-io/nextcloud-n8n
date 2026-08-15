@@ -198,6 +198,20 @@ final class SyncService {
 			$seenIds = [];
 
 			foreach ($this->n8n->eachWorkflow([$mapping->n8nTag]) as $workflow) {
+				// AN ARCHIVED WORKFLOW IS NOT A LIVE ONE, and n8n keeps returning it: the
+				// tag survives archiving, so `GET /workflows?tags=…` hands it back exactly
+				// like a live workflow and the pull used to mirror it as one. Measured on a
+				// live instance — 13 workflows on one mapping's tag, 4 of them archived,
+				// every one still sitting in Nextcloud as an ordinary file.
+				//
+				// Leaving it OUT of `$seenIds` is the whole fix: it is not written, and
+				// {@see pruneStale} then moves its mirror to the Nextcloud trash, which is
+				// the same path a workflow that lost the tag already takes. Archiving in
+				// n8n and trashing in Nextcloud become the same gesture seen from two
+				// sides, which is what `delete.feature` says they are.
+				if (!empty($workflow['isArchived'])) {
+					continue;
+				}
 				$processed++;
 				$seenIds[(string)$workflow['id']] = true;
 				try {
@@ -231,10 +245,16 @@ final class SyncService {
 	}
 
 	/**
-	 * Delete managed files that belong to $mapping but whose workflow was not seen
-	 * in this pull (it lost the mapping's tag). The workflow is left alone in n8n —
-	 * only the local mirror is removed — and the caller already holds the SyncGuard
-	 * so the delete does not mirror back. Returns the number of files pruned.
+	 * Delete managed files that belong to $mapping but whose workflow was not seen in
+	 * this pull — because it lost the mapping's tag, or because it was ARCHIVED in n8n
+	 * and the pull deliberately skipped it. The workflow is left alone in n8n — only the
+	 * local mirror is removed — and the caller already holds the SyncGuard so the delete
+	 * does not mirror back. Returns the number of files pruned.
+	 *
+	 * `Node::delete()` is a move to the Nextcloud trash, not a destruction, which is what
+	 * makes this the right mechanism for an archive: n8n hid the workflow without losing
+	 * it, and Nextcloud does the same to the file. Unarchiving in n8n brings the workflow
+	 * back into the tag listing and the next pull writes a fresh mirror.
 	 *
 	 * @param array<string,\OCP\Files\Node> $existingById managed files for this mapping, keyed by n8n id
 	 * @param array<string,bool> $seenIds ids that still carry the tag (written this pull)

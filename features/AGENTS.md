@@ -733,6 +733,36 @@ about a file the app never knew.
 
 Neither is a behaviour. Both were the absence of one.
 
+### An archive in n8n is a trash in Nextcloud
+
+The mirror image of "trashing a sync file archives its workflow", and the two scenarios
+are now written as exact mirrors — same Given, same three Thens, only the `When`
+differs. That is the claim: **archiving in n8n and trashing in Nextcloud are one gesture
+seen from two sides.** Either side can be undone, because neither destroys anything.
+
+**It did not happen at all, and the reason is that n8n keeps handing archived workflows
+back.** Archiving does not remove the tag, so `GET /workflows?tags=…` returns an
+archived workflow exactly like a live one, and the pull mirrored it as one. Measured on
+the live instance: 13 workflows on one mapping's tag, **4 of them archived**, every one
+still sitting in Nextcloud as an ordinary file — including one the user had archived
+seconds earlier while watching for it to disappear.
+
+The fix is one `continue`. An archived workflow is not written and, more importantly,
+is **not added to `$seenIds`** — so `pruneStale` reaches it and moves its mirror to the
+Nextcloud trash. That is the same path a workflow which lost the tag already took, and
+the same one the Grafana sibling uses for a dashboard deleted in Grafana
+(`dashboards/delete.feature`, "Delete a dashboard in Grafana"). Nothing new was built;
+the archived case simply never got there.
+
+`Node::delete()` is a move to the trash, not a destruction, which is what makes it the
+right mechanism here rather than a coincidence: n8n hid the workflow without losing it
+and Nextcloud does the same to the file. Unarchiving in n8n puts the workflow back in
+the tag listing and the next pull writes a fresh mirror.
+
+**"Recoverable" is asserted as bytes, not as a row.** The step fetches the trashed file
+back over DAV and asks for its `name` — a trash entry with an emptied body would satisfy
+"it is in the trash" and still have lost the user their workflow.
+
 ### A link leaves when its workflow does
 
 THE PRUNE IS THE DELETE, and it is the only one a link has. Archiving the

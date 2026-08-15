@@ -297,6 +297,83 @@ final class SyncServiceTest extends TestCase {
 		self::assertSame(1, $res['pruned']);
 	}
 
+	/**
+	 * AN ARCHIVE IN n8n IS A TRASH IN NEXTCLOUD, and the reason it was not is that n8n
+	 * keeps handing archived workflows back: archiving does not remove the tag, so the
+	 * tag listing returns one exactly like a live workflow and the pull mirrored it as
+	 * one. Measured on a live instance — 13 workflows on a mapping's tag, 4 archived,
+	 * every one still sitting in Nextcloud as an ordinary file.
+	 *
+	 * The archived workflow must not be counted as processed AND must not be marked
+	 * seen, because "not seen" is what lets `pruneStale` move its mirror to the trash.
+	 * Asserting `delete()` on the mirror is therefore the real claim; the counters are
+	 * how a reader tells this apart from a workflow that merely lost the tag.
+	 */
+	public function testAnArchivedWorkflowTrashesItsMirrorInsteadOfBeingWritten(): void {
+		$liveName = FilenameCodec::format('Keep', 'wf-keep', false, 0);
+		$live = $this->createMock(File::class);
+		$live->method('getId')->willReturn(10);
+		$live->method('getName')->willReturn($liveName);
+		$live->expects(self::never())->method('delete');
+
+		$archivedMirror = $this->createMock(File::class);
+		$archivedMirror->method('getId')->willReturn(11);
+		$archivedMirror->method('getName')->willReturn(FilenameCodec::format('Shelved', 'wf-archived', false, 0));
+		$archivedMirror->expects(self::once())->method('delete');
+
+		$folder = $this->createStub(Folder::class);
+		$folder->method('getDirectoryListing')->willReturn([$live, $archivedMirror]);
+
+		$this->storage->method('isAvailable')->willReturn(true);
+		$this->storage->method('ensureFolder')->willReturn($folder);
+
+		$mapId = 'map-alpha';
+		$this->metadata->method('read')->willReturnCallback(function (int $fileId) use ($mapId): ?ManagedFile {
+			return match ($fileId) {
+				10 => $this->managed('wf-keep', mappingId: $mapId),
+				11 => $this->managed('wf-archived', mappingId: $mapId),
+				default => null,
+			};
+		});
+
+		// BOTH still carry the tag — which is the whole point. Archiving in n8n does not
+		// untag, so a pull that only looked at the tag saw two live workflows.
+		$this->n8n->method('eachWorkflow')->willReturn([
+			['id' => 'wf-keep', 'name' => 'Keep', 'versionId' => 'v1'],
+			['id' => 'wf-archived', 'name' => 'Shelved', 'versionId' => 'v1', 'isArchived' => true],
+		]);
+
+		$res = $this->service->pullOne($this->mapping(Mapping::MODE_SYNC, $mapId));
+
+		self::assertSame(1, $res['processed'], 'the archived workflow is not a thing this pull processed');
+		self::assertSame(1, $res['succeeded']);
+		self::assertSame(1, $res['pruned'], 'its mirror goes to the Nextcloud trash');
+	}
+
+	/** `isArchived: false` is an ordinary live workflow — the flag only matters when set. */
+	public function testAnExplicitlyUnarchivedWorkflowIsMirroredNormally(): void {
+		$name = FilenameCodec::format('Keep', 'wf-keep', false, 0);
+		$keep = $this->createMock(File::class);
+		$keep->method('getId')->willReturn(10);
+		$keep->method('getName')->willReturn($name);
+		$keep->expects(self::never())->method('delete');
+
+		$folder = $this->createStub(Folder::class);
+		$folder->method('getDirectoryListing')->willReturn([$keep]);
+
+		$this->storage->method('isAvailable')->willReturn(true);
+		$this->storage->method('ensureFolder')->willReturn($folder);
+		$this->metadata->method('read')->willReturn($this->managed('wf-keep', mappingId: 'map-alpha'));
+		$this->n8n->method('eachWorkflow')->willReturn([
+			['id' => 'wf-keep', 'name' => 'Keep', 'versionId' => 'v1', 'isArchived' => false],
+		]);
+
+		$res = $this->service->pullOne($this->mapping(Mapping::MODE_SYNC, 'map-alpha'));
+
+		self::assertSame(1, $res['processed']);
+		self::assertSame(0, $res['pruned']);
+	}
+
 	// ── pull change-detection (saga Ch5 §5.11) ──────────────────────────────────
 	//
 	// The defect: writeWorkflow called putContent() unconditionally, so a scheduled

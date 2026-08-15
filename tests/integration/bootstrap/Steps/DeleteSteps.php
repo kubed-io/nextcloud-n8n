@@ -158,6 +158,31 @@ trait DeleteSteps {
 	}
 
 	/**
+	 * RECOVERABLE MEANS THE BYTES ARE STILL THERE, not just that a row exists. A trash
+	 * entry whose body had been emptied would satisfy "it is in the trash" and lose the
+	 * user their workflow anyway, so the JSON is fetched back and asked for its `name`.
+	 *
+	 * This is the post-state that makes an archive in n8n and a trash in Nextcloud the
+	 * same gesture: n8n hid the workflow without losing it, and Nextcloud did the same to
+	 * the file. Either side can be undone.
+	 *
+	 * @Then the file is recoverable from the Nextcloud trash
+	 */
+	public function theFileIsRecoverableFromTheTrash(): void {
+		$entry = $this->trashbinPathFor($this->currentFilePath);
+		Assert::assertNotNull(
+			$entry,
+			"the file is not in the Nextcloud trash, so trashing it destroyed it: {$this->currentFilePath}",
+		);
+
+		$res = $this->davClient()->request('GET', $this->trashHref($entry));
+		Assert::assertSame(200, $res->getStatusCode(), "could not read the trashed file back: $entry");
+		$body = json_decode((string)$res->getBody(), true);
+		Assert::assertIsArray($body, "the trashed file is no longer JSON:\n" . (string)$res->getBody());
+		Assert::assertArrayHasKey('name', $body, 'the trashed file no longer holds a workflow');
+	}
+
+	/**
 	 * NOT IN THE TRASH EITHER, and for a link that is the whole point: it was never
 	 * Nextcloud's to keep, so there is nothing to restore FROM. A trashed link would
 	 * be a pointer to a workflow that is still perfectly fine, sitting in a bin.
