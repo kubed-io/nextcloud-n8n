@@ -78,14 +78,14 @@ final class MotionServiceTest extends TestCase {
 	private function fileWithSibling(int $incomingId, int $siblingFileId, string $siblingWorkflowId): File {
 		$sibling = $this->createStub(File::class);
 		$sibling->method('getId')->willReturn($siblingFileId);
-		$sibling->method('getName')->willReturn('Mover.n8n.json');
+		$sibling->method('getName')->willReturn('Mover.n8n');
 
 		$folder = $this->createStub(Folder::class);
 		$folder->method('getDirectoryListing')->willReturn([$sibling]);
 
 		$node = $this->createMock(File::class);
 		$node->method('getId')->willReturn($incomingId);
-		$node->method('getName')->willReturn('Mover-incoming.n8n.json');
+		$node->method('getName')->willReturn('Mover-incoming.n8n');
 		$node->method('getParent')->willReturn($folder);
 
 		$this->metadata->method('read')->with($siblingFileId)->willReturn(

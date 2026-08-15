@@ -10,7 +10,7 @@
   <summary>Your n8n workflows as native, editable, backed-up Nextcloud files</summary>
   <description><![CDATA[
 n8n Sync surfaces your n8n workflows as native Nextcloud files. Map one or more n8n
-tags to folders and every tagged workflow shows up as a `.n8n.json` file — with a
+tags to folders and every tagged workflow shows up as a `.n8n` file — with a
 real file icon, deep links back to n8n, and a per-folder sync mode.
 
 - **Sync** — full two-way ownership. Edit a workflow in the Files app, over WebDAV,
@@ -109,6 +109,12 @@ identify the service this app integrates with.
            Without it a leftover pill would become an ordinary content tag and be
            pushed to n8n. Idempotent; see lib/Migration/RemoveModePills.php. -->
       <step>OCA\N8nSync\Migration\RemoveModePills</step>
+      <!-- Renames already-synced `*.n8n.json` files to `*.n8n`. Runs AFTER
+           RegisterMimetype so the renamed files land on a mimetype that exists.
+           Without it an upgraded instance's workflows go unrecognised. Kept for a
+           version or two — this app is published, so its population is not ours to
+           count; see lib/Migration/MigrateFileExtension.php. -->
+      <step>OCA\N8nSync\Migration\MigrateFileExtension</step>
     </post-migration>
     <uninstall>
       <!-- Mirror image of RegisterMimetype: reverts the core-tree mimetype/icon

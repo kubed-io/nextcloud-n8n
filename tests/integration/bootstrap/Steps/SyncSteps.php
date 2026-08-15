@@ -128,7 +128,7 @@ trait SyncSteps {
 			'connections' => new \stdClass(),
 			'settings' => new \stdClass(),
 		], JSON_THROW_ON_ERROR);
-		$this->reconcileUnmappedPath = $folder . '/Bystander.n8n.json';
+		$this->reconcileUnmappedPath = $folder . '/Bystander.n8n';
 		$this->davPut($this->reconcileUnmappedPath, $this->reconcileUnmappedBody);
 	}
 

@@ -33,7 +33,7 @@ trait RenameSteps {
 		}
 		$this->davMkdir($folder);
 		$this->currentFolder = $folder;
-		$stem = preg_replace('/\.n8n\.json$/', '', $filename) ?? $filename;
+		$stem = preg_replace('/\.n8n$/', '', $filename) ?? $filename;
 		$path = $folder . '/' . $filename;
 
 		// MANAGED ONLY IF IT LANDED IN A MAPPING. {@see putManagedFile} asserts an
@@ -89,7 +89,7 @@ trait RenameSteps {
 		$tag = 'nextcloud:rename-' . bin2hex(random_bytes(3));
 		$this->setupSyncMappingAndFolder($mode, $tag);
 		$name = 'Old Name';
-		$this->putManagedFile($this->currentFolder . '/' . $name . '.n8n.json', $name);
+		$this->putManagedFile($this->currentFolder . '/' . $name . '.n8n', $name);
 	}
 
 	/** @When I rename the file to :filename */
@@ -121,7 +121,7 @@ trait RenameSteps {
 		$this->drainJobs('OCA\\N8nSync\\BackgroundJob\\PushWorkflowJob');
 		$this->drainJobs('OCA\\N8nSync\\BackgroundJob\\ReconcileNameJob');
 		// After a filename_from_name reconcile the file moved; track its new path.
-		$expected = $this->currentFolder . '/' . $value . '.n8n.json';
+		$expected = $this->currentFolder . '/' . $value . '.n8n';
 		if ($this->davExists($expected)) {
 			$this->currentFilePath = $expected;
 		}
@@ -164,7 +164,7 @@ trait RenameSteps {
 	 * @Then the name is :name in the filename, the JSON, and n8n
 	 */
 	public function theNameIsEverywhere(string $name): void {
-		$expected = $this->currentFolder . '/' . $name . '.n8n.json';
+		$expected = $this->currentFolder . '/' . $name . '.n8n';
 		Assert::assertTrue($this->davExists($expected), "expected the file at $expected, but it isn't there");
 		$this->currentFilePath = $expected;
 
@@ -179,7 +179,7 @@ trait RenameSteps {
 		Assert::assertSame(
 			['filename' => $name, 'JSON' => $name, 'n8n' => $name],
 			[
-				'filename' => basename($this->currentFilePath, '.n8n.json'),
+				'filename' => basename($this->currentFilePath, '.n8n'),
 				'JSON' => (string)($wf['name'] ?? ''),
 				'n8n' => (string)($remote['name'] ?? ''),
 			],

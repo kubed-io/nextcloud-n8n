@@ -264,3 +264,37 @@ namespace OCP\SystemTag {
 		}
 	}
 }
+
+namespace OCP\Migration {
+	// The repair-step surface. `nextcloud/ocp` does not ship OCP\Migration, and the
+	// migrations are ordinary classes with ordinary logic — MigrateFileExtension walks a
+	// user's files and renames them, which is the one thing in the extension cut worth
+	// unit-testing rather than only running on a real upgrade.
+	//
+	// SIGNATURES MIRROR CORE'S, untyped and all (`lib/public/Migration/IOutput.php`).
+	// Tightening them here would let an implementation compile against a stricter
+	// contract than the server actually offers, and the suite would be the last place
+	// to notice.
+	if (!interface_exists(IOutput::class, false)) {
+		interface IOutput {
+			public function debug(string $message): void;
+
+			public function info($message);
+
+			public function warning($message);
+
+			public function startProgress($max = 0);
+
+			public function advance($step = 1, $description = '');
+
+			public function finishProgress();
+		}
+	}
+	if (!interface_exists(IRepairStep::class, false)) {
+		interface IRepairStep {
+			public function getName();
+
+			public function run(IOutput $output);
+		}
+	}
+}

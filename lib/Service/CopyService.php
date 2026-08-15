@@ -39,34 +39,31 @@ use Psr\Log\LoggerInterface;
  *
  * ## THE NAME NEXTCLOUD PICKED IS THE COPY'S REAL NAME
  *
- * A copy landing beside its source collides, so Nextcloud names it — `Board.n8n (1).json`,
- * counting before the last extension because to Nextcloud our file is a `.json` called
- * `Board.n8n`. Two things follow, and neither used to happen:
+ * A copy landing beside its source collides, so Nextcloud names it — `Board (1).n8n`.
+ * That name is the copy's name **in all three places**: `createForFile` puts the
+ * filename's display name on the body so n8n is right from the first write, and step 3
+ * writes it into the file's JSON `name` to match. Without it a copy reached n8n under
+ * the ORIGINAL's name — two workflows, one name, and a file claiming a third thing.
  *
- *   1. **That name is the copy's name, in all three places.** `createForFile` puts the
- *      filename's display name on the body so n8n is right from the first write, and
- *      step 3 writes it into the file's JSON `name` to match. Without it a copy reached
- *      n8n under the ORIGINAL's name — two workflows, one name, and a file claiming a
- *      third thing.
- *   2. **The file is renamed into our spelling**, `Board (1).n8n.json`, so the counter
- *      sits on the workflow's name instead of inside its extension.
- *      {@see FilenameCodec::canonicalise()} has always READ Nextcloud's spelling; this
- *      is the write that stops the user having to look at it.
+ * The name-in-the-JSON is a file write, so it is deferred to {@see ReconcileNameJob} —
+ * the copy's own hook holds locks on the file it just made, and `putContent()` there
+ * throws. n8n is correct within the request; the file catches up a tick later.
  *
- * Both are file writes, so both are deferred to {@see ReconcileNameJob} — the copy's own
- * hook holds locks on the file it just made, and `putContent()` there throws.
- *
- * **AND THE RENAME CANNOT BE PULLED FORWARD INTO THE REQUEST, however tempting.** A Sabre
- * plugin can rewrite the COPY's `Destination` header, and doing so really does make the
- * file be BORN correctly named — but the Files app then reports *"The file does not exist
- * anymore"* and shows no new file until a manual refresh. Its copy action stats the path
- * IT chose the instant the copy returns, and only when the copy landed in the folder it
- * came from, which is precisely and only the case that collides. Measured both ways on a
- * live instance: intercepting gives COPY 201 then STAT 404; deferring gives COPY 201 then
- * STAT 207 and a correct name one tick later.
+ * **THE FILE ITSELF NEEDS NO CORRECTING, and that is the single-segment extension's
+ * doing.** Nextcloud's counter goes before the LAST extension, so the retired
+ * `.n8n.json` made a copy `Board.n8n (1).json` — a name ending in `.json` that matched
+ * none of this app's predicates, leaving a file that looks managed and is not (confirmed
+ * live as `FooBoblicious.n8n (1).json`). Reading it took a `canonicalise()` pass in front
+ * of every predicate, un-writing it took a second deferred rename, and pulling that
+ * rename forward into the request (a Sabre plugin rewriting the COPY `Destination`) broke
+ * the Files app outright: it stats the path IT chose the instant the copy returns, and
+ * only for a copy landing in the folder it came from — precisely and only the case that
+ * collides. Measured live in the grafana sibling: intercepting gives COPY 201 then STAT
+ * 404; deferring gives 201 then 207. With one segment the counter lands where
+ * {@see FilenameCodec::format()} puts it and none of that machinery has anything to do.
  *
  * Failures are logged and swallowed: the NC copy already happened, and a copy that
- * failed to register is just an untracked `.n8n.json` the user can re-save to retry.
+ * failed to register is just an untracked `.n8n` the user can re-save to retry.
  */
 final class CopyService {
 	public function __construct(
@@ -82,7 +79,7 @@ final class CopyService {
 	}
 
 	/**
-	 * Handle a freshly-copied `*.n8n.json` file: strip any inherited identity, then
+	 * Handle a freshly-copied `*.n8n` file: strip any inherited identity, then
 	 * register it as a new workflow if it landed in a mapping.
 	 */
 	public function onCopy(File $node): void {

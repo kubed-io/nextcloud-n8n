@@ -29,7 +29,7 @@ Feature: Create a workflow from Nextcloud
 
   @user @in-nextcloud @gesture @ui
   Scenario Outline: New file in a mapped folder becomes a real workflow
-    When I create a new ".n8n.json" file in "<folder>" via the Files "New" menu
+    When I create a new ".n8n" file in "<folder>" via the Files "New" menu
     Then a matching workflow is created in n8n
     And the workflow carries the mapping's tag
     And the file holds this DAV metadata:
@@ -47,6 +47,6 @@ Feature: Create a workflow from Nextcloud
 
   @user @in-nextcloud @gesture @ui
   Scenario: A workflow file created outside any mapped folder stays unmanaged
-    When I create a ".n8n.json" file in "Scratch"
+    When I create a ".n8n" file in "Scratch"
     Then no workflow is created in n8n
     And the file holds no n8n DAV metadata at all

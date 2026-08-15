@@ -83,12 +83,12 @@ final class N8nWorkflowBodyTest extends TestCase {
 	// ── toCreateBody ─────────────────────────────────────────────────────────────
 
 	public function testCreateBodyPrefersJsonNameOverFilename(): void {
-		$body = N8nWorkflowBody::toCreateBody($this->obj(['name' => 'From JSON']), 'From File.n8n.json');
+		$body = N8nWorkflowBody::toCreateBody($this->obj(['name' => 'From JSON']), 'From File.n8n');
 		self::assertSame('From JSON', $body['name']);
 	}
 
 	public function testCreateBodyFallsBackToFileStem(): void {
-		$body = N8nWorkflowBody::toCreateBody($this->obj([]), 'My Workflow.n8n.json');
+		$body = N8nWorkflowBody::toCreateBody($this->obj([]), 'My Workflow.n8n');
 		self::assertSame('My Workflow', $body['name']);
 	}
 
@@ -98,7 +98,7 @@ final class N8nWorkflowBodyTest extends TestCase {
 	}
 
 	public function testCreateBodyAppliesStarterDefaults(): void {
-		$body = N8nWorkflowBody::toCreateBody($this->obj([]), 'New.n8n.json');
+		$body = N8nWorkflowBody::toCreateBody($this->obj([]), 'New.n8n');
 		self::assertSame([], $body['nodes']);
 		self::assertInstanceOf(\stdClass::class, $body['connections']);
 		self::assertInstanceOf(\stdClass::class, $body['settings']);

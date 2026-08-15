@@ -13,7 +13,6 @@ use OCA\N8nSync\AppInfo\Application;
 use OCA\N8nSync\BackgroundJob\ManualSyncJob;
 use OCP\BackgroundJob\IJobList;
 use OCP\Files\Folder;
-use OCP\Files\IMimeTypeLoader;
 use OCP\IAppConfig;
 use Psr\Log\LoggerInterface;
 
@@ -51,7 +50,6 @@ final class SyncService {
 		private StorageService $storage,
 		private SyncGuard $guard,
 		private PushService $push,
-		private IMimeTypeLoader $mimeLoader,
 		private IJobList $jobList,
 		private SyncStatusService $status,
 		private IAppConfig $config,
@@ -114,27 +112,6 @@ final class SyncService {
 			return $res;
 		}
 		return $this->pullAll();
-	}
-
-	/**
-	 * One SQL UPDATE that rewrites every `*.n8n.json` filecache row to the
-	 * application/n8n+json mimetype. NC's Detection layer only consults the
-	 * last extension segment ('.json' → application/json), so newly-written
-	 * files are stamped with the wrong mimetype. Calling this once at the
-	 * end of a pull is O(rows) and idempotent (the WHERE clause skips rows
-	 * already on the right id). Identical to what RegisterMimetype runs on
-	 * install/upgrade.
-	 */
-	private function fixupFilecacheMimetype(): void {
-		try {
-			$id = $this->mimeLoader->getId('application/n8n+json');
-			$this->mimeLoader->updateFilecache('n8n.json', $id);
-		} catch (\Throwable $e) {
-			$this->logger->warning('n8n_sync: filecache mimetype fixup skipped', [
-				'app' => Application::APP_ID,
-				'exception' => $e,
-			]);
-		}
 	}
 
 	/**
@@ -241,7 +218,6 @@ final class SyncService {
 
 			$pruned = $this->pruneStale($existingById, $seenIds, $mapping);
 
-			$this->fixupFilecacheMimetype();
 			return [
 				'processed' => $processed,
 				'succeeded' => $succeeded,
@@ -645,7 +621,7 @@ final class SyncService {
 	 * Optional purge when a mapping is removed (spec UC-4): delete only the files
 	 * this integration created — those carrying `n8n_id` metadata — in the
 	 * mapping's Team Folder. The Team Folder itself, foreign files, and hand-made
-	 * `*.n8n.json` that were never synced (no `n8n_id`) are all left intact.
+	 * `*.n8n` that were never synced (no `n8n_id`) are all left intact.
 	 *
 	 * @return int number of files deleted
 	 */

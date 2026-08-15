@@ -26,7 +26,7 @@ use Psr\Log\LoggerInterface;
  * and applies the n8n-side consequence via {@see MotionService}.
  *
  * Only files that are *already managed* (carry an `n8n_id`) are handled here;
- * an untracked `*.n8n.json` moving into a mapping is create-on-land, owned by
+ * an untracked `*.n8n` moving into a mapping is create-on-land, owned by
  * {@see CreateInN8nListener}. The two never collide — this listener bails when
  * there is no id, that one bails when there is.
  *

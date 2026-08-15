@@ -13,7 +13,7 @@ use Behat\Gherkin\Node\TableNode;
 use PHPUnit\Framework\Assert;
 
 /**
- * Create-on-land steps (UC-6: author in NC, live in n8n). A managed .n8n.json
+ * Create-on-land steps (UC-6: author in NC, live in n8n). A managed .n8n
  * written into a mapped folder over WebDAV fires NodeWrittenEvent →
  * CreateInN8nListener → the workflow appears in n8n. We assert the n8n side over
  * its REST API and the NC stamp over DAV PROPFIND. Composed into

@@ -309,7 +309,7 @@ NodeRenamedEvent), which is what lets us treat them oppositely.
 `features/workflows/create.feature`
 
 Creating workflows from Nextcloud. These scenarios are the human-readable spec
-for the "author in NC, live in n8n" flow. LIVE: a .n8n.json written over WebDAV
+for the "author in NC, live in n8n" flow. LIVE: a .n8n written over WebDAV
 into a mapped folder fires NodeWrittenEvent → CreateInN8nListener → the workflow
 appears in n8n. The n8n side is asserted over its REST API; the NC stamp over
 DAV PROPFIND of nc:metadata-n8n_id.
@@ -399,41 +399,58 @@ otherwise collide with the file they came from — and that name is then the cop
 real name in all three places: the filename, the JSON `name`, and the workflow in
 n8n.
 
-Left to itself, none of that happened. Copying `Fleet Health.n8n.json` beside
+Left to itself, none of that happened. Copying `Fleet Health.n8n` beside
 itself produced, on the live instance:
 
-    file    Fleet Health.n8n (1).json     <- Nextcloud's spelling, never rewritten
-    JSON    "name": "Fleet Health"        <- the ORIGINAL's name, copied verbatim
-    n8n      Fleet Health                 <- a second workflow, same name
+    file    Fleet Health (1).n8n     <- the only place the copy's name appeared
+    JSON    "name": "Fleet Health"   <- the ORIGINAL's name, copied verbatim
+    n8n      Fleet Health            <- a second workflow, same name
 
 Three places, two answers. The body cannot be blamed for it: a copy's bytes ARE the
 original's, so of course its `name` says the original's name. The only party that
 knows a copy happened is the file's name.
 
+**The name it reads is `display`, not `name`.** `FilenameCodec::parse()` returns
+both, and they differ by exactly the collision counter. Taking the counter-stripped
+one — the field a PULL wants, so a mirror already wearing `(1)` is matched to its
+workflow next time — is what let the copy reach n8n under the original's name.
+`FilenameCodec::displayName()` exists so that mistake has to be made deliberately.
+
+`CreateService` reads the display name off the filename before the POST, so n8n is
+right inside the request. Only the file's own JSON `name` lags, by a tick, fixed by
+`ReconcileNameJob` — the copy hook cannot write the file it is holding locks on.
+
+### Nextcloud names the copy, and the extension decides whether that hurts
+
 **Nextcloud's SERVER does not name a copy at all.** WebDAV COPY means "copy to
 exactly this path"; if something is already there and `Overwrite: F`, the answer is
 a flat 412. The name is chosen in the BROWSER, by `getUniqueName()` from
 `@nextcloud/files`, which counts from 1 and puts the counter before the LAST
-extension — to it our file is a `.json` called `Fleet Health.n8n`. There is a
-`suffix` option and no way for an app to pass one, so **the rule cannot be
-changed**.
+extension. There is a `suffix` option and no way for an app to pass one, so **the
+rule cannot be changed** — the app agrees with it instead. `FilenameCodec::format()`
+puts the counter in exactly that position, so a copy is born with the name the codec
+would itself have chosen:
 
-### The copy cannot be renamed before the client has looked at it
+    Fleet Health (1).n8n        <- what the client picks, and what we want
 
-It can be got AHEAD of — the chosen name arrives as the COPY's `Destination` header,
-and Sabre fires `beforeMethod:COPY` while that header is still a string — and doing
-so is **the wrong thing to do**. A plugin rewriting it really does make the file be
-born as `Fleet Health (1).n8n.json`. It shipped in the grafana sibling, and the Files
-app answered:
+#### What it cost when the two disagreed
 
-    The file does not exist anymore
+Under the retired `.n8n.json`, `extname()` answered `.json` and the basename was
+`Fleet Health.n8n`, so the client produced `Fleet Health.n8n (1).json` — confirmed
+live as `FooBoblicious.n8n (1).json`. That does not end in the app's extension, so
+every predicate answered "not ours": no metadata, no workflow in n8n, and a file that
+looks managed and is not. Reading it took a `canonicalise()` fold in front of every
+predicate, and un-writing it took a rename in `ReconcileNameJob`, one cron tick later.
 
-Its copy action is the reason:
+**And the rename could not be pulled forward.** The chosen name arrives as the COPY's
+`Destination` header and Sabre fires `beforeMethod:COPY` while it is still a string,
+so a plugin rewriting it really does make the file be born correctly named. It shipped
+in the grafana sibling, and the Files app answered *"The file does not exist anymore"*:
 
 ```js
 await client.copyFile(source, destination)
-if (node.dirname === target.path) {            // copying into the SAME folder
-    const { data } = await client.stat(destination)   // the path IT chose
+if (node.dirname === target.path) {                 // copying into the SAME folder
+    const { data } = await client.stat(destination) // the path IT chose
     emit('files:node:created', ...)
 }
 ...
@@ -447,24 +464,23 @@ exactly when the stat would notice. Measured both ways on a live instance:
     intercepting   COPY 201 → STAT 404 → error dialog, no file until a refresh
     deferring      COPY 201 → STAT 207 → correct name one tick later
 
-So the rename waits for `ReconcileNameJob`, and the file wears Nextcloud's spelling
-for up to one cron tick. **That is not a tolerance that has to be widened per
-counter**: `canonicalise()` reads `(1)`, `(2)` and `(17)` with one `\d+`, and every
-predicate goes through it, so `(N)` costs a regex rather than a case.
+Neither branch of that trade-off exists now. Nothing intercepts the copy and nothing
+renames it afterwards, because the client's name is already right.
 
-**n8n is right immediately either way**, which is what makes deferring cheap:
-`CreateService` reads the display name off the filename before the POST, and it reads
-Nextcloud's spelling perfectly well. Only the name on disk lags.
+#### The same one segment is what gives the file its icon
 
-**The name it reads is `display`, not `name`.** `FilenameCodec::parse()` returns
-both, and they differ by exactly the collision counter. Taking the counter-stripped
-one — the field a PULL wants, so a mirror already wearing `(1)` is matched to its
-workflow next time — is what let the copy reach n8n under the original's name.
-`FilenameCodec::displayName()` exists so that mistake has to be made deliberately.
+Nextcloud's detector reads only the last extension (`Detection::detectPath()`,
+`strrchr`). `detectPath('Fleet Health.n8n.json')` answered `application/json` and
+always did — the custom type came from `updateFilecache('n8n.json')`, a table-wide
+`LIKE '%.n8n.json'` UPDATE. Measured on the live instance: a sequential scan of 20,144
+filecache rows, ~26ms, on **every write**, from `NodeWrittenListener`, the pull, the
+create, and an entire listener (`MimeRestampListener`) that existed for nothing else.
+`detectPath('Fleet Health.n8n')` answers `application/n8n+json`, so `RegisterMimetype`
+is the whole story and all four call sites are gone.
 
-This is the sibling of the same fix in `nextcloud-grafana` (PR #51), found there
-first. penpot is immune: its extension is a single segment, so Nextcloud's counter
-lands harmlessly before it.
+penpot was never affected: its extension is a single segment, so Nextcloud's counter
+lands harmlessly before it and its detection has always been native. This app and the
+grafana sibling had both problems; grafana made this cut first.
 
 ### A copy made in n8n is named by n8n
 
@@ -478,8 +494,8 @@ Nextcloud's business. So the counter goes on the FILENAME and stops there: the J
 `name` and the n8n workflow keep saying the duplicated name, because that is what
 their owner called them.
 
-    Fleet Health.n8n.json      name "Fleet Health"   n8n: Fleet Health
-    Fleet Health (1).n8n.json  name "Fleet Health"   n8n: Fleet Health
+    Fleet Health.n8n      name "Fleet Health"   n8n: Fleet Health
+    Fleet Health (1).n8n  name "Fleet Health"   n8n: Fleet Health
 
 Same filename shape as a Nextcloud-side copy, deliberately: Nextcloud's constraint
 is satisfied identically either way. What differs is whether the counter travels.
@@ -538,7 +554,7 @@ copy landing outside every mapping is what it takes OFF — the identity in the 
 metadata, which stopped being true the instant the copy existed.
 
 BUT A COPY BREAKS AN INVARIANT WE ALREADY PROMISED, and that is the interesting
-part. `pills ⇄ body, always, for any .n8n.json` (saga §5.10) is a rule this app
+part. `pills ⇄ body, always, for any .n8n` (saga §5.10) is a rule this app
 made about every workflow file, mapped or not, because that pair needs no remote
 system. A copy is the one moment the two provably diverge: Nextcloud copies the
 bytes (so the `tags` array comes along) and does NOT copy system tags (so the
@@ -1118,7 +1134,7 @@ transaction the app does not have. Nothing rolls a rename back, and nothing
 retries it on a schedule, so the scenario specified an imagined design rather
 than this one.
 
-`Renaming an untracked ".n8n.json" file is not a failure` asserted that an app
+`Renaming an untracked ".n8n" file is not a failure` asserted that an app
 which is not involved did not get involved. The file is outside every mapping, so
 no listener sees it; the scenario tests Nextcloud.
 
@@ -1260,7 +1276,7 @@ decides the model, and it is a fact about the surfaces rather than a preference:
   NC pills           NO — bound to a file id       NO (NC doesn't copy system tags)
   body `tags`        YES — it is bytes in the file YES
 
-So a `.n8n.json` that leaves Nextcloud and comes back carries its tags in exactly
+So a `.n8n` that leaves Nextcloud and comes back carries its tags in exactly
 one place: its own body. Nothing else can know them.
 
 AUTHORITY BELONGS TO THE MOMENT, NOT TO A SURFACE. "The JSON is the source of truth"
@@ -1526,12 +1542,12 @@ the file holds no workflow, so its tags are the only thing making it findable.
 
 ── RULE: THE NEXTCLOUD PAIR IS LOCAL; ONLY THE n8n LEG NEEDS A MAPPING ─────
 
-A `.n8n.json` has pills and a `tags` array whether or not it lives in a mapped
+A `.n8n` has pills and a `tags` array whether or not it lives in a mapped
 folder. Keeping THOSE TWO in step is a Nextcloud-local concern — there is no
 remote system involved — so it happens for every workflow file, mapped or not.
 Only the third participant, n8n, requires a mapping.
 
-    pills  ⇄  body        always, for any .n8n.json file
+    pills  ⇄  body        always, for any .n8n file
     pills/body  →  n8n    only for a managed `sync` file
     n8n  →  pills/body    only for a mapped folder, on a sync
 
@@ -1707,9 +1723,9 @@ app is removed, and that a reinstall reconnects cleanly.
   - SYSTEM: removing the app runs the <uninstall> repair step (UnregisterMimetype),
     which REVERTS the custom-mimetype registration the install wrote into the
     Nextcloud core tree (config/mimetype*.json, core/img/filetypes/n8n.svg,
-    core/js/mimetypelist.js) and re-stamps the .n8n.json filecache rows back to
+    core/js/mimetypelist.js) and re-stamps the .n8n filecache rows back to
     application/json. The store's clean-uninstall rule is about this shared state.
-  - DATA: the app ORPHANS the user's data — it never deletes the .n8n.json files,
+  - DATA: the app ORPHANS the user's data — it never deletes the .n8n files,
     never clears their Files-Metadata, never deletes Team Folders, never touches
     n8n. A sync folder is a full backup, so deleting it would be data loss. To wipe
     the Nextcloud side deliberately, an admin uses Purge first (see purge.feature).
@@ -2044,7 +2060,7 @@ These need a design decision before they get concrete Then-steps:
 
 "Open with" — the openers offered for a managed workflow file, and which one is
 the default click. RELATED to the file type (view-workflow.feature: it's *because*
-`.n8n.json` is a first-class type that we get custom openers) but a distinct
+`.n8n` is a first-class type that we get custom openers) but a distinct
 concern, because the opener set + default depend on the file's MODE, not its type.
 
 Two openers:
@@ -2346,7 +2362,7 @@ decides the model, and it is a fact about the surfaces rather than a preference:
   NC pills           NO — bound to a file id       NO (NC doesn't copy system tags)
   body `tags`        YES — it is bytes in the file YES
 
-So a `.n8n.json` that leaves Nextcloud and comes back carries its tags in exactly
+So a `.n8n` that leaves Nextcloud and comes back carries its tags in exactly
 one place: its own body. Nothing else can know them.
 
 AUTHORITY BELONGS TO THE MOMENT, NOT TO A SURFACE. "The JSON is the source of truth"
@@ -2612,12 +2628,12 @@ the file holds no workflow, so its tags are the only thing making it findable.
 
 ── RULE: THE NEXTCLOUD PAIR IS LOCAL; ONLY THE n8n LEG NEEDS A MAPPING ─────
 
-A `.n8n.json` has pills and a `tags` array whether or not it lives in a mapped
+A `.n8n` has pills and a `tags` array whether or not it lives in a mapped
 folder. Keeping THOSE TWO in step is a Nextcloud-local concern — there is no
 remote system involved — so it happens for every workflow file, mapped or not.
 Only the third participant, n8n, requires a mapping.
 
-    pills  ⇄  body        always, for any .n8n.json file
+    pills  ⇄  body        always, for any .n8n file
     pills/body  →  n8n    only for a managed `sync` file
     n8n  →  pills/body    only for a mapped folder, on a sync
 
@@ -2793,9 +2809,9 @@ app is removed, and that a reinstall reconnects cleanly.
   - SYSTEM: removing the app runs the <uninstall> repair step (UnregisterMimetype),
     which REVERTS the custom-mimetype registration the install wrote into the
     Nextcloud core tree (config/mimetype*.json, core/img/filetypes/n8n.svg,
-    core/js/mimetypelist.js) and re-stamps the .n8n.json filecache rows back to
+    core/js/mimetypelist.js) and re-stamps the .n8n filecache rows back to
     application/json. The store's clean-uninstall rule is about this shared state.
-  - DATA: the app ORPHANS the user's data — it never deletes the .n8n.json files,
+  - DATA: the app ORPHANS the user's data — it never deletes the .n8n files,
     never clears their Files-Metadata, never deletes Team Folders, never touches
     n8n. A sync folder is a full backup, so deleting it would be data loss. To wipe
     the Nextcloud side deliberately, an admin uses Purge first (see purge.feature).

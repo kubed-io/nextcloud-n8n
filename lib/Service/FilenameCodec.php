@@ -17,8 +17,8 @@ use OCP\Files\Node;
  *
  * Two on-disk shapes are supported:
  *
- *   1. Clean (default)         <name>.n8n.json
- *   2. Id-suffixed (opt-in)    <name>.<id>.n8n.json
+ *   1. Clean (default)         <name>.n8n
+ *   2. Id-suffixed (opt-in)    <name>.<id>.n8n
  *
  * The clean shape is the default user-facing layout. The id-suffixed shape
  * is an admin opt-in (`id_in_filename` AppConfig flag) for environments
@@ -29,6 +29,34 @@ use OCP\Files\Node;
  * Both shapes carry exactly the same metadata server-side via the Files
  * Metadata API \u2014 the filename is *only* a redundant carrier. See plan
  * \u00a75-D' "id resolution layers".
+ *
+ * ## ONE SEGMENT, BECAUSE NEXTCLOUD ONLY EVER READS ONE
+ *
+ * This was `.n8n.json` for the app's first four chapters, on the reasoning that the
+ * real `.json` tail made the file open in a JSON editor off-Nextcloud. It cost more
+ * than it bought, and the bill came due on `copy`:
+ *
+ *   - `IMimeTypeDetector::detectPath()` takes the LAST extension and nothing else
+ *     (`strrchr`, verified in core). `Name.n8n.json` is `application/json` to
+ *     Nextcloud, forever — so every file we wrote landed with the wrong mimetype and
+ *     had to be corrected afterwards by a table-wide UPDATE. Measured on a live
+ *     instance: a sequential scan of 20,144 filecache rows, ~26ms, to find the rows
+ *     it then rewrote. An entire listener existed for nothing else.
+ *   - Nextcloud's collision counter goes before the LAST extension, so a copy landing
+ *     beside its source was named `Name.n8n (1).json` — a name that ends in `.json`,
+ *     matches none of our predicates, and made the copy invisible to the app.
+ *     Confirmed live as `FooBoblicious.n8n (1).json`.
+ *
+ * With a single segment both problems stop existing rather than getting handled:
+ * `Name.n8n` is detected as `application/n8n+json` by core's own detector, and a
+ * colliding copy is born `Name (1).n8n` — already our spelling, because it is
+ * Nextcloud's. The counter sits immediately before the extension, and {@see format()}
+ * puts it in exactly the same place, so the two conventions are one convention.
+ *
+ * The `.json` tail is not free to give up: off-Nextcloud, a `.n8n` file needs a
+ * one-time editor association to open as JSON. That is a per-machine setting made
+ * once, weighed against a mimetype correction on every save and a copy the app could
+ * not see. The Grafana sibling made this cut first; this is the same cut.
  *
  * Collision policy: when two workflows in the same n8n tag share a `name`
  * (n8n permits this), the first file gets the plain name and the ones after it
@@ -64,28 +92,31 @@ use OCP\Files\Node;
  */
 final class FilenameCodec {
 	/** Trailing extension shared by both shapes. */
-	public const EXT = '.n8n.json';
+	public const EXT = '.n8n';
 
 	/**
 	 * True when $name is a managed n8n workflow filename (ends in {@see EXT}).
 	 * Pure string test — the single source of truth for "is this one of ours?".
+	 *
+	 * The non-empty stem is required so this agrees with {@see parse()}, which rejects
+	 * a bare `.n8n`. The two predicates must never disagree on "is this ours?", and
+	 * under the old compound extension a bare `.n8n` slipped past this one.
 	 */
 	public static function isWorkflowName(string $name): bool {
-		$name = self::canonicalise($name);
-		return str_ends_with($name, self::EXT);
+		return strlen($name) > strlen(self::EXT) && str_ends_with($name, self::EXT);
 	}
 
 	/**
 	 * True when $name is one of ours **as the trash renamed it**. Nextcloud appends
 	 * a deletion timestamp when a file is moved to the trash —
-	 * `Old Name.n8n.json.d1712345678` — so {@see isWorkflowName}'s `str_ends_with`
+	 * `Old Name.n8n.d1712345678` — so {@see isWorkflowName}'s `str_ends_with`
 	 * is FALSE for every trashed workflow file.
 	 *
 	 * That is not a hypothetical: it is half of why the trash-purge step never ran
 	 * (see {@see \OCA\N8nSync\Listener\TrashPurgeHook}). The integration harness had
 	 * documented the `.dNNNN` suffix for a long time; production code had not.
 	 *
-	 * The timestamp is required, not optional — a bare `.n8n.json` is
+	 * The timestamp is required, not optional — a bare `.n8n` is
 	 * {@see isWorkflowName}'s job, and accepting both here would let a live file
 	 * match a trash-only predicate.
 	 */
@@ -134,12 +165,14 @@ final class FilenameCodec {
 	 *                                                                         1+ for "(N)" duplicates); `display` is the name with that
 	 *                                                                         counter still on it.
 	 */
+	/** A trailing Nextcloud collision counter, e.g. the ` (2)` of `Fleet Health (2)`. */
+	private const COUNTER_RE = '/^(?<base>.+) \\((?<n>\\d+)\\)$/';
+
 	public static function parse(string $basename): ?array {
 		$slash = strrpos($basename, '/');
 		if ($slash !== false) {
 			$basename = substr($basename, $slash + 1);
 		}
-		$basename = self::canonicalise($basename);
 		if (!str_ends_with($basename, self::EXT)) {
 			return null;
 		}
@@ -148,9 +181,22 @@ final class FilenameCodec {
 			return null;
 		}
 
-		// Try id-suffixed shape first: `<name>.<id>` where `<id>` matches
-		// ID_RE. Walk from the rightmost dot so a name containing dots
-		// (e.g. "v1.2 thing") still parses.
+		// THE COUNTER COMES OFF FIRST, because it is the last thing on the stem — that
+		// is where Nextcloud puts it and where {@see format()} puts it. Reading it
+		// before the id keeps the id segment intact on a duplicated file:
+		// `Board.0oOA4iz0T0GRmICc (1).n8n` is an id-suffixed `Board` wearing a counter,
+		// not a file whose id is `0oOA4iz0T0GRmICc (1)`.
+		$suffix = 0;
+		$counter = '';
+		if (preg_match(self::COUNTER_RE, $stem, $m) === 1) {
+			$suffix = (int)$m['n'];
+			$counter = ' (' . $m['n'] . ')';
+			$stem = $m['base'];
+		}
+
+		// Then the id-suffixed shape: `<name>.<id>` where `<id>` matches ID_RE. Walk
+		// from the rightmost dot so a name containing dots (e.g. "v1.2 thing") still
+		// parses.
 		$id = null;
 		$name = $stem;
 		$lastDot = strrpos($stem, '.');
@@ -161,64 +207,15 @@ final class FilenameCodec {
 				$name = substr($stem, 0, $lastDot);
 			}
 		}
-
-		// Strip an optional " (N)" collision suffix off the *end* of the
-		// resolved name so subsequent pulls can detect they're updating
-		// the same logical file. The unstripped form is kept as `display`,
-		// because a counter Nextcloud put there is part of the name the user
-		// sees — see this class's docblock for which one a caller wants.
-		$display = $name;
-		$suffix = 0;
-		if (preg_match('/^(?<base>.+) \\((?<n>\\d+)\\)$/', $name, $m)) {
-			$suffix = (int)$m['n'];
-			$name = $m['base'];
+		if ($name === '') {
+			return null;
 		}
 
-		return ['name' => $name, 'id' => $id, 'suffix' => $suffix, 'display' => $display];
-	}
-
-	/**
-	 * Fold NEXTCLOUD'S collision spelling into ours.
-	 *
-	 * There are two conventions for "that name is taken". Ours puts the counter on
-	 * the logical name — `Board (1).n8n.json` — and {@see parse()} strips it.
-	 * Nextcloud puts it before the LAST extension, because to Nextcloud our file is
-	 * a `.json` called `Board.n8n`:
-	 *
-	 *     Board.n8n (1).json          <- Nextcloud's spelling
-	 *     Board (1).n8n.json          <- ours
-	 *
-	 * That does not end in `.n8n.json`, so every predicate in this app answered
-	 * "not ours". Confirmed on the live instance as `FooBoblicious.n8n (1).json`:
-	 * no metadata, no workflow in n8n, and a file that looks managed and is not.
-	 *
-	 * We do not get to choose this name — Nextcloud's web client picks it, on our
-	 * files, whenever a copy lands beside its source. Nor can we get ahead of it: the
-	 * file HAS to exist under that name until the client has stat'd it, or the Files
-	 * app reports the copy as missing (see
-	 * {@see \OCA\N8nSync\BackgroundJob\ReconcileNameJob::canonicaliseSpelling()}).
-	 *
-	 * So it has to be read, and reading it is load-bearing rather than a courtesy. Any
-	 * `(N)` costs one `\d+` here rather than a case per counter.
-	 */
-	public static function canonicalise(string $name): string {
-		if (preg_match('/^(.+)\.n8n \((\d+)\)\.json$/', $name, $m) !== 1) {
-			return $name;
-		}
-		$stem = $m[1];
-		$counter = ' (' . $m[2] . ')';
-
-		// THE ID SEGMENT STAYS LAST. {@see format()} composes the opt-in shape as
-		// `<name> (N).<id>.n8n.json` — counter on the NAME, id immediately before the
-		// extension — and {@see parse()} looks for the id at the last dot. Appending
-		// the counter blindly would produce `Board.<id> (1).n8n.json`, whose id segment
-		// reads as `<id> (1)`, matches nothing, and silently loses the identity on
-		// exactly the gesture most likely to need it.
-		$lastDot = strrpos($stem, '.');
-		if ($lastDot !== false && preg_match(self::ID_RE, substr($stem, $lastDot + 1)) === 1) {
-			return substr($stem, 0, $lastDot) . $counter . substr($stem, $lastDot) . self::EXT;
-		}
-		return $stem . $counter . self::EXT;
+		// `name` is the logical name, so later pulls detect they're updating the same
+		// file; `display` is what the user sees. See this class's docblock for which one
+		// a caller wants — taking the wrong one is what let a copy reach n8n under the
+		// ORIGINAL's name.
+		return ['name' => $name, 'id' => $id, 'suffix' => $suffix, 'display' => $name . $counter];
 	}
 
 	/**
@@ -236,18 +233,12 @@ final class FilenameCodec {
 	}
 
 	/**
-	 * True when $name is one of ours but spelled NEXTCLOUD'S way — `Board.n8n (1).json`
-	 * rather than `Board (1).n8n.json`.
-	 *
-	 * {@see canonicalise()} folds that spelling on the way IN so every predicate reads
-	 * it. This is the write-side question: should the file on disk be renamed?
-	 */
-	public static function isNextcloudSpelling(string $name): bool {
-		return self::canonicalise($name) !== $name;
-	}
-
-	/**
 	 * Build a filename for a workflow.
+	 *
+	 * The counter goes LAST, immediately before the extension — the same place
+	 * Nextcloud's own `getUniqueName()` puts it. That is the point of the single-segment
+	 * extension: our spelling of a collision and Nextcloud's are the same spelling, so a
+	 * copy the client names needs no correcting and a name we choose needs no defending.
 	 *
 	 * @param string $name Workflow display name from n8n.
 	 * @param string $id Workflow id from n8n.
@@ -257,15 +248,15 @@ final class FilenameCodec {
 	public static function format(string $name, string $id, bool $idInFilename, int $collisionIndex = 0): string {
 		$safe = self::sanitiseName($name);
 		if ($safe === '') {
-			// Fall back to id so we never produce just ".n8n.json".
+			// Fall back to id so we never produce just ".n8n".
 			$safe = $id;
 		}
 		$stem = $safe;
-		if ($collisionIndex > 0) {
-			$stem .= ' (' . $collisionIndex . ')';
-		}
 		if ($idInFilename) {
 			$stem .= '.' . $id;
+		}
+		if ($collisionIndex > 0) {
+			$stem .= ' (' . $collisionIndex . ')';
 		}
 		return $stem . self::EXT;
 	}

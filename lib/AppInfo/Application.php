@@ -19,7 +19,6 @@ use OCA\N8nSync\Listener\CopyListener;
 use OCA\N8nSync\Listener\CreateInN8nListener;
 use OCA\N8nSync\Listener\DeleteToN8nListener;
 use OCA\N8nSync\Listener\LoadFilesScriptListener;
-use OCA\N8nSync\Listener\MimeRestampListener;
 use OCA\N8nSync\Listener\MotionListener;
 use OCA\N8nSync\Listener\MoveGuardListener;
 use OCA\N8nSync\Listener\NameSyncListener;
@@ -68,7 +67,7 @@ final class Application extends App implements IBootstrap {
 		// registerDeclarativeSettings().
 		//
 		// Note: there is intentionally no "guard" panel. Ownership of an
-		// n8n_sync file is determined by the file itself — the `.n8n.json`
+		// n8n_sync file is determined by the file itself — the `.n8n`
 		// extension and the `n8n_id` Files-Metadata stamp. Anything carrying
 		// those markers inside a mapped folder is fair game for sync; anything
 		// without them is left alone. No setting needed.
@@ -96,7 +95,7 @@ final class Application extends App implements IBootstrap {
 		// API, not Sabre, so they never reach the plugin.
 		$context->registerEventListener(SabrePluginAddEvent::class, RegisterDavPluginsListener::class);
 
-		// §17.2 create-on-land: a `.n8n.json` without `n8n_id` appearing in a
+		// §17.2 create-on-land: a `.n8n` without `n8n_id` appearing in a
 		// mapped folder (created via the New menu, saved by the Text editor,
 		// uploaded by WebDAV, or moved in from elsewhere) becomes a real n8n
 		// workflow + tag + stamp. NodeWrittenEvent covers create/save; NodeRenamedEvent
@@ -138,12 +137,6 @@ final class Application extends App implements IBootstrap {
 		$context->registerEventListener(BeforeNodeDeletedEvent::class, DeleteToN8nListener::class);
 		$context->registerEventListener(NodeRestoredEvent::class, RestoreFromTrashListener::class);
 
-		// Re-stamp `application/n8n+json` on rename. NC's rename re-detects mime
-		// from the new path; `Detection::detectPath()` only inspects the last
-		// extension (`json`) so our compound `.n8n.json` resolves wrong and the
-		// icon goes missing until the next save re-stamps. Closes that gap with
-		// a cheap global UPDATE keyed on the extension.
-		$context->registerEventListener(NodeRenamedEvent::class, MimeRestampListener::class);
 
 		// §5.6.2 reactive tag sync (surface 3): a CONTENT pill add/remove on a managed
 		// sync file reconciles that tag to n8n on its own — the tag-side sibling of the
@@ -154,7 +147,7 @@ final class Application extends App implements IBootstrap {
 		$context->registerEventListener(TagUnassignedEvent::class, ContentTagListener::class);
 
 		// §5.9 the THIRD tag direction: a hand-edit of the `tags` array inside a
-		// .n8n.json reaches n8n and the pills. Its OWN listener rather than a branch in
+		// .n8n reaches n8n and the pills. Its OWN listener rather than a branch in
 		// NodeWrittenListener — an earlier attempt made the pill path and the body path
 		// share one "read the NC side" step and broke the shipping pill path (§5.6.2.3).
 		// They share the merge engine and nothing else. Cheap on an ordinary save: the

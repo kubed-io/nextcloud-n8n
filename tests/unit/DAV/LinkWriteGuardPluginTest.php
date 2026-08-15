@@ -55,7 +55,7 @@ final class LinkWriteGuardPluginTest extends TestCase {
 		);
 	}
 
-	private function davFile(string $name = 'flow.n8n.json', int $id = 7): DavFile {
+	private function davFile(string $name = 'flow.n8n', int $id = 7): DavFile {
 		$node = $this->createMock(DavFile::class);
 		$node->method('getName')->willReturn($name);
 		$node->method('getId')->willReturn($id);
@@ -76,12 +76,12 @@ final class LinkWriteGuardPluginTest extends TestCase {
 	private function fire(INode $node): bool {
 		$data = 'whatever';
 		$modified = false;
-		return $this->plugin->beforeWriteContent('files/flow.n8n.json', $node, $data, $modified);
+		return $this->plugin->beforeWriteContent('files/flow.n8n', $node, $data, $modified);
 	}
 
 	public function testBlocksOverwritingALinkFile(): void {
 		$this->expectRead(['n8n_mode' => Mapping::MODE_LINK]);
-		$this->notifier->expects(self::once())->method('linkEditBlocked')->with('kelly', 7, 'flow.n8n.json');
+		$this->notifier->expects(self::once())->method('linkEditBlocked')->with('kelly', 7, 'flow.n8n');
 
 		$this->expectException(Forbidden::class);
 		$this->fire($this->davFile());
@@ -103,7 +103,7 @@ final class LinkWriteGuardPluginTest extends TestCase {
 			$plugin = new LinkWriteGuardPlugin($metadata, $this->notifier, $this->userSession, new NullLogger());
 			$data = 'x';
 			$modified = false;
-			self::assertTrue($plugin->beforeWriteContent('files/flow.n8n.json', $this->davFile(), $data, $modified));
+			self::assertTrue($plugin->beforeWriteContent('files/flow.n8n', $this->davFile(), $data, $modified));
 		}
 	}
 
@@ -118,7 +118,7 @@ final class LinkWriteGuardPluginTest extends TestCase {
 		$this->metadata->expects(self::never())->method('read');
 
 		$node = $this->createMock(INode::class);
-		$node->method('getName')->willReturn('flow.n8n.json');
+		$node->method('getName')->willReturn('flow.n8n');
 		self::assertTrue($this->fire($node));
 	}
 

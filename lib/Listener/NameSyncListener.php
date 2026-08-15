@@ -100,7 +100,7 @@ final class NameSyncListener implements IEventListener {
 		}
 
 		// A RENAME IS A STATEMENT ABOUT THE WHOLE FILENAME, counter included: the user
-		// typed it, so `Board (1).n8n.json` means a workflow called `Board (1)`. Compared
+		// typed it, so `Board (1).n8n` means a workflow called `Board (1)`. Compared
 		// against the counter-stripped stem the two read as equal, nothing was enqueued,
 		// and the rename silently did nothing.
 		if ($event instanceof NodeRenamedEvent) {
@@ -112,7 +112,7 @@ final class NameSyncListener implements IEventListener {
 
 		// A WRITE IS A STATEMENT ABOUT THE NAME, and the counter is not the name's
 		// business. A mirror of a duplicate n8n workflow legitimately sits at
-		// `Board (1).n8n.json` holding the name `Board` — the one place the two are MEANT
+		// `Board (1).n8n` holding the name `Board` — the one place the two are MEANT
 		// to disagree ({@see FilenameCodec}) — so the counter is stripped before comparing
 		// and saving such a file enqueues nothing at all.
 		if ($jsonName !== '' && $jsonName !== $logical) {

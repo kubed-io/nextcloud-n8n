@@ -99,7 +99,7 @@ trait TagSyncSteps {
 		$this->tagFilePath = '';
 
 		if ($mode === 'sync') {
-			$this->putManagedFile($this->currentFolder . '/Tagged-' . bin2hex(random_bytes(3)) . '.n8n.json', 'Tagged');
+			$this->putManagedFile($this->currentFolder . '/Tagged-' . bin2hex(random_bytes(3)) . '.n8n', 'Tagged');
 			$this->tagWfId = $this->lastWorkflowId;
 		} else {
 			// A link holds no body, so there is nothing to PUT: the workflow is the

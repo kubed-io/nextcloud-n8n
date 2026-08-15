@@ -138,12 +138,12 @@ trait WebDavTrait {
 	/**
 	 * The workflow files directly inside $folder, by basename.
 	 *
-	 * BOTH SPELLINGS OF A COLLISION, because a helper that can only see our own would be
-	 * blind to exactly the file a copy scenario is hunting. Nextcloud names a colliding
-	 * copy `Board.n8n (1).json`, counting before the last extension; the app renames it to
-	 * `Board (1).n8n.json`, and a test that could not see the "before" could never fail
-	 * when the rename did not happen. This is the same blind spot the app itself shipped
-	 * with — see {@see \OCA\N8nSync\Service\FilenameCodec::canonicalise()}.
+	 * ONE SPELLING OF A COLLISION IS ENOUGH NOW. This used to have to match the retired
+	 * `Board.n8n (1).json` too — Nextcloud counted before the last extension, so a copy
+	 * did not end in the app's extension and a helper blind to that shape could never
+	 * fail when the app failed to rename it. With a single-segment extension the client's
+	 * name IS the app's name, so a helper that still accepted the old shape would only be
+	 * able to report a file this app no longer produces.
 	 *
 	 * @return list<string>
 	 */
@@ -158,7 +158,7 @@ trait WebDavTrait {
 		$out = [];
 		foreach ($doc->xpath('//d:href') ?: [] as $href) {
 			$base = basename(rtrim(rawurldecode((string)$href), '/'));
-			if (str_ends_with($base, '.n8n.json') || preg_match('/\\.n8n \\(\\d+\\)\\.json$/', $base) === 1) {
+			if (str_ends_with($base, '.n8n')) {
 				$out[] = $base;
 			}
 		}
@@ -169,7 +169,7 @@ trait WebDavTrait {
 	 * Find the trashbin entry for a file we deleted, by basename. NC trashbin DAV
 	 * lives at /remote.php/dav/trashbin/<user>/trash and renames entries with a
 	 * `.dNNNN` deletion-time suffix, so we match on the original basename prefix.
-	 * Returns the trashbin entry filename (e.g. "Old Name.n8n.json.d171...") or null.
+	 * Returns the trashbin entry filename (e.g. "Old Name.n8n.d171...") or null.
 	 */
 	private function trashbinPathFor(string $originalPath): ?string {
 		$base = basename($originalPath);

@@ -9,7 +9,7 @@
 ## What this repo is
 
 **n8n Sync** — a Nextcloud app (PHP backend + small JS frontend) that maps n8n
-workflows into Nextcloud folders as `.n8n.json` files with bidirectional sync.
+workflows into Nextcloud folders as `.n8n` files with bidirectional sync.
 Lives under the [kubed-io](https://github.com/kubed-io) GitHub org. Licensed
 AGPL-3.0-or-later. Target: the official Nextcloud app store.
 
@@ -115,14 +115,17 @@ documented in the saga:
   says `link` — treat them as synonyms).
 - **Loop prevention is the `SyncGuard` request-scoped counter.** Pulls must not
   trigger pushes. (saga §3, lessons learned)
-- **Custom mimetype `application/n8n+json`** drives the icon and the row click.
-  Don't switch to extension-only detection.
-- **The file extension is the compound `.n8n.json` — locked, don't "simplify" it.**
-  The file *is* real JSON, so the `.json` tail means that **outside** Nextcloud (desktop
-  sync, download) the OS opens it in a JSON editor with no extra setup; the `.n8n.` segment
-  is the hook NC keys the custom mimetype / icon / file-actions off **inside** the UI.
-  Plain `.json` → no custom icon/actions. Bare `.n8n` → off-Nextcloud the OS has no handler
-  and nothing opens it. Both are worse; keep `.n8n.json`. (saga Ch4 R4)
+- **Custom mimetype `application/n8n+json`** drives the icon and the row click. It now
+  comes from core's own detection — `RegisterMimetype` is the whole story.
+- **The file extension is a single segment, `.n8n` — locked, don't re-add the `.json`
+  tail.** Nextcloud reads exactly ONE extension: `detectPath()` takes the last segment
+  (`strrchr`) and the collision counter goes immediately before it. The compound
+  `.n8n.json` lost both — core detected `application/json`, so a whole listener existed
+  to correct the filecache with a table-wide UPDATE (measured: a 20,144-row sequential
+  scan, ~26ms, on every write), and a copy landed as `Board.n8n (1).json`, which matched
+  none of the app's predicates. One segment gets native detection and a copy born
+  correctly named. The price is a one-time editor association off-Nextcloud, paid per
+  machine instead of per write. (saga Ch4 R4 set the old rule; Ch5 reverses it.)
 
 ---
 

@@ -90,7 +90,7 @@ final class TagReconcileService {
 				return false;
 			}
 			// Otherwise NOT A DEAD END — the n8n leg needs a mapping, the Nextcloud pair
-			// does not. A `.n8n.json` outside any mapping still has pills and still has a
+			// does not. A `.n8n` outside any mapping still has pills and still has a
 			// `tags` array, and keeping those two in step is purely local. This is what
 			// makes the transport case work: tags added while a file sits outside a
 			// mapping survive in the body and reach n8n when it is moved in (saga §5.10).

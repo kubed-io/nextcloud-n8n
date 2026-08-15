@@ -33,7 +33,7 @@ use Psr\Log\LoggerInterface;
  *
  * Bail conditions (cheap → expensive):
  *   1. {@see SyncGuard::active()} — our own re-stamp writes never re-enter.
- *   2. target is a {@see File} ending in `.n8n.json`.
+ *   2. target is a {@see File} ending in `.n8n`.
  *
  * Failures are logged and swallowed (the copy already happened on disk).
  *

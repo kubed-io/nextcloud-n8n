@@ -54,7 +54,7 @@ trait MoveSteps {
 	 * Shared body of the two arranges above.
 	 *
 	 * THE NAME IS UNIQUE PER SCENARIO, and it has to be. It was a fixed
-	 * `Mover.n8n.json`, which was fine while one scenario per run moved a file into
+	 * `Mover.n8n`, which was fine while one scenario per run moved a file into
 	 * a given folder — the moment two did, the second MOVE hit the first's leftover
 	 * and Nextcloud refused it with a 412 before this app saw anything. The failure
 	 * reads as a storage or permissions problem and is neither.
@@ -62,7 +62,7 @@ trait MoveSteps {
 	private function arrangeManagedFileIn(string $folder, string $mode): void {
 		$this->currentFolder = $folder;
 		$name = 'Mover-' . bin2hex(random_bytes(3));
-		$this->putManagedFile($this->currentFolder . '/' . $name . '.n8n.json', $name);
+		$this->putManagedFile($this->currentFolder . '/' . $name . '.n8n', $name);
 		$this->lastVersionId = $this->davReadMetadata($this->currentFilePath, self::META_VERSION_ID);
 		$this->expectedArchived = false; // sync/link create leaves the workflow live
 	}
@@ -97,7 +97,7 @@ trait MoveSteps {
 
 	/** @When I rename the file within :folder */
 	public function iRenameTheFileWithin(string $folder): void {
-		$dest = $folder . '/Mover-renamed.n8n.json';
+		$dest = $folder . '/Mover-renamed.n8n';
 		$this->davMove($this->currentFilePath, $dest);
 		$this->currentFilePath = $dest;
 	}
@@ -170,7 +170,7 @@ trait MoveSteps {
 	}
 
 	/**
-	 * A plain `.n8n.json` that was never tracked (no n8n id) sitting outside any
+	 * A plain `.n8n` that was never tracked (no n8n id) sitting outside any
 	 * mapping — delegates to the untracked-file arrange (DeleteSteps, composed here).
 	 *
 	 * @Given a :ext file that was never tracked in n8n
@@ -246,7 +246,7 @@ trait MoveSteps {
 		$this->n8nUnarchiveWorkflow($this->collisionWorkflowId);
 		$this->runMappingSync('pull', $sourceTag);
 
-		// FOUND BY WORKFLOW ID, not by filename. This assumed `Mover.n8n.json`, the name
+		// FOUND BY WORKFLOW ID, not by filename. This assumed `Mover.n8n`, the name
 		// one arrange happened to use — so the moment a scenario arranged its file any
 		// other way, the setup asserted against a path that was never written and the
 		// failure read as "the pulled file does not carry the shared id". The pull also
@@ -292,7 +292,7 @@ trait MoveSteps {
 
 	/** @When I move the unmapped copy into :folder under a different name */
 	public function iMoveTheUnmappedCopyInto(string $folder): void {
-		$dest = $folder . '/Mover-incoming.n8n.json';
+		$dest = $folder . '/Mover-incoming.n8n';
 		$this->davMove($this->currentFilePath, $dest);
 		$this->currentFilePath = $dest;
 	}

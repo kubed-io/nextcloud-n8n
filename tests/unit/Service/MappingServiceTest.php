@@ -82,7 +82,7 @@ final class MappingServiceTest extends TestCase {
 	public function testFileDirectlyInAMappedFolderBelongsToIt(): void {
 		$service = $this->serviceWith([$this->mapping('m1', 'nextcloud:demo', 'demo')]);
 
-		$resolved = $service->resolveForPath('/admin/files/demo/wf.n8n.json');
+		$resolved = $service->resolveForPath('/admin/files/demo/wf.n8n');
 
 		self::assertNotNull($resolved);
 		self::assertSame('m1', $resolved->id);
@@ -93,7 +93,7 @@ final class MappingServiceTest extends TestCase {
 		// matter how deep — there is no nearer mapping to win.
 		$service = $this->serviceWith([$this->mapping('m1', 'nextcloud:demo', 'demo')]);
 
-		$resolved = $service->resolveForPath('/admin/files/demo/a/b/c/wf.n8n.json');
+		$resolved = $service->resolveForPath('/admin/files/demo/a/b/c/wf.n8n');
 
 		self::assertNotNull($resolved);
 		self::assertSame('m1', $resolved->id);
@@ -116,7 +116,7 @@ final class MappingServiceTest extends TestCase {
 			$this->mapping('inner', 'nextcloud:inner', 'outer/inner'),
 		]);
 
-		$resolved = $service->resolveForPath('/admin/files/outer/inner/wf.n8n.json');
+		$resolved = $service->resolveForPath('/admin/files/outer/inner/wf.n8n');
 
 		self::assertNotNull($resolved);
 		self::assertSame('inner', $resolved->id);
@@ -130,7 +130,7 @@ final class MappingServiceTest extends TestCase {
 			$this->mapping('outer', 'nextcloud:outer', 'outer'),
 		]);
 
-		$resolved = $service->resolveForPath('/admin/files/outer/inner/deep/wf.n8n.json');
+		$resolved = $service->resolveForPath('/admin/files/outer/inner/deep/wf.n8n');
 
 		self::assertNotNull($resolved);
 		self::assertSame('inner', $resolved->id);
@@ -142,7 +142,7 @@ final class MappingServiceTest extends TestCase {
 			$this->mapping('inner', 'nextcloud:inner', 'outer/inner'),
 		]);
 
-		$resolved = $service->resolveForPath('/admin/files/outer/sibling/wf.n8n.json');
+		$resolved = $service->resolveForPath('/admin/files/outer/sibling/wf.n8n');
 
 		self::assertNotNull($resolved);
 		self::assertSame('outer', $resolved->id);
@@ -153,7 +153,7 @@ final class MappingServiceTest extends TestCase {
 		// match to a segment boundary.
 		$service = $this->serviceWith([$this->mapping('outer', 'nextcloud:outer', 'outer')]);
 
-		$resolved = $service->resolveForPath('/admin/files/outerwear/wf.n8n.json');
+		$resolved = $service->resolveForPath('/admin/files/outerwear/wf.n8n');
 
 		self::assertNull($resolved);
 	}
@@ -161,7 +161,7 @@ final class MappingServiceTest extends TestCase {
 	public function testAFileOutsideEveryMappedFolderBelongsToNoMapping(): void {
 		$service = $this->serviceWith([$this->mapping('m1', 'nextcloud:demo', 'demo')]);
 
-		$resolved = $service->resolveForPath('/admin/files/elsewhere/wf.n8n.json');
+		$resolved = $service->resolveForPath('/admin/files/elsewhere/wf.n8n');
 
 		self::assertNull($resolved);
 	}
@@ -169,13 +169,13 @@ final class MappingServiceTest extends TestCase {
 	public function testAPathWithoutAFilesRootResolvesToNothing(): void {
 		$service = $this->serviceWith([$this->mapping('m1', 'nextcloud:demo', 'demo')]);
 
-		self::assertNull($service->resolveForPath('/admin/cache/demo/wf.n8n.json'));
+		self::assertNull($service->resolveForPath('/admin/cache/demo/wf.n8n'));
 	}
 
 	public function testNoMappingsAtAllResolvesToNothing(): void {
 		$service = $this->serviceWith([]);
 
-		self::assertNull($service->resolveForPath('/admin/files/demo/wf.n8n.json'));
+		self::assertNull($service->resolveForPath('/admin/files/demo/wf.n8n'));
 	}
 
 	public function testDeepestOfThreeNestedFoldersWins(): void {
@@ -186,7 +186,7 @@ final class MappingServiceTest extends TestCase {
 			$this->mapping('inner', 'nextcloud:inner', 'outer/mid/inner'),
 		]);
 
-		$resolved = $service->resolveForPath('/admin/files/outer/mid/inner/wf.n8n.json');
+		$resolved = $service->resolveForPath('/admin/files/outer/mid/inner/wf.n8n');
 
 		self::assertNotNull($resolved);
 		self::assertSame('inner', $resolved->id);
@@ -285,7 +285,7 @@ final class MappingServiceTest extends TestCase {
 
 		$service = new MappingService($config, $this->storage());
 		$service->list();
-		$service->resolveForPath('/admin/files/a/wf.n8n.json');
+		$service->resolveForPath('/admin/files/a/wf.n8n');
 		self::assertCount(1, $service->list());
 	}
 

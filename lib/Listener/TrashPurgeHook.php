@@ -37,8 +37,8 @@ use Psr\Log\LoggerInterface;
  * believed — so the correction is written here loudly rather than quietly fixed.
  *
  * **It was dead twice over here.** Even if the event did fire, the trashed node is
- * renamed `<name>.n8n.json.d<timestamp>` on its way into the trash, and the old
- * guard was `str_ends_with($name, '.n8n.json')` — false at purge time, so the
+ * renamed `<name>.n8n.d<timestamp>` on its way into the trash, and the old
+ * guard was `str_ends_with($name, '.n8n')` — false at purge time, so the
  * listener bailed before it ever consulted the path. The test harness already
  * documented that suffix ({@see \OCA\N8nSync\Tests\Integration\Support\WebDavTrait}); the
  * production side did not know about it. Hence {@see FilenameCodec::isTrashedWorkflowName}.
@@ -76,7 +76,7 @@ final class TrashPurgeHook {
 	 * Slot for the legacy `\OCP\Trashbin` `preDelete` hook.
 	 *
 	 * `$params['path']` is the trash-relative path of the node about to be
-	 * unlinked: `/files_trashbin/files/<name>.n8n.json.d<timestamp>`.
+	 * unlinked: `/files_trashbin/files/<name>.n8n.d<timestamp>`.
 	 *
 	 * @param array{path?: string} $params
 	 */

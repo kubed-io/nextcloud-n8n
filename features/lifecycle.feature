@@ -10,7 +10,7 @@ Feature: App install lifecycle
     When the admin enables the app
     Then the app should be enabled
     And the app is installed correctly
-    And ".n8n.json" files are registered as their own file type
+    And ".n8n" files are registered as their own file type
     # notes: AGENTS.md#enabling-the-app
 
   @admin @ui
@@ -26,5 +26,5 @@ Feature: App install lifecycle
   Scenario: Removing the app
     Given the app is enabled
     When the admin removes the app
-    Then ".n8n.json" files are not registered as their own file type
+    Then ".n8n" files are not registered as their own file type
     And the managed workflow files are left where they are, with their metadata

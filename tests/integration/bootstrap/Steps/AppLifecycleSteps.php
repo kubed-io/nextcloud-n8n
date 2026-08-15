@@ -78,9 +78,15 @@ trait AppLifecycleSteps {
 	 * file this app has never touched, with nothing but the extension going for
 	 * it, comes back typed as the app's own mimetype — which is exactly what
 	 * registration means and the only part of it a client can observe. (Verified
-	 * against a live instance: the repair step writes `n8n.json` ->
+	 * against a live instance: the repair step writes `n8n` ->
 	 * `application/n8n+json` into config/mimetypemapping.json, with an alias to
 	 * `n8n` for the icon.)
+	 *
+	 * AND IT NOW PROVES CORE'S OWN DETECTION, which is the whole return on the
+	 * single-segment extension. `Detection::detectPath()` reads the last extension only,
+	 * so this probe is typed by Nextcloud at write time. Under the retired `.n8n.json`
+	 * it was typed `application/json` and this assertion passed only because a listener
+	 * re-stamped the filecache after every write.
 	 */
 	public function filesAreRegisteredAsTheirOwnFileType(string $extension): void {
 		$path = 'registered-type-probe.' . ltrim($extension, '.');
