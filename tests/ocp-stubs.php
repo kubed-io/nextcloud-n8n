@@ -102,6 +102,27 @@ namespace OCP\Files {
 			public function nodeExists(string $path): bool;
 
 			public function newFile(string $path, $content = null): File;
+
+			/**
+			 * Substring search over this folder's mounts, backed by the filecache — how
+			 * {@see \OCA\N8nSync\Migration\MigrateFileExtension} finds every workflow
+			 * file a user can see, including ones in folders no mapping covers.
+			 *
+			 * Signature mirrors core verbatim (`lib/public/Files/Folder.php`), which
+			 * declares `search($query)` with no types at all. Adding them here would let
+			 * an implementation compile against a stricter contract than the server
+			 * offers — the same rule as the `OCP\Migration` stubs below.
+			 *
+			 * @return list<Node>
+			 */
+			public function search($query);
+		}
+	}
+	// The storage root — declared after Folder, which it extends. The extension
+	// migration asks it for each user's home so it can search their files.
+	if (!interface_exists(IRootFolder::class, false)) {
+		interface IRootFolder extends Folder {
+			public function getUserFolder(string $userId): Folder;
 		}
 	}
 	if (!interface_exists(IMimeTypeLoader::class, false)) {
@@ -164,6 +185,14 @@ namespace OCP {
 	if (!interface_exists(IUserSession::class, false)) {
 		interface IUserSession {
 			public function getUser(): ?IUser;
+		}
+	}
+	// {@see \OCA\N8nSync\Migration\MigrateFileExtension} walks every seen user, because
+	// a workflow file outside any mapping still has to be migrated. Signature mirrors
+	// core (`lib/public/IUserManager.php`), which declares no return type.
+	if (!interface_exists(IUserManager::class, false)) {
+		interface IUserManager {
+			public function callForSeenUsers(\Closure $callback);
 		}
 	}
 }
