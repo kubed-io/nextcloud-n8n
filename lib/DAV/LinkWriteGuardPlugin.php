@@ -56,11 +56,64 @@ final class LinkWriteGuardPlugin extends ServerPlugin {
 	) {
 	}
 
+	/** Kept from {@see initialize} so {@see beforeUnbind} can resolve a path to its node. */
+	private ?Server $server = null;
+
 	#[\Override]
 	public function initialize(Server $server): void {
+		$this->server = $server;
 		// Run early (low priority number = higher precedence) so we refuse before
 		// any bytes are streamed to the part file.
 		$server->on('beforeWriteContent', [$this, 'beforeWriteContent'], 10);
+		// EXISTENCE IS THE OTHER HALF OF READ-ONLY, and it needs its own hook. The
+		// delete IS refused without this — `DeleteToN8nListener` throws
+		// `AbortedEventException` from `BeforeNodeDeletedEvent` — but that surfaces over
+		// DAV as a bare 403 with no `<s:message>`, so the Files app shows the user a
+		// failure with nothing in it. Sabre's `beforeUnbind` is where a refusal can still
+		// say why.
+		$server->on('beforeUnbind', [$this, 'beforeUnbind'], 10);
+	}
+
+	/**
+	 * Refuse DELETE on a link file, with a message.
+	 *
+	 * A link is a read-only projection of a workflow that lives in n8n and is perfectly
+	 * fine. Removing the pointer only makes the mapped folder disagree with the tag it
+	 * mirrors, and the next pull writes the file straight back — so the delete was never
+	 * durable, it was just silent. The listener is the backstop that catches every route
+	 * (occ, another app, a script); this is the one the user sees.
+	 */
+	public function beforeUnbind(string $path): bool {
+		try {
+			$node = $this->server?->tree->getNodeForPath($path);
+		} catch (\Throwable) {
+			return true; // gone already, or not ours to judge — never block on doubt
+		}
+		if (!$node instanceof DavFile || !FilenameCodec::isWorkflowName($node->getName())) {
+			return true;
+		}
+
+		try {
+			$managed = $this->metadata->read($node->getId());
+		} catch (\Throwable) {
+			return true;
+		}
+		if (!$managed?->isLink()) {
+			return true; // sync/unmapped files are the user's to delete
+		}
+
+		$name = $node->getName();
+		$this->logger->warning('n8n_sync: refused a WebDAV delete of a link-mode workflow file', [
+			'app' => Application::APP_ID,
+			'fileId' => $node->getId(),
+			'file' => $name,
+		]);
+
+		throw new Forbidden(
+			'“' . $name . '” is a linked n8n workflow — only a pointer to a workflow that lives in n8n, '
+			. 'so it can’t be deleted here. Remove the workflow from this mapping’s tag in n8n, '
+			. 'or remove the mapping itself.',
+		);
 	}
 
 	/**
