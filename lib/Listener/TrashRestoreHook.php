@@ -41,7 +41,7 @@ use Psr\Log\LoggerInterface;
  * This is the same shape as the purge bug ({@see TrashPurgeHook}): a signal that
  * exists for the home storage and not for the one this app's mappings actually use.
  *
- * ## `post_restore` IS EMITTED BY BOTH, AND IS THE ONLY THING THAT IS
+ * ## `post_restore` IS THE ONLY SIGNAL BOTH TRASHES EMIT
  *
  * Both backends emit the legacy `\OCA\Files_Trashbin\Trashbin` `post_restore` hook —
  * `Trashbin::restore()` and groupfolders' `TrashBackend::restoreItem()` — carrying the
