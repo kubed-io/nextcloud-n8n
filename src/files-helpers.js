@@ -42,7 +42,7 @@ export function buildUrl(n8nUrl, id) {
 
 /**
  * Is this file-action context a single n8n workflow file? True for the custom
- * mime OR a `.n8n.json` basename, and only when exactly one node is selected.
+ * mime OR a `.n8n` basename, and only when exactly one node is selected.
  * Plain JSON is never matched.
  *
  * @param {{nodes?: Array<{mime?: string, basename?: string}>}} [context]
@@ -52,7 +52,7 @@ export function isN8nFile(context) {
   const node = context?.nodes?.[0]
   if (!node || context.nodes.length !== 1) return false
   return node.mime === N8N_MIME
-    || (typeof node.basename === 'string' && node.basename.endsWith('.n8n.json'))
+    || (typeof node.basename === 'string' && node.basename.endsWith('.n8n'))
 }
 
 /**

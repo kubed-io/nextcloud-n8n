@@ -60,8 +60,8 @@ describe('isN8nFile', () => {
     expect(isN8nFile({ nodes: [{ mime: N8N_MIME }] })).toBe(true)
   })
 
-  it('matches a single node by .n8n.json basename', () => {
-    expect(isN8nFile({ nodes: [{ basename: 'Daily Report.n8n.json' }] })).toBe(true)
+  it('matches a single node by .n8n basename', () => {
+    expect(isN8nFile({ nodes: [{ basename: 'Daily Report.n8n' }] })).toBe(true)
   })
 
   it('does not match plain JSON', () => {

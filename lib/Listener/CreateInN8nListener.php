@@ -24,7 +24,7 @@ use OCP\IUserSession;
 use Psr\Log\LoggerInterface;
 
 /**
- * Server-side half of UC-6: when a `*.n8n.json` file with no `n8n_id` lands in
+ * Server-side half of UC-6: when a `*.n8n` file with no `n8n_id` lands in
  * a mapped folder (created via the Files "New" menu, saved by the Text editor,
  * uploaded by WebDAV, or moved in from elsewhere), create it as a real
  * workflow in n8n + tag + stamp metadata.
@@ -39,7 +39,7 @@ use Psr\Log\LoggerInterface;
  *
  * Bail conditions (cheap → expensive, so the hot path is fast):
  *   1. {@see SyncGuard::active()} — our own pull/stamp writes never re-enter.
- *   2. extension is `.n8n.json`.
+ *   2. extension is `.n8n`.
  *   3. file resolves into a mapping via {@see MappingService::resolveForPath}.
  *   4. {@see WorkflowMetadata::read} returns no `n8n_id` (otherwise it's
  *      already a managed file → the writeback listener owns it).
@@ -84,7 +84,7 @@ final class CreateInN8nListener implements IEventListener {
 
 		$mapping = $this->mappings->resolveForPath($node->getPath());
 		if ($mapping === null) {
-			return; // outside any mapping — let the user keep a "free" .n8n.json
+			return; // outside any mapping — let the user keep a "free" .n8n
 		}
 
 		$managed = $this->metadata->read($node->getId());

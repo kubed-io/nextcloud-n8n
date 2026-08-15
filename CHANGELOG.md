@@ -21,6 +21,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 
+- **BREAKING:** workflow files are named `.n8n`, not `.n8n.json`; existing files are renamed when the app upgrades. Nextcloud only ever reads one file extension, so the compound one meant every save wrote the wrong file type for the app to correct afterwards, and a copy made beside its source was named something the app could not recognise at all. Outside Nextcloud a `.n8n` file needs telling once which editor opens it.
+
 - Supports Nextcloud **34**, and every major in the supported range is now actually executed by the integration suite — after two patch releases of Nextcloud turned out to disagree about behaviour these apps rely on.
 
 - **BREAKING:** requires Nextcloud **32** (was 31). Nextcloud 31 was never once run by the test suite, so supporting it was a claim rather than a fact; 32 is the oldest version the suite now proves.

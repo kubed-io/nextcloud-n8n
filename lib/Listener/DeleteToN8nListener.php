@@ -42,7 +42,7 @@ use Psr\Log\LoggerInterface;
  * a quiet leak nobody goes looking for.
  *
  * It was in fact dead twice over: the trashed node is renamed
- * `<name>.n8n.json.d<timestamp>`, so {@see FilenameCodec::isWorkflowFile}'s
+ * `<name>.n8n.d<timestamp>`, so {@see FilenameCodec::isWorkflowFile}'s
  * `str_ends_with` guard rejected it several lines earlier, before the path was
  * ever consulted.
  *

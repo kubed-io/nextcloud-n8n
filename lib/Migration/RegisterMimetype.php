@@ -18,7 +18,7 @@ use OCP\Migration\IRepairStep;
 use Psr\Log\LoggerInterface;
 
 /**
- * Registers the `application/n8n+json` mimetype + its icon so `.n8n.json`
+ * Registers the `application/n8n+json` mimetype + its icon so `.n8n`
  * files render with our SVG in the Files row, not the generic "code" glyph.
  *
  * Runs on every install/upgrade. All three steps are idempotent:
@@ -28,7 +28,7 @@ use Psr\Log\LoggerInterface;
  *   2. Copy the SVG to `core/img/filetypes/n8n.svg` — that's where
  *      GenerateMimetypeFileBuilder enumerates icon basenames from.
  *   3. Insert the mimetype into `oc_mimetypes`, rewrite filecache rows whose
- *      name ends in `.n8n.json` to that id, and regenerate
+ *      name ends in `.n8n` to that id, and regenerate
  *      `core/js/mimetypelist.js` so the frontend map carries the alias.
  *
  * Equivalent to running `occ maintenance:mimetype:update-db` +
@@ -38,7 +38,15 @@ final class RegisterMimetype implements IRepairStep {
 	private const APP_MIMETYPE = 'application/n8n+json';
 	private const APP_ALIAS_KEY = self::APP_MIMETYPE;
 	private const APP_ICON_NAME = 'n8n';
-	private const FILE_EXT = 'n8n.json';
+	private const FILE_EXT = 'n8n';
+
+	/**
+	 * The compound extension this app used to register, swept out of the config on
+	 * upgrade. It was always a dead key — `detectPath()` matches on the last extension
+	 * segment, so `n8n.json` could never be looked up — but leaving it behind puts a
+	 * mapping in the admin's config file that claims a shape this app no longer writes.
+	 */
+	private const LEGACY_FILE_EXT = 'n8n.json';
 
 	public function __construct(
 		private IMimeTypeDetector $detector,
@@ -64,6 +72,7 @@ final class RegisterMimetype implements IRepairStep {
 			$this->mergeJson(
 				$configDir . 'mimetypemapping.json',
 				[self::FILE_EXT => [self::APP_MIMETYPE]],
+				[self::LEGACY_FILE_EXT],
 			);
 			$this->mergeJson(
 				$configDir . 'mimetypealiases.json',
@@ -123,8 +132,9 @@ final class RegisterMimetype implements IRepairStep {
 	 * and write it back. Atomic via tempfile + rename.
 	 *
 	 * @param array<string,mixed> $additions
+	 * @param list<string> $removals keys this app used to write and no longer owns
 	 */
-	private function mergeJson(string $path, array $additions): void {
+	private function mergeJson(string $path, array $additions, array $removals = []): void {
 		$existing = [];
 		if (is_file($path)) {
 			$raw = file_get_contents($path);
@@ -139,6 +149,12 @@ final class RegisterMimetype implements IRepairStep {
 		foreach ($additions as $key => $value) {
 			if (!array_key_exists($key, $existing) || $existing[$key] !== $value) {
 				$existing[$key] = $value;
+				$changed = true;
+			}
+		}
+		foreach ($removals as $key) {
+			if (array_key_exists($key, $existing)) {
+				unset($existing[$key]);
 				$changed = true;
 			}
 		}

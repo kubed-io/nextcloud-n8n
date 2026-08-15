@@ -23,8 +23,8 @@ Feature: Renaming keeps the file, the JSON, and n8n in agreement
 
   @user @in-nextcloud @gesture @ui
   Scenario: Renaming the file carries the new name into the JSON and n8n
-    Given a workflow file named "Old Name.n8n.json" in "Automations"
-    When I rename the file to "New Name.n8n.json"
+    Given a workflow file named "Old Name.n8n" in "Automations"
+    When I rename the file to "New Name.n8n"
     Then the name is "New Name" in the filename, the JSON, and n8n
     And the file holds this DAV metadata:
       | n8n_id      | the workflow's id |
@@ -32,7 +32,7 @@ Feature: Renaming keeps the file, the JSON, and n8n in agreement
 
   @user @in-nextcloud @gesture @ui
   Scenario: Editing the name inside the file renames the file and the workflow
-    Given a workflow file named "Old Name.n8n.json" in "Automations"
+    Given a workflow file named "Old Name.n8n" in "Automations"
     When I change the JSON "name" field to "New Name"
     Then the name is "New Name" in the filename, the JSON, and n8n
     And the file holds this DAV metadata:
@@ -42,7 +42,7 @@ Feature: Renaming keeps the file, the JSON, and n8n in agreement
   # notes: ../AGENTS.md#a-rename-made-in-n8n-reaches-the-mirrored-file
   @n8n @in-n8n @occ @todo
   Scenario Outline: A rename made in n8n reaches the mirrored file
-    Given a workflow file named "Old Name.n8n.json" in "<folder>"
+    Given a workflow file named "Old Name.n8n" in "<folder>"
     When the workflow is renamed to "New Name" in n8n
     Then the name is "New Name" in the filename, the JSON, and n8n
     And the file holds this DAV metadata:
@@ -60,14 +60,14 @@ Feature: Renaming keeps the file, the JSON, and n8n in agreement
 
   @user @in-nextcloud @gesture @ui @unbuilt
   Scenario: A rename to a blank name is refused
-    Given a workflow file named "Old Name.n8n.json" in "Automations"
+    Given a workflow file named "Old Name.n8n" in "Automations"
     When I rename the file to a name that is only whitespace
     Then the rename is refused
     And the name is "Old Name" in the filename, the JSON, and n8n
 
   @n8n @in-n8n @occ @todo
   Scenario: Renaming a workflow to nothing in n8n files it under its id
-    Given a workflow file named "Old Name.n8n.json" in "Automations"
+    Given a workflow file named "Old Name.n8n" in "Automations"
     When the workflow is renamed to "" in n8n
     Then the file is named after the workflow id
     # Falling back to the id is honest and reversible. Inventing "Untitled" would

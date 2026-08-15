@@ -19,7 +19,7 @@ use OCP\Files\Events\Node\NodeWrittenEvent;
 use Psr\Log\LoggerInterface;
 
 /**
- * The THIRD tag direction: a hand-edit of the `tags` array inside a `.n8n.json`
+ * The THIRD tag direction: a hand-edit of the `tags` array inside a `.n8n`
  * reaches n8n and the Nextcloud pills (saga §5.9).
  *
  * ## ITS OWN TRIGGER, ON PURPOSE

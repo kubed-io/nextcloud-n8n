@@ -163,17 +163,17 @@ trait OpenWithSteps {
 		switch ($mode) {
 			case 'sync':
 				$this->setupSyncMappingAndFolder('sync', 'nextcloud:openwith');
-				$this->putManagedFile($this->currentFolder . '/Opener.n8n.json', 'Opener');
+				$this->putManagedFile($this->currentFolder . '/Opener.n8n', 'Opener');
 				$this->expectedArchived = false;
 				break;
 			case 'link':
 				$this->setupSyncMappingAndFolder('link', 'nextcloud:openwith-link');
-				$this->putManagedFile($this->currentFolder . '/Opener.n8n.json', 'Opener');
+				$this->putManagedFile($this->currentFolder . '/Opener.n8n', 'Opener');
 				$this->expectedArchived = false;
 				break;
 			case 'unmapped':
 				$this->setupSyncMappingAndFolder('sync', 'nextcloud:openwith');
-				$this->putManagedFile($this->currentFolder . '/Opener.n8n.json', 'Opener');
+				$this->putManagedFile($this->currentFolder . '/Opener.n8n', 'Opener');
 				$this->iMoveTheFileToAnUnmappedFolder(); // sets currentFilePath + expectedArchived=true
 				break;
 			default:

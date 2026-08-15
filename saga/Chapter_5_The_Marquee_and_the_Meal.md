@@ -1379,6 +1379,163 @@ is not a timestamp scenario at all. It is the churn rule, and it already lives i
 
 ---
 
+## One extension, because Nextcloud only reads one
+
+**Outcome: `.n8n.json` is retired. Workflow files are `.n8n`.** The analysis below is
+what the decision was made on; the last section is what shipped.
+
+> The copy fix landed here as a port from the grafana sibling, which had already
+> spent a night on it. It arrived carrying the same root cause, because this app is
+> where the shape was invented. Worth naming before we build anything else on it.
+
+### The tally
+
+Every one of these exists because our files are `Name.n8n.json` and not
+`Name.n8n`:
+
+| | the workaround | why it exists |
+|---|---|---|
+| 1 | `FilenameCodec::canonicalise()` | Nextcloud spells a collision `Name.n8n (1).json`; we spell it `Name (1).n8n.json` |
+| 2 | the copy the app could not see | that spelling does not end in `.n8n.json`, so every predicate said "not ours" |
+| 3 | the counter landing inside the extension | the browser's `getUniqueName()` splits on the LAST dot, and to it our file is a `.json` called `Name.n8n` |
+| 4 | `updateFilecache('n8n.json')` for the icon | `detectPath()` reads only the last segment, so it answers `application/json` — the custom type has never come from detection |
+| 5 | `isTrashedWorkflowName()` | the trash appends `.dNNNN`, so `str_ends_with` is false for every trashed file |
+| 6 | the ~60s convergence window after a copy | the rename cannot happen before the client stats the path it chose |
+| 7 | a proposed browser-side rename | to close that window |
+
+**The control group is `penpot_sync`.** One segment, `.penpot`. It has none of these —
+not one. `detectPath('Board (1).penpot')` answers `application/vnd.penpot` without help,
+the counter lands where a user expects, and a copy is just a copy.
+
+### What we would be buying
+
+A single-segment `.n8n` extension puts us back on Nextcloud's own model:
+one extension, last segment, everything downstream works by default. Items 1, 2, 3, 4
+and 6 above stop existing rather than getting better implementations.
+
+### What we would be paying
+
+Real costs, and they are the reason the compound form was chosen:
+
+- **A `.n8n` file is not a `.json` file to the rest of the computer.** Editors,
+  `jq`, git diff colouring, and every tool outside Nextcloud stop recognising it.
+- **They ARE JSON**, with a schema — so the extension would be lying about the format
+  to everything except us.
+- **Nobody authors a `.n8n` file by hand.** Someone making a workflow file from
+  scratch reaches for `.json`, so the New-menu entry becomes the only comfortable way
+  in.
+
+### The shape it would probably take
+
+Not a global flip: **a per-mapping setting, immutable like `sync`/`link`.** A mapping
+declares which on-disk shape it uses when it is created and never changes it, for the
+same reason mode is immutable — the files already on disk are the migration cost, and
+an admin toggling it would rewrite a folder underneath its users.
+
+There is a real argument for supporting the single-segment form ONLY, on the principle
+that has already cost us twice: **stay on the platform's model so we are not
+permanently reconciling two of them.** Two supported shapes is two code paths forever;
+one shape is a migration once.
+### The tax nobody costed: a table-wide UPDATE on every write
+
+The tally above is all correctness. This one is throughput, and it is the finding that
+changes the argument.
+
+`detectPath('Name.n8n.json')` answers `application/json` — Nextcloud reads only the
+last segment, so **every file this app writes lands with the wrong mimetype** and has to
+be corrected afterwards. The correction is `IMimeTypeLoader::updateFilecache()`, which is
+
+    UPDATE oc_filecache SET mimetype = ? WHERE LOWER(name) LIKE '%.n8n.json'
+
+— the whole table, not the row just written. The grafana sibling's `NodeWrittenListener` says why it cannot be
+narrowed: *"every NodeWrittenEvent implies NC's scanner re-detected mime off the path's
+last extension … so it must run on every write."*
+
+Count the call sites and the two designs separate cleanly:
+
+| | `penpot_sync` (`.penpot`) | `n8n_sync` / `grafana_sync` (`.x.json`) |
+|---|---|---|
+| `updateFilecache` sites | **2** — install and uninstall | **4** / **5** — install, uninstall, **and the hot path** |
+| runs per file write | never | **every write to one of our files** |
+| mimetype from NC's own detection | yes | no — corrected after the fact, forever |
+
+penpot registers `"penpot"` and is simply done. We register `"n8n.json"`, which the
+detector cannot see, and pay for it on every save and every sync tick.
+
+### One shape or two — the Gherkin answers this
+
+Supporting BOTH shapes reads like the safe option and is the expensive one. The
+extension appears in **37 filename mentions across 5 feature files** here (74 across 10
+in the grafana sibling). A second shape makes every one of those an axis — an Examples
+column on scenarios that are not about naming at all, doubling the run and the reading
+cost of files whose subject is copy, move, trash, or tags.
+
+Going single-segment ONLY is a find-and-replace over the same mentions. No new axis, no
+new scenarios, no new run time. **The spec cost is the argument for picking one shape,
+and it points the same way the code does.**
+
+### What would actually go away
+
+Of the seven, **five stop existing** rather than getting better implementations:
+`canonicalise()`, the invisible copy, the misplaced counter, the runtime mimetype
+re-stamps, and the convergence window — and the browser-side rename never needs writing.
+
+**One survives, and it is worth being honest about it:** the trash appends `.dNNNN` to
+whatever the name was, so `Name.n8n.d1712345678` still fails a `str_ends_with`
+check. `isTrashedWorkflowName()` is needed either way. A single segment is not a cure
+for every filename problem — only for the ones we invented.
+
+### What it would cost
+
+- **A `.n8n` file is not JSON to the rest of the computer.** Mitigable per tool —
+  VS Code takes `"files.associations": {"*.n8n": "json"}`, git takes a
+  `.gitattributes` line — but it is a real papercut for anyone working outside Nextcloud.
+- **Migration is the unanswered half.** On this instance it is small (20 n8n files,
+  11 grafana) — and **this app is the one published on the App Store**, so its population is not
+  ours to count — the migration bar is higher here than in the sibling. A repair step renaming `*.x.json` → `*.x` is straightforward; the trash,
+  file versions, and already-synced desktop clients are the parts to think through.
+- **The setting shape** would be per-mapping and immutable, like `sync`/`link` — though
+  the section above argues the honest answer may be no setting at all.
+
+
+### What shipped
+
+`FilenameCodec::EXT` is `.n8n`, and the counter now goes **last**, immediately before
+the extension — the same position `getUniqueName()` puts it. That single alignment is
+the whole cut: our spelling of a collision and Nextcloud's are one spelling, so there
+is nothing to fold on the way in and nothing to rename on the way out. `canonicalise()`,
+`isNextcloudSpelling()` and `ReconcileNameJob`'s `canonicaliseSpelling()` are gone.
+
+**And an entire listener went with them.** `MimeRestampListener` existed for one
+reason: a rename re-detected the mime off `.json` and the icon vanished, so a
+`NodeRenamedEvent` handler re-ran the table-wide UPDATE to put it back. Its own
+docblock called that UPDATE "idempotent, cheap". Measured on the live instance it is a
+sequential scan of 20,144 filecache rows at ~26ms — a leading-wildcard `LIKE` cannot
+use `fs_name_hash`, so the index is useless by construction. Four `updateFilecache`
+call sites became one install and one uninstall, which is exactly what `penpot_sync`
+has always had.
+
+The id-suffixed shape needed one thought. `Board.<id>.n8n` collides into
+`Board.<id> (1).n8n`, so `parse()` takes the counter off **before** it looks for the
+id — the other order reads the id as `<id> (1)` and drops the identity on the one
+gesture most likely to need it.
+
+`MigrateFileExtension` renames existing files on upgrade, and **this app keeps it**.
+The grafana sibling deleted its copy the moment it had run: that app is unpublished,
+so there was exactly one instance to migrate and it was already done — 11 files, 0
+failures, verified in `oc_filecache`. This one is on the App Store. Its population is
+not ours to count, and an admin upgrading from an older release a year from now still
+needs their files renamed. It comes out a version or two later.
+
+The Gherkin came out the way the argument said it would: **not one new scenario, not
+one new Examples column.** Every feature file changed by the length of a string.
+
+**And one workaround survives, exactly as predicted:** the trash appends `.dNNNN`, so
+`isTrashedWorkflowName()` is still needed. A single segment cures the problems we
+invented, not every filename problem.
+
+---
+
 Sources / cross-links:
 - [`n8n_sync` on the Nextcloud App Store](https://apps.nextcloud.com/apps/n8n_sync)
 - [`nextcloud-grafana` saga, Chapter 1 — Mise en Place](https://github.com/kubed-io/nextcloud-grafana/blob/main/saga/Chapter_1_Mise_en_Place.md) — the apprentice's side of the cameo.

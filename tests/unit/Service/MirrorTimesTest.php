@@ -139,7 +139,7 @@ final class MirrorTimesTest extends TestCase {
 		// nothing), and reaching the end proves the throw did not escape.
 		$file = $this->createMock(File::class);
 		$file->method('getMTime')->willReturn(1000);
-		$file->method('getName')->willReturn('Flow.n8n.json');
+		$file->method('getName')->willReturn('Flow.n8n');
 		$file->expects(self::once())
 			->method('touch')
 			->with(2000)
@@ -158,7 +158,7 @@ final class MirrorTimesTest extends TestCase {
 
 		$file = $this->fileWithCache($cache, creationTime: 100);
 		$file->method('getMTime')->willReturn(1000);
-		$file->method('getName')->willReturn('Flow.n8n.json');
+		$file->method('getName')->willReturn('Flow.n8n');
 		$file->expects(self::once())->method('touch')->with(2000);
 
 		$this->times->apply($file, 2000, 900);

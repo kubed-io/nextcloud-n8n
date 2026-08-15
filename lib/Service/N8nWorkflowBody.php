@@ -176,7 +176,7 @@ final class N8nWorkflowBody {
 	}
 
 	/**
-	 * Derive a clean workflow name from the on-disk filename: strip `.n8n.json`
+	 * Derive a clean workflow name from the on-disk filename: strip `.n8n`
 	 * and any trailing " (N)" collision suffix; fall back to "Untitled".
 	 */
 	private static function stemFromBasename(string $basename): string {

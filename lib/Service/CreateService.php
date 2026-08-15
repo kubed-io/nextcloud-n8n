@@ -11,17 +11,16 @@ namespace OCA\N8nSync\Service;
 
 use OCA\N8nSync\AppInfo\Application;
 use OCP\Files\File;
-use OCP\Files\IMimeTypeLoader;
 use Psr\Log\LoggerInterface;
 
 /**
- * Create-on-land (§17.2): turn a `*.n8n.json` file in a mapped folder that
+ * Create-on-land (§17.2): turn a `*.n8n` file in a mapped folder that
  * carries no `n8n_id` yet into a real n8n workflow.
  *
  * Triggered by {@see \OCA\N8nSync\Listener\CreateInN8nListener} when:
  *  - a new file is dropped via the Files "New" menu (§15.11) into a mapped
  *    folder, or saved there from the Text editor;
- *  - a hand-made `.n8n.json` is moved/dropped into a mapped folder from
+ *  - a hand-made `.n8n` is moved/dropped into a mapped folder from
  *    elsewhere (re-attach side of the §17.1 eject flow);
  *  - an external WebDAV PUT lands content in a mapped folder.
  *
@@ -45,7 +44,6 @@ final class CreateService {
 		private WorkflowMetadata $metadata,
 		private TagSyncService $tagSync,
 		private SyncGuard $guard,
-		private IMimeTypeLoader $mimeLoader,
 		private LoggerInterface $logger,
 	) {
 	}
@@ -150,7 +148,7 @@ final class CreateService {
 	 * `additionalProperties: false`) marks `tags` **readOnly**, so declaring them would
 	 * be rejected anyway. `PUT /workflows/{id}/tags` is the only writer that exists.
 	 *
-	 * The consequence is a real defect: a `.n8n.json` carrying tags in its body is
+	 * The consequence is a real defect: a `.n8n` carrying tags in its body is
 	 * adopted into n8n with the mapping tag ONLY, and every tag it arrived with is
 	 * silently discarded. That is the one moment the body is the sole record of those
 	 * tags (a copy or a round trip out of Nextcloud loses the pills, which are bound
@@ -201,15 +199,6 @@ final class CreateService {
 	private function stampFile(File $node, Mapping $mapping, string $id, string $versionId, string $content): void {
 		$this->guard->run(function () use ($node, $mapping, $id, $versionId, $content): void {
 			$this->metadata->stampSynced($node->getId(), $id, $mapping->mode, $versionId, $content, $mapping->id);
-			try {
-				$this->mimeLoader->updateFilecache('n8n.json', $this->mimeLoader->getId('application/n8n+json'));
-			} catch (\Throwable $e) {
-				$this->logger->warning('n8n_sync: post-create mimetype re-stamp failed', [
-					'app' => Application::APP_ID,
-					'fileId' => $node->getId(),
-					'exception' => $e,
-				]);
-			}
 		});
 	}
 }

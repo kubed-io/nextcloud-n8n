@@ -38,7 +38,7 @@ trait CopySteps {
 	public function aWorkflowFileIn(string $folder, string $tags = ''): void {
 		$this->davMkdir($folder);
 		$name = 'Source-' . bin2hex(random_bytes(3));
-		$path = $folder . '/' . $name . '.n8n.json';
+		$path = $folder . '/' . $name . '.n8n';
 		$body = ['name' => $name, 'nodes' => [], 'connections' => new \stdClass(), 'settings' => new \stdClass()];
 		$names = array_values(array_filter(array_map('trim', explode(',', $tags))));
 		if ($names !== []) {
@@ -50,7 +50,7 @@ trait CopySteps {
 		// CREATE-ON-LAND RENAMES THE FILE to match the workflow's name, so the path we
 		// PUT to may already be gone. Re-resolve before anything reads it.
 		if (!$this->davExists($path)) {
-			$this->currentFilePath = $folder . '/' . $name . '.n8n.json';
+			$this->currentFilePath = $folder . '/' . $name . '.n8n';
 		}
 		$this->lastWorkflowId = $this->davReadMetadataId($this->currentFilePath);
 		if (is_string($this->lastWorkflowId) && $this->lastWorkflowId !== '') {
@@ -336,7 +336,7 @@ trait CopySteps {
 	/**
 	 * THE INVARIANT A COPY WOULD OTHERWISE BREAK. Nextcloud copies bytes but not
 	 * system tags, so a copy lands with a `tags` array and no pills — and the app
-	 * promises those two agree for any `.n8n.json`, mapped or not. This asserts the
+	 * promises those two agree for any `.n8n`, mapped or not. This asserts the
 	 * copy path put that right.
 	 *
 	 * @Then the copy's pills match its body
@@ -372,7 +372,7 @@ trait CopySteps {
 
 	/** A unique copy basename so a COPY never collides with its source (Overwrite: F). */
 	private function copyBasename(): string {
-		return 'Copy-' . bin2hex(random_bytes(3)) . '.n8n.json';
+		return 'Copy-' . bin2hex(random_bytes(3)) . '.n8n';
 	}
 
 	/** Record the just-made copy and the workflow id (if any) create-on-copy stamped. */

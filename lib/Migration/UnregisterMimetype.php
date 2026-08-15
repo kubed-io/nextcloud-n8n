@@ -21,14 +21,14 @@ use Psr\Log\LoggerInterface;
  * Reverses {@see RegisterMimetype} on app removal (the `<uninstall>` repair step),
  * so removing the app leaves the Nextcloud core tree as it found it — the store's
  * clean-uninstall rule (uninstall.feature). The mirror image of install:
- *   1. Drop our `n8n.json` / `application/n8n+json` keys from the live config files
+ *   1. Drop our `n8n` / `application/n8n+json` keys from the live config files
  *      (`config/mimetypemapping.json`, `config/mimetypealiases.json`).
  *   2. Delete the icon we copied to `core/img/filetypes/n8n.svg`.
- *   3. Re-stamp every `*.n8n.json` filecache row back to `application/json`, so the
+ *   3. Re-stamp every `*.n8n` filecache row back to `application/json`, so the
  *      files become plain JSON again (and any that the user keeps still open).
  *   4. Regenerate `core/js/mimetypelist.js` without our alias.
  *
- * It touches **only** the system registration — never the user's `.n8n.json` files,
+ * It touches **only** the system registration — never the user's `.n8n` files,
  * their metadata, the mappings, or n8n. Idempotent and fail-soft (a half-present
  * registration reverts cleanly).
  */
@@ -36,7 +36,15 @@ final class UnregisterMimetype implements IRepairStep {
 	private const APP_MIMETYPE = 'application/n8n+json';
 	private const APP_ALIAS_KEY = self::APP_MIMETYPE;
 	private const APP_ICON_NAME = 'n8n';
-	private const FILE_EXT = 'n8n.json';
+	private const FILE_EXT = 'n8n';
+
+	/**
+	 * What a `.n8n` file is once we stop claiming it. Core's detector has no opinion on
+	 * the extension any more, so without this the files would fall back to content
+	 * sniffing and a generic icon. The bytes are a workflow in JSON, and saying so keeps
+	 * them openable by the app this one is about to stop managing them for.
+	 */
+	private const FALLBACK_MIMETYPE = 'application/json';
 
 	public function __construct(
 		private IMimeTypeDetector $detector,
@@ -73,7 +81,7 @@ final class UnregisterMimetype implements IRepairStep {
 		// now-removed mimetype id. The detector cache is rebuilt because we just
 		// edited the on-disk config files.
 		$this->detector->getAllMappings(); // primes lazy load (no public reset)
-		$jsonId = $this->loader->getId('application/json');
+		$jsonId = $this->loader->getId(self::FALLBACK_MIMETYPE);
 		$touched = $this->loader->updateFilecache(self::FILE_EXT, $jsonId);
 		$output->info(sprintf('n8n_sync: %d filecache row(s) reverted to application/json', $touched));
 

@@ -144,7 +144,7 @@
 			return;
 		}
 		var purge = window.confirm(t('n8n_sync',
-			'Also delete the .n8n.json files this integration created in the folder?\n\n'
+			'Also delete the .n8n files this integration created in the folder?\n\n'
 			+ 'OK = delete them. Cancel = keep them.\n'
 			+ 'Foreign files and the folder itself are always kept. This cannot be undone.'));
 		var url = OC.generateUrl(APP_URL_BASE + '/' + encodeURIComponent(id)) + (purge ? '?purge=1' : '');

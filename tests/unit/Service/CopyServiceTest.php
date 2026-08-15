@@ -73,7 +73,7 @@ final class CopyServiceTest extends TestCase {
 		);
 	}
 
-	private function file(int $id = 42, string $path = '/admin/files/alpha/wf.n8n.json'): File {
+	private function file(int $id = 42, string $path = '/admin/files/alpha/wf.n8n'): File {
 		$node = $this->createStub(File::class);
 		$node->method('getId')->willReturn($id);
 		$node->method('getPath')->willReturn($path);

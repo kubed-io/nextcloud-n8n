@@ -26,7 +26,7 @@ use OCP\Files\Events\Node\BeforeNodeRenamedEvent;
  * allowed move (archive / unarchive / re-stamp) are handled afterwards by
  * {@see MotionListener} on the post-move {@see \OCP\Files\Events\Node\NodeRenamedEvent}.
  *
- * Rules (only `*.n8n.json` files under a mapping are constrained):
+ * Rules (only `*.n8n` files under a mapping are constrained):
  *   - move/rename **within** the same mapping → allow (rename, subfolder).
  *   - move into a **different** mapping → block (decision-cases §14.2 a/b are not
  *     yet designed — re-tag vs eject+reattach — so disallow the ambiguous case).

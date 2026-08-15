@@ -20,7 +20,6 @@ use OCP\BackgroundJob\IJobList;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
 use OCP\Files\Events\Node\NodeWrittenEvent;
-use OCP\Files\IMimeTypeLoader;
 use OCP\IAppConfig;
 use OCP\IUserSession;
 use Psr\Log\LoggerInterface;
@@ -33,7 +32,7 @@ use Psr\Log\LoggerInterface;
  * pull), so it survives renames/moves and needs no path/mapping lookup. We push
  * only when **all** hold:
  *   - guard not active (i.e. not our own pull/push write),
- *   - name ends in `.n8n.json` (cheap bail for everything else),
+ *   - name ends in `.n8n` (cheap bail for everything else),
  *   - the file is ours (`n8n_id` set) and effective state is `sync` + `two-way`
  *     (reference/backup never push),
  *   - the content actually changed since the last sync (sha1 != n8n_syncedHash) —
@@ -52,7 +51,6 @@ final class NodeWrittenListener implements IEventListener {
 		private SyncGuard $guard,
 		private IUserSession $userSession,
 		private SyncNotifier $notifier,
-		private IMimeTypeLoader $mimeLoader,
 		private LoggerInterface $logger,
 	) {
 	}
@@ -67,19 +65,11 @@ final class NodeWrittenListener implements IEventListener {
 			return;
 		}
 
-		// Re-stamp BEFORE the SyncGuard short-circuit: every NodeWrittenEvent
-		// implies NC's Scanner::scan ran on the new content, and that scanner
-		// re-detects mime off the path's last extension (`.json` → `application/json`),
-		// clobbering our `application/n8n+json` row icon. This affects:
-		//   - external writes (WebDAV PUT, text editor, desktop client) — covered here, and
-		//   - **our own writes inside SyncGuard** (e.g. ReconcileNameJob's putContent),
-		//     which would otherwise silently regress the mime to application/json
-		//     (observed live: rename → MimeRestampListener restored mime → ~1 cron tick
-		//     later ReconcileNameJob rewrote the JSON and the row reverted).
-		// The UPDATE only touches the `mimetype` column and does not refire
-		// NodeWrittenEvent, so running it on guarded writes is safe.
-		$this->restampMimetype();
-
+		// NO MIMETYPE RE-STAMP HERE ANY MORE. Under the old `.n8n.json` extension this ran a
+		// table-wide filecache UPDATE on every single write — including our own guarded ones,
+		// because NC's scanner re-detected the mime off the path's last extension (`.json` →
+		// application/json) and clobbered our row each time. `.n8n` IS the last extension, so
+		// core's own detector returns application/n8n+json and there is nothing to correct.
 		// Everything below is the writeback push, which IS the loop we guard against.
 		if ($this->guard->active()) {
 			return;
@@ -126,18 +116,6 @@ final class NodeWrittenListener implements IEventListener {
 				'exception' => $e,
 			]);
 			$this->notifier->failed($uid, $node->getId(), $node->getName(), $e->getMessage());
-		}
-	}
-
-	/** Re-apply application/n8n+json to all *.n8n.json filecache rows (one UPDATE). */
-	private function restampMimetype(): void {
-		try {
-			$this->mimeLoader->updateFilecache('n8n.json', $this->mimeLoader->getId('application/n8n+json'));
-		} catch (\Throwable $e) {
-			$this->logger->warning('n8n_sync: mimetype re-stamp failed', [
-				'app' => Application::APP_ID,
-				'exception' => $e,
-			]);
 		}
 	}
 }

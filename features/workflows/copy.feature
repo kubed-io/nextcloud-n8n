@@ -55,7 +55,7 @@ Feature: Copying a workflow file always makes a new instance
   # notes: ../AGENTS.md#a-copy-made-in-nextcloud-is-named-by-nextcloud
   @user @in-nextcloud @gesture @ui
   Scenario Outline: A copy is named by Nextcloud, and that is its name everywhere
-    Given a workflow file named "Fleet Health.n8n.json" in "<source>"
+    Given a workflow file named "Fleet Health.n8n" in "<source>"
     When I copy the file into "Demo"
     Then the copy holds this DAV metadata:
       | filename         | "<copy>"                    |
@@ -65,20 +65,20 @@ Feature: Copying a workflow file always makes a new instance
     And the original file and its workflow are unchanged
 
     Examples: a copy landing beside its source is named by Nextcloud, and that is its name everywhere
-      | source  | copy                      | named            |
-      | Demo    | Fleet Health (1).n8n.json | Fleet Health (1) |
-      | Scratch | Fleet Health.n8n.json     | Fleet Health     |
+      | source  | copy                 | named            |
+      | Demo    | Fleet Health (1).n8n | Fleet Health (1) |
+      | Scratch | Fleet Health.n8n     | Fleet Health     |
 
     # ── RULE: a workflow duplicated in n8n keeps the name n8n gave it ──────────
 
   # notes: ../AGENTS.md#a-copy-made-in-n8n-is-named-by-n8n
   @n8n @in-n8n @gesture @ui
   Scenario: A workflow duplicated in n8n arrives as its own file
-    Given a workflow file named "Fleet Health.n8n.json" in "Demo"
+    Given a workflow file named "Fleet Health.n8n" in "Demo"
     When someone duplicates its workflow in n8n, keeping the name
     Then the duplicate arrives as its own file in "Demo"
     And the copy holds this DAV metadata:
-      | filename         | "Fleet Health (1).n8n.json" |
+      | filename         | "Fleet Health (1).n8n"      |
       | name in the file | "Fleet Health"              |
       | name in n8n      | "Fleet Health"              |
       | n8n_id           | its own, not the original's |
@@ -89,13 +89,13 @@ Feature: Copying a workflow file always makes a new instance
   # notes: ../AGENTS.md#the-second-suffix-and-the-pull-that-used-to-fight-it
   @n8n @in-n8n @gesture @ui
   Scenario: Three workflows in n8n wearing one name
-    Given a workflow file named "Fleet Health.n8n.json" in "Demo"
+    Given a workflow file named "Fleet Health.n8n" in "Demo"
     When someone duplicates its workflow in n8n, keeping the name
     And someone duplicates its workflow in n8n, keeping the name
     Then "Demo" holds one file per workflow, named:
-      | Fleet Health.n8n.json     |
-      | Fleet Health (1).n8n.json |
-      | Fleet Health (2).n8n.json |
+      | Fleet Health.n8n     |
+      | Fleet Health (1).n8n |
+      | Fleet Health (2).n8n |
     And all three workflows are still named "Fleet Health" in n8n
 
   # notes: ../AGENTS.md#a-copy-carries-the-tags-that-travelled-in-its-body

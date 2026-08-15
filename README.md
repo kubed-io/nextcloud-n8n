@@ -9,15 +9,15 @@ A Nextcloud app that surfaces n8n workflows as native files — browse, edit, an
 [![Nextcloud](https://img.shields.io/badge/Nextcloud-30--33-0082c9?logo=nextcloud&logoColor=white)](https://apps.nextcloud.com)
 [![PHP](https://img.shields.io/badge/PHP-%E2%89%A58.1-777bb4?logo=php&logoColor=white)](composer.json)
 
-![n8n workflows shown as .n8n.json files in the Nextcloud Files app, each tagged n8n:sync](screenshots/mapped-folder.png)
+![n8n workflows shown as .n8n files in the Nextcloud Files app, each tagged n8n:sync](screenshots/mapped-folder.png)
 
-*Your n8n workflows, living in Nextcloud as native `.n8n.json` files — tagged, versioned, and synced both ways.*
+*Your n8n workflows, living in Nextcloud as native `.n8n` files — tagged, versioned, and synced both ways.*
 
 ---
 
 ## How It Works
 
-n8n Sync maps one or more n8n workflow tags to Nextcloud folders. Every workflow carrying a mapped tag appears in the corresponding folder as a `.n8n.json` file. Depending on the mode you choose, changes you make in Nextcloud push back to n8n automatically, and changes made in n8n pull back into Nextcloud on a schedule.
+n8n Sync maps one or more n8n workflow tags to Nextcloud folders. Every workflow carrying a mapped tag appears in the corresponding folder as a `.n8n` file. Depending on the mode you choose, changes you make in Nextcloud push back to n8n automatically, and changes made in n8n pull back into Nextcloud on a schedule.
 
 ```
 n8n (tagged workflows) ⟺ Nextcloud (mapped folder)
@@ -29,7 +29,7 @@ The sync is reconcile-based: re-running a pull never duplicates files. The link 
 
 ## Modes
 
-Every managed `.n8n.json` file is in exactly one of four modes. The mode is the single source of truth for how much authority Nextcloud has over the workflow — there is no separate "writeback" setting to reason about.
+Every managed `.n8n` file is in exactly one of four modes. The mode is the single source of truth for how much authority Nextcloud has over the workflow — there is no separate "writeback" setting to reason about.
 
 | Mode | File content | In a mapping? | Pushes to n8n? |
 |---|---|---|---|
@@ -62,11 +62,11 @@ There are **three** places to edit a workflow's tags, and all three are kept in 
 
 - **Edit in n8n** → a pull brings the tags into the Nextcloud file and onto its pills.
 - **Edit the file's pills** → the change pushes back to n8n on its own (no "Sync to n8n" click), following the same instant/background timing as the rest of the writeback.
-- **Edit the `tags` array inside the `.n8n.json`** → saving the file pushes the change to n8n and updates the pills.
+- **Edit the `tags` array inside the `.n8n`** → saving the file pushes the change to n8n and updates the pills.
 
 You can add a tag by **name alone** — write `{"name": "prod"}` and save. n8n assigns the real tag id, and the next pull fills it in for you; until then the file keeps exactly what you typed. Nothing rewrites a file you're editing.
 
-A tag change **outside** any mapped folder still keeps the file's pills and its `tags` array in step — that pair is purely local, so it works whether or not n8n is involved. This is what makes tags survive travel: pills belong to a file id and are lost on a copy, but the `tags` array is part of the file. Tag an untracked `.n8n.json`, move it into a mapped folder later, and the workflow n8n creates for it arrives **with those tags already on it**.
+A tag change **outside** any mapped folder still keeps the file's pills and its `tags` array in step — that pair is purely local, so it works whether or not n8n is involved. This is what makes tags survive travel: pills belong to a file id and are lost on a copy, but the `tags` array is part of the file. Tag an untracked `.n8n`, move it into a mapped folder later, and the workflow n8n creates for it arrives **with those tags already on it**.
 
 Two rules keep it safe. The app's own control tags (the reserved `n8n:` namespace, e.g. `n8n:sync`, `n8n:ignore`) are **never** mixed into your workflow's tags in either direction. And when tags have changed on **both** sides since the last sync, a three-way merge (against the last-synced set the app remembers) tells an *add* apart from a *remove* so nothing is lost.
 
@@ -82,7 +82,7 @@ This is a high-level showcase. Each feature links to its **executable specificat
 
 ### Create a workflow from Nextcloud
 
-Make a `.n8n.json` file in a mapped sync folder (new file, upload, or move-in) and the app registers it as a real n8n workflow — tagged with the mapping and stamped with the workflow's ID. Author in your editor of choice; it goes live in n8n without opening the n8n UI. A file created **outside** any mapped folder stays a plain, untracked document.
+Make a `.n8n` file in a mapped sync folder (new file, upload, or move-in) and the app registers it as a real n8n workflow — tagged with the mapping and stamped with the workflow's ID. Author in your editor of choice; it goes live in n8n without opening the n8n UI. A file created **outside** any mapped folder stays a plain, untracked document.
 
 📋 spec: [`features/workflows/create.feature`](features/workflows/create.feature) · 🛠 [`lib/Listener/CreateInN8nListener.php`](lib/Listener/CreateInN8nListener.php)
 
@@ -113,7 +113,7 @@ A move in Nextcloud mirrors as the *same workflow* moving in n8n — never a dup
 Where a move is "the same workflow," a **copy** is always a *new* one. A copied file never carries the original's n8n identity — its metadata is stripped the moment it is copied.
 
 - **Copy within a mapped sync folder** → the copy becomes a **new** workflow in n8n (new id, its own name).
-- **Copy to outside any mapping** → a plain, untracked `.n8n.json`.
+- **Copy to outside any mapping** → a plain, untracked `.n8n`.
 - **Copy of an unmapped file** → metadata stripped wherever it lands; it's a new instance.
 
 So duplicating a workflow is as simple as copying its file, and you never have to worry about a copy silently hijacking the original's n8n workflow.
@@ -218,7 +218,7 @@ A mapping binds **one** n8n tag to a folder + a mode — and that tag can be **a
 
 A request-scoped guard prevents the app from pushing its own pull writes back to n8n (the classic bidirectional sync loop problem).
 
-![A .n8n.json workflow open in the Nextcloud text editor showing the raw n8n workflow JSON](screenshots/edit-workflow.png)
+![A .n8n workflow open in the Nextcloud text editor showing the raw n8n workflow JSON](screenshots/edit-workflow.png)
 
 *Open any managed file to edit the raw workflow JSON — hitting **Save** pushes the change straight back to n8n.*
 

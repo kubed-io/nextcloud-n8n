@@ -26,7 +26,6 @@ use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\BackgroundJob\IJobList;
 use OCP\Files\File;
 use OCP\Files\Folder;
-use OCP\Files\IMimeTypeLoader;
 use OCP\IAppConfig;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
@@ -36,7 +35,7 @@ use Psr\Log\NullLogger;
  * Unit tests for the {@see SyncService} manual, mapping-scoped sync (saga §14.6).
  *
  * Two new behaviours under test:
- *  - **pushOne** pushes only a mapping's own `sync` `.n8n.json` files (skipping a
+ *  - **pushOne** pushes only a mapping's own `sync` `.n8n` files (skipping a
  *    `link` mapping and any file without an `n8n_id`); files outside the mapping
  *    folder — every `unmapped` file — are never even listed, so never pushed.
  *  - **pull prune**: a managed file whose workflow no longer carries the tag (it
@@ -70,8 +69,6 @@ final class SyncServiceTest extends TestCase {
 		$guard->method('run')->willReturnCallback(fn (callable $fn) => $fn());
 
 		// fixupFilecacheMimetype: a no-op pair, never asserted.
-		$mimeLoader = $this->createStub(IMimeTypeLoader::class);
-		$mimeLoader->method('getId')->willReturn(1);
 
 		$this->mappings = $this->createStub(MappingService::class);
 		$this->tagSync = $this->createMock(TagSyncService::class);
@@ -85,7 +82,6 @@ final class SyncServiceTest extends TestCase {
 			$this->storage,
 			$guard,
 			$this->push,
-			$mimeLoader,
 			$this->createStub(IJobList::class),
 			$this->createStub(SyncStatusService::class),
 			$this->createStub(IAppConfig::class),
@@ -105,7 +101,7 @@ final class SyncServiceTest extends TestCase {
 		]);
 	}
 
-	/** A managed `.n8n.json` File stub with a fixed id + name (no verified interactions). */
+	/** A managed `.n8n` File stub with a fixed id + name (no verified interactions). */
 	private function file(int $id, string $name): File {
 		$node = $this->createStub(File::class);
 		$node->method('getId')->willReturn($id);
@@ -147,9 +143,9 @@ final class SyncServiceTest extends TestCase {
 	}
 
 	public function testPushOnePushesManagedSyncFilesAndSkipsTheRest(): void {
-		$managed = $this->file(1, 'Flow.n8n.json');
+		$managed = $this->file(1, 'Flow.n8n');
 		$plainTxt = $this->file(2, 'notes.txt');           // wrong extension → skipped
-		$unstamped = $this->file(3, 'Draft.n8n.json');     // no n8n_id → skipped
+		$unstamped = $this->file(3, 'Draft.n8n');     // no n8n_id → skipped
 
 		$folder = $this->createStub(Folder::class);
 		$folder->method('getDirectoryListing')->willReturn([$managed, $plainTxt, $unstamped]);
@@ -177,7 +173,7 @@ final class SyncServiceTest extends TestCase {
 	}
 
 	public function testPushOneReconcilesTagsForEachPushedFile(): void {
-		$managed = $this->file(1, 'Flow.n8n.json');
+		$managed = $this->file(1, 'Flow.n8n');
 		$folder = $this->createStub(Folder::class);
 		$folder->method('getDirectoryListing')->willReturn([$managed]);
 
@@ -200,7 +196,7 @@ final class SyncServiceTest extends TestCase {
 	public function testPushOneTagFailureDoesNotFailTheFile(): void {
 		// The body already pushed + stamped; a tag reconcile error is logged and
 		// swallowed, so the file still counts as succeeded, not failed.
-		$managed = $this->file(1, 'Flow.n8n.json');
+		$managed = $this->file(1, 'Flow.n8n');
 		$folder = $this->createStub(Folder::class);
 		$folder->method('getDirectoryListing')->willReturn([$managed]);
 
@@ -220,7 +216,7 @@ final class SyncServiceTest extends TestCase {
 
 	public function testPushOneSkipDoesNotReconcileTags(): void {
 		// A link file in a sync mapping is skipped before push — so no tag write.
-		$linkFile = $this->file(2, 'B.n8n.json');
+		$linkFile = $this->file(2, 'B.n8n');
 		$folder = $this->createStub(Folder::class);
 		$folder->method('getDirectoryListing')->willReturn([$linkFile]);
 
@@ -271,7 +267,7 @@ final class SyncServiceTest extends TestCase {
 
 		$stale = $this->createMock(File::class);
 		$stale->method('getId')->willReturn(11);
-		$stale->method('getName')->willReturn('Stale.n8n.json');
+		$stale->method('getName')->willReturn('Stale.n8n');
 		$stale->expects(self::once())->method('delete');
 
 		$folder = $this->createStub(Folder::class);
@@ -379,7 +375,7 @@ final class SyncServiceTest extends TestCase {
 		$folder = $this->createStub(Folder::class);
 		$folder->method('getDirectoryListing')->willReturn([]);
 		$folder->method('nodeExists')->willReturn(false);
-		$folder->method('newFile')->willReturn($this->file(10, 'Keep.n8n.json'));
+		$folder->method('newFile')->willReturn($this->file(10, 'Keep.n8n'));
 
 		$this->storage->method('isAvailable')->willReturn(true);
 		$this->storage->method('ensureFolder')->willReturn($folder);
@@ -477,8 +473,8 @@ final class SyncServiceTest extends TestCase {
 	}
 
 	public function testPushOneSkipsALinkFileInASyncMapping(): void {
-		$syncFile = $this->file(1, 'A.n8n.json');
-		$linkFile = $this->file(2, 'B.n8n.json'); // a link-mode file is never pushed
+		$syncFile = $this->file(1, 'A.n8n');
+		$linkFile = $this->file(2, 'B.n8n'); // a link-mode file is never pushed
 
 		$folder = $this->createStub(Folder::class);
 		$folder->method('getDirectoryListing')->willReturn([$syncFile, $linkFile]);

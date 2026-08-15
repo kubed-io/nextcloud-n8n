@@ -69,7 +69,7 @@ trait MappingMembershipSteps {
 	 */
 	public function aWorkflowFileLivesInTheFolder(): void {
 		Assert::assertNotSame('', $this->currentFolder, 'no current folder — a Given must set one');
-		$name = 'member-' . bin2hex(random_bytes(3)) . '.n8n.json';
+		$name = 'member-' . bin2hex(random_bytes(3)) . '.n8n';
 		$path = $this->currentFolder . '/' . $name;
 		$body = json_encode([
 			'name' => 'Member ' . substr($name, 0, 12),

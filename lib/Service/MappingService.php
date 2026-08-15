@@ -213,7 +213,7 @@ final class MappingService {
 		if (!preg_match('#/files/(.+)$#', $ncPath, $m)) {
 			return null;
 		}
-		// Everything under the user's files root, e.g. "outer/inner/wf.n8n.json"
+		// Everything under the user's files root, e.g. "outer/inner/wf.n8n"
 		// (a file) or "outer/inner" (the folder itself). Leading/trailing slashes
 		// are stripped so the prefix comparison is on clean segments.
 		$relative = trim($m[1], '/');
