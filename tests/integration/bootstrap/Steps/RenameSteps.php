@@ -35,6 +35,12 @@ trait RenameSteps {
 		$this->currentFolder = $folder;
 		$stem = preg_replace('/\.n8n\.json$/', '', $filename) ?? $filename;
 		$this->putManagedFile($folder . '/' . $filename, $stem);
+		// CAPTURE THE PRE-STATE, so a scenario that names its file can still claim "the
+		// original is unchanged" afterwards. `copy.feature` needs both halves: it can
+		// only spell the collision name it expects if it chose the original's name, and
+		// it can only prove the original survived if something read it first.
+		$this->originalPath = $this->currentFilePath;
+		$this->copyOriginalBefore = $this->readManagedMetadata($this->originalPath);
 	}
 
 	/**

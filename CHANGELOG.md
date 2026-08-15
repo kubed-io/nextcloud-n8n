@@ -27,6 +27,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- A copy is named once: the filename, the JSON name and the n8n name all say `Fleet Health (1)`.
+- Workflows in one mapping may share a name; their files take a numbered suffix and keep it.
+
+### Fixed
+
+- A copy made beside its source was invisible to the app: no workflow in n8n, no metadata, nothing on click.
+
 - A workflow file now carries the workflow's own created and modified dates, not the sync's.
 - Tags are one set across n8n, the Nextcloud pills, and the file's own `tags` array — change any of them.
 - A tag written by name alone gets its n8n id filled in for you.

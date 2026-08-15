@@ -460,8 +460,18 @@ final class SyncService {
 
 		$existing = $existingById[$id] ?? null;
 		if ($existing instanceof \OCP\Files\File) {
-			$desired = FilenameCodec::format($displayName, $id, false, 0);
-			if ($existing->getName() !== $desired) {
+			// THE SUFFIX IS PART OF THE NAME THIS FILE IS ENTITLED TO KEEP. n8n permits
+			// two workflows to share a name and Nextcloud does not permit two files to
+			// share a name, so the second mirror wears a counter — and asking for index
+			// 0 unconditionally told it, on every single pull, to go and take a name the
+			// first mirror is sitting on.
+			//
+			// It "worked" by throwing: the move failed, the catch below logged
+			// `rename skipped (collision?)`, and the file kept its suffix by accident.
+			// Every tick, for every duplicate. An exception is not a naming policy, and
+			// the log line's own question mark says nobody was sure it was one.
+			$desired = $this->desiredMirrorName($existing, $displayName, $id);
+			if ($desired !== null && $existing->getName() !== $desired) {
 				try {
 					// Rename within the file's OWN folder — never yank a file the
 					// user put in a subfolder back to the mapping root.
@@ -531,6 +541,33 @@ final class SyncService {
 			MirrorTimes::parse($workflow['createdAt'] ?? null),
 			$justWrote,
 		);
+	}
+
+	/**
+	 * What an EXISTING mirror should be called, given the name its workflow now carries —
+	 * collision counter included when another file holds the plain name.
+	 *
+	 * The plain name is always preferred: a workflow whose duplicate was deleted in n8n
+	 * should get its unsuffixed name back rather than wear a counter forever. Failing
+	 * that, the first free counter is taken, and reaching the file's OWN current name
+	 * counts as free — that is how a legitimate duplicate keeps the suffix it has instead
+	 * of being renamed on every tick.
+	 *
+	 * Returns null when no name is available at all, which the caller reads as "leave it
+	 * alone". A wrong-but-unique name is strictly better than an exception here: the
+	 * workflow's identity lives in its metadata, so a mirror is never lost by being
+	 * misnamed, and a pull that aborts over cosmetics would strand the whole folder.
+	 */
+	private function desiredMirrorName(\OCP\Files\File $existing, string $displayName, string $id): ?string {
+		$parent = $existing->getParent();
+		$current = $existing->getName();
+		for ($collision = 0; $collision <= 1000; $collision++) {
+			$candidate = FilenameCodec::format($displayName, $id, false, $collision);
+			if ($candidate === $current || !$parent->nodeExists($candidate)) {
+				return $candidate;
+			}
+		}
+		return null;
 	}
 
 	/**

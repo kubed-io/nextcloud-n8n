@@ -193,6 +193,55 @@ trait CreateSteps {
 	}
 
 	/**
+	 * One of the three name rows. Always a quoted literal — a name is the one thing in
+	 * this vocabulary a scenario really can spell out, and spelling it is the point.
+	 *
+	 * Every failure reports all three, because the interesting question is never "is
+	 * this one wrong" but "which of the three disagreed with the other two", and that is
+	 * unanswerable from a single value.
+	 */
+	private function assertNameRow(string $path, string $key, string $expected): void {
+		if (!str_starts_with($expected, '"') || !str_ends_with($expected, '"')) {
+			throw new \RuntimeException("the table says $key is $expected; a name row takes a quoted literal.");
+		}
+		$want = trim($expected, '"');
+		$actual = match ($key) {
+			'filename' => basename($path),
+			'name in the file' => $this->nameInTheFile($path),
+			default => $this->nameInN8n($path),
+		};
+		if ($actual !== $want) {
+			throw new \RuntimeException(
+				"$key: expected '$want', found '$actual' — the file is called " . basename($path)
+				. ', its JSON says ' . $this->nameInTheFile($path)
+				. ', n8n says ' . $this->nameInN8n($path),
+			);
+		}
+	}
+
+	/** The `name` key of the file's own JSON — a sync body and a link pointer both have one. */
+	private function nameInTheFile(string $path): string {
+		try {
+			$wf = json_decode($this->davGet($path), false, 512, JSON_THROW_ON_ERROR);
+		} catch (\JsonException $e) {
+			return '<unreadable JSON: ' . $e->getMessage() . '>';
+		}
+		return ($wf instanceof \stdClass && isset($wf->name) && is_string($wf->name))
+			? $wf->name
+			: '<no name key>';
+	}
+
+	/** What n8n calls the workflow this file claims — found by id, never by name. */
+	private function nameInN8n(string $path): string {
+		$id = (string)$this->davReadMetadataId($path);
+		if ($id === '') {
+			return '<the file carries no id, so it names no workflow>';
+		}
+		$wf = $this->n8nGetWorkflow($id);
+		return is_array($wf) ? (string)($wf['name'] ?? '<no name>') : "<workflow '$id' is gone from n8n>";
+	}
+
+	/**
 	 * The engine behind every "holds this DAV metadata" step, shared so `the file
 	 * holds:` and `the copy holds:` cannot drift into two vocabularies.
 	 *
@@ -222,6 +271,15 @@ trait CreateSteps {
 						"$key is still '$actual' — the id the file arrived with. This gesture should have minted a new one",
 					);
 				}
+				continue;
+			}
+
+			// THE THREE PLACES A NAME LIVES, readable side by side in one table on
+			// purpose. They are supposed to be one value, and the only way to catch them
+			// disagreeing is to read all three in the same glance — a copy shipped saying
+			// three different things at once, and each of the three looked fine alone.
+			if (in_array($key, ['filename', 'name in the file', 'name in n8n'], true)) {
+				$this->assertNameRow($path, $key, $expected);
 				continue;
 			}
 

@@ -136,6 +136,36 @@ trait WebDavTrait {
 	}
 
 	/**
+	 * The workflow files directly inside $folder, by basename.
+	 *
+	 * BOTH SPELLINGS OF A COLLISION, because a helper that can only see our own would be
+	 * blind to exactly the file a copy scenario is hunting. Nextcloud names a colliding
+	 * copy `Board.n8n (1).json`, counting before the last extension; the app renames it to
+	 * `Board (1).n8n.json`, and a test that could not see the "before" could never fail
+	 * when the rename did not happen. This is the same blind spot the app itself shipped
+	 * with — see {@see \OCA\N8nSync\Service\FilenameCodec::canonicalise()}.
+	 *
+	 * @return list<string>
+	 */
+	private function davListWorkflowFiles(string $folder): array {
+		$res = $this->davClient()->request('PROPFIND', $this->davEncode($folder), [
+			'headers' => ['Depth' => '1', 'Content-Type' => 'application/xml'],
+			'body' => '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/></d:prop></d:propfind>',
+		]);
+		Assert::assertSame(207, $res->getStatusCode(), "PROPFIND $folder failed: " . (string)$res->getBody());
+		$doc = new \SimpleXMLElement((string)$res->getBody());
+		$doc->registerXPathNamespace('d', 'DAV:');
+		$out = [];
+		foreach ($doc->xpath('//d:href') ?: [] as $href) {
+			$base = basename(rtrim(rawurldecode((string)$href), '/'));
+			if (str_ends_with($base, '.n8n.json') || preg_match('/\\.n8n \\(\\d+\\)\\.json$/', $base) === 1) {
+				$out[] = $base;
+			}
+		}
+		return $out;
+	}
+
+	/**
 	 * Find the trashbin entry for a file we deleted, by basename. NC trashbin DAV
 	 * lives at /remote.php/dav/trashbin/<user>/trash and renames entries with a
 	 * `.dNNNN` deletion-time suffix, so we match on the original basename prefix.

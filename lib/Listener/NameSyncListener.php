@@ -70,8 +70,16 @@ final class NameSyncListener implements IEventListener {
 			return; // only sync pushes back + name-syncs; link is n8n-driven
 		}
 
-		$stem = FilenameCodec::parse($node->getName())['name'] ?? '';
-		if ($stem === '') {
+		// TWO STEMS, AND THE DIRECTION PICKS ONE. They differ by exactly the collision
+		// counter, and which is authoritative depends on who put it there — see the
+		// comparison at the bottom of this method.
+		$parsed = FilenameCodec::parse($node->getName());
+		if ($parsed === null) {
+			return;
+		}
+		$logical = trim($parsed['name']);      // counter stripped — Nextcloud's own concern
+		$written = trim($parsed['display']);   // counter included — the name on the file
+		if ($written === '') {
 			return;
 		}
 
@@ -91,11 +99,23 @@ final class NameSyncListener implements IEventListener {
 			return;
 		}
 
+		// A RENAME IS A STATEMENT ABOUT THE WHOLE FILENAME, counter included: the user
+		// typed it, so `Board (1).n8n.json` means a workflow called `Board (1)`. Compared
+		// against the counter-stripped stem the two read as equal, nothing was enqueued,
+		// and the rename silently did nothing.
 		if ($event instanceof NodeRenamedEvent) {
-			if ($jsonName !== $stem) {
+			if ($jsonName !== $written) {
 				$this->enqueue($node->getId(), $uid, 'name_from_filename');
 			}
-		} elseif ($jsonName !== '' && $jsonName !== $stem) {
+			return;
+		}
+
+		// A WRITE IS A STATEMENT ABOUT THE NAME, and the counter is not the name's
+		// business. A mirror of a duplicate n8n workflow legitimately sits at
+		// `Board (1).n8n.json` holding the name `Board` — the one place the two are MEANT
+		// to disagree ({@see FilenameCodec}) — so the counter is stripped before comparing
+		// and saving such a file enqueues nothing at all.
+		if ($jsonName !== '' && $jsonName !== $logical) {
 			$this->enqueue($node->getId(), $uid, 'filename_from_name');
 		}
 	}

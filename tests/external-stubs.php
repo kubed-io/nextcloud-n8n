@@ -29,17 +29,51 @@ namespace Sabre\DAV {
 	}
 	if (!class_exists(Server::class, false)) {
 		class Server {
+			// The node tree, reached as a public property by real Sabre plugins.
+			// {@see \OCA\GrafanaSync\DAV\CopyNamePlugin} asks it whether the name it
+			// would rather use is already taken.
+			public Tree $tree;
+
 			public function on(string $eventName, callable $callBack, int $priority = 100): bool {
 				return true;
 			}
 
 			public function addPlugin(ServerPlugin $plugin): void {
 			}
+
+			/** Reduces a `Destination` header — absolute or root-relative — to an internal path. */
+			public function calculateUri(string $uri): string {
+				return '';
+			}
+		}
+	}
+	if (!class_exists(Tree::class, false)) {
+		class Tree {
+			public function nodeExists(string $path): bool {
+				return false;
+			}
 		}
 	}
 	if (!class_exists(ServerPlugin::class, false)) {
 		abstract class ServerPlugin {
 			abstract public function initialize(Server $server): void;
+		}
+	}
+}
+
+namespace Sabre\HTTP {
+	// Only the header accessors are declared: a `beforeMethod:*` handler receives the
+	// request before it is dispatched, and rewriting one header is the entirety of what
+	// CopyNamePlugin does with it.
+	if (!interface_exists(RequestInterface::class, false)) {
+		interface RequestInterface {
+			public function getHeader(string $name): ?string;
+
+			public function setHeader(string $name, string $value): void;
+		}
+	}
+	if (!interface_exists(ResponseInterface::class, false)) {
+		interface ResponseInterface {
 		}
 	}
 }

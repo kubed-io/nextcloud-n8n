@@ -31,9 +31,33 @@ use OCP\Files\Node;
  * \u00a75-D' "id resolution layers".
  *
  * Collision policy: when two workflows in the same n8n tag share a `name`
- * (n8n permits this), the second through Nth file get an NC-style `(2)`,
- * `(3)`, ... suffix. The chosen filename is what gets stored in metadata,
- * so subsequent pulls are stable and won't oscillate.
+ * (n8n permits this), the first file gets the plain name and the ones after it
+ * get an NC-style ` (1)`, ` (2)`, ... suffix — Nextcloud's own counter, which
+ * starts at one. The chosen filename is what gets stored in metadata, so
+ * subsequent pulls are stable and won't oscillate.
+ *
+ * ## TWO NAMES, AND THE DIFFERENCE MATTERS
+ *
+ * {@see parse()} returns both, because callers want opposite things from a
+ * suffixed file:
+ *
+ *   `name`     the LOGICAL name, counter stripped — `Fleet Health`. What a pull
+ *              matches a workflow's name against, so a mirror already wearing
+ *              `(1)` is recognised as the same logical file next time round.
+ *   `display`  the name AS WRITTEN, counter and all — `Fleet Health (1)`. What
+ *              the user sees, and therefore what the JSON `name` and the n8n
+ *              workflow have to say whenever NEXTCLOUD named the file.
+ *
+ * Which is authoritative is decided by WHERE THE GESTURE HAPPENED, and a copy
+ * exercises both directions:
+ *
+ *   - Copied in Nextcloud → Nextcloud picked the name, counter included, so
+ *     `display` is the name and it propagates to the JSON and to n8n. All three
+ *     agree.
+ *   - Copied in n8n → n8n permits two workflows with one name and Nextcloud does
+ *     not permit two files with one name, so the counter is added to the FILENAME
+ *     ONLY and `name` is what still matches the workflow. This is the single
+ *     exception to *a name is one value living in three places*.
  *
  * This class is **pure logic**: no filesystem access, no DI dependencies,
  * trivial to unit test.
@@ -47,6 +71,7 @@ final class FilenameCodec {
 	 * Pure string test — the single source of truth for "is this one of ours?".
 	 */
 	public static function isWorkflowName(string $name): bool {
+		$name = self::canonicalise($name);
 		return str_ends_with($name, self::EXT);
 	}
 
@@ -104,15 +129,17 @@ final class FilenameCodec {
 	 * `null` for the clean shape and a non-empty string for the suffixed
 	 * shape.
 	 *
-	 * @return array{name:string, id:?string, suffix:int}|null
-	 *                                                         `suffix` is the collision counter (0 for the canonical name,
-	 *                                                         1+ for "(N)" duplicates).
+	 * @return array{name:string, id:?string, suffix:int, display:string}|null
+	 *                                                                     `suffix` is the collision counter (0 for the canonical name,
+	 *                                                                     1+ for "(N)" duplicates); `display` is the name with that
+	 *                                                                     counter still on it.
 	 */
 	public static function parse(string $basename): ?array {
 		$slash = strrpos($basename, '/');
 		if ($slash !== false) {
 			$basename = substr($basename, $slash + 1);
 		}
+		$basename = self::canonicalise($basename);
 		if (!str_ends_with($basename, self::EXT)) {
 			return null;
 		}
@@ -137,14 +164,82 @@ final class FilenameCodec {
 
 		// Strip an optional " (N)" collision suffix off the *end* of the
 		// resolved name so subsequent pulls can detect they're updating
-		// the same logical file.
+		// the same logical file. The unstripped form is kept as `display`,
+		// because a counter Nextcloud put there is part of the name the user
+		// sees — see this class's docblock for which one a caller wants.
+		$display = $name;
 		$suffix = 0;
 		if (preg_match('/^(?<base>.+) \\((?<n>\\d+)\\)$/', $name, $m)) {
 			$suffix = (int)$m['n'];
 			$name = $m['base'];
 		}
 
-		return ['name' => $name, 'id' => $id, 'suffix' => $suffix];
+		return ['name' => $name, 'id' => $id, 'suffix' => $suffix, 'display' => $display];
+	}
+
+	/**
+	 * Fold NEXTCLOUD'S collision spelling into ours.
+	 *
+	 * There are two conventions for "that name is taken". Ours puts the counter on
+	 * the logical name — `Board (1).n8n.json` — and {@see parse()} strips it.
+	 * Nextcloud puts it before the LAST extension, because to Nextcloud our file is
+	 * a `.json` called `Board.n8n`:
+	 *
+	 *     Board.n8n (1).json          <- Nextcloud's spelling
+	 *     Board (1).n8n.json          <- ours
+	 *
+	 * That does not end in `.n8n.json`, so every predicate in this app answered
+	 * "not ours". Confirmed on the live instance as `FooBoblicious.n8n (1).json`:
+	 * no metadata, no workflow in n8n, and a file that looks managed and is not.
+	 *
+	 * We do not get to choose this name — Nextcloud's web client picks it, on our
+	 * files, whenever a copy lands beside its source. So it has to be read.
+	 * {@see \OCA\N8nSync\DAV\CopyNamePlugin} gets ahead of it for copies that arrive
+	 * over WebDAV; this stays the reader for everything else.
+	 */
+	public static function canonicalise(string $name): string {
+		if (preg_match('/^(.+)\.n8n \((\d+)\)\.json$/', $name, $m) !== 1) {
+			return $name;
+		}
+		$stem = $m[1];
+		$counter = ' (' . $m[2] . ')';
+
+		// THE ID SEGMENT STAYS LAST. {@see format()} composes the opt-in shape as
+		// `<name> (N).<id>.n8n.json` — counter on the NAME, id immediately before the
+		// extension — and {@see parse()} looks for the id at the last dot. Appending
+		// the counter blindly would produce `Board.<id> (1).n8n.json`, whose id segment
+		// reads as `<id> (1)`, matches nothing, and silently loses the identity on
+		// exactly the gesture most likely to need it.
+		$lastDot = strrpos($stem, '.');
+		if ($lastDot !== false && preg_match(self::ID_RE, substr($stem, $lastDot + 1)) === 1) {
+			return substr($stem, 0, $lastDot) . $counter . substr($stem, $lastDot) . self::EXT;
+		}
+		return $stem . $counter . self::EXT;
+	}
+
+	/**
+	 * The name a managed file shows the user: its stem with any collision counter
+	 * left on, and no id segment or extension. Empty string when $basename is not
+	 * one of ours.
+	 *
+	 * THE ONE-LINER FOR "WHAT IS THIS FILE CALLED", so callers that want the visible
+	 * name don't reach into {@see parse()} and take `name` — the counter-stripped
+	 * field — by mistake.
+	 */
+	public static function displayName(string $basename): string {
+		$parsed = self::parse($basename);
+		return $parsed !== null ? trim($parsed['display']) : '';
+	}
+
+	/**
+	 * True when $name is one of ours but spelled NEXTCLOUD'S way — `Board.n8n (1).json`
+	 * rather than `Board (1).n8n.json`.
+	 *
+	 * {@see canonicalise()} folds that spelling on the way IN so every predicate reads
+	 * it. This is the write-side question: should the file on disk be renamed?
+	 */
+	public static function isNextcloudSpelling(string $name): bool {
+		return self::canonicalise($name) !== $name;
 	}
 
 	/**
