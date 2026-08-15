@@ -130,9 +130,9 @@ final class FilenameCodec {
 	 * shape.
 	 *
 	 * @return array{name:string, id:?string, suffix:int, display:string}|null
-	 *                                                                     `suffix` is the collision counter (0 for the canonical name,
-	 *                                                                     1+ for "(N)" duplicates); `display` is the name with that
-	 *                                                                     counter still on it.
+	 *                                                                         `suffix` is the collision counter (0 for the canonical name,
+	 *                                                                         1+ for "(N)" duplicates); `display` is the name with that
+	 *                                                                         counter still on it.
 	 */
 	public static function parse(string $basename): ?array {
 		$slash = strrpos($basename, '/');

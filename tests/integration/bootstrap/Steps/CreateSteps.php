@@ -205,10 +205,18 @@ trait CreateSteps {
 			throw new \RuntimeException("the table says $key is $expected; a name row takes a quoted literal.");
 		}
 		$want = trim($expected, '"');
+		// EVERY ARM NAMED, AND NO `default`. The caller decides which rows reach here, so
+		// a `default` arm makes two lists that have to agree and silently reads the wrong
+		// value the day they stop — a new row would be checked against n8n's name whatever
+		// it was supposed to mean, and the failure would blame the value rather than the
+		// vocabulary. An unhandled row is a bug in this trait, so it says so.
 		$actual = match ($key) {
 			'filename' => basename($path),
 			'name in the file' => $this->nameInTheFile($path),
-			default => $this->nameInN8n($path),
+			'name in n8n' => $this->nameInN8n($path),
+			default => throw new \RuntimeException(
+				"'{$key}' is routed to the name rows but has no reader — add one here.",
+			),
 		};
 		if ($actual !== $want) {
 			throw new \RuntimeException(
@@ -263,8 +271,13 @@ trait CreateSteps {
 			// landing folder already tracks it. Both end with a fresh id, and asserting
 			// "different from what it arrived with" is what tells the two apart.
 			if ($expected === 'its own, not the one it arrived with') {
-				Assert::assertNotNull($actual, "the file carries no $key — the move-in never registered it");
-				Assert::assertNotSame('', $actual, "the file has an empty $key");
+				// THROWN, NOT ASSERTED. A failing PHPUnit assertion inside Behat dies in
+				// `PHPUnit\TextUI\Configuration\Registry::get()` — there is no PHPUnit run
+				// to configure — so the message is replaced by a TypeError and the reader
+				// learns nothing at all. `MappingSteps::fail` documents the same trap.
+				if (($actual ?? '') === '') {
+					throw new \RuntimeException("the file carries no $key — the move-in never registered it");
+				}
 				$arrived = $this->idArrivedWith !== '' ? $this->idArrivedWith : (string)($this->lastWorkflowId ?? '');
 				if ($arrived === $actual) {
 					throw new \RuntimeException(

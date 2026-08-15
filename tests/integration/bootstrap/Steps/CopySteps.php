@@ -159,16 +159,28 @@ trait CopySteps {
 	 * @Then the copy holds this DAV metadata:
 	 */
 	public function theCopyHolds(TableNode $table): void {
-		Assert::assertNotSame('', (string)$this->copyFilePath, 'no copy to inspect — a When must make one');
+		if ((string)$this->copyFilePath === '') {
+			throw new \RuntimeException('no copy to inspect — a When must make one');
+		}
 		$this->assertManagedMetadata($this->copyFilePath, $table, [
+			// THROWN, NOT ASSERTED, and the message says where the copy actually IS. A
+			// failing PHPUnit assertion inside Behat dies in
+			// `PHPUnit\TextUI\Configuration\Registry::get()` — there is no PHPUnit run to
+			// configure — so the reader gets a TypeError instead of the diagnosis. That
+			// cost a CI cycle on this very table: three scenarios failed and said only
+			// "Type error". `MappingSteps::fail` documents the same trap.
 			"its own, not the original's" => function (string $key, ?string $actual): void {
-				Assert::assertNotNull($actual, "the copy carries no $key — create-on-copy did not run");
-				Assert::assertNotSame('', $actual, "the copy has an empty $key");
-				Assert::assertNotSame(
-					(string)($this->copyOriginalBefore[$key] ?? ''),
-					$actual,
-					"the copy inherited the original's $key — a copy must never hijack identity",
-				);
+				if (($actual ?? '') === '') {
+					throw new \RuntimeException(
+						"the copy at '{$this->copyFilePath}' carries no $key — create-on-copy did not run for it",
+					);
+				}
+				$before = (string)($this->copyOriginalBefore[$key] ?? '');
+				if ($actual === $before) {
+					throw new \RuntimeException(
+						"the copy inherited the original's $key ('$actual') — a copy must never hijack identity",
+					);
+				}
 			},
 		]);
 	}

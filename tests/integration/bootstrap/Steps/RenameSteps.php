@@ -34,13 +34,43 @@ trait RenameSteps {
 		$this->davMkdir($folder);
 		$this->currentFolder = $folder;
 		$stem = preg_replace('/\.n8n\.json$/', '', $filename) ?? $filename;
-		$this->putManagedFile($folder . '/' . $filename, $stem);
+		$path = $folder . '/' . $filename;
+
+		// MANAGED ONLY IF IT LANDED IN A MAPPING. {@see putManagedFile} asserts an
+		// `n8n_id` was stamped, which is right for the rename scenarios that own it and
+		// wrong the moment a scenario names a file in an UNMAPPED folder — `copy.feature`
+		// arranges one in "Scratch", where there is no id by definition and that is the
+		// arrange rather than a failure. Asserted arrangements fail in the least
+		// informative place there is: the Given, before the behaviour under test has run.
+		if ($this->isMappedFolder($folder)) {
+			$this->putManagedFile($path, $stem);
+		} else {
+			$this->davPut($path, json_encode([
+				'name' => $stem,
+				'nodes' => [],
+				'connections' => new \stdClass(),
+				'settings' => new \stdClass(),
+			], JSON_THROW_ON_ERROR));
+			$this->currentFilePath = $path;
+			$this->lastWorkflowId = null;
+		}
+
 		// CAPTURE THE PRE-STATE, so a scenario that names its file can still claim "the
 		// original is unchanged" afterwards. `copy.feature` needs both halves: it can
 		// only spell the collision name it expects if it chose the original's name, and
 		// it can only prove the original survived if something read it first.
 		$this->originalPath = $this->currentFilePath;
 		$this->copyOriginalBefore = $this->readManagedMetadata($this->originalPath);
+	}
+
+	/** True when a mapping owns $folder — i.e. a file landing there becomes managed. */
+	private function isMappedFolder(string $folder): bool {
+		foreach ($this->listMappings() as $m) {
+			if ((string)($m['team_folder'] ?? '') === $folder) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/**
