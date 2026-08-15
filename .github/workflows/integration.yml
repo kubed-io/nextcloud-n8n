@@ -49,7 +49,7 @@ env:
 jobs:
 
   integration:
-    name: Integration ${{ matrix.suite }}
+    name: Integration ${{ matrix.suite }} (${{ matrix.server-versions }})
     runs-on: ubuntu-latest
 
     # ── THE SUITE AXIS DIVIDES THE SCENARIOS ─────────────────────────────────
@@ -76,8 +76,12 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        # NC 33 is the app's max-version; SQLite is the fast integration path.
-        server-versions: ['stable33']
+        # THE TWO ENDS OF info.xml's RANGE, not just one. A version we advertise
+        # support for and never execute is a claim, not a fact — and "33" is not
+        # one thing: a sibling app hit behaviour that differs between 33.0.4 and
+        # 33.0.8, which cost hours because CI and the live instance sat on
+        # different patch releases. SQLite is the fast integration path.
+        server-versions: ['stable33', 'stable34']
         suite: [admin, workflow, tags, core]
 
     services:
@@ -256,7 +260,7 @@ jobs:
       uses: actions/upload-artifact@v7
       with:
         # Unique per leg: artifacts with the same name collide.
-        name: junit-${{ matrix.suite }}
+        name: junit-${{ matrix.server-versions }}-${{ matrix.suite }}
         path: apps/${{ env.APP_ID }}/tests/integration/junit/*.xml
         retention-days: 7
         if-no-files-found: error

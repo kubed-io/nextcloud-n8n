@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Supports Nextcloud **34**. The integration suite now runs against both ends of the supported range instead of one version, after two patch releases of Nextcloud turned out to disagree about behaviour these apps rely on.
+
 ### Added
 
 - A workflow file now carries the workflow's own created and modified dates, not the sync's.
