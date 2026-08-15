@@ -11,6 +11,7 @@ namespace OCA\N8nSync\Service;
 
 use OCA\N8nSync\AppInfo\Application;
 use OCA\N8nSync\Exception\N8nApiException;
+use OCP\Files\File;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -26,11 +27,14 @@ use Psr\Log\LoggerInterface;
  *       link → no-op (the workflow has been live in n8n all along; only the tag
  *       was touched on softDelete).
  *   - **restore** — user restored the file from trash.
- *       sync → unarchive (`POST /workflows/{id}/unarchive`).
+ *       sync → unarchive (`POST /workflows/{id}/unarchive`), or create the workflow
+ *       again from the file when n8n no longer has it ({@see restore}).
  *       link → re-add the mapping tag (idempotent).
  *
  * Error policy:
- *   - 404 → idempotent success (something already happened on the n8n side).
+ *   - 404 → idempotent success (something already happened on the n8n side) —
+ *     EXCEPT on restore, the one step trying to bring something BACK rather than
+ *     remove it, where "it isn't there" is the case to act on, not to shrug at.
  *   - 5xx / transport → throw `N8nApiException`; the **listener** decides
  *     whether to abort the NC operation or just log (soft/hard abort vs.
  *     restore log+swallow — see §17.7 design notes).
@@ -41,6 +45,7 @@ use Psr\Log\LoggerInterface;
 final class DeleteService {
 	public function __construct(
 		private N8nClient $n8n,
+		private CreateService $createService,
 		private LoggerInterface $logger,
 	) {
 	}
@@ -89,24 +94,44 @@ final class DeleteService {
 	 * workflow for sync, or re-add the mapping tag for link. The caller is expected
 	 * to log + swallow failures here (don't abort a restore just because n8n is down).
 	 *
-	 * KNOWN GAP — NO CREATE-FALLBACK WHEN THE WORKFLOW IS GONE. The unarchive runs
-	 * through {@see callIdempotent}, which treats **404 as success**. That is right
-	 * for every other step but wrong here: if the workflow was permanently deleted in
-	 * n8n while its mirror sat in the trash, the file comes back carrying a DEAD id
-	 * and nothing is created — silently detached, with no sign anything is wrong.
+	 * ## A 404 HERE IS NOT SUCCESS, IT IS A MISSING WORKFLOW
 	 *
-	 * {@see MotionService::moveIn} already handles the identical situation correctly
-	 * (catch the 404, `createForFile()`, stamp the fresh id) and that path is
-	 * live-tested. Restoring a file whose workflow is gone and moving one in whose
-	 * workflow is gone are the same problem; only the move path knows it. Specced in
-	 * `features/delete.feature` ("Restoring a file whose workflow was deleted in n8n
-	 * gives it a new one").
+	 * Every other step in this class treats 404 as idempotent success, because every
+	 * other step is trying to REMOVE something. A restore is trying to bring something
+	 * back, and there is nothing to bring back — so swallowing the 404 returned the
+	 * file to a mapped folder carrying a DEAD id, with nothing created and no sign
+	 * anything was wrong. That is precisely the state the user reported from live use
+	 * for the archive case: a file in a mapped folder that n8n cannot show you.
 	 *
+	 * So the sync branch does NOT go through {@see callIdempotent}. It catches its own
+	 * 404 and creates the workflow fresh from the bytes the file still holds — the
+	 * same move {@see MotionService::moveIn} has always made for the identical
+	 * situation (a file carrying an id lands in a mapping, and n8n no longer has it).
+	 * `createForFile()` stamps the new id, mode and mapping, so the file comes back
+	 * fully attached rather than fully detached.
+	 *
+	 * ## THIS RUNS TWICE FOR A HOME-STORAGE RESTORE, AND THAT IS STILL SAFE
+	 *
+	 * {@see \OCA\N8nSync\Listener\TrashRestoreHook} and
+	 * {@see \OCA\N8nSync\Listener\RestoreFromTrashListener} both fire for a restore
+	 * off the home storage — deliberately, so the working path does not depend on a
+	 * legacy hook. Redundant unarchiving was free; a redundant CREATE would mint a
+	 * second workflow, which is not.
+	 *
+	 * It cannot happen: both entry points read the file's metadata fresh at the top
+	 * (`FilesMetadataManager::getMetadata()` has no request cache — verified in core),
+	 * and `createForFile()` stamps the new id synchronously. Whichever runs second
+	 * therefore sees the NEW id and unarchives a workflow that is already live, which
+	 * is a no-op. That holds whichever order they fire in, so it does not rest on
+	 * core's current ordering (the legacy hook, then the typed event).
+	 *
+	 * @param File $node the file that has just come back, and the only remaining copy
+	 *                   of the workflow's body if n8n no longer has one
 	 * @throws N8nApiException on n8n failure (caller chooses to log+swallow)
 	 */
-	public function restore(string $id, string $mode, ?Mapping $mapping): void {
+	public function restore(File $node, string $id, string $mode, ?Mapping $mapping): void {
 		if ($mode === Mapping::MODE_SYNC) {
-			$this->callIdempotent(fn () => $this->n8n->unarchiveWorkflow($id), $id, 'unarchive');
+			$this->unarchiveOrRecreate($node, $id, $mapping);
 			return;
 		}
 		if ($mapping === null) {
@@ -117,6 +142,43 @@ final class DeleteService {
 			return;
 		}
 		$this->ensureTag($id, $mapping->n8nTag);
+	}
+
+	/**
+	 * Unarchive $id, or — when n8n no longer has it — create it again from $node.
+	 *
+	 * A restore into a mapping whose mapping has since been DELETED cannot create:
+	 * there is no tag to create under and no folder binding to stamp. The file comes
+	 * back as a plain document holding its old id, which is the same end state as any
+	 * other file sitting outside every mapping, and moving it into a live mapping is
+	 * the gesture that revives it ({@see MotionService::moveIn}). Logged at info so
+	 * the dead id in the metadata has an explanation next to it.
+	 */
+	private function unarchiveOrRecreate(File $node, string $id, ?Mapping $mapping): void {
+		try {
+			$this->n8n->unarchiveWorkflow($id);
+			return;
+		} catch (N8nApiException $e) {
+			if ($e->httpStatus !== 404) {
+				throw $e;
+			}
+		}
+
+		if ($mapping === null) {
+			$this->logger->info('n8n_sync restore: workflow gone in n8n and no mapping to create it in', [
+				'app' => Application::APP_ID,
+				'workflowId' => $id,
+				'fileId' => $node->getId(),
+			]);
+			return;
+		}
+
+		$this->logger->info('n8n_sync restore: workflow gone in n8n; creating it fresh from the restored file', [
+			'app' => Application::APP_ID,
+			'workflowId' => $id,
+			'fileId' => $node->getId(),
+		]);
+		$this->createService->createForFile($node, $mapping);
 	}
 
 	/**

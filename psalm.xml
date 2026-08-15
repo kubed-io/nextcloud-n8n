@@ -55,6 +55,7 @@
 				<referencedClass name="OC_Util" />
 				<referencedClass name="OCA\Files\Event\LoadAdditionalScriptsEvent" />
 				<referencedClass name="OCA\Files_Trashbin\Events\NodeRestoredEvent" />
+				<referencedClass name="OCA\Files_Trashbin\Trash\ITrashItem" />
 				<referencedClass name="OCA\Files_Trashbin\Trash\ITrashManager" />
 			</errorLevel>
 		</UndefinedClass>
@@ -62,6 +63,7 @@
 			<errorLevel type="suppress">
 				<referencedClass name="OCA\Files\Event\LoadAdditionalScriptsEvent" />
 				<referencedClass name="OCA\Files_Trashbin\Events\NodeRestoredEvent" />
+				<referencedClass name="OCA\Files_Trashbin\Trash\ITrashItem" />
 				<referencedClass name="OCA\Files_Trashbin\Trash\ITrashManager" />
 			</errorLevel>
 		</UndefinedDocblockClass>

@@ -38,6 +38,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Deleting a workflow out of n8n's archive now clears its file from the Nextcloud trash. The trash entry offered a restore that could not work, and a workflow only ever comes out of it when the mirrored delete is deliberate on both sides.
+- Unarchiving a workflow in n8n brings the same file back out of the Nextcloud trash, instead of writing a second copy beside it and leaving the first one trashed.
+- Restoring a workflow file whose workflow was deleted in n8n while it sat in the trash now creates the workflow again from the file, instead of returning a file whose id points at nothing.
+- A bulk "Sync from n8n" reports the files it removed. It counted them and then dropped the number, so a sync that trashed three files said only that eleven were unchanged.
+
 - A copy made beside its source was invisible to the app: no workflow in n8n, no metadata, nothing on click.
 
 - A workflow file now carries the workflow's own created and modified dates, not the sync's.

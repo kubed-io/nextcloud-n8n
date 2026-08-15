@@ -19,7 +19,15 @@ use PHPUnit\Framework\Assert;
  * Composed into {@see \OCA\N8nSync\Tests\Integration\FeatureContext}.
  */
 trait MoveSteps {
-	/** The id the moving file carried IN, for telling a mint from a restore. */
+	/**
+	 * The id the file carried IN, for telling a mint from a restore.
+	 *
+	 * Read by the shared metadata vocabulary's `its own, not the one it arrived with`
+	 * ({@see \OCA\N8nSync\Tests\Integration\Steps\CreateSteps}), so the two gestures
+	 * that can mint a workflow both set it: a move-in, and a restore of a file whose
+	 * workflow was deleted while it sat in the trash ({@see DeleteSteps}). It lives
+	 * here because the move needed it first, not because it is the move's alone.
+	 */
 	private string $idArrivedWith = '';
 
 	/**
