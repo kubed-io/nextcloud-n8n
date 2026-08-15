@@ -1521,6 +1521,23 @@ id — the other order reads the id as `<id> (1)` and drops the identity on the 
 gesture most likely to need it.
 
 `MigrateFileExtension` renames existing files on upgrade, and **this app keeps it**.
+
+It also had to be widened immediately, and the live instance is what said so. It walked
+the MAPPED FOLDERS first, on the reasoning that they are the app's footprint — and of
+the 20 workflow files on the instance, six sat in a plain home folder outside every
+mapping. An unmapped `.n8n.json` is not litter, it is a supported state: ejecting a file
+by moving it out of a mapping is a documented gesture, and moving it back in re-registers
+it. A file left on the old extension can never complete that round trip, because the
+move-in listener asks `isWorkflowName()` first — it would land in a mapped folder and be
+silently ignored, with no error and nothing to see. So the step walks USERS now: one
+indexed `Folder::search()` per seen user, covering their home and every Team Folder
+mounted into it, deduplicated by file id because a Team Folder is mounted once per
+member.
+
+The grafana sibling had the same narrow scope and got away with it — all 11 of its files
+happened to be inside mappings, verified in `oc_filecache` after the run. Its migration
+is deleted, so there is nothing left there to fix; worth writing down that it was luck
+rather than design.
 The grafana sibling deleted its copy the moment it had run: that app is unpublished,
 so there was exactly one instance to migrate and it was already done — 11 files, 0
 failures, verified in `oc_filecache`. This one is on the App Store. Its population is

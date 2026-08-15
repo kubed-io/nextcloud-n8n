@@ -11,11 +11,12 @@ namespace OCA\N8nSync\Migration;
 
 use OCA\N8nSync\AppInfo\Application;
 use OCA\N8nSync\Service\FilenameCodec;
-use OCA\N8nSync\Service\MappingService;
-use OCA\N8nSync\Service\StorageService;
 use OCA\N8nSync\Service\SyncGuard;
 use OCP\Files\File;
 use OCP\Files\Folder;
+use OCP\Files\IRootFolder;
+use OCP\IUser;
+use OCP\IUserManager;
 use OCP\Migration\IOutput;
 use OCP\Migration\IRepairStep;
 use Psr\Log\LoggerInterface;
@@ -38,12 +39,24 @@ use Psr\Log\LoggerInterface;
  * instance where somebody copied a workflow, so this converts them too, to the name the
  * new extension would have produced in the first place: `Fleet Health (1).n8n`.
  *
- * ## SCOPE: THE MAPPED FOLDERS, WHICH IS WHERE THE APP'S FILES LIVE
+ * ## SCOPE: EVERY FILE, NOT JUST THE ONES IN A MAPPING
  *
- * It walks each mapping's folder rather than the whole filecache, because those folders
- * ARE the app's footprint and a repair step has no business renaming a file somebody
- * hand-made outside one. A stray `.n8n.json` in a user's home is left exactly as it
- * is; dropping it into a mapped folder still registers it, under whatever name it has.
+ * This walked the mapped folders first, on the reasoning that they are the app's
+ * footprint. **That was wrong, and the live instance said so:** of 20 workflow files,
+ * six sat in a plain home folder outside every mapping and would have been left behind.
+ *
+ * An unmapped `.n8n.json` is not litter, it is a **supported state**. Moving a file out
+ * of a mapping ejects it — it keeps its body and becomes a plain document — and moving
+ * it back in re-registers it. That round trip is `move.feature`'s subject. A file left
+ * on the old extension could never complete it: the move-in listener asks
+ * `isWorkflowName()` first, so the file would land in a mapped folder and simply be
+ * ignored, with no error and nothing to see. The migration has to reach every file the
+ * app might ever be asked about, not every file it currently owns.
+ *
+ * So it walks USERS, not mappings: one indexed `Folder::search()` per seen user, which
+ * covers their home and every Team Folder mounted into it, deduplicated by file id
+ * because a Team Folder is mounted once per member. Measured on the live instance: 20
+ * distinct files found across 7 users and 2 Team Folders.
  *
  * Guarded by {@see SyncGuard} so the renames don't echo: a `NodeRenamedEvent` would
  * otherwise enqueue a name reconcile per file and push each one to n8n, turning an
@@ -73,12 +86,21 @@ final class MigrateFileExtension implements IRepairStep {
 	 */
 	private const LEGACY_COUNTED_RE = '/^(?<stem>.+)\.n8n \((?<n>\d+)\)\.json$/';
 
+	/**
+	 * What we hand `Folder::search()`. Deliberately the BARE extension and not
+	 * {@see LEGACY_EXT}: `search()` matches a substring, and the counted legacy form
+	 * `Fleet Health.n8n (1).json` does not contain the string `.n8n.json` — searching for
+	 * the full legacy extension would silently miss every copied file, which is the half
+	 * most in need of migrating. {@see newName()} is the real filter.
+	 */
+	private const SEARCH_TERM = '.n8n';
+
 	/** Runaway guard when stepping a counter to find a free name; see {@see freeName()}. */
 	private const MAX_COLLISION = 1000;
 
 	public function __construct(
-		private MappingService $mappings,
-		private StorageService $storage,
+		private IRootFolder $rootFolder,
+		private IUserManager $userManager,
 		private SyncGuard $guard,
 		private LoggerInterface $logger,
 	) {
@@ -93,25 +115,14 @@ final class MigrateFileExtension implements IRepairStep {
 	public function run(IOutput $output): void {
 		$renamed = 0;
 		$failed = 0;
+		/** @var array<int,true> $seen file ids already handled — a Team Folder is mounted per member */
+		$seen = [];
 
-		foreach ($this->mappings->list() as $mapping) {
-			try {
-				$folder = $this->storage->findFolder($mapping);
-			} catch (\Throwable $e) {
-				$this->logger->warning('n8n_sync: could not open a mapped folder to migrate its file extensions', [
-					'app' => Application::APP_ID,
-					'mapping' => $mapping->id,
-					'exception' => $e,
-				]);
-				continue;
-			}
-			if ($folder === null) {
-				continue; // mapping configured but never synced — no files to rename
-			}
-			$this->guard->run(function () use ($folder, &$renamed, &$failed): void {
-				$this->migrateFolder($folder, $renamed, $failed);
+		$this->guard->run(function () use (&$renamed, &$failed, &$seen): void {
+			$this->userManager->callForSeenUsers(function (IUser $user) use (&$renamed, &$failed, &$seen): void {
+				$this->migrateForUser($user->getUID(), $renamed, $failed, $seen);
 			});
-		}
+		});
 
 		if ($renamed > 0 || $failed > 0) {
 			$output->info(sprintf(
@@ -123,30 +134,51 @@ final class MigrateFileExtension implements IRepairStep {
 		}
 	}
 
-	/** Depth-first walk of one mapped folder, renaming every legacy workflow file in it. */
-	private function migrateFolder(Folder $folder, int &$renamed, int &$failed): void {
-		foreach ($folder->getDirectoryListing() as $child) {
-			if ($child instanceof Folder) {
-				$this->migrateFolder($child, $renamed, $failed);
+	/**
+	 * Rename every legacy-named workflow file this user can see.
+	 *
+	 * `search()` is one filecache query scoped to the user's mounts, so this costs a
+	 * query per user rather than a directory walk per folder — and it reaches files in
+	 * folders this app has never heard of, which is the whole point.
+	 *
+	 * @param array<int,true> $seen
+	 */
+	private function migrateForUser(string $uid, int &$renamed, int &$failed, array &$seen): void {
+		try {
+			$userFolder = $this->rootFolder->getUserFolder($uid);
+			$hits = $userFolder->search(self::SEARCH_TERM);
+		} catch (\Throwable $e) {
+			// A user whose home cannot be set up (never logged in, broken mount) is not a
+			// reason to abandon everyone else's files.
+			$this->logger->warning('n8n_sync: could not search a user\'s files for the extension migration', [
+				'app' => Application::APP_ID,
+				'user' => $uid,
+				'exception' => $e,
+			]);
+			return;
+		}
+
+		foreach ($hits as $node) {
+			if (!$node instanceof File || isset($seen[$node->getId()])) {
 				continue;
 			}
-			if (!$child instanceof File) {
-				continue;
-			}
-			$wanted = self::newName($child->getName());
+			$seen[$node->getId()] = true;
+
+			$wanted = self::newName($node->getName());
 			if ($wanted === null) {
 				continue; // already migrated, or never one of ours
 			}
 			try {
-				$target = $this->freeName($folder, $wanted);
-				$child->move($folder->getPath() . '/' . $target);
+				$parent = $node->getParent();
+				$target = $this->freeName($parent, $wanted);
+				$node->move($parent->getPath() . '/' . $target);
 				$renamed++;
 			} catch (\Throwable $e) {
 				$failed++;
 				$this->logger->warning('n8n_sync: could not migrate a workflow file to the new extension', [
 					'app' => Application::APP_ID,
-					'fileId' => $child->getId(),
-					'from' => $child->getName(),
+					'fileId' => $node->getId(),
+					'from' => $node->getName(),
 					'to' => $wanted,
 					'exception' => $e,
 				]);
@@ -177,8 +209,8 @@ final class MigrateFileExtension implements IRepairStep {
 	 *
 	 * Two legacy names CAN want one new name — `Fleet Health.n8n (1).json` and a
 	 * hand-made `Fleet Health (1).n8n.json` both migrate to `Fleet Health (1).n8n` —
-	 * and a migration that threw there would strand every remaining file in the folder.
-	 * Stepping the counter is what Nextcloud itself would do with the second one.
+	 * and a migration that threw there would strand every remaining file it had not
+	 * reached. Stepping the counter is what Nextcloud itself would do with the second one.
 	 */
 	private function freeName(Folder $folder, string $wanted): string {
 		if (!$folder->nodeExists($wanted)) {

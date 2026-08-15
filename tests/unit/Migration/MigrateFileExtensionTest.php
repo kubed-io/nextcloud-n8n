@@ -10,13 +10,13 @@ declare(strict_types=1);
 namespace OCA\N8nSync\Tests\Unit\Migration;
 
 use OCA\N8nSync\Migration\MigrateFileExtension;
-use OCA\N8nSync\Service\Mapping;
-use OCA\N8nSync\Service\MappingService;
-use OCA\N8nSync\Service\StorageService;
 use OCA\N8nSync\Service\SyncGuard;
 use OCP\Files\File;
 use OCP\Files\Folder;
+use OCP\Files\IRootFolder;
 use OCP\Files\Node;
+use OCP\IUser;
+use OCP\IUserManager;
 use OCP\Migration\IOutput;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
@@ -44,9 +44,28 @@ final class MigrateFileExtensionTest extends TestCase {
 	 */
 	private array $occupied = [];
 
+	/**
+	 * The users `callForSeenUsers` yields. More than one is the interesting case: a Team
+	 * Folder is mounted once per member, so the same file comes back from every one of
+	 * their searches and must be renamed exactly once.
+	 *
+	 * @var list<string>
+	 */
+	private array $users = ['alice'];
+
+	/**
+	 * Users whose home cannot be opened at all — a real state (never logged in, broken
+	 * mount) and one an unattended upgrade must survive rather than abort on.
+	 *
+	 * @var list<string>
+	 */
+	private array $brokenUsers = [];
+
 	protected function setUp(): void {
 		$this->moves = [];
 		$this->occupied = [];
+		$this->users = ['alice'];
+		$this->brokenUsers = [];
 	}
 
 	public function testTheRetiredExtensionIsRenamedToTheNewOne(): void {
@@ -113,17 +132,52 @@ final class MigrateFileExtensionTest extends TestCase {
 		);
 	}
 
-	/** Subfolders are mirrored into n8n too, so their files migrate as well. */
-	public function testItRecursesIntoSubfolders(): void {
-		$this->migrate(['Top.n8n.json'], ['Nested' => ['Deep.n8n.json']]);
+	/**
+	 * EVERY FILE, WHEREVER IT LIVES — the regression this class was rewritten for.
+	 *
+	 * It used to walk the mapped folders only, and the live instance had six workflow
+	 * files sitting in a plain home folder outside every mapping. An unmapped file is a
+	 * SUPPORTED state (eject a file by moving it out, move it back in to re-register),
+	 * and one left on the old extension can never complete that round trip: the move-in
+	 * listener asks `isWorkflowName()` first, so it would land in a mapped folder and be
+	 * silently ignored.
+	 */
+	public function testEveryFileIsMigratedWhicheverFolderItIsIn(): void {
+		$this->migrate(['Top.n8n.json'], ['Unmapped Scratch' => ['Deep.n8n.json']]);
 
 		self::assertSame(
 			[
 				'Top.n8n.json -> /alice/files/Demo/Top.n8n',
-				'Deep.n8n.json -> /alice/files/Demo/Nested/Deep.n8n',
+				'Deep.n8n.json -> /alice/files/Demo/Unmapped Scratch/Deep.n8n',
 			],
 			$this->moves,
 		);
+	}
+
+	/**
+	 * A Team Folder is mounted once per member, so the same file comes back from every
+	 * member's search. Renaming it twice would move an already-migrated `Fleet Health.n8n`
+	 * to `Fleet Health.n8n (1).n8n` — a name nobody chose, on a file that was already
+	 * right. Deduplicated by file id.
+	 */
+	public function testAFileSharedBetweenUsersIsRenamedExactlyOnce(): void {
+		$this->users = ['alice', 'bob', 'carol'];
+		$this->migrate(['Shared.n8n.json']);
+
+		self::assertSame(['Shared.n8n.json -> /alice/files/Demo/Shared.n8n'], $this->moves);
+	}
+
+	/**
+	 * A user whose home cannot be opened does not abandon everyone else's files. The
+	 * broken user goes FIRST, because the failure mode being pinned is an exception
+	 * escaping the callback and ending the whole `callForSeenUsers` walk.
+	 */
+	public function testABrokenUserHomeDoesNotStopTheRest(): void {
+		$this->users = ['broken', 'alice'];
+		$this->brokenUsers = ['broken'];
+		$this->migrate(['Fine.n8n.json']);
+
+		self::assertSame(['Fine.n8n.json -> /alice/files/Demo/Fine.n8n'], $this->moves);
 	}
 
 	/**
@@ -139,49 +193,69 @@ final class MigrateFileExtensionTest extends TestCase {
 	// ── harness ────────────────────────────────────────────────────────────────
 
 	/**
-	 * @param list<string> $files names directly in the mapped folder
+	 * @param list<string> $files names directly in the folder
 	 * @param array<string, list<string>> $subfolders name → the files inside it
 	 * @param string $throwsOn a filename whose move() blows up
 	 */
 	private function migrate(array $files, array $subfolders = [], string $throwsOn = ''): void {
-		$folder = $this->folderNode('/alice/files/Demo', $files, $subfolders, $throwsOn);
+		$hits = $this->tree('/alice/files/Demo', $files, $subfolders, $throwsOn);
 
-		$mappings = $this->createStub(MappingService::class);
-		$mappings->method('list')->willReturn([$this->mapping()]);
-		$storage = $this->createStub(StorageService::class);
-		$storage->method('findFolder')->willReturn($folder);
+		$userFolder = $this->createStub(Folder::class);
+		$userFolder->method('search')->willReturn($hits);
+		$root = $this->createStub(IRootFolder::class);
+		$root->method('getUserFolder')->willReturnCallback(function (string $uid) use ($userFolder): Folder {
+			if (in_array($uid, $this->brokenUsers, true)) {
+				throw new \RuntimeException("no home for $uid");
+			}
+			return $userFolder;
+		});
 
-		$step = new MigrateFileExtension($mappings, $storage, new SyncGuard(), new NullLogger());
+		$users = $this->createStub(IUserManager::class);
+		$users->method('callForSeenUsers')->willReturnCallback(function (callable $fn): void {
+			foreach ($this->users as $uid) {
+				$u = $this->createStub(IUser::class);
+				$u->method('getUID')->willReturn($uid);
+				$fn($u);
+			}
+		});
+
+		$step = new MigrateFileExtension($root, $users, new SyncGuard(), new NullLogger());
 		$step->run($this->createStub(IOutput::class));
 	}
 
 	/**
+	 * The flat result a `Folder::search()` returns — files from any depth, each carrying
+	 * the parent it really lives in. Nested entries are given a deeper parent path so a
+	 * rename target can be checked against the right folder.
+	 *
 	 * @param list<string> $files
 	 * @param array<string, list<string>> $subfolders
+	 * @return list<Node>
 	 */
-	private function folderNode(string $path, array $files, array $subfolders, string $throwsOn): Folder {
-		/** @var list<Node> $children */
-		$children = [];
+	private function tree(string $path, array $files, array $subfolders, string $throwsOn): array {
+		$out = [];
 		foreach ($files as $name) {
-			$children[] = $this->fileNode($path, $name, $throwsOn);
+			$out[] = $this->fileNode($path, $name, $throwsOn);
 		}
-		foreach ($subfolders as $name => $contents) {
-			$children[] = $this->folderNode($path . '/' . $name, $contents, [], $throwsOn);
+		foreach ($subfolders as $sub => $names) {
+			foreach ($names as $name) {
+				$out[] = $this->fileNode($path . '/' . $sub, $name, $throwsOn);
+			}
 		}
-
-		$folder = $this->createStub(Folder::class);
-		$folder->method('getPath')->willReturn($path);
-		$folder->method('getDirectoryListing')->willReturn($children);
-		$folder->method('nodeExists')->willReturnCallback(
-			fn (string $name): bool => in_array($name, $this->occupied, true),
-		);
-		return $folder;
+		return $out;
 	}
 
 	private function fileNode(string $parentPath, string $name, string $throwsOn): File {
+		$parent = $this->createStub(Folder::class);
+		$parent->method('getPath')->willReturn($parentPath);
+		$parent->method('nodeExists')->willReturnCallback(
+			fn (string $n): bool => in_array($n, $this->occupied, true),
+		);
+
 		$file = $this->createStub(File::class);
 		$file->method('getName')->willReturn($name);
 		$file->method('getId')->willReturn(crc32($parentPath . '/' . $name));
+		$file->method('getParent')->willReturn($parent);
 		$file->method('move')->willReturnCallback(function (string $target) use ($name, $throwsOn, $file): Node {
 			if ($name === $throwsOn) {
 				throw new \RuntimeException('locked');
@@ -190,14 +264,5 @@ final class MigrateFileExtensionTest extends TestCase {
 			return $file;
 		});
 		return $file;
-	}
-
-	private function mapping(): Mapping {
-		return Mapping::fromArray([
-			'id' => 'map-alpha',
-			'n8n_tag' => 'nextcloud:alpha',
-			'team_folder' => 'Demo',
-			'mode' => Mapping::MODE_SYNC,
-		]);
 	}
 }
