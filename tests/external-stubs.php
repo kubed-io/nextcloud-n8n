@@ -29,11 +29,33 @@ namespace Sabre\DAV {
 	}
 	if (!class_exists(Server::class, false)) {
 		class Server {
+			/**
+			 * The node tree. A real public property on Sabre's Server, and the only route
+			 * from the PATH that `beforeUnbind` hands a plugin to the NODE being deleted —
+			 * {@see \OCA\N8nSync\DAV\LinkWriteGuardPlugin::beforeUnbind}. Declared here
+			 * because neither Psalm nor the unit suite ships Sabre.
+			 *
+			 * Untyped with a docblock rather than `public Tree $tree`: a typed property
+			 * with no constructor to set it is an uninitialised-property finding waiting
+			 * to happen, and this stub is never instantiated — its whole job is to tell
+			 * Psalm the property exists and what it holds.
+			 *
+			 * @var Tree
+			 */
+			public $tree;
+
 			public function on(string $eventName, callable $callBack, int $priority = 100): bool {
 				return true;
 			}
 
 			public function addPlugin(ServerPlugin $plugin): void {
+			}
+		}
+	}
+	if (!class_exists(Tree::class, false)) {
+		class Tree {
+			public function getNodeForPath(string $path): INode {
+				throw new \RuntimeException('stub');
 			}
 		}
 	}

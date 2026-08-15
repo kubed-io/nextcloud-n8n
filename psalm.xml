@@ -43,7 +43,9 @@
 			These reference classes that exist at runtime in a real Nextcloud but
 			are NOT shipped in nextcloud/ocp, so Psalm can't see them: private OC
 			internals (OC, OC_Util, the oc\hooks\emitter that IRootFolder extends)
-			and event classes owned by other bundled apps (Files, Files_Trashbin).
+			and classes owned by other bundled apps (Files, Files_Trashbin — the
+			restore event, and the trash manager {@see OCA\N8nSync\Service\TrashControl}
+			resolves lazily precisely BECAUSE it may not be installed).
 			Suppressed by referenced class — not real bugs, and there is no public
 			stub to import. Mirrors the integration_openai psalm.xml approach.
 		-->
@@ -53,12 +55,14 @@
 				<referencedClass name="OC_Util" />
 				<referencedClass name="OCA\Files\Event\LoadAdditionalScriptsEvent" />
 				<referencedClass name="OCA\Files_Trashbin\Events\NodeRestoredEvent" />
+				<referencedClass name="OCA\Files_Trashbin\Trash\ITrashManager" />
 			</errorLevel>
 		</UndefinedClass>
 		<UndefinedDocblockClass>
 			<errorLevel type="suppress">
 				<referencedClass name="OCA\Files\Event\LoadAdditionalScriptsEvent" />
 				<referencedClass name="OCA\Files_Trashbin\Events\NodeRestoredEvent" />
+				<referencedClass name="OCA\Files_Trashbin\Trash\ITrashManager" />
 			</errorLevel>
 		</UndefinedDocblockClass>
 		<!--
