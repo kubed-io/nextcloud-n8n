@@ -212,16 +212,29 @@ trait CopySteps {
 		if ($this->originalPath === '') {
 			throw new \RuntimeException('no original was captured — a Given must establish one');
 		}
+		// `n8n_syncedHash` IS NOT PART OF "UNCHANGED", and excluding it is not a
+		// weakening. It is the app's private record of the bytes it last agreed with n8n
+		// about, so a legitimate PULL that normalises the local body to n8n's canonical
+		// row moves it — which is the app keeping up, not the original changing. An
+		// `@in-n8n` scenario's When contains exactly such a pull, so comparing it there
+		// asserts that syncing does not happen.
+		//
+		// Every claim the step is actually making survives: `n8n_id` is still the
+		// anti-hijack check, `n8n_mapping` and `n8n_mode` still pin where the original
+		// belongs, and `n8n_versionId` still moves if anything WROTE to the original's
+		// workflow — which is the drift worth catching.
+		$before = $this->copyOriginalBefore;
 		$now = $this->readManagedMetadata($this->originalPath);
-		if ($now !== $this->copyOriginalBefore) {
+		unset($before['n8n_syncedHash'], $now['n8n_syncedHash']);
+		if ($now !== $before) {
 			// SPELLED OUT, NOT ASSERTED. A PHPUnit array diff inside Behat is eaten by
 			// the Registry TypeError (see MappingSteps::fail), and this step's message
 			// IS the diagnosis — it names which key drifted and to what.
-			$keys = array_unique([...array_keys($this->copyOriginalBefore), ...array_keys($now)]);
+			$keys = array_unique([...array_keys($before), ...array_keys($now)]);
 			sort($keys);
 			$drift = [];
 			foreach ($keys as $key) {
-				$was = (string)($this->copyOriginalBefore[$key] ?? '');
+				$was = (string)($before[$key] ?? '');
 				$is = (string)($now[$key] ?? '');
 				if ($was !== $is) {
 					$drift[] = "$key: '$was' became '$is'";
