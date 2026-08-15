@@ -259,6 +259,23 @@ trait CreateSteps {
 		foreach ($table->getRowsHash() as $key => $expected) {
 			$key = trim($key);
 			$expected = trim($expected);
+
+			// THE THREE PLACES A NAME LIVES, readable side by side in one table on
+			// purpose. They are supposed to be one value, and the only way to catch them
+			// disagreeing is to read all three in the same glance — a copy shipped saying
+			// three different things at once, and each of the three looked fine alone.
+			//
+			// FIRST IN THE LOOP, BEFORE THE METADATA READ, because these rows are not
+			// metadata keys and must never be handed to one. `davReadMetadata()` builds
+			// `<nc:metadata-{$key}/>`, so `name in the file` becomes
+			// `<nc:metadata-name in the file/>` — not well-formed XML. The PROPFIND then
+			// never comes back 207, and the assertion that says so is itself eaten by the
+			// Registry TypeError, so three scenarios failed reporting nothing but that.
+			if (in_array($key, ['filename', 'name in the file', 'name in n8n'], true)) {
+				$this->assertNameRow($path, $key, $expected);
+				continue;
+			}
+
 			$actual = $this->davReadMetadata($path, $key);
 
 			if (isset($extra[$expected])) {
@@ -284,15 +301,6 @@ trait CreateSteps {
 						"$key is still '$actual' — the id the file arrived with. This gesture should have minted a new one",
 					);
 				}
-				continue;
-			}
-
-			// THE THREE PLACES A NAME LIVES, readable side by side in one table on
-			// purpose. They are supposed to be one value, and the only way to catch them
-			// disagreeing is to read all three in the same glance — a copy shipped saying
-			// three different things at once, and each of the three looked fine alone.
-			if (in_array($key, ['filename', 'name in the file', 'name in n8n'], true)) {
-				$this->assertNameRow($path, $key, $expected);
 				continue;
 			}
 
