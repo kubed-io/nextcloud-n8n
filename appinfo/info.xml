@@ -71,7 +71,7 @@ identify the service this app integrates with.
          CHECKBOX at all — core's INTERNAL storage throws a TypeError on both the read
          and the write of a bool (see that class's docblock). Nextcloud 30 reached end
          of life in 2025, so nothing supported is lost. -->
-    <nextcloud min-version="31" max-version="33"/>
+    <nextcloud min-version="32" max-version="34"/>
   </dependencies>
   <settings>
     <!-- Test Connection buttons are folded into the Sync Actions panel
