@@ -29,6 +29,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- Restoring a workflow file from a Team Folder's trash now unarchives its workflow in n8n. Only the personal trash ever did — a Team Folder has its own, and the file came back while the workflow stayed hidden, so the next sync trashed it again.
 - Archiving a workflow in n8n now moves its file to the Nextcloud trash. Archiving does not remove the mapping's tag, so the app kept mirroring archived workflows as live ones and the file just sat there.
 - Archiving a workflow in n8n removes its **link** file outright, with no trash entry — there is nothing to restore a pointer to, because the workflow itself is fine.
 - **BREAKING:** deleting a link file is refused with a message instead of quietly stripping the workflow's mapping tag in n8n. Deleting one file for yourself should not un-map a workflow for everybody.

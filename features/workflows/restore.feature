@@ -13,6 +13,11 @@ Feature: Restoring a workflow file from the trash
       | mode    | sync            |
       | storage | admin folder    |
     And a mapping with the following values:
+      | tag     | nextcloud:shared |
+      | folder  | Shared Flows     |
+      | mode    | sync             |
+      | storage | team folder      |
+    And a mapping with the following values:
       | tag     | nextcloud:links |
       | folder  | Pointers        |
       | mode    | link            |
@@ -23,16 +28,24 @@ Feature: Restoring a workflow file from the trash
     # notes: ../AGENTS.md#a-restore-is-the-trashing-undone
 
   @user @in-nextcloud @gesture @ui
-  Scenario: Restoring a sync file unarchives its workflow
-    Given a workflow file in "Automations"
+  Scenario Outline: Restoring a sync file unarchives its workflow
+    Given a workflow file in "<folder>"
     And the file is in the Nextcloud trash
     And the workflow is in n8n's archive
     When I restore it from the trash
-    Then the workflow in n8n is "live, unarchived"
+    Then the file is back in "<folder>"
+    And the workflow in n8n is "live, unarchived"
     And the file holds this DAV metadata:
       | n8n_id      | the workflow's id  |
       | n8n_mapping | the mapping's id   |
       | n8n_mode    | the mapping's mode |
+
+    Examples: both storage backends, because only one of them was ever restoring
+      | folder       |
+      | Automations  |
+      | Shared Flows |
+
+  # notes: ../AGENTS.md#a-restore-has-to-work-on-both-trashes
 
   # notes: ../AGENTS.md#restoring-a-file-that-left-its-mapping-reaches-nothing
   @user @in-nextcloud @gesture @ui

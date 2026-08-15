@@ -26,6 +26,7 @@ use OCA\N8nSync\Listener\NodeWrittenListener;
 use OCA\N8nSync\Listener\RegisterDavPluginsListener;
 use OCA\N8nSync\Listener\RestoreFromTrashListener;
 use OCA\N8nSync\Listener\TrashPurgeHook;
+use OCA\N8nSync\Listener\TrashRestoreHook;
 use OCA\N8nSync\Notification\Notifier;
 use OCA\N8nSync\Service\WorkflowMetadata;
 use OCA\N8nSync\Settings\AdminSettings;
@@ -50,6 +51,9 @@ use OCP\SystemTag\TagUnassignedEvent;
  */
 final class Application extends App implements IBootstrap {
 	public const APP_ID = 'n8n_sync';
+
+	/** Guards against connectHook stacking the restore handler on a repeat boot(). */
+	private static bool $restoreHookRegistered = false;
 
 	/** Guards against connectHook stacking the purge handler on a repeat boot(). */
 	private static bool $purgeHookRegistered = false;
@@ -199,6 +203,20 @@ final class Application extends App implements IBootstrap {
 			$purgeHook = $container->get(TrashPurgeHook::class);
 			/** @psalm-suppress DeprecatedMethod */
 			\OCP\Util::connectHook('\OCP\Trashbin', 'preDelete', $purgeHook, 'preDelete');
+		}
+
+		// RESTORING FROM A TEAM FOLDER'S TRASH IS NOT THE TYPED EVENT EITHER.
+		// `NodeRestoredEvent` comes from Files_Trashbin's own restore and nowhere else;
+		// groupfolders has its own trash backend and emits no typed event, so a workflow
+		// file restored from a Team Folder came back with its workflow still archived —
+		// and the next pull, seeing an archived workflow, trashed the file again. Both
+		// backends DO emit the legacy `post_restore` hook, so that is the one signal
+		// covering both. See {@see TrashRestoreHook}; same guard, same reason.
+		if (!self::$restoreHookRegistered) {
+			self::$restoreHookRegistered = true;
+			$restoreHook = $container->get(TrashRestoreHook::class);
+			/** @psalm-suppress DeprecatedMethod */
+			\OCP\Util::connectHook('\OCA\Files_Trashbin\Trashbin', 'post_restore', $restoreHook, 'postRestore');
 		}
 	}
 }
