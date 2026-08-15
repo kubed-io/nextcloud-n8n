@@ -137,7 +137,6 @@ final class Application extends App implements IBootstrap {
 		$context->registerEventListener(BeforeNodeDeletedEvent::class, DeleteToN8nListener::class);
 		$context->registerEventListener(NodeRestoredEvent::class, RestoreFromTrashListener::class);
 
-
 		// §5.6.2 reactive tag sync (surface 3): a CONTENT pill add/remove on a managed
 		// sync file reconciles that tag to n8n on its own — the tag-side sibling of the
 		// body writeback, honouring the same `timing` knob (inline vs ReconcileTagsJob).
