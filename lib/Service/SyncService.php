@@ -13,6 +13,7 @@ use OCA\N8nSync\AppInfo\Application;
 use OCA\N8nSync\BackgroundJob\ManualSyncJob;
 use OCP\BackgroundJob\IJobList;
 use OCP\Files\Folder;
+use OCP\Files\Node;
 use OCP\IAppConfig;
 use Psr\Log\LoggerInterface;
 
@@ -54,6 +55,7 @@ final class SyncService {
 		private SyncStatusService $status,
 		private IAppConfig $config,
 		private TagSyncService $tagSync,
+		private TrashControl $trash,
 		private MirrorTimes $times,
 		private LoggerInterface $logger,
 	) {
@@ -198,6 +200,20 @@ final class SyncService {
 			$seenIds = [];
 
 			foreach ($this->n8n->eachWorkflow([$mapping->n8nTag]) as $workflow) {
+				// AN ARCHIVED WORKFLOW IS NOT A LIVE ONE, and n8n keeps returning it: the
+				// tag survives archiving, so `GET /workflows?tags=…` hands it back exactly
+				// like a live workflow and the pull used to mirror it as one. Measured on a
+				// live instance — 13 workflows on one mapping's tag, 4 of them archived,
+				// every one still sitting in Nextcloud as an ordinary file.
+				//
+				// Leaving it OUT of `$seenIds` is the whole fix: it is not written, and
+				// {@see pruneStale} then moves its mirror to the Nextcloud trash, which is
+				// the same path a workflow that lost the tag already takes. Archiving in
+				// n8n and trashing in Nextcloud become the same gesture seen from two
+				// sides, which is what `delete.feature` says they are.
+				if (!empty($workflow['isArchived'])) {
+					continue;
+				}
 				$processed++;
 				$seenIds[(string)$workflow['id']] = true;
 				try {
@@ -231,10 +247,16 @@ final class SyncService {
 	}
 
 	/**
-	 * Delete managed files that belong to $mapping but whose workflow was not seen
-	 * in this pull (it lost the mapping's tag). The workflow is left alone in n8n —
-	 * only the local mirror is removed — and the caller already holds the SyncGuard
-	 * so the delete does not mirror back. Returns the number of files pruned.
+	 * Delete managed files that belong to $mapping but whose workflow was not seen in
+	 * this pull — because it lost the mapping's tag, or because it was ARCHIVED in n8n
+	 * and the pull deliberately skipped it. The workflow is left alone in n8n — only the
+	 * local mirror is removed — and the caller already holds the SyncGuard so the delete
+	 * does not mirror back. Returns the number of files pruned.
+	 *
+	 * `Node::delete()` is a move to the Nextcloud trash, not a destruction, which is what
+	 * makes this the right mechanism for an archive: n8n hid the workflow without losing
+	 * it, and Nextcloud does the same to the file. Unarchiving in n8n brings the workflow
+	 * back into the tag listing and the next pull writes a fresh mirror.
 	 *
 	 * @param array<string,\OCP\Files\Node> $existingById managed files for this mapping, keyed by n8n id
 	 * @param array<string,bool> $seenIds ids that still carry the tag (written this pull)
@@ -246,7 +268,7 @@ final class SyncService {
 				continue;
 			}
 			try {
-				$node->delete();
+				$this->removeMirror($node, $mapping);
 				$pruned++;
 			} catch (\Throwable $e) {
 				$this->logger->warning('prune stale file failed', [
@@ -258,6 +280,35 @@ final class SyncService {
 			}
 		}
 		return $pruned;
+	}
+
+	/**
+	 * Remove a mirror whose workflow is no longer live in the mapping — and decide, from
+	 * the mapping's MODE, whether the user gets it back.
+	 *
+	 *   sync  → the Nextcloud trash. The file IS the workflow's content, and the thing
+	 *           that happened in n8n (an archive) is itself reversible, so the local
+	 *           gesture must be too. Restoring the file unarchives the workflow.
+	 *   link  → gone, with no trash entry. A link is a read-only projection; once the
+	 *           workflow is out of the tag there is nothing for a restore to reconnect
+	 *           to, and a trashed pointer would offer the user exactly that. The
+	 *           workflow itself is untouched in n8n, which is the whole point of a link.
+	 *
+	 * {@see TrashControl} explains why pausing the trash is the only supported way to
+	 * make a delete permanent, and why it is the right one for a Team Folder.
+	 */
+	private function removeMirror(Node $node, Mapping $mapping): void {
+		if ($mapping->mode !== Mapping::MODE_LINK) {
+			$node->delete();
+			return;
+		}
+		// A STATEMENT BODY, not an arrow function. `Node::delete()` is `void`, and while
+		// PHP evaluates a void call in expression position to null quite happily, writing
+		// it as `fn () => $node->delete()` implies a result that does not exist — it read
+		// as a bug to a reviewer, which is reason enough.
+		$this->trash->withoutTrash(static function () use ($node): void {
+			$node->delete();
+		});
 	}
 
 	/**

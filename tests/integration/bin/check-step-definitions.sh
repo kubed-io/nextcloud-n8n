@@ -33,7 +33,7 @@
 #      integration workflow filters on; check-suites.sh already pins that expression.
 #
 # Runs in the PHP Quality job, which finishes in seconds. The integration matrix takes
-# minutes across four legs and needs a live Nextcloud and a live n8n to say the same.
+# minutes across every leg and needs a live Nextcloud and a live n8n to say the same.
 
 set -euo pipefail
 root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../../.." && pwd)"

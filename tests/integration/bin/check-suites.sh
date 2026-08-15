@@ -50,7 +50,7 @@ fi
 
 if [ "$fail" -ne 0 ]; then
   echo
-  echo "Fix tests/integration/behat.dist.yml so the four suites partition features/."
+  echo "Fix tests/integration/behat.dist.yml so the suites partition features/."
   exit 1
 fi
 

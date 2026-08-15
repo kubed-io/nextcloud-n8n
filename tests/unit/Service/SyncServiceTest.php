@@ -22,6 +22,7 @@ use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\SyncService;
 use OCA\N8nSync\Service\SyncStatusService;
 use OCA\N8nSync\Service\TagSyncService;
+use OCA\N8nSync\Service\TrashControl;
 use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\BackgroundJob\IJobList;
 use OCP\Files\File;
@@ -29,6 +30,7 @@ use OCP\Files\Folder;
 use OCP\IAppConfig;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
+use Psr\Container\ContainerInterface;
 use Psr\Log\NullLogger;
 
 /**
@@ -55,6 +57,8 @@ final class SyncServiceTest extends TestCase {
 	private PushService $push;
 	private MappingService $mappings;
 	private TagSyncService $tagSync;
+	private TrashControl $trash;
+	private SyncGuard $guard;
 	private MirrorTimes $times;
 	private SyncService $service;
 
@@ -72,20 +76,39 @@ final class SyncServiceTest extends TestCase {
 
 		$this->mappings = $this->createStub(MappingService::class);
 		$this->tagSync = $this->createMock(TagSyncService::class);
+
+		// A REAL TrashControl, not a stub: its whole job is to run the callback it is
+		// given, and a stub would swallow the `delete()` the link-prune assertion
+		// depends on. Pausing the trash is files_trashbin's business and is covered on
+		// its own in TrashControlTest.
+		$this->trash = new TrashControl($this->createStub(ContainerInterface::class), new NullLogger());
 		// MirrorTimes reaches into the storage/cache stack, so it is mocked here and
 		// covered on its own in MirrorTimesTest — the reconciler only owes the mapping.
 		$this->times = $this->createMock(MirrorTimes::class);
+		$this->guard = $guard;
+		$this->rebuildService();
+	}
+
+	/**
+	 * Rebuild the service from the current collaborators.
+	 *
+	 * A test that swaps one has to rebuild, because the service takes them by
+	 * constructor — swapping after construction would leave the old one wired in while
+	 * the test believed otherwise.
+	 */
+	private function rebuildService(): void {
 		$this->service = new SyncService(
 			$this->mappings,
 			$this->n8n,
 			$this->metadata,
 			$this->storage,
-			$guard,
+			$this->guard,
 			$this->push,
 			$this->createStub(IJobList::class),
 			$this->createStub(SyncStatusService::class),
 			$this->createStub(IAppConfig::class),
 			$this->tagSync,
+			$this->trash,
 			$this->times,
 			new NullLogger(),
 		);
@@ -295,6 +318,144 @@ final class SyncServiceTest extends TestCase {
 		self::assertSame(1, $res['processed']);
 		self::assertSame(1, $res['succeeded']);
 		self::assertSame(1, $res['pruned']);
+	}
+
+	/**
+	 * AN ARCHIVE IN n8n IS A TRASH IN NEXTCLOUD, and the reason it was not is that n8n
+	 * keeps handing archived workflows back: archiving does not remove the tag, so the
+	 * tag listing returns one exactly like a live workflow and the pull mirrored it as
+	 * one. Measured on a live instance — 13 workflows on a mapping's tag, 4 archived,
+	 * every one still sitting in Nextcloud as an ordinary file.
+	 *
+	 * The archived workflow must not be counted as processed AND must not be marked
+	 * seen, because "not seen" is what lets `pruneStale` move its mirror to the trash.
+	 * Asserting `delete()` on the mirror is therefore the real claim; the counters are
+	 * how a reader tells this apart from a workflow that merely lost the tag.
+	 */
+	public function testAnArchivedWorkflowTrashesItsMirrorInsteadOfBeingWritten(): void {
+		$liveName = FilenameCodec::format('Keep', 'wf-keep', false, 0);
+		$live = $this->createMock(File::class);
+		$live->method('getId')->willReturn(10);
+		$live->method('getName')->willReturn($liveName);
+		$live->expects(self::never())->method('delete');
+
+		$archivedMirror = $this->createMock(File::class);
+		$archivedMirror->method('getId')->willReturn(11);
+		$archivedMirror->method('getName')->willReturn(FilenameCodec::format('Shelved', 'wf-archived', false, 0));
+		$archivedMirror->expects(self::once())->method('delete');
+
+		$folder = $this->createStub(Folder::class);
+		$folder->method('getDirectoryListing')->willReturn([$live, $archivedMirror]);
+
+		$this->storage->method('isAvailable')->willReturn(true);
+		$this->storage->method('ensureFolder')->willReturn($folder);
+
+		$mapId = 'map-alpha';
+		$this->metadata->method('read')->willReturnCallback(function (int $fileId) use ($mapId): ?ManagedFile {
+			return match ($fileId) {
+				10 => $this->managed('wf-keep', mappingId: $mapId),
+				11 => $this->managed('wf-archived', mappingId: $mapId),
+				default => null,
+			};
+		});
+
+		// BOTH still carry the tag — which is the whole point. Archiving in n8n does not
+		// untag, so a pull that only looked at the tag saw two live workflows.
+		$this->n8n->method('eachWorkflow')->willReturn([
+			['id' => 'wf-keep', 'name' => 'Keep', 'versionId' => 'v1'],
+			['id' => 'wf-archived', 'name' => 'Shelved', 'versionId' => 'v1', 'isArchived' => true],
+		]);
+
+		$res = $this->service->pullOne($this->mapping(Mapping::MODE_SYNC, $mapId));
+
+		self::assertSame(1, $res['processed'], 'the archived workflow is not a thing this pull processed');
+		self::assertSame(1, $res['succeeded']);
+		self::assertSame(1, $res['pruned'], 'its mirror goes to the Nextcloud trash');
+	}
+
+	/** `isArchived: false` is an ordinary live workflow — the flag only matters when set. */
+	public function testAnExplicitlyUnarchivedWorkflowIsMirroredNormally(): void {
+		$name = FilenameCodec::format('Keep', 'wf-keep', false, 0);
+		$keep = $this->createMock(File::class);
+		$keep->method('getId')->willReturn(10);
+		$keep->method('getName')->willReturn($name);
+		$keep->expects(self::never())->method('delete');
+
+		$folder = $this->createStub(Folder::class);
+		$folder->method('getDirectoryListing')->willReturn([$keep]);
+
+		$this->storage->method('isAvailable')->willReturn(true);
+		$this->storage->method('ensureFolder')->willReturn($folder);
+		$this->metadata->method('read')->willReturn($this->managed('wf-keep', mappingId: 'map-alpha'));
+		$this->n8n->method('eachWorkflow')->willReturn([
+			['id' => 'wf-keep', 'name' => 'Keep', 'versionId' => 'v1', 'isArchived' => false],
+		]);
+
+		$res = $this->service->pullOne($this->mapping(Mapping::MODE_SYNC, 'map-alpha'));
+
+		self::assertSame(1, $res['processed']);
+		self::assertSame(0, $res['pruned']);
+	}
+
+	/**
+	 * A LINK'S MIRROR LEAVES WITHOUT A TRASH ENTRY, and the mode is the only thing that
+	 * decides it. A link is a read-only projection: once its workflow is out of the
+	 * mapping's tag there is nothing for a restore to reconnect to, so a trashed pointer
+	 * would offer the user a recovery that reconnects nothing.
+	 *
+	 * The claim is that the delete happens INSIDE the bypass, which is why the callback
+	 * is invoked for real rather than merely counted — a `withoutTrash()` that was called
+	 * and then dropped its callback would satisfy a bare `expects(once())` while deleting
+	 * nothing at all.
+	 */
+	public function testALinksMirrorIsRemovedThroughTheTrashBypass(): void {
+		$stale = $this->createMock(File::class);
+		$stale->method('getId')->willReturn(11);
+		$stale->method('getName')->willReturn('Pointer.n8n');
+		$stale->expects(self::once())->method('delete');
+
+		$this->trash = $this->createMock(TrashControl::class);
+		$this->trash->expects(self::once())
+			->method('withoutTrash')
+			->willReturnCallback(static fn (callable $fn): mixed => $fn());
+
+		$res = $this->pullWithSingleStaleMirror($stale, Mapping::MODE_LINK, 'map-link');
+
+		self::assertSame(1, $res['pruned']);
+	}
+
+	/** A sync mirror keeps the trash — its file is the workflow's content, and an archive is reversible. */
+	public function testASyncMirrorIsRemovedIntoTheTrash(): void {
+		$stale = $this->createMock(File::class);
+		$stale->method('getId')->willReturn(11);
+		$stale->method('getName')->willReturn('Gone.n8n');
+		$stale->expects(self::once())->method('delete');
+
+		$this->trash = $this->createMock(TrashControl::class);
+		$this->trash->expects(self::never())
+			->method('withoutTrash');
+
+		$res = $this->pullWithSingleStaleMirror($stale, Mapping::MODE_SYNC, 'map-alpha');
+
+		self::assertSame(1, $res['pruned']);
+	}
+
+	/**
+	 * One mirror in the folder, nothing under the tag in n8n — so the pull prunes it and
+	 * the only question left is HOW.
+	 *
+	 * @return array{processed:int, succeeded:int, failed:int, pruned:int, unchanged:int}
+	 */
+	private function pullWithSingleStaleMirror(File $stale, string $mode, string $mappingId): array {
+		$folder = $this->createStub(Folder::class);
+		$folder->method('getDirectoryListing')->willReturn([$stale]);
+		$this->storage->method('isAvailable')->willReturn(true);
+		$this->storage->method('ensureFolder')->willReturn($folder);
+		$this->metadata->method('read')->willReturn($this->managed('wf-gone', $mode, $mappingId));
+		$this->n8n->method('eachWorkflow')->willReturn([]);
+
+		$this->rebuildService();
+		return $this->service->pullOne($this->mapping($mode, $mappingId));
 	}
 
 	// ── pull change-detection (saga Ch5 §5.11) ──────────────────────────────────

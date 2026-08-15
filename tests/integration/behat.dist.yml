@@ -27,12 +27,12 @@ default:
     filters:
       tags: '~@todo&&~@unbuilt&&~@blocked&&~@decision'
 
-  # FOUR SUITES, AND THEY ARE A PARTITION — every feature file belongs to exactly
+  # FIVE SUITES, AND THEY ARE A PARTITION — every feature file belongs to exactly
   # one. `bin/check-suites.sh` enforces that mechanically, because the failure
   # mode of getting it wrong is SILENT: a file in no suite is simply never run,
   # and a green build says so confidently.
   #
-  # Running plain `behat` runs all four in sequence, which is exactly the old
+  # Running plain `behat` runs all five in sequence, which is exactly the old
   # single-suite coverage — the split is inert until something selects a suite.
   # That is deliberate: it lets CI prove the partition covers everything BEFORE
   # the workflow starts depending on it (`behat --suite=tags` per matrix leg).
@@ -47,8 +47,14 @@ default:
   #   admin     the settings surface — the connection and the mapping list.
   #             Grouped because admin work is a different SESSION from user work,
   #             not merely a different tag; it never interleaves with a gesture.
-  #   workflow  the verbs a user performs on a workflow FILE: create, copy, move,
-  #             rename, delete.
+  #   authoring the verbs that MAKE or CHANGE a workflow: create, copy, edit, rename.
+  #             They all end with a workflow that exists and differs from before.
+  #   lifecycle the verbs that move a workflow between STATES rather than change its
+  #             content: delete, restore, purge, move. Every one of them is a round
+  #             trip through n8n's archive or a mapping boundary, which is why they
+  #             are the slow half — `workflow` was one 7-minute leg and is now two.
+  #             Splitting on "does this change the workflow, or where it lives?" keeps
+  #             a scenario's home obvious, which a by-runtime split would not.
   #   tags      the tag is n8n's only grouping construct — it is what a mapping
   #             binds to and what decides a workflow's membership. Everything
   #             about the tag vocabulary and the three-way sync lives here, and it
@@ -65,16 +71,20 @@ default:
       contexts: &contexts
       - OCA\N8nSync\Tests\Integration\FeatureContext
 
-    workflow:
+    authoring:
       paths:
       - '%paths.base%/../../features/workflows/create.feature'
       - '%paths.base%/../../features/workflows/copy.feature'
+      - '%paths.base%/../../features/workflows/edit.feature'
+      - '%paths.base%/../../features/workflows/rename.feature'
+      contexts: *contexts
+
+    lifecycle:
+      paths:
       - '%paths.base%/../../features/workflows/delete.feature'
       - '%paths.base%/../../features/workflows/restore.feature'
       - '%paths.base%/../../features/workflows/purge.feature'
-      - '%paths.base%/../../features/workflows/edit.feature'
       - '%paths.base%/../../features/workflows/move.feature'
-      - '%paths.base%/../../features/workflows/rename.feature'
       contexts: *contexts
 
     tags:

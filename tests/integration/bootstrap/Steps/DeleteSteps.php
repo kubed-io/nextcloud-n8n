@@ -61,6 +61,43 @@ trait DeleteSteps {
 	}
 
 	/**
+	 * THE SAME DAV DELETE, asked as a question rather than an instruction. `I move it to
+	 * the trash` claims the delete succeeded and would fail the scenario on the status
+	 * code alone; `I try to` records what happened and leaves the verdict to the Thens,
+	 * which is what a refusal scenario needs.
+	 *
+	 * @When I try to move it to the trash
+	 * @When I try to delete it
+	 */
+	public function iTryToMoveItToTheTrash(): void {
+		$this->lastDeleteStatus = $this->davDeleteStatus($this->currentFilePath);
+	}
+
+	/**
+	 * REFUSED, AND THE USER WAS TOLD. A 403 with an empty body is a refusal the Files
+	 * app renders as nothing at all, so the message is asserted too — the difference
+	 * between "Nextcloud would not do that, and here is why" and a delete that silently
+	 * does not happen.
+	 *
+	 * 403 rather than any 4xx: the app throws `AbortedEventException` from
+	 * `BeforeNodeDeletedEvent`, which Nextcloud's DAV layer renders as Forbidden.
+	 *
+	 * @Then the delete is refused with a message
+	 */
+	public function theDeleteIsRefusedWithAMessage(): void {
+		Assert::assertSame(
+			403,
+			$this->lastDeleteStatus,
+			'the delete was not refused — a link is not Nextcloud\'s to remove',
+		);
+		Assert::assertNotSame(
+			'',
+			trim($this->lastDeleteMessage),
+			'the delete was refused with no message, so the user is told nothing',
+		);
+	}
+
+	/**
 	 * WHERE THE FILE IS, stated as a fact — for a scenario whose action is the
 	 * restore or the purge that follows.
 	 *
@@ -155,6 +192,31 @@ trait DeleteSteps {
 			$this->davExists($this->currentFilePath),
 			"the file is still at {$this->currentFilePath}, but its workflow left the mapping",
 		);
+	}
+
+	/**
+	 * RECOVERABLE MEANS THE BYTES ARE STILL THERE, not just that a row exists. A trash
+	 * entry whose body had been emptied would satisfy "it is in the trash" and lose the
+	 * user their workflow anyway, so the JSON is fetched back and asked for its `name`.
+	 *
+	 * This is the post-state that makes an archive in n8n and a trash in Nextcloud the
+	 * same gesture: n8n hid the workflow without losing it, and Nextcloud did the same to
+	 * the file. Either side can be undone.
+	 *
+	 * @Then the file is recoverable from the Nextcloud trash
+	 */
+	public function theFileIsRecoverableFromTheTrash(): void {
+		$entry = $this->trashbinPathFor($this->currentFilePath);
+		Assert::assertNotNull(
+			$entry,
+			"the file is not in the Nextcloud trash, so trashing it destroyed it: {$this->currentFilePath}",
+		);
+
+		$res = $this->davClient()->request('GET', $this->trashHref($entry));
+		Assert::assertSame(200, $res->getStatusCode(), "could not read the trashed file back: $entry");
+		$body = json_decode((string)$res->getBody(), true);
+		Assert::assertIsArray($body, "the trashed file is no longer JSON:\n" . (string)$res->getBody());
+		Assert::assertArrayHasKey('name', $body, 'the trashed file no longer holds a workflow');
 	}
 
 	/**
