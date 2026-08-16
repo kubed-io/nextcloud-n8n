@@ -896,6 +896,22 @@ its old mirror sat unseen in the trash got a duplicate file beside it.
 `TrashReconcileService` holds the decision and the reasoning; its unit test is
 one purge case and eight ways to be spared one, which is the right ratio.
 
+**Every trash scenario is an Outline over the storage, and that is not symmetry
+for its own sake.** A Team Folder's trash is a different backend — different
+listing, different restore, different delete — and reading it needs the user's
+filesystem set up first. Without that, groupfolders' `listTrashRoot()` returns an
+EMPTY LIST rather than failing, which is the worst shape a bug can take here: the
+reconcile decides there is nothing to reap, reports zero, and looks healthy.
+Caught on the live instance, where the same trash answered 0 entries one way and
+4 the other, while every one of these scenarios was green in CI — because all of
+them ran against the plain admin folder.
+
+That is the same lesson as *a restore has to work on both trashes*, which was
+also reported from live use after months of a green suite. The rule this file now
+follows: **if a scenario touches the trash, it runs on both backends.** The cost
+is one extra Examples row each; the alternative is finding out from production
+again.
+
 ### Moving a duplicate in mints a brand-new workflow
 
 

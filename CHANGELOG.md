@@ -38,6 +38,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- The trash reconcile now sees a Team Folder's trash, which it read as empty unless something else had already set the filesystem up.
 - Deleting a workflow out of n8n's archive now clears its file from the Nextcloud trash.
 - Unarchiving a workflow in n8n brings its own file back out of the trash instead of writing a second copy.
 - Restoring a file whose workflow was deleted in n8n while it sat in the trash now creates the workflow again.

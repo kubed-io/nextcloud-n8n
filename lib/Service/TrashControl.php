@@ -122,6 +122,21 @@ final class TrashControl {
 	 * Answers `[]` for an unknown user, or when there is no trash app at all: an
 	 * instance without `files_trashbin` cannot have a trashed mirror to reap.
 	 *
+	 * ## THE FILESYSTEM HAS TO BE SET UP FIRST, OR A TEAM FOLDER'S TRASH IS INVISIBLE
+	 *
+	 * `listTrashRoot()` reads nothing from groupfolders' backend until the user's mounts
+	 * exist — it answers an EMPTY LIST rather than failing, which is the worst possible
+	 * shape for a bug: the reconcile then decides there is nothing to reap and nothing to
+	 * bring back, reports zero, and looks like it is working.
+	 *
+	 * Measured on the live instance: without this the same trash answered 0 entries; with
+	 * it, 4. The pull happens to satisfy it already — `StorageService::ensureFolder()`
+	 * sets the actor's filesystem up before any of this runs — but a feature standing on
+	 * a side effect of an unrelated call is a regression waiting for the day that call
+	 * moves. It is idempotent and it is one line, so it is stated here rather than
+	 * assumed. {@see TeamFolderService::getWritableFolder} does the same for the same
+	 * reason.
+	 *
 	 * @return list<TrashedFile>
 	 */
 	public function listTrashed(string $uid): array {
@@ -133,6 +148,7 @@ final class TrashControl {
 		if ($user === null) {
 			return [];
 		}
+		\OC_Util::setupFS($uid);
 
 		try {
 			$items = $manager->listTrashRoot($user);

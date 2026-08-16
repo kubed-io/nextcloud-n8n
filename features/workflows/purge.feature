@@ -13,6 +13,11 @@ Feature: Emptying the trash is the only permanent delete
       | mode    | sync            |
       | storage | admin folder    |
     And a mapping with the following values:
+      | tag     | nextcloud:shared |
+      | folder  | Shared Flows     |
+      | mode    | sync             |
+      | storage | team folder      |
+    And a mapping with the following values:
       | tag     | nextcloud:links |
       | folder  | Pointers        |
       | mode    | link            |
@@ -41,9 +46,14 @@ Feature: Emptying the trash is the only permanent delete
 
   # notes: ../AGENTS.md#a-workflow-deleted-in-n8n-purges-its-trashed-file
   @n8n @in-n8n @ui @occ
-  Scenario: A workflow deleted in n8n purges its trashed file
-    Given a workflow file in "Automations"
+  Scenario Outline: A workflow deleted in n8n purges its trashed file
+    Given a workflow file in "<folder>"
     And the file is in the Nextcloud trash
     And the workflow is in n8n's archive
     When the workflow is permanently deleted in n8n
     Then the file is gone from the Nextcloud trash
+
+    Examples: both storage backends, because a Team Folder's trash is a different one
+      | folder       |
+      | Automations  |
+      | Shared Flows |
