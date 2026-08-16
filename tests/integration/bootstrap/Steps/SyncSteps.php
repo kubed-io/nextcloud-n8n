@@ -585,14 +585,14 @@ trait SyncSteps {
 	 * @param list<string> $tagIds
 	 */
 	private function createN8nWorkflow(string $name, array $tagIds): string {
+		// THE SAME BODY THE NEXTCLOUD-SIDE ARRANGES WRITE, node and all — so a workflow
+		// seeded in n8n and one authored in Nextcloud stand for the same thing. Seeding
+		// `nodes: []` here meant every mirror the pull wrote was a workflow with nothing
+		// in it, and `nodes/0/…` — where n8n's validator actually rejected us — never
+		// existed in any file the suite produced.
 		$create = $this->n8nClient()->request('POST', 'workflows', [
 			'headers' => ['Content-Type' => 'application/json'],
-			'body' => json_encode([
-				'name' => $name,
-				'nodes' => [],
-				'connections' => new \stdClass(),
-				'settings' => new \stdClass(),
-			], JSON_THROW_ON_ERROR),
+			'body' => json_encode(self::starterWorkflow($name), JSON_THROW_ON_ERROR),
 		]);
 		Assert::assertContains($create->getStatusCode(), [200, 201], 'create n8n workflow failed: ' . (string)$create->getBody());
 		$body = json_decode((string)$create->getBody(), true);

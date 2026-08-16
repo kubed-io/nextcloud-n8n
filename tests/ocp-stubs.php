@@ -169,6 +169,7 @@ namespace OCP\BackgroundJob {
 	if (!interface_exists(IJobList::class, false)) {
 		interface IJobList {
 			public function add($job, $argument = null): void;
+			public function has($job, $argument = null): bool;
 		}
 	}
 }

@@ -224,11 +224,20 @@ final class N8nWorkflowBody {
 		// One level into `connections`: the map is keyed by node name and each value is
 		// itself an object of output-name → connection lists. A node wired to nothing
 		// has an empty one.
+		// One level into `connections`: the map is keyed by node name and each value is
+		// itself an object of output-name → connection lists. A node wired to nothing has
+		// an empty one.
+		//
+		// BOTH SHAPES, and this is where getting it wrong hides. A create/update body
+		// comes from `json_decode($file, false)`, so a populated `connections` is a
+		// `stdClass` — an `is_array()` check alone skips the entire loop for exactly the
+		// bodies being sent to n8n, repairing only the file-write path and leaving the
+		// one that 400s.
 		$connections = $body['connections'] ?? null;
-		if (is_array($connections)) {
+		if (is_array($connections) || $connections instanceof \stdClass) {
 			foreach ($connections as $node => $outputs) {
 				if ($outputs === []) {
-					$connections[$node] = new \stdClass();
+					self::set($connections, (string)$node, new \stdClass());
 				}
 			}
 			$body['connections'] = $connections;

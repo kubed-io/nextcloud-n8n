@@ -54,40 +54,8 @@ trait CopySteps {
 		if (is_string($this->lastWorkflowId) && $this->lastWorkflowId !== '') {
 			$this->createdWorkflowIds[] = $this->lastWorkflowId;
 		}
-		$this->settleSourceFromN8n($folder);
 		$this->originalPath = $this->currentFilePath;
 		$this->copyOriginalBefore = $this->readManagedMetadata($this->originalPath);
-	}
-
-	/**
-	 * Make the source file what a source file REALLY is: a body written by the pull.
-	 *
-	 * ## AN ARRANGE THAT UPLOADS ITS OWN FIXTURE IS NOT THE THING IT STANDS FOR
-	 *
-	 * Every file in a mapped folder has been through a pull — that is how a mirror
-	 * comes to exist and how it is kept true. This arrange used to PUT its fixture and
-	 * stop, so the bytes under test were the suite's own tidy JSON and never n8n's.
-	 *
-	 * That is what hid the copy bug. The pull writes the workflow as n8n returned it,
-	 * and empty objects were being flattened to `[]` on the way through — so a real
-	 * mirror held `"parameters": []`, which n8n then refused when anything sent it
-	 * back. A fixture that never made the round trip could not contain the defect, and
-	 * so the base case passed on a body no user has ever had.
-	 *
-	 * SYNC SOURCES ONLY. A pull rewrites a `link` file into a pointer, which is a
-	 * different body with different rules; the two `Pointers` rows are about where a
-	 * copy LANDS, and turning their source into a pointer would quietly change what
-	 * they test. That case deserves saying out loud in its own scenario rather than
-	 * arriving through an arrange.
-	 */
-	private function settleSourceFromN8n(string $folder): void {
-		if ((string)($this->lastWorkflowId ?? '') === '' || !$this->isMappedFolder($folder)) {
-			return; // unmapped: there is no mapping to pull, and that is the arrange
-		}
-		if ($this->mappingModeForFolder($folder) !== 'sync') {
-			return;
-		}
-		$this->runMappingSync('pull', $this->mappingTagForFolder($folder));
 	}
 
 	/**

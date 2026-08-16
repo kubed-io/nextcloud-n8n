@@ -52,10 +52,6 @@ trait RenameSteps {
 		$names = self::tagList($tags);
 		if ($this->isMappedFolder($folder)) {
 			$this->putManagedFile($path, $stem, $names);
-			// The mirror as the pull leaves it, not as the arrange typed it — see
-			// {@see CopySteps::settleSourceFromN8n} for why that distinction is the
-			// whole reason `copy.feature` was green on a broken base case.
-			$this->settleSourceFromN8n($folder);
 		} else {
 			$this->davPut($path, json_encode(self::starterWorkflow($stem, $names), JSON_THROW_ON_ERROR));
 			$this->currentFilePath = $path;
