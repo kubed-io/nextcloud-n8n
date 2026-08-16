@@ -27,13 +27,19 @@ Feature: Emptying the trash is the only permanent delete
     # ── RULE: only what Nextcloud owned is Nextcloud's to destroy ──────────────
     # notes: ../AGENTS.md#only-what-nextcloud-owned-is-nextclouds-to-destroy
 
+  # notes: ../AGENTS.md#a-purge-has-to-work-on-both-trashes
   @user @in-nextcloud @gesture @ui
-  Scenario: Purging a sync file permanently deletes its workflow
-    Given a workflow file in "Automations"
+  Scenario Outline: Purging a sync file permanently deletes its workflow
+    Given a workflow file in "<folder>"
     And the file is in the Nextcloud trash
     And the workflow is in n8n's archive
     When I purge it from the trash
     Then the workflow in n8n is "gone, permanently deleted"
+
+    Examples: both storage backends, because only one of them announces a purge
+      | folder       |
+      | Automations  |
+      | Shared Flows |
 
   # notes: ../AGENTS.md#an-unmapped-file-is-just-a-file
   @user @in-nextcloud @gesture @ui

@@ -25,6 +25,7 @@ use OCA\N8nSync\Listener\NameSyncListener;
 use OCA\N8nSync\Listener\NodeWrittenListener;
 use OCA\N8nSync\Listener\RegisterDavPluginsListener;
 use OCA\N8nSync\Listener\RestoreFromTrashListener;
+use OCA\N8nSync\Listener\TeamFolderPurgeListener;
 use OCA\N8nSync\Listener\TrashPurgeHook;
 use OCA\N8nSync\Listener\TrashRestoreHook;
 use OCA\N8nSync\Notification\Notifier;
@@ -37,6 +38,7 @@ use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
+use OCP\Files\Cache\CacheEntryRemovedEvent;
 use OCP\Files\Events\Node\BeforeNodeDeletedEvent;
 use OCP\Files\Events\Node\BeforeNodeRenamedEvent;
 use OCP\Files\Events\Node\NodeCopiedEvent;
@@ -140,6 +142,14 @@ final class Application extends App implements IBootstrap {
 		// trash is a separate event with separate (non-aborting) semantics.
 		$context->registerEventListener(BeforeNodeDeletedEvent::class, DeleteToN8nListener::class);
 		$context->registerEventListener(NodeRestoredEvent::class, RestoreFromTrashListener::class);
+
+		// …and the purge leg for every OTHER trash. The legacy `preDelete` hook wired in
+		// boot() is emitted by `Files_Trashbin\Trashbin` and nowhere else, so emptying a
+		// TEAM FOLDER's trash — which is the trash this app's mappings actually use —
+		// reached n8n never. groupfolders' backend emits nothing; the one thing it cannot
+		// skip is dropping the file's cache entry. See {@see TeamFolderPurgeListener} for
+		// why that event, and for the three filters keeping it to actual purges.
+		$context->registerEventListener(CacheEntryRemovedEvent::class, TeamFolderPurgeListener::class);
 
 		// §5.6.2 reactive tag sync (surface 3): a CONTENT pill add/remove on a managed
 		// sync file reconciles that tag to n8n on its own — the tag-side sibling of the
