@@ -16,6 +16,7 @@ use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\MotionService;
 use OCA\N8nSync\Service\N8nClient;
 use OCA\N8nSync\Service\SyncGuard;
+use OCA\N8nSync\Service\TagSyncService;
 use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\Files\File;
 use OCP\Files\Folder;
@@ -39,12 +40,14 @@ use Psr\Log\NullLogger;
 final class MotionServiceTest extends TestCase {
 	private N8nClient $n8n;
 	private CreateService $createService;
+	private TagSyncService $tagSync;
 	private WorkflowMetadata $metadata;
 	private MotionService $service;
 
 	protected function setUp(): void {
 		$this->n8n = $this->createMock(N8nClient::class);
 		$this->createService = $this->createMock(CreateService::class);
+		$this->tagSync = $this->createMock(TagSyncService::class);
 		$this->metadata = $this->createMock(WorkflowMetadata::class);
 
 		// SyncGuard just brackets the callback in enter/leave — a stub that runs it inline.
@@ -54,6 +57,7 @@ final class MotionServiceTest extends TestCase {
 		$this->service = new MotionService(
 			$this->n8n,
 			$this->createService,
+			$this->tagSync,
 			$this->metadata,
 			$guard,
 			new NullLogger(),

@@ -492,6 +492,96 @@ trait MoveSteps {
 		Assert::assertSame(['n8n' => $want, 'Nextcloud' => $want], ['n8n' => $inN8n, 'Nextcloud' => $inNextcloud]);
 	}
 
+	/**
+	 * Become somebody the folder was SHARED WITH, rather than the person who owns it.
+	 *
+	 * ## THE WHOLE SCENARIO TURNS ON WHO IS ASKING
+	 *
+	 * Core's `SharesPlugin::beforeMove` refuses a move when the source is not shareable
+	 * AND the destination is a share — and "is a share" is evaluated for the ACTING
+	 * user. The folder's owner never sees their own folder as a share, so the refusal is
+	 * invisible to them. The suite has always run as one user who owns every admin
+	 * folder it creates, which is exactly why this was reported from live use by a group
+	 * member and never once by CI.
+	 *
+	 * So this makes a second account, gives it the group the Team Folder is shared with
+	 * (otherwise it cannot even see the file it is about to move), shares the admin
+	 * folder with it, and switches the DAV client over. {@see FeatureContext::tearDown}
+	 * puts the original user back and removes the account.
+	 *
+	 * @Given :folder is shared with me rather than owned by me
+	 */
+	public function folderIsSharedWithMe(string $folder): void {
+		$user = 'n8n-member-' . bin2hex(random_bytes(3));
+		$pass = 'Member-' . bin2hex(random_bytes(8)) . '!aA1';
+
+		$res = $this->occEnv('user:add --password-from-env ' . escapeshellarg($user), ['OC_PASS' => $pass]);
+		if ($res['exit'] !== 0) {
+			throw new \RuntimeException("could not create '$user':\n{$res['output']}");
+		}
+		$this->borrowedUser = $user;
+
+		// The Team Folder in the Background is shared with the `admin` group, so the
+		// member needs it to see the file at all. This grants group membership, not
+		// ownership of anything — which is the distinction under test.
+		$this->occ('group:adduser admin ' . escapeshellarg($user));
+
+		// Share the admin-owned folder TO them, as the owner. occ has no share command;
+		// the OCS API is the only route, and it is the same call the Files UI makes.
+		$share = $this->davClient()->request('POST', $this->ncBaseUrl . '/ocs/v2.php/apps/files_sharing/api/v1/shares', [
+			'headers' => ['OCS-APIRequest' => 'true', 'Accept' => 'application/json'],
+			'form_params' => [
+				'path' => '/' . $folder,
+				'shareType' => 0,          // user share
+				'shareWith' => $user,
+				'permissions' => 31,       // all but share — resharing off is the norm
+			],
+		]);
+		$this->assertStatus($share, [200], "share '$folder' with $user");
+
+		// Everything after this line speaks as the member.
+		$this->ncUser = $user;
+		$this->ncPass = $pass;
+		$this->dav = null;
+	}
+
+	/**
+	 * THE REBIND, IN ONE ASSERTION: the workflow now wears the tag of the mapping it
+	 * landed in, and no longer wears the one it came from.
+	 *
+	 * A mapping owns a workflow by its tag alone, so the tag IS the membership — a move
+	 * between mappings that only re-stamped the file would leave n8n believing the
+	 * workflow still belongs to the old mapping, and the next pull of THAT mapping would
+	 * write the file back into the folder it just left.
+	 *
+	 * Stated as "this one, and no other mapping's" rather than as an exact set, so it
+	 * fails for exactly one reason and leaves the file's own tags to their own step.
+	 * The mapping is inferred from the folder the file is in now — that is the point of
+	 * the Background spelling the mappings out.
+	 *
+	 * @Then the workflow carries the mapping's tag, and no other mapping's
+	 */
+	public function theWorkflowCarriesTheMappingTagAndNoOther(): void {
+		$id = (string)($this->lastWorkflowId ?? '');
+		Assert::assertNotSame('', $id, 'no workflow under test');
+
+		$want = $this->mappingTagForFolder($this->currentFolder);
+		$on = $this->n8nWorkflowTagNames($id);
+		Assert::assertContains($want, $on, "the workflow does not carry '$want', the tag binding it to {$this->currentFolder}");
+
+		foreach ($this->listMappings() as $m) {
+			$other = (string)($m['n8n_tag'] ?? '');
+			if ($other === '' || $other === $want) {
+				continue;
+			}
+			Assert::assertNotContains(
+				$other,
+				$on,
+				"the workflow still carries '$other' — it would be claimed by two mappings and mirrored into both",
+			);
+		}
+	}
+
 	/** @Then the move is refused with a message */
 	public function theMoveIsRefusedWithAMessage(): void {
 		Assert::assertNotContains($this->lastMoveStatus, [201, 204], "the move was allowed (HTTP {$this->lastMoveStatus}) but should have been refused");

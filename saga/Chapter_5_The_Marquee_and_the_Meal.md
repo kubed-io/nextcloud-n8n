@@ -1553,6 +1553,154 @@ invented, not every filename problem.
 
 ---
 
+## 2026-08-16 · **THE DAY OF THE MISSING AXES**
+
+> **Five PRs in one sitting, and every single bug was hiding in a dimension the suite
+> did not vary. Not one of them was a logic error. All of them were green.**
+
+The user's morning began with a purge that did nothing and ended with a move that
+Nextcloud itself refused. In between, the app broke twice more. What makes the day worth
+writing down is not the bugs — it is that they were all **the same bug wearing different
+clothes**: a test suite that varied everything except the one thing that mattered.
+
+### The purge that never fired (#76)
+
+Emptying a Team Folder's trash left the workflow in n8n's archive, permanently, silently.
+`\OCP\Trashbin`'s `preDelete` hook is emitted by `Files_Trashbin\Trashbin` **and nowhere
+else**; groupfolders' backend unlinks the file, drops its cache entry, and emits nothing
+at all. Read off the running pod, not inferred.
+
+The suite's purge scenario named one folder — `Automations` — and that folder is
+admin-owned. Every purge test in the repo ran on the home trash. `restore.feature` had
+grown a storage axis two PRs earlier, when the *restore* turned out to be home-only; the
+gestures in `purge.feature` had not, because the bug being chased that day was on the n8n
+side and the Outline was added where the fix was.
+
+> **The lesson, written into the notes:** an axis discovered to matter belongs on **every**
+> scenario that crosses it — not on the ones being edited that day.
+
+The fix is a listener on `CacheEntryRemovedEvent`: dropping the cache entry is the one
+thing a trash backend cannot skip.
+
+### The promise with no test (#77)
+
+Put the mapping's tag on a workflow and it appears in Nextcloud. That is the sentence the
+whole app exists for, and it had no scenario as an ordinary gesture. `create.feature`
+covered the Nextcloud origin across all three mappings and the n8n origin not at all —
+the file was even titled *"Create a workflow from Nextcloud"*.
+
+It *looked* covered. `sync-now.feature` pulls tagged workflows in, and even has a
+`| the schedule |` row. But every word of that file is the **admin's first sync of a
+mapping just created**. "Does a new mapping bootstrap correctly" and "does tagging a
+workflow in a mapping that has run for months deliver a file" are different questions
+with different pre-states, and only the first had an answer.
+
+Found the way gaps are supposed to be found: a user unarchived a workflow, expected it to
+arrive as a brand-new file, went looking for the scenario that said so, and there wasn't
+one. **The Gherkin being clean is what made the hole visible at a glance.**
+
+### The fixture that was not a workflow (#78)
+
+Copy a real workflow into a mapped folder and you got an untracked `.n8n` beside the
+original. n8n had answered `request/body/nodes/0/parameters must be object`.
+
+The cause was a lossy round trip. `N8nClient::decode()` uses `json_decode($json, true)`,
+and **PHP cannot tell `{}` from `[]` once that has happened** — both are the empty array.
+So the pull wrote `"parameters": []` into every mirror, and n8n's validator rejected it
+the moment anything sent it back. `N8nWorkflowBody` already existed to put the shape
+back, but only for three *top-level* fields; it never descended into `nodes`.
+
+And why was the suite green? Every arrange built its fixture as:
+
+```php
+'nodes' => [],
+```
+
+A workflow with **no nodes** has no `nodes/0/parameters`. The field n8n rejects did not
+exist in a single test. The suite had been copying empty workflows and calling it a base
+case.
+
+> **A fixture stripped down far enough stops standing in for the thing it represents.**
+> `nodes: []` is not a small workflow. It is a different object.
+
+The starter body now carries a real node with empty `parameters`, defined once so it
+cannot be realistic in one feature and a stub in another. The `{}`-versus-`[]` rule is
+pinned in the unit suite, asserted on the **encoded JSON** — a test that decodes cannot
+see the difference and would pass against the very bug.
+
+### The scheduler that starved itself
+
+Folded into the same PR, and the most embarrassing of the lot because the app did it to
+itself. `Application::boot()` called `IJobList::add()` unconditionally, on a comment
+claiming `add()` is idempotent. It is not — core's `add()` on an **existing** job does:
+
+```php
+->set('reserved_at', 0)
+->set('last_checked', $firstCheck)   // = now
+->set('last_run', 0)
+```
+
+`boot()` runs on every request that loads the app. Cron picks work `ORDER BY last_checked
+ASC`, so the scheduled pull kept shoving itself to the back of its own queue and only ran
+when the instance went quiet. Measured live on a `5m` setting: consecutive runs **21
+minutes** apart, then **11**, with `last_run` sitting at `0` permanently. Guarded behind
+`has()`, the same cadence became 6m06s, then 5m49s.
+
+Nothing looked broken. The pull is correct when it runs. It simply read as "sync is a bit
+slow", and the only reliable way to get a workflow mirrored was to press the button.
+
+### The rule with a hole in it (#79, #80)
+
+A link is a read-only pointer to a workflow that lives in n8n. Editing one is refused.
+Deleting one is refused. Moving one out is refused. **Copying one was allowed** — and so
+was copying anything *into* a link mapping, which produces a file the next pull deletes.
+
+The move guard had the mirror-image hole: it refused a link moving OUT to an unmapped
+folder and said nothing about a link moving INTO another mapping — which would have made
+it a `sync` file to mean anything. **A mode change performed by dragging.**
+
+Both are now stated as one rule with two halves, in both features, with the source rule
+total: a link goes nowhere, including the folder it is already in.
+
+> **Aborting the typed event is not enough, and that is worth remembering.** Throwing
+> `AbortedEventException` from `BeforeNodeCopiedEvent` genuinely stops the copy — measured
+> in a pod, the target never appears — but `View::copy()` swallows it and Sabre answers
+> **201**. The user is told it worked and no file exists, which is worse than either
+> outcome alone. So the user-facing refusal is a Sabre guard and the universal one is the
+> listener, and both are kept on purpose.
+
+### And the one that was never ours
+
+The day ended with `You cannot move a non-shareable node into a share` — core's own
+`SharesPlugin::beforeMove`, refusing a Team Folder file moving into an admin-owned folder
+the user only had *shared*.
+
+Confirmed rather than assumed, by measuring both folders as the user in question:
+`shareable=false` on the source (a Team Folder grants no `SHARE` bit — perms 15, not 31)
+and `isShare=true` on the destination. Both of core's conditions met.
+
+**And here is the axis nobody had thought of at all: who is asking.** The suite ran as one
+user, who OWNS every admin folder it creates — and an owner never sees their own folder as
+a share. The exact move that fails for a group member sails through for the admin. Three
+bugs in one day hid in an unexercised dimension; this one hid in a dimension the harness
+could not *express*.
+
+So the harness learned to borrow a second account: create a user, give it the group, share
+the folder to it, and speak as it. One scenario, because the rule is Nextcloud's and the
+value is a reader knowing the limit exists — not a matrix of every pairing that trips it.
+
+### What the day actually taught
+
+Five bugs, one shape. The storage kind. A body with a node in it. Who is asking. Every
+one of them a dimension the scenarios held constant while varying something else, and
+every one of them green right up until a real person touched it.
+
+> **Dr K, not looking up from the pass:** *"You kept tasting the sauce and never once
+> tasted it on the plate. The suite wasn't lying to you. You just never asked it the
+> question you actually cared about."*
+
+---
+
 Sources / cross-links:
 - [`n8n_sync` on the Nextcloud App Store](https://apps.nextcloud.com/apps/n8n_sync)
 - [`nextcloud-grafana` saga, Chapter 1 — Mise en Place](https://github.com/kubed-io/nextcloud-grafana/blob/main/saga/Chapter_1_Mise_en_Place.md) — the apprentice's side of the cameo.

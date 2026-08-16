@@ -76,9 +76,28 @@ final class MotionListener implements IEventListener {
 		$srcMapping = $this->mappings->resolveForPath($event->getSource()->getPath());
 		$tgtMapping = $this->mappings->resolveForPath($target->getPath());
 
-		// Move OUT: a sync file left its mapping for an unmapped location. (A move
-		// into a *different* mapping was already blocked by MoveGuardListener, so
-		// here a non-null source mapping + null target mapping means "ejected".)
+		// REBIND: one mapping straight into another. The same workflow changes hands —
+		// the old mapping's tag comes off, the new one's goes on — so this is neither a
+		// move-out nor a move-in and must be checked before both. `MoveGuardListener`
+		// has already refused every combination involving a `link`, so anything reaching
+		// here is sync → sync.
+		if ($srcMapping !== null && $tgtMapping !== null && $srcMapping->id !== $tgtMapping->id) {
+			try {
+				$this->motion->rebind($target, $id, $srcMapping, $tgtMapping);
+			} catch (\Throwable $e) {
+				$this->logger->warning('n8n_sync motion: rebind between mappings failed', [
+					'app' => Application::APP_ID,
+					'fileId' => $target->getId(),
+					'workflowId' => $id,
+					'from' => $srcMapping->id,
+					'to' => $tgtMapping->id,
+					'exception' => $e,
+				]);
+			}
+			return;
+		}
+
+		// Move OUT: a sync file left its mapping for an unmapped location.
 		if ($managed->isSync() && $srcMapping !== null && $tgtMapping === null) {
 			try {
 				$this->motion->moveOut($target, $id);

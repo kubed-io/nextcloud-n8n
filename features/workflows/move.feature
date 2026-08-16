@@ -53,12 +53,23 @@ Feature: Moving a workflow file is the same workflow leaving and returning
     And the workflow is archived (hidden, preserved) in n8n
     And the full workflow JSON is still in the Nextcloud file
 
+  # notes: ../AGENTS.md#a-link-is-not-movable-and-a-link-mapping-is-not-a-destination
   @user @in-nextcloud @gesture @ui
-  Scenario: Moving a link out of its mapping is blocked
-    Given a workflow file in "Pointers"
-    When I try to move the file into "Scratch"
+  Scenario Outline: Moving a link, or into a link mapping, is refused
+    Given a workflow file in "<source>"
+    When I try to move the file into "<destination>"
     Then the move is refused with a message
-    And the file stays in "Pointers"
+    And the file stays in "<source>"
+    And nothing changes in n8n
+
+    Examples: a link is read-only in Nextcloud, and there is nowhere it may go
+      | source   | destination |
+      | Pointers | Scratch     |
+      | Pointers | Automations |
+
+    Examples: and a link mapping is filled from n8n, whatever is arriving
+      | source      | destination |
+      | Automations | Pointers    |
 
     # ── RULE: arriving in a mapping — the same workflow, or a new one ───────────
 
@@ -117,7 +128,8 @@ Feature: Moving a workflow file is the same workflow leaving and returning
 
     # ── RULE: between two mappings, the binding follows the folder ─────────────
 
-  @user @in-nextcloud @gesture @ui @unbuilt
+  # notes: ../AGENTS.md#moving-a-workflow-to-another-mapped-folder
+  @user @in-nextcloud @gesture @ui
   Scenario Outline: Moving a workflow to another mapped folder rebinds it
     Given a workflow file in "<source>"
     When I move the file into "<destination>"
@@ -127,11 +139,17 @@ Feature: Moving a workflow file is the same workflow leaving and returning
       | n8n_mode    | the mapping's mode |
     And the workflow carries the mapping's tag, and no other mapping's
 
-    Examples: out of either kind of mapping, into either kind
+    Examples: both storage backends, in both directions
       | source      | destination |
       | Automations | Pipelines   |
-      | Pointers    | Automations |
-      | Pointers    | Pipelines   |
+      | Pipelines   | Automations |
 
-    # @unbuilt — THIS IS THE SPEC, AND THE APP DOES THE OPPOSITE TODAY.
-    # notes: ../AGENTS.md#moving-a-workflow-to-another-mapped-folder
+  # notes: ../AGENTS.md#the-one-move-nextcloud-refuses-before-we-see-it
+  @user @in-nextcloud @gesture @ui
+  Scenario: Moving out of a Team Folder into a mapping you only have shared is refused
+    Given a workflow file in "Pipelines"
+    And "Automations" is shared with me rather than owned by me
+    When I try to move the file into "Automations"
+    Then the move is refused with a message
+    And the file stays in "Pipelines"
+    And nothing changes in n8n
