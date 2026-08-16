@@ -308,11 +308,50 @@ NodeRenamedEvent), which is what lets us treat them oppositely.
 
 `features/workflows/create.feature`
 
-Creating workflows from Nextcloud. These scenarios are the human-readable spec
-for the "author in NC, live in n8n" flow. LIVE: a .n8n written over WebDAV
-into a mapped folder fires NodeWrittenEvent → CreateInN8nListener → the workflow
-appears in n8n. The n8n side is asserted over its REST API; the NC stamp over
-DAV PROPFIND of nc:metadata-n8n_id.
+Creating a workflow, from EITHER side. The Nextcloud origin: a `.n8n` written over
+WebDAV into a mapped folder fires NodeWrittenEvent → CreateInN8nListener → the
+workflow appears in n8n. The n8n origin: a workflow made in n8n and given the
+mapping's tag appears as a file on the next pull. The n8n side is asserted over its
+REST API; the NC stamp over DAV PROPFIND of nc:metadata-n8n_id.
+
+### A tagged workflow in n8n IS a file
+
+**The app's central promise had no scenario.** Put the mapping's tag on a workflow
+and it appears in Nextcloud — that is the one sentence the whole app is for, and
+until this file grew an n8n-origin scenario it was tested nowhere as an ordinary
+gesture. The Nextcloud origin had an Outline across all three mappings; the n8n
+origin had nothing.
+
+It looked covered, which is why it stayed uncovered. `sync-now.feature` does pull
+tagged workflows into a folder, including on a `| the schedule |` row — but every
+word of that file is framed as the ADMIN's first sync of a mapping just created
+("As an admin who has just mapped a tag… so that the mirror starts out true"). It
+answers "does a new mapping bootstrap correctly", not "does tagging a workflow in a
+mapping that has been running for months deliver a file". Those are different
+questions with different pre-states, and only the first had an answer.
+
+Found the way gaps are supposed to be found: a user unarchived a workflow that had
+no trashed mirror left, expected it to arrive as a brand-new file, went looking for
+the scenario that said so, and there wasn't one. The Gherkin being clean is what
+made the hole visible at a glance.
+
+**Two `When` steps, because the gesture really is two.** Creating the workflow and
+tagging it are separate acts in n8n, and a workflow sitting untagged is the honest
+pre-state of everything anyone makes in that UI. Collapsing them into one arrange
+would hide the only step that matters — the tag is the membership, and the file is
+downstream of the tag, not of the creation.
+
+**The pull is folded into the tagging step, not written as a `When`.** n8n cannot
+tell Nextcloud that a tag was added, so the pull is how the gesture is delivered —
+the same reason the n8n-origin steps in `delete.feature` and `purge.feature` fold it
+in. Spelling it out would make the scenario read as though tagging were not enough
+on its own, which is the opposite of the rule it exists to state.
+
+**Three rows, and `mode` is a real column.** The Examples carry tag, folder and mode
+because the mode is asserted from it (`| n8n_mode | <mode> |`) rather than being
+decoration a reader has to cross-check against the Background. `link` stays `link`
+in the Gherkin; the harness translates it to the `reference` the metadata actually
+stores, because that workaround is the app's problem and not the spec's.
 
 ### The tags a file arrives with are the tags its workflow ends up with
 
