@@ -1,9 +1,9 @@
 # Notes, decisions and history for this feature: ../AGENTS.md#workflowscreate
 
-Feature: Create a workflow from Nextcloud
-  As a Nextcloud user
-  I want to create n8n workflows by making files
-  So that I can author workflows without opening the n8n UI
+Feature: Creating a workflow, from either side
+  As someone who works in both Nextcloud and n8n
+  I want a new workflow to exist on both sides however it was made
+  So that where I happened to create it is not a decision I have to make
 
   Background:
     Given the app is connected to n8n
@@ -50,3 +50,24 @@ Feature: Create a workflow from Nextcloud
     When I create a ".n8n" file in "Scratch"
     Then no workflow is created in n8n
     And the file holds no n8n DAV metadata at all
+
+    # ── RULE: a tagged workflow in n8n IS a file ──────────────────────────────
+    # notes: ../AGENTS.md#a-tagged-workflow-in-n8n-is-a-file
+
+  @n8n @in-n8n @gesture @ui
+  Scenario Outline: New workflow tagged in n8n becomes a real file
+    When someone creates a workflow in n8n
+    And someone tags it "<tag>" in n8n
+    Then a matching file is created in "<folder>"
+    And the file holds this DAV metadata:
+      | n8n_id         | the workflow's id |
+      | n8n_mapping    | the mapping's id  |
+      | n8n_mode       | <mode>            |
+      | n8n_versionId  | set               |
+      | n8n_syncedHash | set               |
+
+    Examples: every kind of mapping a tag can belong to
+      | tag                | folder   | mode |
+      | nextcloud:demo     | Demo     | sync |
+      | nextcloud:pointers | Pointers | link |
+      | nextcloud:shared   | Shared   | sync |

@@ -114,6 +114,79 @@ trait CreateSteps {
 		}
 	}
 
+	/**
+	 * THE OTHER ORIGIN. Everything above this line starts in Nextcloud; a workflow
+	 * can equally start in n8n, and until this step existed nothing in the suite ever
+	 * made one that way outside the admin's first sync of a brand-new mapping
+	 * (`sync-now.feature`). That left the app's central promise — put the mapping's
+	 * tag on a workflow and it shows up in Nextcloud — tested only as a bootstrap.
+	 *
+	 * UNTAGGED ON PURPOSE, so the tag is a gesture of its own rather than something
+	 * the arrange smuggled in. The workflow exists and belongs to no mapping, which
+	 * is the honest pre-state of every workflow anyone makes in the n8n UI.
+	 *
+	 * @When someone creates a workflow in n8n
+	 */
+	public function someoneCreatesAWorkflowInN8n(): void {
+		$this->lastWorkflowId = $this->createN8nWorkflow('Made in n8n ' . bin2hex(random_bytes(3)), []);
+		// NOTHING IN NEXTCLOUD YET, and said out loud: a leftover path from an earlier
+		// scenario would let the metadata Then read some other file and pass.
+		$this->currentFilePath = '';
+	}
+
+	/**
+	 * The second half of the n8n-side create, and the step the whole feature turns
+	 * on: in n8n, the mapping's tag is the entire membership gesture.
+	 *
+	 * THE SYNC IS FOLDED IN, exactly as the n8n-origin steps in `delete.feature` and
+	 * `purge.feature` fold it in. n8n has no way to tell Nextcloud a tag was added,
+	 * so the pull IS the delivery mechanism; a scenario that spelled it out as its
+	 * own `When` would be describing our plumbing instead of the user's gesture, and
+	 * would read as though tagging alone were not enough. It is enough — the schedule
+	 * runs the same pull on its own.
+	 *
+	 * @When someone tags it :tag in n8n
+	 */
+	public function someoneTagsItInN8n(string $tag): void {
+		$id = (string)($this->lastWorkflowId ?? '');
+		Assert::assertNotSame('', $id, 'no workflow under test to tag — a When must create one in n8n first');
+		$this->setN8nWorkflowTags($id, [$this->ensureN8nTag($tag)]);
+		$this->currentTag = $tag;
+		$this->runMappingSync('pull', $tag);
+	}
+
+	/**
+	 * The mirror of `a matching workflow is created in n8n`, and it FINDS the file by
+	 * the workflow's id rather than by a name it guessed. Nextcloud names the mirror
+	 * from the workflow, and collisions get a ` (1)` suffix, so a name-based lookup
+	 * would be a second implementation of the naming rules — one that agrees with the
+	 * app right up until the day it does not.
+	 *
+	 * Records the file it found as the one under test, which is what lets the DAV
+	 * metadata table beneath it read exactly this file.
+	 *
+	 * @Then a matching file is created in :folder
+	 */
+	public function aMatchingFileIsCreatedIn(string $folder): void {
+		$id = (string)($this->lastWorkflowId ?? '');
+		Assert::assertNotSame('', $id, 'no workflow under test — a When must create one in n8n');
+
+		foreach ($this->propfindWorkflowIds($folder) as $href => $found) {
+			if ($found !== $id) {
+				continue;
+			}
+			$this->currentFolder = $folder;
+			$this->currentFilePath = $folder . '/' . rawurldecode(basename(rtrim($href, '/')));
+			return;
+		}
+
+		// THROWN, NOT ASSERTED — a failing PHPUnit assertion inside Behat dies in
+		// `Registry::get()` and the reader gets a TypeError instead of this sentence.
+		throw new \RuntimeException(
+			"no file in \"$folder\" carries n8n_id $id — the tagged workflow never mirrored into Nextcloud",
+		);
+	}
+
 	/** @Then a matching workflow is created in n8n */
 	public function aMatchingWorkflowIsCreatedInN8n(): void {
 		Assert::assertNotNull($this->lastWorkflowId, 'the file was not stamped with an n8n_id — no workflow was created');
@@ -360,6 +433,13 @@ trait CreateSteps {
 				$expected === "the mapping's id" => $this->mappingIdForFolder($this->currentFolder),
 				$expected === "the mapping's mode" => $this->mappingModeForFolder($this->currentFolder),
 				(bool)preg_match('/^the "([^"]+)" mapping\'s id$/', $expected, $m) => $this->mappingIdForTag($m[1]),
+				// A MODE SPELLED OUT IN AN EXAMPLES COLUMN still gets the storage
+				// translation, so a scenario may write `link` — the word the admin
+				// picked and the word the Background uses — without knowing the app
+				// stores it as `reference` (the literal `link` is is_callable() and
+				// crashes core's PROPFIND). Without this the only way to state a mode
+				// per row would be to leak that workaround into the Gherkin.
+				$key === self::META_MODE => $this->storedMode($expected),
 				default => $expected,
 			};
 			Assert::assertNotSame('', $want, "the scenario asked for '$expected' but the arrange never recorded one");
@@ -423,11 +503,19 @@ trait CreateSteps {
 		$id = $this->mappingIdForFolder($folder);
 		foreach ($this->listMappings() as $m) {
 			if ((string)($m['id'] ?? '') === $id) {
-				$mode = (string)($m['mode'] ?? '');
-				return $mode === 'link' ? 'reference' : $mode;
+				return $this->storedMode((string)($m['mode'] ?? ''));
 			}
 		}
 		$this->fail("mapping '$id' vanished between lookups");
+	}
+
+	/**
+	 * A mode as the METADATA STORES it. One place, because both ways a scenario can
+	 * name a mode — "the mapping's mode" and a literal in an Examples column — have
+	 * to land on the same string, and two copies of a translation is how they stop.
+	 */
+	private function storedMode(string $mode): string {
+		return $mode === 'link' ? 'reference' : $mode;
 	}
 
 	/**

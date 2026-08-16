@@ -27,6 +27,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - **BREAKING:** requires Nextcloud **32** (was 31). Nextcloud 31 was never once run by the test suite, so supporting it was a claim rather than a fact; 32 is the oldest version the suite now proves.
 
+- Tagging a workflow in n8n now has a scenario of its own in every kind of mapping; it had only ever been tested as part of an admin's first sync.
+
 ### Added
 
 - Restoring a workflow file from a Team Folder's trash now unarchives its workflow in n8n. Only the personal trash ever did — a Team Folder has its own, and the file came back while the workflow stayed hidden, so the next sync trashed it again.
