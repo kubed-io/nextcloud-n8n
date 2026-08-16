@@ -85,6 +85,7 @@ namespace Sabre\DAV {
  * here alongside the DAV ones. Only the members
  * {@see \OCA\N8nSync\DAV\LinkWriteGuardPlugin::onCopy} actually calls.
  */
+
 namespace Sabre\HTTP {
 	if (!interface_exists(RequestInterface::class, false)) {
 		interface RequestInterface {
