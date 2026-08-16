@@ -50,6 +50,19 @@ namespace Sabre\DAV {
 
 			public function addPlugin(ServerPlugin $plugin): void {
 			}
+
+			/**
+			 * Turn an absolute `Destination:` URL into a path inside this DAV root — the
+			 * only way to learn where a COPY is going, since the header is a URL and
+			 * everything else in a plugin speaks paths.
+			 *
+			 * Real signature throws `Sabre\DAV\Exception\Forbidden` for a destination
+			 * outside the root, which {@see \OCA\N8nSync\DAV\LinkWriteGuardPlugin::onCopy}
+			 * treats as "not ours to judge".
+			 */
+			public function calculateUri(string $uri): string {
+				return '';
+			}
 		}
 	}
 	if (!class_exists(Tree::class, false)) {
@@ -62,6 +75,29 @@ namespace Sabre\DAV {
 	if (!class_exists(ServerPlugin::class, false)) {
 		abstract class ServerPlugin {
 			abstract public function initialize(Server $server): void;
+		}
+	}
+}
+
+/**
+ * `sabre/http` is a separate package from `sabre/dav` and neither is shipped to Psalm or
+ * to the unit suite, so the two interfaces a `method:*` handler is handed need declaring
+ * here alongside the DAV ones. Only the members
+ * {@see \OCA\N8nSync\DAV\LinkWriteGuardPlugin::onCopy} actually calls.
+ */
+namespace Sabre\HTTP {
+	if (!interface_exists(RequestInterface::class, false)) {
+		interface RequestInterface {
+			/** The request path, relative to the DAV root — the COPY's SOURCE. */
+			public function getPath(): string;
+
+			/** A header's value, or null when the request does not carry it. */
+			public function getHeader(string $name): ?string;
+		}
+	}
+	if (!interface_exists(ResponseInterface::class, false)) {
+		/** Declared only because Sabre passes one; the copy guard never touches it. */
+		interface ResponseInterface {
 		}
 	}
 }
