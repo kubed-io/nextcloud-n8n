@@ -22,6 +22,8 @@ use Sabre\DAV\Exception\Forbidden;
 use Sabre\DAV\INode;
 use Sabre\DAV\Server;
 use Sabre\DAV\ServerPlugin;
+use Sabre\HTTP\RequestInterface;
+use Sabre\HTTP\ResponseInterface;
 
 /**
  * Refuses to let a `link`-mode workflow file be overwritten over WebDAV (saga §14.2c).
@@ -76,15 +78,22 @@ final class LinkWriteGuardPlugin extends ServerPlugin {
 		// say why.
 		$server->on('beforeUnbind', [$this, 'beforeUnbind'], 10);
 		// COPY IS NEITHER A WRITE NOR AN UNBIND, so neither hook above sees it, and the
-		// typed `BeforeNodeCopiedEvent` is no help either: aborting it stops the copy but
-		// Sabre still answers 201, so the user is told it worked and no file appears.
-		// Measured in a pod. `beforeBind` fires for the DESTINATION path of anything that
-		// creates a node, which is where a refusal can still be a 403 with a reason.
-		$server->on('beforeBind', [$this, 'beforeBind'], 10);
+		// typed `BeforeNodeCopiedEvent` is no help on its own: aborting it stops the copy
+		// but Sabre still answers 201, so the user is told it worked and no file appears.
+		// Measured in a pod. {@see \OCA\N8nSync\Listener\CopyGuardListener} carries that
+		// event for the non-DAV routes; this is the one a person sees.
+		//
+		// `method:COPY` rather than `beforeBind`: it fires only for a copy, and it HANDS
+		// OVER the request, so the source path needs no reaching into `Server::$httpRequest`
+		// — an untyped public property psalm will not resolve. The priority runs it ahead
+		// of Sabre's own `httpCopy` (100).
+		$server->on('method:COPY', [$this, 'onCopy'], 10);
 	}
 
 	/**
 	 * Refuse a COPY that involves a link, in either direction, with a message.
+	 *
+	 * @param ResponseInterface $response unused; part of Sabre's `method:*` signature
 	 *
 	 * ## TWO REFUSALS, ONE HOOK, BECAUSE A COPY HAS TWO ENDS
 	 *
@@ -105,14 +114,18 @@ final class LinkWriteGuardPlugin extends ServerPlugin {
 	 * turns a missing mapping or an unreadable node into a user who cannot copy their own
 	 * files, which is worse than the thing being guarded against.
 	 */
-	public function beforeBind(string $path): bool {
-		$request = $this->server?->httpRequest;
-		if ($request === null || strtoupper($request->getMethod()) !== 'COPY') {
-			return true; // PUT, MKCOL, MOVE — all have their own rules elsewhere
-		}
-
+	public function onCopy(RequestInterface $request, ResponseInterface $response): bool {
 		$this->refuseIfSourceIsALink($request->getPath());
-		$this->refuseIfDestinationIsALinkMapping($path);
+
+		$destination = $request->getHeader('Destination');
+		if ($destination !== null && $destination !== '' && $this->server !== null) {
+			try {
+				$path = $this->server->calculateUri($destination);
+			} catch (\Throwable) {
+				return true; // a destination Sabre cannot place is not ours to judge
+			}
+			$this->refuseIfDestinationIsALinkMapping($path);
+		}
 		return true;
 	}
 
