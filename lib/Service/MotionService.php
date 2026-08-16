@@ -43,6 +43,7 @@ final class MotionService {
 	public function __construct(
 		private N8nClient $n8n,
 		private CreateService $createService,
+		private TagSyncService $tagSync,
 		private WorkflowMetadata $metadata,
 		private SyncGuard $guard,
 		private LoggerInterface $logger,
@@ -73,6 +74,58 @@ final class MotionService {
 			$this->metadata->write($node->getId(), [
 				WorkflowMetadata::KEY_MODE => WorkflowMetadata::MODE_UNMAPPED,
 				WorkflowMetadata::KEY_MAPPING => '', // ejected — no longer in a mapping
+			]);
+		});
+	}
+
+	/**
+	 * A managed file moved from one mapping straight into another. The SAME workflow
+	 * changes which mapping owns it: the old mapping's tag comes off, the new one's goes
+	 * on, and the file is re-stamped with the mapping it landed in.
+	 *
+	 * ## THE TAG IS THE MEMBERSHIP, SO THE TAG IS THE WHOLE MOVE
+	 *
+	 * A mapping owns a workflow by its tag and nothing else. Swapping the tag is
+	 * therefore the entire n8n-side gesture — there is no archive step, because the
+	 * workflow never stops being mirrored; it is mirrored somewhere else. Dropping the
+	 * old tag FIRST would leave a window where the workflow belongs to no mapping and a
+	 * pull could decide its file is stale, so the new tag goes on before the old comes
+	 * off.
+	 *
+	 * ## WHAT THIS DELIBERATELY DOES NOT DO
+	 *
+	 * It does not rewrite the file's body when the two mappings differ in mode. A `link`
+	 * moving into a `sync` mapping is re-stamped `sync` here and still holds a pointer
+	 * until the next pull writes the full JSON over it — the same way a link file is
+	 * materialised in the first place. Writing it here would mean `putContent()` on a
+	 * node the move handler still holds locks on, which is the trap
+	 * {@see \OCA\N8nSync\BackgroundJob\ReconcileNameJob} exists to avoid.
+	 *
+	 * @throws N8nApiException on a non-404 n8n failure
+	 */
+	public function rebind(File $node, string $id, Mapping $srcMapping, Mapping $tgtMapping): void {
+		try {
+			$this->tagSync->addMappingTag($id, $tgtMapping->n8nTag);
+			$this->tagSync->dropSourceTag($id, $srcMapping->n8nTag);
+		} catch (N8nApiException $e) {
+			if ($e->httpStatus !== 404) {
+				throw $e;
+			}
+			// The workflow is gone from n8n entirely, so there is no membership left to
+			// move. Create it fresh in the mapping it landed in, from the bytes the file
+			// still holds — the same fallback {@see moveIn} makes for the same reason.
+			$this->logger->info('n8n_sync motion: workflow gone in n8n; creating fresh on rebind', [
+				'app' => Application::APP_ID,
+				'workflowId' => $id,
+			]);
+			$this->createService->createForFile($node, $tgtMapping);
+			return;
+		}
+
+		$this->guard->run(function () use ($node, $tgtMapping): void {
+			$this->metadata->write($node->getId(), [
+				WorkflowMetadata::KEY_MODE => $tgtMapping->mode,
+				WorkflowMetadata::KEY_MAPPING => $tgtMapping->id,
 			]);
 		});
 	}

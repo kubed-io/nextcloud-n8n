@@ -113,6 +113,13 @@ final class FeatureContext implements Context {
 	private string $ncBaseUrl;
 	private string $ncUser;
 	private string $ncPass;
+	/**
+	 * A throwaway account a scenario borrowed to act as somebody who was SHARED a
+	 * folder rather than owning it — see {@see Steps\MoveSteps::folderIsSharedWithMe}.
+	 * Held so teardown can put the original user back and delete the account, whatever
+	 * the scenario did in between.
+	 */
+	private string $borrowedUser = '';
 	private string $n8nUrl;
 	private string $n8nApiKey;
 
@@ -208,6 +215,16 @@ final class FeatureContext implements Context {
 	 * @AfterScenario
 	 */
 	public function tearDown(): void {
+		// FIRST, because everything below speaks over DAV or occ as the current user, and
+		// a borrowed member cannot clean up folders the admin owns.
+		if ($this->borrowedUser !== '') {
+			$this->ncUser = getenv('NC_ADMIN_USER') ?: 'admin';
+			$this->ncPass = getenv('NC_ADMIN_PASS') ?: 'admin';
+			$this->dav = null;
+			$this->occ('user:delete ' . escapeshellarg($this->borrowedUser));
+			$this->borrowedUser = '';
+		}
+
 		foreach ($this->createdWorkflowIds as $id) {
 			try {
 				$this->n8nClient()->request('DELETE', 'workflows/' . rawurlencode($id));

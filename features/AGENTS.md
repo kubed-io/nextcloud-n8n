@@ -2284,34 +2284,86 @@ An untracked file (no id) dragged into a mapping is create-on-land, owned by
 `NodeWrittenEvent`, because Nextcloud does not fire the latter for a move — a
 detail worth keeping written down, since the obvious listener choice is wrong.
 
+### The one move Nextcloud refuses before we see it
+
+**Reported from live use, and it is not ours.** `apps/dav`'s `SharesPlugin::beforeMove`
+throws `You cannot move a non-shareable node into a share` when BOTH of these hold:
+
+  1. the source node is not shareable, and
+  2. the destination is a share **for the person doing the moving**
+
+A Team Folder grants no `SHARE` permission bit (measured live: perms 15, not 31), so
+every file in one fails (1). An admin-owned mapped folder is a share to everybody it was
+shared *to*, and to nobody else — so (2) depends entirely on who is asking.
+
+**Which is exactly why CI never saw it.** The suite ran as one user who OWNS every admin
+folder it creates, and an owner never sees their own folder as a share. The same move
+that fails for a group member sails through for the admin. Reported by a group member;
+invisible to a suite that only had an admin.
+
+So the scenario makes a second account, gives it the group the Team Folder is shared
+with, shares the admin folder TO it, and speaks as it. That is the only way to reach the
+condition, and it is worth the machinery: "the acting user is not the owner" is a whole
+axis the suite could not previously express, and this is the third bug in a row that hid
+in an axis nothing exercised.
+
+It is stated as ONE scenario deliberately. The rule is Nextcloud's, not ours, and the
+value is a reader knowing the limit exists — not a matrix of every pairing that trips it.
+
+### A link is not movable, and a link mapping is not a destination
+
+The same two halves the copy rule has, for the same reason, and they arrived late for the
+same reason: the old guard refused a link moving OUT to an unmapped folder and said
+nothing about a link moving INTO another mapping. That gap let a `link` land in a `sync`
+mapping — which only means anything if the file becomes a full workflow, i.e. **a mode
+change performed by dragging a file**. Modes are a mapping's setting; no gesture in
+Nextcloud changes one, and every other gesture on a link is already refused.
+
+So the source rule is total (a link moves nowhere, including into another mapping) and
+the destination rule mirrors it (a link mapping's folder is filled from its tag, so
+nothing may be moved in). The old single scenario is folded into the Outline — its case
+is the first Examples row.
+
 ### Moving a workflow to another mapped folder
 
-**`@unbuilt` — this is the spec, and the app does the opposite today.**
-`MoveGuardListener` aborts a mapping→mapping move for both modes and tells the
-user to move out to an unmanaged folder first, then in. The scenario describes
-what should happen, not what does; its steps throw rather than pass, so it cannot
-quietly start counting as coverage.
+**Built now, and it re-tags in place.** `MoveGuardListener` used to abort a
+mapping→mapping move for both modes and tell the user to move the file out to an
+unmanaged folder and then back in — which is the same two n8n writes the rebind makes in
+one step, so the refusal only made them perform it by hand. A gesture the app can
+complete is not a gesture to decline.
 
-**Saga §14.2 case (a), and the decision it needs.** Landing in a new mapping means
-the workflow's tag changes in n8n, and there are two defensible ways to do it:
-re-tag in place, or eject and reattach as if it had arrived fresh. They differ in
-what happens to the versionId, the synced-tag baseline and the archive state — so
-picking one by accident inside the move handler would be picking it permanently.
+**Saga §14.2 case (a) had two defensible answers**: re-tag in place, or eject and
+reattach as if the file had arrived fresh. They differ in what happens to the versionId,
+the synced-tag baseline and the archive state, so picking one by accident inside the move
+handler would have picked it permanently.
 
-**These rows choose re-tag in place.** `And the file's mode is "<mode>"` is where
-that choice lives: the mode survives the move, so it is the same file in a new
-mapping rather than a new arrival. Eject+reattach would not preserve it, and
-would mint a fresh versionId.
+**Re-tag in place is the choice.** `n8n_id` surviving the move is where it shows: the
+scenario asserts the same workflow id before and after, so it is one workflow changing
+mapping rather than a new arrival. Eject+reattach would archive, unarchive and mint a
+fresh versionId for a gesture the user experiences as a drag between two folders.
 
-**The two `link` rows are the sharp end.** A link has no body on the Nextcloud
-side, which is exactly why moving one OUT of a mapping is refused — there would be
-nothing left to hold. A link moving *between* mappings never becomes bodiless, so
-it is arguably fine; but it is a real decision rather than a symmetry, and it is
-worth being deliberate that these rows assert it.
+**The new tag goes on before the old comes off.** Dropping first would leave a window
+where the workflow belongs to no mapping at all, and a pull landing in that window would
+decide the file was stale.
 
-Until it is built, the way through is the message's own: out to an unmanaged
-folder, then in. Both halves are covered scenarios, so the capability is not
-missing — only the shortcut.
+**No `link` rows, and that is the correction.** An earlier draft had them, on the
+reasoning that a link moving *between* mappings never becomes bodiless. It would still
+have to change mode to mean anything in a `sync` mapping — see the link rule above — and
+mode is not something a drag decides.
+
+**Four rows, and they are two questions.** `Automations ↔ Pipelines` crosses the storage
+backends in both directions; `Automations → Blueprints` and `Pipelines → Runbooks` stay
+within one. Crossing and not-crossing are different code paths in Nextcloud — one is a
+move between storages, the other a rename inside one — and a rebind writes the file's
+metadata on whichever storage it ends up on.
+
+That needed TWO new mappings in the Background, not one: `Pointers` is the only other
+admin folder and it is `link`, so neither same-storage pair could borrow it.
+
+**And it cost a row elsewhere.** `A file arriving from outside every mapping becomes a
+workflow there` had a `Pointers` destination — an unmapped file moved into the link
+mapping. The destination rule refuses that now, "whatever is arriving" including a file
+that belonged to nothing. CI caught it, which is the row doing its job.
 
 ### Moving a duplicate in under the same name is refused (the workflow is already synced here)
 

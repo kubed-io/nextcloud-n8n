@@ -261,10 +261,31 @@ final class TagSyncService {
 	}
 
 	/**
+	 * Add ONE tag to a workflow in n8n, leaving every other tag on it — the exact
+	 * mirror of {@see dropSourceTag}, and its partner in a rebind
+	 * ({@see MotionService::rebind}), where one mapping's tag replaces another's.
+	 *
+	 * ADDITIVE, because {@see N8nClient::setWorkflowTags} is a full replace and n8n's
+	 * tag namespace is the user's: a workflow wearing `prod` and `billing` must still
+	 * wear them after it changes mapping. No-ops when the tag is already there, so a
+	 * repeated rebind costs one read and no write.
+	 */
+	public function addMappingTag(string $workflowId, string $tag): void {
+		$workflow = $this->n8n->getWorkflow($workflowId);
+		$names = $this->tagNames($workflow);
+		if (in_array($tag, $names, true)) {
+			return;
+		}
+		$names[] = $tag;
+		$this->pushSourceTags($workflowId, $names);
+	}
+
+	/**
 	 * Remove ONE tag from a workflow in n8n, leaving every other tag on it.
 	 *
-	 * The unbind's only write ({@see TagReconcileService::unbindIfMappingTagDropped}).
-	 * Reserved `n8n:*` markers are preserved along with the rest, because
+	 * The unbind's only write ({@see TagReconcileService::unbindIfMappingTagDropped}),
+	 * and the other half of a rebind beside {@see addMappingTag}. Reserved `n8n:*`
+	 * markers are preserved along with the rest, because
 	 * {@see N8nClient::setWorkflowTags} is a full replace and this is a subtraction of
 	 * exactly one name, not a re-statement of what the workflow should carry.
 	 */

@@ -16,6 +16,7 @@ use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\MotionService;
 use OCA\N8nSync\Service\N8nClient;
 use OCA\N8nSync\Service\SyncGuard;
+use OCA\N8nSync\Service\TagSyncService;
 use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\Files\File;
 use OCP\Files\Folder;
@@ -39,12 +40,14 @@ use Psr\Log\NullLogger;
 final class MotionServiceTest extends TestCase {
 	private N8nClient $n8n;
 	private CreateService $createService;
+	private TagSyncService $tagSync;
 	private WorkflowMetadata $metadata;
 	private MotionService $service;
 
 	protected function setUp(): void {
 		$this->n8n = $this->createMock(N8nClient::class);
 		$this->createService = $this->createMock(CreateService::class);
+		$this->tagSync = $this->createMock(TagSyncService::class);
 		$this->metadata = $this->createMock(WorkflowMetadata::class);
 
 		// SyncGuard just brackets the callback in enter/leave — a stub that runs it inline.
@@ -54,6 +57,7 @@ final class MotionServiceTest extends TestCase {
 		$this->service = new MotionService(
 			$this->n8n,
 			$this->createService,
+			$this->tagSync,
 			$this->metadata,
 			$guard,
 			new NullLogger(),
@@ -66,8 +70,8 @@ final class MotionServiceTest extends TestCase {
 		return $node;
 	}
 
-	private function mapping(string $id = 'map-beta'): Mapping {
-		return Mapping::fromArray(['id' => $id, 'n8n_tag' => 'team:beta', 'team_folder' => 'beta', 'mode' => 'sync']);
+	private function mapping(string $id = 'map-beta', string $tag = 'team:beta'): Mapping {
+		return Mapping::fromArray(['id' => $id, 'n8n_tag' => $tag, 'team_folder' => 'beta', 'mode' => 'sync']);
 	}
 
 	/**
@@ -127,6 +131,64 @@ final class MotionServiceTest extends TestCase {
 
 		$this->expectException(N8nApiException::class);
 		$this->service->moveOut($this->file(7), 'wf1');
+	}
+
+	// ── rebind ───────────────────────────────────────────────────────────────────
+
+	/**
+	 * THE ORDER IS THE POINT. The new mapping's tag goes on before the old one comes
+	 * off, so the workflow is never momentarily a member of no mapping — a pull landing
+	 * in that window would decide its file was stale and trash it.
+	 */
+	public function testRebindAddsTheNewTagBeforeDroppingTheOld(): void {
+		$seen = [];
+		$this->tagSync->expects(self::once())->method('addMappingTag')
+			->willReturnCallback(function (string $id, string $tag) use (&$seen): void {
+				$seen[] = 'add:' . $tag;
+			});
+		$this->tagSync->expects(self::once())->method('dropSourceTag')
+			->willReturnCallback(function (string $id, string $tag) use (&$seen): void {
+				$seen[] = 'drop:' . $tag;
+			});
+
+		$this->service->rebind($this->file(11), 'wf1', $this->mapping('map-src', 'team:src'), $this->mapping('map-dst', 'team:dst'));
+
+		self::assertSame(['add:team:dst', 'drop:team:src'], $seen);
+	}
+
+	public function testRebindStampsTheMappingItLandedIn(): void {
+		$this->metadata->expects(self::once())->method('write')->with(11, [
+			WorkflowMetadata::KEY_MODE => 'sync',
+			WorkflowMetadata::KEY_MAPPING => 'map-dst',
+		]);
+		$this->createService->expects(self::never())->method('createForFile');
+
+		$this->service->rebind($this->file(11), 'wf1', $this->mapping('map-src', 'team:src'), $this->mapping('map-dst', 'team:dst'));
+	}
+
+	/** The workflow is gone from n8n, so there is no membership to move — make one. */
+	public function testRebindCreatesFreshWhenTheWorkflowIsGone(): void {
+		$this->tagSync->method('addMappingTag')
+			->willThrowException(new N8nApiException('not found', 404));
+		$this->createService->expects(self::once())->method('createForFile');
+		$this->metadata->expects(self::never())->method('write');
+
+		$this->service->rebind($this->file(11), 'wf1', $this->mapping('map-src', 'team:src'), $this->mapping('map-dst', 'team:dst'));
+	}
+
+	/**
+	 * A REAL n8n FAILURE MUST NOT LEAVE THE FILE CLAIMING THE NEW MAPPING. Stamping
+	 * after a failed retag would tell Nextcloud the move landed while n8n still has the
+	 * workflow in the old mapping — the two sides disagreeing, silently.
+	 */
+	public function testRebindRethrows500AndDoesNotStamp(): void {
+		$this->tagSync->method('addMappingTag')
+			->willThrowException(new N8nApiException('boom', 500));
+		$this->createService->expects(self::never())->method('createForFile');
+		$this->metadata->expects(self::never())->method('write');
+
+		$this->expectException(N8nApiException::class);
+		$this->service->rebind($this->file(11), 'wf1', $this->mapping('map-src', 'team:src'), $this->mapping('map-dst', 'team:dst'));
 	}
 
 	// ── moveIn ───────────────────────────────────────────────────────────────────
