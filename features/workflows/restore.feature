@@ -61,8 +61,8 @@ Feature: Restoring a workflow file from the trash
 
   # notes: ../AGENTS.md#restoring-a-file-whose-workflow-was-deleted-in-n8n-gives-it-a-new-one
   @user @in-nextcloud @gesture @ui
-  Scenario: Restoring a file whose workflow was deleted in n8n gives it a new one
-    Given a workflow file in "Automations"
+  Scenario Outline: Restoring a file whose workflow was deleted in n8n gives it a new one
+    Given a workflow file in "<folder>"
     And the file is in the Nextcloud trash
     And the workflow is gone from n8n entirely
     When I restore it from the trash
@@ -71,6 +71,11 @@ Feature: Restoring a workflow file from the trash
       | n8n_id      | its own, not the one it arrived with |
       | n8n_mapping | the mapping's id                     |
       | n8n_mode    | the mapping's mode                   |
+
+    Examples: both storage backends, because only one of them fires the typed event
+      | folder       |
+      | Automations  |
+      | Shared Flows |
 
   # notes: ../AGENTS.md#restoring-a-file-whose-workflow-is-already-live-again
   @user @in-nextcloud @gesture @ui @unbuilt
@@ -96,10 +101,15 @@ Feature: Restoring a workflow file from the trash
 
   # notes: ../AGENTS.md#unarchiving-a-workflow-in-n8n-brings-its-file-back-out-of-the-trash
   @n8n @in-n8n @ui @occ
-  Scenario: Unarchiving a workflow in n8n brings its file back out of the trash
-    Given a workflow file in "Automations"
+  Scenario Outline: Unarchiving a workflow in n8n brings its file back out of the trash
+    Given a workflow file in "<folder>"
     And the file is in the Nextcloud trash
     And the workflow is in n8n's archive
     When someone unarchives the workflow in n8n
-    Then the file is back in "Automations"
+    Then the file is back in "<folder>"
     And the file is not in the Nextcloud trash
+
+    Examples: both storage backends, because a Team Folder's trash is a different one
+      | folder       |
+      | Automations  |
+      | Shared Flows |
