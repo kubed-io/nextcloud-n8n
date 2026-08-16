@@ -2351,9 +2351,19 @@ reasoning that a link moving *between* mappings never becomes bodiless. It would
 have to change mode to mean anything in a `sync` mapping — see the link rule above — and
 mode is not something a drag decides.
 
-**Both storage backends, in both directions.** `Automations → Pipelines` and back:
-admin-owned ↔ Team Folder. The direction matters because the two are different storages
-and a rebind touches the file's metadata on whichever one it lands on.
+**Four rows, and they are two questions.** `Automations ↔ Pipelines` crosses the storage
+backends in both directions; `Automations → Blueprints` and `Pipelines → Runbooks` stay
+within one. Crossing and not-crossing are different code paths in Nextcloud — one is a
+move between storages, the other a rename inside one — and a rebind writes the file's
+metadata on whichever storage it ends up on.
+
+That needed TWO new mappings in the Background, not one: `Pointers` is the only other
+admin folder and it is `link`, so neither same-storage pair could borrow it.
+
+**And it cost a row elsewhere.** `A file arriving from outside every mapping becomes a
+workflow there` had a `Pointers` destination — an unmapped file moved into the link
+mapping. The destination rule refuses that now, "whatever is arriving" including a file
+that belonged to nothing. CI caught it, which is the row doing its job.
 
 ### Moving a duplicate in under the same name is refused (the workflow is already synced here)
 

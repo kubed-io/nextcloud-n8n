@@ -19,6 +19,17 @@ Feature: Moving a workflow file is the same workflow leaving and returning
       | storage | team folder |
       | groups  | admin       |
     And a mapping with the following values:
+      | tag     | gamma        |
+      | folder  | Blueprints   |
+      | mode    | sync         |
+      | storage | admin folder |
+    And a mapping with the following values:
+      | tag     | delta       |
+      | folder  | Runbooks    |
+      | mode    | sync        |
+      | storage | team folder |
+      | groups  | admin       |
+    And a mapping with the following values:
       | tag     | links        |
       | folder  | Pointers     |
       | mode    | link         |
@@ -124,7 +135,6 @@ Feature: Moving a workflow file is the same workflow leaving and returning
       | destination | tags                    |
       | Automations | prod, billing, critical |
       | Pipelines   | prod                    |
-      | Pointers    |                         |
 
     # ── RULE: between two mappings, the binding follows the folder ─────────────
 
@@ -139,10 +149,15 @@ Feature: Moving a workflow file is the same workflow leaving and returning
       | n8n_mode    | the mapping's mode |
     And the workflow carries the mapping's tag, and no other mapping's
 
-    Examples: both storage backends, in both directions
+    Examples: across the two storage backends, in both directions
       | source      | destination |
       | Automations | Pipelines   |
       | Pipelines   | Automations |
+
+    Examples: and within each of them, where the storage never changes
+      | source      | destination |
+      | Automations | Blueprints  |
+      | Pipelines   | Runbooks    |
 
   # notes: ../AGENTS.md#the-one-move-nextcloud-refuses-before-we-see-it
   @user @in-nextcloud @gesture @ui
