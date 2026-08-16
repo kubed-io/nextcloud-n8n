@@ -47,6 +47,13 @@ use Psr\Log\LoggerInterface;
  * `\OCP\Util::connectHook` in {@see \OCA\N8nSync\AppInfo\Application::boot()}. Its
  * deprecation is unavoidable: it is the only entry point that exists.
  *
+ * ## …AND IT ONLY EXISTS FOR THE HOME TRASH
+ *
+ * `Files_Trashbin\Trashbin` is the only class in Nextcloud that emits it. A Team Folder
+ * has its own trash backend, which emits nothing, so this listener covers the home
+ * storage and only the home storage — see {@see TeamFolderPurgeListener} for the other
+ * half and for why the two use different signals rather than one.
+ *
  * ## THE NODE STILL EXISTS WHEN THIS RUNS
  *
  * `preDelete` fires just BEFORE the unlink, so the trashed node is still

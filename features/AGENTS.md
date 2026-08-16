@@ -934,8 +934,14 @@ be there, and trashes the file again. The user restores, waits, and watches it v
 A loop, with no error anywhere.
 
 Both backends DO emit the legacy `\OCA\Files_Trashbin\Trashbin` `post_restore` hook, so
-one handler covers both — the same shape as the purge, which had the same bug for the
-same reason (a signal that exists for the home storage and not the one in use).
+one handler covers both.
+
+**This paragraph used to say the purge "had the same bug and was fixed for the same
+reason".** It was wrong, and it is left corrected in place rather than deleted, because
+believing it is what let the purge stay broken. What had been fixed on the purge side was
+the trashed FILENAME shape (`.n8n.d<timestamp>` is not caught by `str_ends_with`); the
+backend gap was never touched, and `preDelete` has no groupfolders equivalent to move to.
+See `purge.feature`'s notes for what it actually took.
 
 **The scenario is an Outline over the storage, not two scenarios.** The end state does
 not differ — file back where it was, workflow live, metadata intact — and the Gherkin
@@ -1005,6 +1011,39 @@ link's workflow is not ours to delete however emphatically the file is removed.
 
 THIS FILE USED TO BE THE ADMIN'S "PURGE NEXTCLOUD FILES" BUTTON, which is gone —
 see below. `purge` now means what a user means by it: emptying the trash.
+
+### A purge has to work on both trashes
+
+**Emptying a Team Folder's trash reached n8n never, and the suite said it did.**
+`\OCP\Trashbin`'s `preDelete` hook — the signal `TrashPurgeHook` stands on — is emitted
+by `Files_Trashbin\Trashbin` and by nothing else. groupfolders' `removeItem()` unlinks
+the file and drops its cache entry, and emits no hook and no typed event. So a `sync`
+file purged out of a Team Folder's trash left its workflow sitting in n8n's archive
+permanently, silently, with nothing in the log because nothing ran.
+
+Reported from live use, in the sharpest possible form: both directions tested in one
+sitting, on the same folder. Deleting a workflow out of n8n's archive purged the trashed
+file (that direction goes through the pull, which is backend-agnostic). Purging the
+trashed file in Nextcloud did nothing at all.
+
+**How a fully-tested feature file missed it.** This scenario named one folder,
+`Automations`, and that folder is admin-owned — the home trash. `restore.feature` grew a
+storage axis when the restore turned out to be home-only (#73, #75); the two gestures in
+THIS file did not, because the bug being chased at the time was on the n8n side and the
+Outline was added where the fix was. So the suite covered the storage axis in one
+direction and only the home storage in the other, and every purge scenario passed while
+the case the app is actually deployed on had never once been exercised.
+
+That is the specific lesson, and it is not "add more tests": an axis discovered to matter
+belongs on **every** scenario that crosses it, not on the ones being edited that day. The
+storage a file lives on decides which trash backend handles it, and therefore which
+signals exist at all — so it is an axis for every scenario that touches the trash.
+
+**The Examples caption says which backend announces a purge**, rather than repeating
+`restore.feature`'s "a Team Folder's trash is a different one". Both are true; this one
+names the property under test. The end state is identical on both rows, which is why it
+is an Outline and not two scenarios — the Gherkin says the workflow is gone, and never
+which Nextcloud signal delivered that.
 
 ### workflows/purge — THE ADMIN PURGE BUTTON WAS REMOVED
 
