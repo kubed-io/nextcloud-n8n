@@ -235,7 +235,13 @@ final class N8nWorkflowBody {
 		// one that 400s.
 		$connections = $body['connections'] ?? null;
 		if (is_array($connections) || $connections instanceof \stdClass) {
-			foreach ($connections as $node => $outputs) {
+			// `get_object_vars()` rather than iterating the object directly: psalm flags a
+			// raw `foreach` over `stdClass` (RawObjectIteration) because it silently walks
+			// whatever happens to be public, and reading the keys as a plain array says
+			// what is meant. The write still goes through {@see set}, so each entry lands
+			// back on the shape it came from.
+			$entries = is_array($connections) ? $connections : get_object_vars($connections);
+			foreach ($entries as $node => $outputs) {
 				if ($outputs === []) {
 					self::set($connections, (string)$node, new \stdClass());
 				}
