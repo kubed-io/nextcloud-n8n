@@ -30,6 +30,7 @@ use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\IAppConfig;
 use OCP\IUserManager;
+use OCP\IUserSession;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Psr\Container\ContainerInterface;
@@ -87,6 +88,7 @@ final class SyncServiceTest extends TestCase {
 		$this->trash = new TrashControl(
 			$this->createStub(ContainerInterface::class),
 			$this->createStub(IUserManager::class),
+			$this->createStub(IUserSession::class),
 			new NullLogger(),
 		);
 		// The trash reconcile is a pass of its own with its own rules and its own test

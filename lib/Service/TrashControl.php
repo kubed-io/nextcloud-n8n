@@ -13,7 +13,9 @@ use OCA\Files_Trashbin\Trash\ITrashItem;
 use OCA\Files_Trashbin\Trash\ITrashManager;
 use OCA\N8nSync\AppInfo\Application;
 use OCP\Files\FileInfo;
+use OCP\IUser;
 use OCP\IUserManager;
+use OCP\IUserSession;
 use Psr\Container\ContainerInterface;
 use Psr\Log\LoggerInterface;
 
@@ -71,6 +73,7 @@ final class TrashControl {
 	public function __construct(
 		private ContainerInterface $container,
 		private IUserManager $userManager,
+		private IUserSession $userSession,
 		private LoggerInterface $logger,
 	) {
 	}
@@ -166,12 +169,54 @@ final class TrashControl {
 				function () use ($manager, $item): void {
 					$manager->removeItem($item);
 				},
-				function () use ($manager, $item): void {
-					$manager->restoreItem($item);
+				function () use ($manager, $item, $user): void {
+					// AS THE ITEM'S OWNER, unlike the purge beside it — see {@see asUser}.
+					$this->asUser($user, static function () use ($manager, $item): void {
+						$manager->restoreItem($item);
+					});
 				},
 			);
 		}
 		return $out;
+	}
+
+	/**
+	 * Run $fn with $user as the active user, then put back whoever was there.
+	 *
+	 * ## THE HOME TRASH RESTORES WHOEVER IS LOGGED IN, NOT WHOEVER YOU ASK ABOUT
+	 *
+	 * `Trashbin::restore()` takes no user: it reads `OC_User::getUser()` — which is the
+	 * SESSION's `user_id` — and builds its `View` on that. A pull has no session, so the
+	 * call threw `Tried to restore a file while not logged in` and the mirror of an
+	 * unarchived workflow stayed in the trash. Found in CI, in the app's own log, because
+	 * the failure was caught and logged rather than swallowed.
+	 *
+	 * `IUserSession::setUser()` is the public seam for this and it writes exactly that
+	 * key. The previous user is restored in `finally`, so an inline pull triggered from
+	 * the admin's browser ends the request with the session it began with.
+	 *
+	 * ## ONLY THE RESTORE NEEDS IT
+	 *
+	 * The purge does not, and is deliberately left alone: `Trashbin::delete()` is passed
+	 * the uid explicitly, and groupfolders' backend reads `$item->getUser()` for both
+	 * operations. Proven rather than assumed — the purge worked in the same CI run that
+	 * caught this. Mutating the session where it is not needed would be a bigger blast
+	 * radius for no gain.
+	 *
+	 * `setupFS` comes along because the `View` needs the user's mounts, and it is the
+	 * same call {@see TeamFolderService::getWritableFolder} already makes for the actor
+	 * on every pull — this leaves the filesystem no more re-pointed than the pull that
+	 * carried it already did.
+	 */
+	private function asUser(IUser $user, callable $fn): void {
+		$previous = $this->userSession->getUser();
+		$this->userSession->setUser($user);
+		\OC_Util::setupFS($user->getUID());
+		try {
+			$fn();
+		} finally {
+			$this->userSession->setUser($previous);
+		}
 	}
 
 	/** The trash manager, or null when `files_trashbin` is not installed/enabled. */

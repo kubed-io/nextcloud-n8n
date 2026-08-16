@@ -11,6 +11,7 @@ namespace OCA\N8nSync\Tests\Unit\Service;
 
 use OCA\N8nSync\Service\TrashControl;
 use OCP\IUserManager;
+use OCP\IUserSession;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Psr\Container\ContainerInterface;
@@ -35,6 +36,7 @@ final class TrashControlTest extends TestCase {
 		$control = new TrashControl(
 			$this->createStub(ContainerInterface::class),
 			$this->createStub(IUserManager::class),
+			$this->createStub(IUserSession::class),
 			new NullLogger(),
 		);
 
@@ -53,7 +55,7 @@ final class TrashControlTest extends TestCase {
 		// Never consulted: the interface does not exist, so there is nothing to resolve.
 		$container->expects(self::never())->method('get');
 
-		$control = new TrashControl($container, $this->createStub(IUserManager::class), new NullLogger());
+		$control = new TrashControl($container, $this->createStub(IUserManager::class), $this->createStub(IUserSession::class), new NullLogger());
 		$control->withoutTrash(function () use (&$ran): void {
 			$ran = true;
 		});
@@ -78,7 +80,7 @@ final class TrashControlTest extends TestCase {
 		$container = $this->createMock(ContainerInterface::class);
 		$container->method('get')->willThrowException(new \RuntimeException('no such service'));
 
-		$control = new TrashControl($container, $this->createStub(IUserManager::class), new NullLogger());
+		$control = new TrashControl($container, $this->createStub(IUserManager::class), $this->createStub(IUserSession::class), new NullLogger());
 		$control->withoutTrash(function () use (&$ran): void {
 			$ran = true;
 		});
@@ -99,7 +101,7 @@ final class TrashControlTest extends TestCase {
 		// Never consulted: the interface does not exist, so there is nothing to resolve.
 		$container->expects(self::never())->method('get');
 
-		$control = new TrashControl($container, $this->createStub(IUserManager::class), new NullLogger());
+		$control = new TrashControl($container, $this->createStub(IUserManager::class), $this->createStub(IUserSession::class), new NullLogger());
 
 		self::assertSame([], $control->listTrashed('alice'));
 	}
@@ -108,7 +110,7 @@ final class TrashControlTest extends TestCase {
 		$users = $this->createMock(IUserManager::class);
 		$users->method('get')->willReturn(null);
 
-		$control = new TrashControl($this->createStub(ContainerInterface::class), $users, new NullLogger());
+		$control = new TrashControl($this->createStub(ContainerInterface::class), $users, $this->createStub(IUserSession::class), new NullLogger());
 
 		self::assertSame([], $control->listTrashed('nobody'));
 	}

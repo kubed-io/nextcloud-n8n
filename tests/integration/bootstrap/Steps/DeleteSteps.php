@@ -115,6 +115,12 @@ trait DeleteSteps {
 	 * @Given the file is in the Nextcloud trash
 	 */
 	public function theFileIsInTheTrash(): void {
+		// THE ID IT WENT IN WITH, read while the file is still readable. A restore can
+		// MINT a workflow — the old one was deleted in n8n while the file sat here — and
+		// `its own, not the one it arrived with` needs the earlier value to tell that
+		// from an ordinary unarchive. It cannot be read at restore time: by then the path
+		// is empty and `davReadMetadataId` PROPFINDs it, which answers 404, not 207.
+		$this->idArrivedWith = (string)($this->davReadMetadataId($this->currentFilePath) ?? '');
 		$this->iMoveItToTheTrash();
 		Assert::assertNotNull(
 			$this->trashbinPathFor($this->currentFilePath),
@@ -303,13 +309,6 @@ trait DeleteSteps {
 	public function iRestoreItFromTheTrash(): void {
 		$trashPath = $this->trashbinPathFor($this->currentFilePath);
 		Assert::assertNotNull($trashPath, 'could not find the file in the trashbin to restore');
-		// THE ID IT ARRIVED WITH, pinned before the restore can overwrite it — the same
-		// bookkeeping a move-in does, and for the same reason. A restore whose workflow
-		// was deleted while the file sat in the trash MINTS a new one, and `its own, not
-		// the one it arrived with` can only tell that from an ordinary unarchive by
-		// comparing against what the file carried in. Re-reading afterwards compares the
-		// new id with itself and passes for both.
-		$this->idArrivedWith = (string)($this->davReadMetadataId($this->currentFilePath) ?? '');
 		$dest = $this->ncBaseUrl . '/remote.php/dav/trashbin/' . rawurlencode($this->ncUser) . '/restore/' . rawurlencode(basename($trashPath));
 		$res = $this->davClient()->request('MOVE', $this->trashHref($trashPath), [
 			'headers' => ['Destination' => $dest],
