@@ -209,29 +209,32 @@ final class N8nWorkflowBody {
 	 * faithful copy rather than something that only happens to work until it is sent
 	 * back.
 	 *
-	 * @param array<string,mixed>|\stdClass $body
+	 * The BODY is always an array — every caller builds one — so only the values
+	 * inside it need the two-shape handling below.
+	 *
+	 * @param array<string,mixed> $body
 	 */
-	private static function coerceEmptyObjects(array|\stdClass &$body): void {
+	private static function coerceEmptyObjects(array &$body): void {
 		foreach (self::OBJECT_FIELDS as $k) {
-			if (self::get($body, $k) === []) {
-				self::set($body, $k, new \stdClass());
+			if (($body[$k] ?? null) === []) {
+				$body[$k] = new \stdClass();
 			}
 		}
 
 		// One level into `connections`: the map is keyed by node name and each value is
 		// itself an object of output-name → connection lists. A node wired to nothing
 		// has an empty one.
-		$connections = self::get($body, 'connections');
+		$connections = $body['connections'] ?? null;
 		if (is_array($connections)) {
 			foreach ($connections as $node => $outputs) {
 				if ($outputs === []) {
 					$connections[$node] = new \stdClass();
 				}
 			}
-			self::set($body, 'connections', $connections);
+			$body['connections'] = $connections;
 		}
 
-		$nodes = self::get($body, 'nodes');
+		$nodes = $body['nodes'] ?? null;
 		if (!is_array($nodes)) {
 			return;
 		}
@@ -246,30 +249,31 @@ final class N8nWorkflowBody {
 			}
 			$nodes[$i] = $node;
 		}
-		self::set($body, 'nodes', $nodes);
+		$body['nodes'] = $nodes;
 	}
 
 	/**
-	 * Read one key off either JSON shape.
+	 * Read one key off a NODE, which arrives in either JSON shape.
 	 *
 	 * BOTH SHAPES REACH HERE, which is the whole reason these two helpers exist. A
-	 * create/update body is built from `json_decode($file, false)` — objects, so nodes
-	 * are `stdClass`. A file body is built from {@see N8nClient::decode}'s associative
-	 * arrays. One coercion has to serve both or the two paths drift, and drifting is
-	 * exactly what let the send side be repaired while the file kept its `[]`.
+	 * create/update body is built from `json_decode($file, false)`, so its nodes are
+	 * `stdClass`; a file body comes from {@see N8nClient::decode}'s associative arrays,
+	 * so its nodes are arrays. One coercion has to serve both or the two paths drift —
+	 * and drifting is exactly what let the send side be repaired for years while the
+	 * file kept its `[]`.
 	 *
-	 * @param array<string,mixed>|\stdClass $subject
+	 * @param array<string,mixed>|\stdClass $node
 	 */
-	private static function get(array|\stdClass $subject, string $key): mixed {
-		return is_array($subject) ? ($subject[$key] ?? null) : ($subject->$key ?? null);
+	private static function get(array|\stdClass $node, string $key): mixed {
+		return is_array($node) ? ($node[$key] ?? null) : ($node->$key ?? null);
 	}
 
-	/** @param array<string,mixed>|\stdClass $subject */
-	private static function set(array|\stdClass &$subject, string $key, mixed $value): void {
-		if (is_array($subject)) {
-			$subject[$key] = $value;
+	/** @param array<string,mixed>|\stdClass $node */
+	private static function set(array|\stdClass &$node, string $key, mixed $value): void {
+		if (is_array($node)) {
+			$node[$key] = $value;
 		} else {
-			$subject->$key = $value;
+			$node->$key = $value;
 		}
 	}
 

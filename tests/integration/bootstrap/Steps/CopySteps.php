@@ -59,11 +59,6 @@ trait CopySteps {
 		$this->copyOriginalBefore = $this->readManagedMetadata($this->originalPath);
 	}
 
-	/** The tag names in a `"prod, billing"` cell. @return list<string> */
-	private static function tagList(string $tags): array {
-		return array_values(array_filter(array_map('trim', explode(',', $tags))));
-	}
-
 	/**
 	 * Make the source file what a source file REALLY is: a body written by the pull.
 	 *
