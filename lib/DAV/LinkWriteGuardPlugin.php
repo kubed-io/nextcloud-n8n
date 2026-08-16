@@ -12,6 +12,8 @@ namespace OCA\N8nSync\DAV;
 use OCA\DAV\Connector\Sabre\File as DavFile;
 use OCA\N8nSync\AppInfo\Application;
 use OCA\N8nSync\Service\FilenameCodec;
+use OCA\N8nSync\Service\Mapping;
+use OCA\N8nSync\Service\MappingService;
 use OCA\N8nSync\Service\SyncNotifier;
 use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\IUserSession;
@@ -50,6 +52,7 @@ use Sabre\DAV\ServerPlugin;
 final class LinkWriteGuardPlugin extends ServerPlugin {
 	public function __construct(
 		private WorkflowMetadata $metadata,
+		private MappingService $mappings,
 		private SyncNotifier $notifier,
 		private IUserSession $userSession,
 		private LoggerInterface $logger,
@@ -72,6 +75,113 @@ final class LinkWriteGuardPlugin extends ServerPlugin {
 		// failure with nothing in it. Sabre's `beforeUnbind` is where a refusal can still
 		// say why.
 		$server->on('beforeUnbind', [$this, 'beforeUnbind'], 10);
+		// COPY IS NEITHER A WRITE NOR AN UNBIND, so neither hook above sees it, and the
+		// typed `BeforeNodeCopiedEvent` is no help either: aborting it stops the copy but
+		// Sabre still answers 201, so the user is told it worked and no file appears.
+		// Measured in a pod. `beforeBind` fires for the DESTINATION path of anything that
+		// creates a node, which is where a refusal can still be a 403 with a reason.
+		$server->on('beforeBind', [$this, 'beforeBind'], 10);
+	}
+
+	/**
+	 * Refuse a COPY that involves a link, in either direction, with a message.
+	 *
+	 * ## TWO REFUSALS, ONE HOOK, BECAUSE A COPY HAS TWO ENDS
+	 *
+	 * **A link is not copyable.** It is a read-only projection of a workflow that lives
+	 * in n8n; duplicating the pointer does not duplicate anything, it just makes a second
+	 * file claiming the same workflow. The same reasoning already refuses editing one
+	 * ({@see beforeWriteContent}) and deleting one ({@see beforeUnbind}) — copy was the
+	 * hole left in a rule the other two state.
+	 *
+	 * **A link mapping is not a destination.** Its folder is filled from the mapping's
+	 * tag in n8n and from nothing else, so a file put there by hand is at best ignored and
+	 * at worst minted as a workflow the tag does not select — which the next pull would
+	 * then delete, taking the copy with it.
+	 *
+	 * ## FAILING OPEN IS THE RULE HERE, AS EVERYWHERE IN THIS PLUGIN
+	 *
+	 * Every lookup that cannot answer leaves the copy alone. A guard that blocks on doubt
+	 * turns a missing mapping or an unreadable node into a user who cannot copy their own
+	 * files, which is worse than the thing being guarded against.
+	 */
+	public function beforeBind(string $path): bool {
+		$request = $this->server?->httpRequest;
+		if ($request === null || strtoupper($request->getMethod()) !== 'COPY') {
+			return true; // PUT, MKCOL, MOVE — all have their own rules elsewhere
+		}
+
+		$this->refuseIfSourceIsALink($request->getPath());
+		$this->refuseIfDestinationIsALinkMapping($path);
+		return true;
+	}
+
+	/** The source of the COPY — the path the request was made against. */
+	private function refuseIfSourceIsALink(string $source): void {
+		try {
+			$node = $this->server?->tree->getNodeForPath($source);
+		} catch (\Throwable) {
+			return;
+		}
+		if (!$node instanceof DavFile || !FilenameCodec::isWorkflowName($node->getName())) {
+			return;
+		}
+		try {
+			$managed = $this->metadata->read($node->getId());
+		} catch (\Throwable) {
+			return;
+		}
+		if (!$managed?->isLink()) {
+			return;
+		}
+
+		$name = $node->getName();
+		$this->logger->warning('n8n_sync: refused a WebDAV copy of a link-mode workflow file', [
+			'app' => Application::APP_ID,
+			'fileId' => $node->getId(),
+			'file' => $name,
+		]);
+		throw new Forbidden(
+			'“' . $name . '” is a linked n8n workflow — only a pointer to a workflow that lives in n8n, '
+			. 'so there is nothing here to copy. Duplicate the workflow in n8n instead, and it will '
+			. 'appear here on the next sync.',
+		);
+	}
+
+	/**
+	 * The destination the copy is binding to. The node does not exist yet, so the
+	 * mapping is resolved from the PATH — built the way the rest of the app spells an
+	 * internal path (`/<uid>/files/<relative>`), which is what
+	 * {@see MappingService::resolveForPath} is given everywhere else.
+	 */
+	private function refuseIfDestinationIsALinkMapping(string $path): void {
+		$uid = $this->userSession->getUser()?->getUID() ?? '';
+		if ($uid === '') {
+			return;
+		}
+		$relative = preg_replace('#^files/[^/]+/#', '', ltrim($path, '/'));
+		if (!is_string($relative) || $relative === '') {
+			return;
+		}
+		try {
+			$mapping = $this->mappings->resolveForPath('/' . $uid . '/files/' . $relative);
+		} catch (\Throwable) {
+			return;
+		}
+		if ($mapping === null || $mapping->mode !== Mapping::MODE_LINK) {
+			return;
+		}
+
+		$this->logger->warning('n8n_sync: refused a WebDAV copy into a link mapping', [
+			'app' => Application::APP_ID,
+			'path' => $relative,
+			'mapping' => $mapping->id,
+		]);
+		throw new Forbidden(
+			'“' . $mapping->teamFolder . '” mirrors an n8n tag in link mode, so its contents come from n8n '
+			. 'and files can’t be added here. Tag the workflow in n8n instead, or switch the mapping '
+			. 'to sync mode to author workflows in Nextcloud.',
+		);
 	}
 
 	/**

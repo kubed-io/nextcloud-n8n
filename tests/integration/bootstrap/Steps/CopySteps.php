@@ -23,6 +23,11 @@ trait CopySteps {
 	/** The original's full DAV metadata, read before the copy — the "unchanged" baseline. */
 	private array $copyOriginalBefore = [];
 
+	/** The HTTP status of a copy the scenario expected to be refused. */
+	private int $copyAttemptStatus = 0;
+	/** What the destination folder held before that attempt. @var list<string> */
+	private array $copyAttemptBefore = [];
+
 	/**
 	 * A workflow file in a NAMED folder, whatever that folder happens to be.
 	 *
@@ -89,6 +94,49 @@ trait CopySteps {
 		$this->currentFolder = $folder;
 		$this->settleCopy();
 		$this->captureCopy($this->theOneNewWorkflowFileIn($folder, $before));
+	}
+
+	/**
+	 * The copy the app is expected to REFUSE — so this one does not assert success.
+	 *
+	 * `davCopy` insists on 201/204 and would fail here with "COPY returned 403" as
+	 * though the block were the bug. A refusal is the behaviour under test, so the
+	 * status is captured and judged by the Then, exactly as `move.feature` does for
+	 * `I try to move`.
+	 *
+	 * @When I try to copy the file into :folder
+	 */
+	public function iTryToCopyTheFileInto(string $folder): void {
+		$this->davMkdir($folder);
+		$this->copyAttemptBefore = $this->davListWorkflowFiles($folder);
+		$dest = $this->ncBaseUrl . '/remote.php/dav/files/' . rawurlencode($this->ncUser) . '/'
+			. $this->davEncode($this->filesClientCopyName($folder, basename($this->currentFilePath)));
+		$res = $this->davClient()->request('COPY', $this->davEncode($this->currentFilePath), [
+			'headers' => ['Destination' => $dest, 'Overwrite' => 'F'],
+		]);
+		$this->copyAttemptStatus = $res->getStatusCode();
+	}
+
+	/** @Then the copy is refused with a message */
+	public function theCopyIsRefusedWithAMessage(): void {
+		Assert::assertNotContains(
+			$this->copyAttemptStatus,
+			[201, 204],
+			"the copy was allowed (HTTP {$this->copyAttemptStatus}) but should have been refused",
+		);
+	}
+
+	/**
+	 * NOTHING ARRIVED — compared against what the folder held BEFORE the attempt, not
+	 * against a name this step guessed. A refusal that still left a file behind is the
+	 * failure worth catching, and it would not necessarily be called what we expected.
+	 *
+	 * @Then no file is added to :folder
+	 */
+	public function noFileIsAddedTo(string $folder): void {
+		$now = $this->davListWorkflowFiles($folder);
+		$added = array_values(array_diff($now, $this->copyAttemptBefore));
+		Assert::assertSame([], $added, "the refusal still left " . implode(', ', $added) . " in '$folder'");
 	}
 
 	/**

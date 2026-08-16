@@ -41,6 +41,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Fixed
 
 - Copying a workflow file in a mapped folder makes the new workflow in n8n again; any workflow with a node was rejected, leaving an untracked file beside the original.
+- Copying a linked workflow file, or copying anything into a link-mode folder, is refused with a message instead of quietly making a file nothing will keep.
 - Saving an edit to a workflow file reaches n8n again — the same rejected body shape blocked the writeback.
 - The scheduled sync now actually keeps to its interval; it was pushing itself to the back of Nextcloud's job queue on every request, so a mapped folder could take twenty minutes to see a change.
 - Emptying a Team Folder's trash now deletes the workflow in n8n; only the home trash announced a purge, so it was left in the archive for good.
