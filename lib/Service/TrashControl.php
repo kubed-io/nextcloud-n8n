@@ -9,14 +9,23 @@ declare(strict_types=1);
 
 namespace OCA\N8nSync\Service;
 
+use OCA\Files_Trashbin\Trash\ITrashItem;
 use OCA\Files_Trashbin\Trash\ITrashManager;
 use OCA\N8nSync\AppInfo\Application;
+use OCP\Files\FileInfo;
+use OCP\IUser;
+use OCP\IUserManager;
+use OCP\IUserSession;
 use Psr\Container\ContainerInterface;
 use Psr\Log\LoggerInterface;
 
 /**
- * Run a delete that must NOT be recoverable — the one gesture in this app where the
- * Nextcloud trash is the wrong answer.
+ * Every conversation this app has with the Nextcloud trash: making a delete permanent,
+ * reading what is in there, and destroying one entry.
+ *
+ * ## MAKING A DELETE PERMANENT
+ *
+ * The one gesture in this app where the Nextcloud trash is the wrong answer.
  *
  * A `link` file is a read-only projection of a workflow. When the workflow leaves the
  * mapping's tag — archived in n8n, or untagged there — the pointer stops meaning
@@ -44,10 +53,27 @@ use Psr\Log\LoggerInterface;
  * not OCP — a constructor dependency would make this app fail to boot on an instance
  * without it. When it is absent there is no trash to pause and `delete()` is already
  * permanent, so the fallback is simply to run the callback.
+ *
+ * ## THE TRASH APP'S TYPES STOP HERE
+ *
+ * {@see listTrashed} and the two operations it hands back are the reading half, used by
+ * {@see TrashReconcileService} to reap mirrors whose workflow no longer exists and to
+ * bring back the ones whose workflow came out of the archive. They answer in
+ * {@see TrashedFile}, this app's own shape, for the reason above: a signature naming
+ * `ITrashItem` is a file the unit suite cannot load and psalm cannot resolve. One class
+ * pays that cost; everything downstream is ordinary code.
+ *
+ * Both halves are also **backend-agnostic in the same way and for the same reason** —
+ * `ITrashManager` aggregates every registered backend, so a Team Folder's trash is
+ * listed and purged exactly like a user's home. That is not a nicety here: Team Folders
+ * are what this app's mappings actually use, and every trash bug this app has had came
+ * from reaching for a home-storage-only mechanism.
  */
 final class TrashControl {
 	public function __construct(
 		private ContainerInterface $container,
+		private IUserManager $userManager,
+		private IUserSession $userSession,
 		private LoggerInterface $logger,
 	) {
 	}
@@ -74,6 +100,122 @@ final class TrashControl {
 			return $fn();
 		} finally {
 			$manager->resumeTrash();
+		}
+	}
+
+	/**
+	 * Every file in the root of $uid's trash — their home trash AND the trash of every
+	 * Team Folder they can see, because `ITrashManager::listTrashRoot()` folds in each
+	 * registered backend.
+	 *
+	 * ROOT ONLY, DELIBERATELY. A file trashed on its own is a root item; one that went
+	 * in as part of a deleted FOLDER is nested inside it, and this does not recurse
+	 * into those. Descending would mean destroying single files out of the middle of a
+	 * folder the user trashed as a unit, leaving them a restore that silently comes
+	 * back incomplete. A folder is restored or purged whole, and its contents settle
+	 * on the pull that follows.
+	 *
+	 * Cost is one query per backend — a directory listing of `files_trashbin/files`
+	 * for the home, one indexed lookup for the Team Folders — not one per entry. The
+	 * caller filters the result by name and metadata before spending anything on it.
+	 *
+	 * Answers `[]` for an unknown user, or when there is no trash app at all: an
+	 * instance without `files_trashbin` cannot have a trashed mirror to reap.
+	 *
+	 * @return list<TrashedFile>
+	 */
+	public function listTrashed(string $uid): array {
+		$manager = $this->trashManager();
+		if ($manager === null) {
+			return [];
+		}
+		$user = $this->userManager->get($uid);
+		if ($user === null) {
+			return [];
+		}
+
+		try {
+			$items = $manager->listTrashRoot($user);
+		} catch (\Throwable $e) {
+			// A trash we cannot read is not a reason to fail the pull that asked. The
+			// reconcile simply finds nothing this time round and runs again next tick.
+			$this->logger->warning('n8n_sync: could not list the trash', [
+				'app' => Application::APP_ID,
+				'user' => $uid,
+				'exception' => $e,
+			]);
+			return [];
+		}
+
+		$out = [];
+		foreach ($items as $item) {
+			if (!$item instanceof ITrashItem || $item->getType() !== FileInfo::TYPE_FILE) {
+				continue;
+			}
+			// `FileInfo::getId()` is `int|null`. Without an id there is no metadata to
+			// read, so there is no way to know whether this is one of ours — and a file
+			// this app cannot identify is never a file it may destroy.
+			$fileId = $item->getId();
+			if ($fileId === null) {
+				continue;
+			}
+			$out[] = new TrashedFile(
+				$fileId,
+				// The ORIGINAL name. `getName()` answers the trash's own spelling, which
+				// carries the deletion timestamp AFTER the extension — the exact shape
+				// that made `str_ends_with($name, '.n8n')` false for every trashed file
+				// and left the purge step dead for a whole release.
+				basename($item->getOriginalLocation()),
+				function () use ($manager, $item): void {
+					$manager->removeItem($item);
+				},
+				function () use ($manager, $item, $user): void {
+					// AS THE ITEM'S OWNER, unlike the purge beside it — see {@see asUser}.
+					$this->asUser($user, static function () use ($manager, $item): void {
+						$manager->restoreItem($item);
+					});
+				},
+			);
+		}
+		return $out;
+	}
+
+	/**
+	 * Run $fn with $user as the active user, then put back whoever was there.
+	 *
+	 * ## THE HOME TRASH RESTORES WHOEVER IS LOGGED IN, NOT WHOEVER YOU ASK ABOUT
+	 *
+	 * `Trashbin::restore()` takes no user: it reads `OC_User::getUser()` — which is the
+	 * SESSION's `user_id` — and builds its `View` on that. A pull has no session, so the
+	 * call threw `Tried to restore a file while not logged in` and the mirror of an
+	 * unarchived workflow stayed in the trash. Found in CI, in the app's own log, because
+	 * the failure was caught and logged rather than swallowed.
+	 *
+	 * `IUserSession::setUser()` is the public seam for this and it writes exactly that
+	 * key. The previous user is restored in `finally`, so an inline pull triggered from
+	 * the admin's browser ends the request with the session it began with.
+	 *
+	 * ## ONLY THE RESTORE NEEDS IT
+	 *
+	 * The purge does not, and is deliberately left alone: `Trashbin::delete()` is passed
+	 * the uid explicitly, and groupfolders' backend reads `$item->getUser()` for both
+	 * operations. Proven rather than assumed — the purge worked in the same CI run that
+	 * caught this. Mutating the session where it is not needed would be a bigger blast
+	 * radius for no gain.
+	 *
+	 * `setupFS` comes along because the `View` needs the user's mounts, and it is the
+	 * same call {@see TeamFolderService::getWritableFolder} already makes for the actor
+	 * on every pull — this leaves the filesystem no more re-pointed than the pull that
+	 * carried it already did.
+	 */
+	private function asUser(IUser $user, callable $fn): void {
+		$previous = $this->userSession->getUser();
+		$this->userSession->setUser($user);
+		\OC_Util::setupFS($user->getUID());
+		try {
+			$fn();
+		} finally {
+			$this->userSession->setUser($previous);
 		}
 	}
 

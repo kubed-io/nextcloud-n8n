@@ -813,6 +813,23 @@ the end state it wanted is the end state that exists.
 The n8n-origin twin of a restore. The sync is how the news arrives, not the
 behaviour, so it is folded into the gesture.
 
+**The pull has to be told to look in the trash, because it never had to before.**
+Unarchiving puts the workflow back in the tag listing, and the pull then finds no
+mirror in the mapped folder — the mirror is in the trash, which is where archiving
+put it. Its only other move is to write a NEW file, so the user unarchives one
+workflow and ends up with a fresh file in the folder and their original in the
+trash, both carrying the same id. So `writeWorkflow` asks the trash before it
+mints anything, and restores the entry instead.
+
+**The end state is both halves: back in the folder, AND gone from the trash.**
+This scenario used to end `and there is exactly one file for that workflow` — a
+step no feature file had ever run, because all three of its uses were `@todo` or
+`@unbuilt`, and one that would not have caught the bug anyway: the wrong outcome
+also puts exactly one file in the folder, since the new file simply takes the name
+the trashed one left free. What it misses is the trash, where the original is
+still sitting. So the scenario says where the file is and where it is not, which
+is all a user can see and all this needs to be.
+
 ### An unmapped file is just a file
 
 UNMAPPED MEANS n8n IS NOT INVOLVED. Not "involved a bit less", not "involved for
@@ -837,24 +854,47 @@ THE WAY BACK IS THE MOVE, and it is the only way: moving the file into a mapped
 folder unarchives its workflow and re-adopts it (`move.feature`). One gesture
 restores the relationship, and nothing else pretends to.
 
-### A workflow deleted in n8n leaves the trashed file alone
+### A workflow deleted in n8n purges its trashed file
 
-A PURGE IN n8n DOES NOT PURGE THE NEXTCLOUD TRASH, and the reason is the one case
-that matters: once n8n has destroyed the workflow, the file in the Nextcloud trash
-is the LAST COPY OF IT IN EXISTENCE. Reaching in to delete that, on a schedule,
-unprompted, is the single most destructive thing this app could do.
+A mirror belongs in the Nextcloud trash only while there is a workflow in n8n for
+it to be a mirror OF. Delete the workflow out of n8n's archive and the trash entry
+stops meaning anything: restoring it cannot unarchive what does not exist, so the
+restore mints a NEW workflow instead — a create wearing an undo's clothes. So the
+purge is mirrored like every other gesture in this lifecycle, and the trash is
+finally symmetrical in both directions.
 
-"A purge is a purge" is the tempting symmetry and it is wrong here. The penpot
-sibling settled this first and states it as a rule about the reconciler's field
-of view: it walks the mapped folder's directory listing, so a mirror already in
-the trash is not merely spared — it is NOT SEEN AT ALL. A whole class of question
-("both trashes hold it and then the remote purges — now what?") stops existing,
-because nothing was looking.
+The rule in one line: **a workflow file belongs in the trash only while a matching
+workflow sits in n8n's archive.** Not in the archive and not back in its original
+spot means it was purged, and the Nextcloud trash is cleaned to match.
 
-THE PRICE IS NAMED THERE TOO: a workflow that comes back while its old mirror
-sits in the trash gets a NEW file beside the trashed one, because the pull cannot
-re-adopt what it cannot see. That is the trade — a duplicate you can delete,
-versus a deletion you cannot undo.
+**This reverses the rule that used to sit here, and the old one was not silly.**
+It said a purge in n8n must NOT purge the Nextcloud trash, because once n8n has
+destroyed the workflow the trashed file is the LAST COPY OF IT IN EXISTENCE, and
+reaching in to delete that — on a schedule, unprompted — is the most destructive
+thing this app could do. The penpot sibling had settled it first, as a rule about
+the reconciler's field of view: the pull walks the mapped folder's listing, so a
+mirror already in the trash was not merely spared, it was NOT SEEN AT ALL, and a
+whole class of question stopped existing because nothing was looking.
+
+That argument is right about the stakes and wrong about the gesture. Removing a
+workflow from n8n's archive is not something anyone does by accident on a
+schedule — it is the second, deliberate half of a two-step delete, by a user who
+already archived it once. It is the same gesture Nextcloud spells "empty the
+trash", and this app has always answered that one by destroying the workflow.
+Refusing to answer it in the other direction was not caution, it was asymmetry.
+Both siblings have since made the same cut.
+
+What survives from the old rule is its actual content: **never guess.** The app
+purges only what it can PROVE is gone — an explicit 404 from n8n and nothing
+else. Absent from the tag listing is not proof (a workflow that merely lost the
+tag still exists), an unreachable n8n is not proof, and a 500 is not proof. Every
+uncertain answer leaves the entry alone, to be asked about again next tick. The
+old rule bought safety by never looking; this one buys it by looking carefully,
+which also fixes the price the old one quietly paid — a workflow coming back while
+its old mirror sat unseen in the trash got a duplicate file beside it.
+
+`TrashReconcileService` holds the decision and the reasoning; its unit test is
+one purge case and eight ways to be spared one, which is the right ratio.
 
 ### Moving a duplicate in mints a brand-new workflow
 
@@ -912,11 +952,30 @@ silently re-adopting something.
 
 A file can sit in the trash for weeks, and n8n does not wait. Three things can
 have happened by the time it comes back: the workflow was deleted, it was
-restored by someone else, or nothing. The first is a KNOWN GAP — see
-`DeleteService::restore`, which treats a 404 as success, so the file returns
-carrying a dead id with nothing created. `MotionService::moveIn` already handles
-the identical situation correctly, which is why the scenario is `@unbuilt` rather
-than speculative: the fix is a known shape.
+restored by someone else, or nothing.
+
+### Restoring a file whose workflow was deleted in n8n gives it a new one
+
+`DeleteService::restore` used to treat a 404 as success, like every other step in
+that class — and every other step is trying to REMOVE something, where "it is
+already gone" finishes the job. A restore is trying to bring something back, so
+the same 404 handed the user a file in a mapped folder whose workflow does not
+exist: silently detached, nothing created, nothing wrong on screen. It now catches
+its own 404 and creates the workflow from the bytes the file still holds, which is
+the move `MotionService::moveIn` has always made for the identical situation.
+
+**This scenario is a race, and the purge mirror is what makes it one.** Deleting a
+workflow out of n8n's archive is a purge, and the trash entry is now purged to
+match — so the ordinary end of this story is that the file is gone and there is
+nothing left to restore. This scenario is the window before the pull notices: the
+user gets there first, off a trash listing they already had open. Both behaviours
+are correct and they do not contradict each other, because a restore happens on a
+gesture and the mirror happens on a tick.
+
+It is also the case that makes the create-fallback non-negotiable rather than
+tidy. Without it, winning that race leaves a file in a mapped folder with a dead
+id — the exact state reported from live use for the archive bug, and the state the
+app then acts on by trashing the file again on the next pull.
 
 ## workflows/purge
 

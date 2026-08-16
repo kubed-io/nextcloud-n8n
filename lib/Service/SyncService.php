@@ -56,6 +56,7 @@ final class SyncService {
 		private IAppConfig $config,
 		private TagSyncService $tagSync,
 		private TrashControl $trash,
+		private TrashReconcileService $trashReconcile,
 		private MirrorTimes $times,
 		private LoggerInterface $logger,
 	) {
@@ -119,20 +120,26 @@ final class SyncService {
 	/**
 	 * Pull every mapping in order. Used by the bulk "Sync from n8n" button.
 	 *
-	 * @return array{processed:int, succeeded:int, failed:int, unchanged:int, status:string, message:?string}
+	 * EVERY COUNTER `pullOne` RETURNS IS ADDED UP HERE. This used to aggregate four of
+	 * the five and drop `pruned` on the floor, so a bulk sync that moved three mirrors
+	 * to the trash reported `unchanged: 11` and mentioned the removals nowhere — which
+	 * is how a working archive-to-trash fix came to look like a broken one for an
+	 * afternoon. A counter that is not summed is worse than a counter that does not
+	 * exist: it reads as a zero.
+	 *
+	 * @return array{processed:int, succeeded:int, failed:int, pruned:int, purged:int, unchanged:int, status:string, message:?string}
 	 */
 	public function pullAll(): array {
 		// Backend availability is now per-mapping (Team Folder vs admin-owned),
 		// checked in pullOne.
-		$total = ['processed' => 0, 'succeeded' => 0, 'failed' => 0, 'unchanged' => 0];
+		$total = ['processed' => 0, 'succeeded' => 0, 'failed' => 0, 'pruned' => 0, 'purged' => 0, 'unchanged' => 0];
 		$errors = [];
 		foreach ($this->mappings->list() as $mapping) {
 			try {
 				$res = $this->pullOne($mapping);
-				$total['processed'] += $res['processed'];
-				$total['succeeded'] += $res['succeeded'];
-				$total['failed'] += $res['failed'];
-				$total['unchanged'] += $res['unchanged'];
+				foreach (array_keys($total) as $key) {
+					$total[$key] += $res[$key];
+				}
 			} catch (\Throwable $e) {
 				$errors[] = $mapping->teamFolder . ': ' . $e->getMessage();
 				$total['failed']++;
@@ -142,11 +149,7 @@ final class SyncService {
 				]);
 			}
 		}
-		return [
-			'processed' => $total['processed'],
-			'succeeded' => $total['succeeded'],
-			'failed' => $total['failed'],
-			'unchanged' => $total['unchanged'],
+		return $total + [
 			'status' => $errors === [] ? 'ok' : 'error',
 			'message' => $errors === [] ? null : implode('; ', $errors),
 		];
@@ -162,11 +165,21 @@ final class SyncService {
 	 * deletes only the local mirror — the workflow in n8n merely lost this tag —
 	 * so it runs inside the SyncGuard this method already holds.
 	 *
+	 * It reconciles the TRASH too, and that is a separate pass with a separate rule:
+	 * a mirror already in the Nextcloud trash is destroyed once its workflow stops
+	 * existing in n8n at all. {@see TrashReconcileService} owns that decision and the
+	 * reasoning for reversing the rule that used to say otherwise.
+	 *
 	 * `unchanged` counts the succeeded files whose body already matched n8n and so
 	 * were NOT rewritten — a subset of `succeeded`, not a separate outcome. On a
 	 * quiet folder it equals `succeeded`, which is what "nothing to do" looks like.
 	 *
-	 * @return array{processed:int, succeeded:int, failed:int, pruned:int, unchanged:int}
+	 * `pruned` and `purged` are the two removals, and they are different events worth
+	 * different words: `pruned` is a live mirror moved to the trash because its workflow
+	 * left the mapping, `purged` is a TRASHED mirror destroyed because its workflow
+	 * stopped existing ({@see TrashReconcileService}). Neither is a subset of anything.
+	 *
+	 * @return array{processed:int, succeeded:int, failed:int, pruned:int, purged:int, unchanged:int}
 	 */
 	public function pullOne(Mapping $mapping): array {
 		// NO "SKIP A MAPPING WITH NO GROUPS" GUARD ANY MORE. It read
@@ -180,7 +193,7 @@ final class SyncService {
 				'app' => Application::APP_ID,
 				'teamFolder' => $mapping->teamFolder,
 			]);
-			return ['processed' => 0, 'succeeded' => 0, 'failed' => 0, 'pruned' => 0, 'unchanged' => 0];
+			return ['processed' => 0, 'succeeded' => 0, 'failed' => 0, 'pruned' => 0, 'purged' => 0, 'unchanged' => 0];
 		}
 
 		// Guard our own writes: writeWorkflow's putContent fires NodeWrittenEvent,
@@ -198,6 +211,12 @@ final class SyncService {
 			$existingById = $this->indexByN8nId($targetFolder, $mapping);
 			$nameCounts = [];
 			$seenIds = [];
+			// EVERY id the tag listing returned, archived ones included — which is what
+			// makes it a proof of EXISTENCE rather than of liveness, and therefore what
+			// {@see TrashReconcileService} needs. `$seenIds` cannot serve: it is
+			// deliberately missing the archived ids, because its job is to decide what to
+			// prune, and an archived workflow's mirror should be pruned.
+			$knownIds = [];
 
 			foreach ($this->n8n->eachWorkflow([$mapping->n8nTag]) as $workflow) {
 				// AN ARCHIVED WORKFLOW IS NOT A LIVE ONE, and n8n keeps returning it: the
@@ -211,6 +230,7 @@ final class SyncService {
 				// the same path a workflow that lost the tag already takes. Archiving in
 				// n8n and trashing in Nextcloud become the same gesture seen from two
 				// sides, which is what `delete.feature` says they are.
+				$knownIds[(string)$workflow['id']] = true;
 				if (!empty($workflow['isArchived'])) {
 					continue;
 				}
@@ -233,12 +253,18 @@ final class SyncService {
 			}
 
 			$pruned = $this->pruneStale($existingById, $seenIds, $mapping);
+			// AFTER the prune, not before. The prune is what puts an archived workflow's
+			// mirror into the trash, and the reconcile then has to see it there and leave
+			// it — its id is in $knownIds, so it does. Running the two in this order is
+			// what proves that on every single pull rather than only when a test says so.
+			$purged = $this->trashReconcile->reap($mapping, $knownIds);
 
 			return [
 				'processed' => $processed,
 				'succeeded' => $succeeded,
 				'failed' => $failed,
 				'pruned' => $pruned,
+				'purged' => $purged,
 				'unchanged' => $unchanged,
 			];
 		} finally {
@@ -485,7 +511,14 @@ final class SyncService {
 			? N8nWorkflowBody::encodeReference($workflow, $this->config->getValueString(Application::APP_ID, 'n8n_url', ''))
 			: N8nWorkflowBody::encodeSync($workflow);
 
-		$existing = $existingById[$id] ?? null;
+		// NO MIRROR IN THE FOLDER IS NOT THE SAME AS NO MIRROR. A workflow that was
+		// archived had its mirror moved to the trash, so the moment it is unarchived it
+		// reappears in the tag listing with nothing here to match — and writing a fresh
+		// file then leaves the user with a new one in the folder and their original in
+		// the trash, both claiming the same workflow. Bringing the trashed one back makes
+		// the file that returns the SAME file, which is what makes unarchiving the undo
+		// of archiving rather than something that merely looks like it.
+		$existing = $existingById[$id] ?? $this->trashReconcile->restoreMirror($mapping, $id);
 		if ($existing instanceof \OCP\Files\File) {
 			// THE SUFFIX IS PART OF THE NAME THIS FILE IS ENTITLED TO KEEP. n8n permits
 			// two workflows to share a name and Nextcloud does not permit two files to

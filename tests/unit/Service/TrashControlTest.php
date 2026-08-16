@@ -10,13 +10,16 @@ declare(strict_types=1);
 namespace OCA\N8nSync\Tests\Unit\Service;
 
 use OCA\N8nSync\Service\TrashControl;
+use OCP\IUserManager;
+use OCP\IUserSession;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Psr\Container\ContainerInterface;
 use Psr\Log\NullLogger;
 
 /**
- * {@see TrashControl} — the only place this app makes a delete unrecoverable.
+ * {@see TrashControl} — every conversation this app has with the Nextcloud trash, and
+ * the only place it makes a delete unrecoverable.
  *
  * The pause is PROCESS-WIDE while it is held, so the failure that matters is not "the
  * link was trashed anyway" (visible, annoying) but "the trash stayed paused", which is
@@ -30,7 +33,12 @@ use Psr\Log\NullLogger;
 #[CoversClass(TrashControl::class)]
 final class TrashControlTest extends TestCase {
 	public function testTheCallbackRunsAndItsValueComesBack(): void {
-		$control = new TrashControl($this->createStub(ContainerInterface::class), new NullLogger());
+		$control = new TrashControl(
+			$this->createStub(ContainerInterface::class),
+			$this->createStub(IUserManager::class),
+			$this->createStub(IUserSession::class),
+			new NullLogger(),
+		);
 
 		self::assertSame('done', $control->withoutTrash(static fn (): string => 'done'));
 	}
@@ -47,7 +55,7 @@ final class TrashControlTest extends TestCase {
 		// Never consulted: the interface does not exist, so there is nothing to resolve.
 		$container->expects(self::never())->method('get');
 
-		$control = new TrashControl($container, new NullLogger());
+		$control = new TrashControl($container, $this->createStub(IUserManager::class), $this->createStub(IUserSession::class), new NullLogger());
 		$control->withoutTrash(function () use (&$ran): void {
 			$ran = true;
 		});
@@ -72,11 +80,38 @@ final class TrashControlTest extends TestCase {
 		$container = $this->createMock(ContainerInterface::class);
 		$container->method('get')->willThrowException(new \RuntimeException('no such service'));
 
-		$control = new TrashControl($container, new NullLogger());
+		$control = new TrashControl($container, $this->createStub(IUserManager::class), $this->createStub(IUserSession::class), new NullLogger());
 		$control->withoutTrash(function () use (&$ran): void {
 			$ran = true;
 		});
 
 		self::assertTrue($ran);
+	}
+
+	/**
+	 * NOTHING TO LIST IS NOT AN ERROR EITHER, and here the stakes run the other way
+	 * from the pause: {@see TrashReconcileService} destroys what this method returns,
+	 * so the failure to avoid is inventing entries, not missing them. An instance with
+	 * no trash app cannot be holding a trashed mirror, and a uid that resolves to
+	 * nobody has no trash to read — both answer with an empty list rather than
+	 * throwing into the pull that asked.
+	 */
+	public function testWithNoTrashAppThereIsNothingInTheTrash(): void {
+		$container = $this->createMock(ContainerInterface::class);
+		// Never consulted: the interface does not exist, so there is nothing to resolve.
+		$container->expects(self::never())->method('get');
+
+		$control = new TrashControl($container, $this->createStub(IUserManager::class), $this->createStub(IUserSession::class), new NullLogger());
+
+		self::assertSame([], $control->listTrashed('alice'));
+	}
+
+	public function testAnUnknownUserHasNoTrash(): void {
+		$users = $this->createMock(IUserManager::class);
+		$users->method('get')->willReturn(null);
+
+		$control = new TrashControl($this->createStub(ContainerInterface::class), $users, $this->createStub(IUserSession::class), new NullLogger());
+
+		self::assertSame([], $control->listTrashed('nobody'));
 	}
 }

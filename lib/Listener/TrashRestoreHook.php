@@ -51,12 +51,15 @@ use Psr\Log\LoggerInterface;
  * ## BOTH ENTRY POINTS ARE KEPT, ON PURPOSE
  *
  * The typed listener still runs for a home-storage restore, so that case now reaches
- * n8n twice. That is deliberate: unarchiving is idempotent ({@see DeleteService::restore}
- * runs through `callIdempotent`, which treats 404 as success, and unarchiving a live
- * workflow is a no-op), and one redundant call on the backend that already worked is
- * cheaper than betting the working path on a legacy hook firing identically in every
- * Nextcloud version. The Team Folder case has only this hook, which is what the
- * integration scenario pins.
+ * n8n twice. That is deliberate: unarchiving a live workflow is a no-op, and one
+ * redundant call on the backend that already worked is cheaper than betting the
+ * working path on a legacy hook firing identically in every Nextcloud version. The
+ * Team Folder case has only this hook, which is what the integration scenario pins.
+ *
+ * The double call stopped being merely wasteful when {@see DeleteService::restore}
+ * gained its create-fallback — a second CREATE would mint a second workflow. It still
+ * cannot happen, and the reason is written where the create is: both entry points read
+ * the metadata fresh, so whichever runs second sees the id the first one stamped.
  *
  * Failures are logged and swallowed, exactly as the typed listener does: the file is
  * already back, and stranding it because n8n is down would be worse than a workflow
@@ -134,7 +137,7 @@ final class TrashRestoreHook {
 			: null;
 
 		try {
-			$this->deleteService->restore($managed->workflowId, $managed->mode, $mapping);
+			$this->deleteService->restore($node, $managed->workflowId, $managed->mode, $mapping);
 		} catch (\Throwable $e) {
 			$this->logger->warning('n8n_sync restore: n8n-side restore failed; NC file already back', [
 				'app' => Application::APP_ID,

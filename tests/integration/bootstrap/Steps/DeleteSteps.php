@@ -115,6 +115,12 @@ trait DeleteSteps {
 	 * @Given the file is in the Nextcloud trash
 	 */
 	public function theFileIsInTheTrash(): void {
+		// THE ID IT WENT IN WITH, read while the file is still readable. A restore can
+		// MINT a workflow — the old one was deleted in n8n while the file sat here — and
+		// `its own, not the one it arrived with` needs the earlier value to tell that
+		// from an ordinary unarchive. It cannot be read at restore time: by then the path
+		// is empty and `davReadMetadataId` PROPFINDs it, which answers 404, not 207.
+		$this->idArrivedWith = (string)($this->davReadMetadataId($this->currentFilePath) ?? '');
 		$this->iMoveItToTheTrash();
 		Assert::assertNotNull(
 			$this->trashbinPathFor($this->currentFilePath),
@@ -220,9 +226,18 @@ trait DeleteSteps {
 	}
 
 	/**
-	 * NOT IN THE TRASH EITHER, and for a link that is the whole point: it was never
-	 * Nextcloud's to keep, so there is nothing to restore FROM. A trashed link would
-	 * be a pointer to a workflow that is still perfectly fine, sitting in a bin.
+	 * NOTHING OF THIS FILE IS IN THE TRASH, which two very different scenarios need to
+	 * say and which means the same thing in both:
+	 *
+	 *   a pruned LINK never went there — it was never Nextcloud's to keep, so there is
+	 *   nothing to restore FROM, and a trashed pointer would offer a restore for a
+	 *   workflow that is perfectly fine;
+	 *
+	 *   a mirror that came back OUT of the trash when its workflow was unarchived left
+	 *   nothing behind. Paired with `the file is back in`, that is the whole end state,
+	 *   and it is what fails if the pull writes a NEW file instead of restoring the
+	 *   trashed one — the new file satisfies "back in the folder" while the original
+	 *   sits in the trash, still claiming the same workflow.
 	 *
 	 * @Then the file is not in the Nextcloud trash
 	 */
@@ -299,6 +314,18 @@ trait DeleteSteps {
 			'headers' => ['Destination' => $dest],
 		]);
 		$this->assertStatus($res, [201, 204], 'restore from trash');
+
+		// Whatever id the file now carries is the one under test: unchanged after a
+		// plain unarchive, fresh after a create-fallback. Recorded either way so the
+		// "a matching workflow is created" Then looks at the right workflow and the
+		// teardown cleans up a workflow this scenario caused to exist.
+		$id = $this->davReadMetadataId($this->currentFilePath);
+		if ($id !== null && $id !== '') {
+			$this->lastWorkflowId = $id;
+			if (!in_array($id, $this->createdWorkflowIds, true)) {
+				$this->createdWorkflowIds[] = $id;
+			}
+		}
 	}
 
 	/** @Then /^the workflow is archived \(hidden, preserved\) in n8n$/ */
@@ -308,10 +335,47 @@ trait DeleteSteps {
 		Assert::assertTrue((bool)($wf['isArchived'] ?? false), 'workflow is not archived in n8n');
 	}
 
-	/** @Then the workflow is permanently deleted in n8n */
-	public function theWorkflowIsDeletedInN8n(): void {
-		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
-		Assert::assertNull($wf, "workflow {$this->lastWorkflowId} still exists in n8n");
+	/**
+	 * Delete the workflow for good in n8n and let the mirror catch up — the n8n-origin
+	 * PURGE, with the sync folded in exactly as the archive gesture beside it does.
+	 *
+	 * THIS SENTENCE USED TO BE A `@Then` THAT ASSERTED THE DELETE, and no feature file
+	 * ever said it. Behat matches on the text and ignores the keyword, so leaving the
+	 * assertion in place would have made `When the workflow is permanently deleted in
+	 * n8n` quietly assert something nobody had done — a scenario failing on its own
+	 * setup, blaming the app. One sentence, one meaning: here it is the gesture.
+	 *
+	 * @When the workflow is permanently deleted in n8n
+	 */
+	public function permanentlyDeleteTheWorkflowInN8n(): void {
+		$id = (string)$this->lastWorkflowId;
+		Assert::assertNotSame('', $id, 'no workflow under test to delete');
+		$this->n8nDeleteWorkflow($id);
+		Assert::assertNull($this->n8nGetWorkflow($id), "setup: workflow $id survived its own deletion");
+		$this->runMappingSync('pull', $this->currentTag);
+	}
+
+	/**
+	 * DESTROYED, not merely absent. The distinction from `the file is not in the
+	 * Nextcloud trash` beside it is which story ended: that one says a file never went
+	 * to the trash at all (a pruned link had nothing to restore to), this one says a
+	 * file WAS in the trash — its Given put it there — and has since been purged.
+	 *
+	 * The folder is checked too, because "not in the trash" is also true of a file that
+	 * came back out of it. A purge and a restore both empty the trash entry, and only
+	 * one of them is what this scenario claims happened.
+	 *
+	 * @Then the file is gone from the Nextcloud trash
+	 */
+	public function theFileIsGoneFromTheTrash(): void {
+		Assert::assertNull(
+			$this->trashbinPathFor($this->currentFilePath),
+			"the file is still in the Nextcloud trash, but its workflow no longer exists: {$this->currentFilePath}",
+		);
+		Assert::assertFalse(
+			$this->davExists($this->currentFilePath),
+			"the file left the trash by coming BACK to {$this->currentFilePath} — that is a restore, not a purge",
+		);
 	}
 
 	/** @Then the workflow is unarchived in n8n */

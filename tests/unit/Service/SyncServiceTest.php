@@ -23,11 +23,14 @@ use OCA\N8nSync\Service\SyncService;
 use OCA\N8nSync\Service\SyncStatusService;
 use OCA\N8nSync\Service\TagSyncService;
 use OCA\N8nSync\Service\TrashControl;
+use OCA\N8nSync\Service\TrashReconcileService;
 use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\BackgroundJob\IJobList;
 use OCP\Files\File;
 use OCP\Files\Folder;
 use OCP\IAppConfig;
+use OCP\IUserManager;
+use OCP\IUserSession;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 use Psr\Container\ContainerInterface;
@@ -58,6 +61,7 @@ final class SyncServiceTest extends TestCase {
 	private MappingService $mappings;
 	private TagSyncService $tagSync;
 	private TrashControl $trash;
+	private TrashReconcileService $trashReconcile;
 	private SyncGuard $guard;
 	private MirrorTimes $times;
 	private SyncService $service;
@@ -81,7 +85,17 @@ final class SyncServiceTest extends TestCase {
 		// given, and a stub would swallow the `delete()` the link-prune assertion
 		// depends on. Pausing the trash is files_trashbin's business and is covered on
 		// its own in TrashControlTest.
-		$this->trash = new TrashControl($this->createStub(ContainerInterface::class), new NullLogger());
+		$this->trash = new TrashControl(
+			$this->createStub(ContainerInterface::class),
+			$this->createStub(IUserManager::class),
+			$this->createStub(IUserSession::class),
+			new NullLogger(),
+		);
+		// The trash reconcile is a pass of its own with its own rules and its own test
+		// ({@see TrashReconcileServiceTest}); here it is inert so the prune assertions
+		// keep measuring the prune. `reap()` answering 0 is also what a mapping with
+		// nothing trashed really returns, so the report shape stays honest.
+		$this->trashReconcile = $this->createStub(TrashReconcileService::class);
 		// MirrorTimes reaches into the storage/cache stack, so it is mocked here and
 		// covered on its own in MirrorTimesTest — the reconciler only owes the mapping.
 		$this->times = $this->createMock(MirrorTimes::class);
@@ -109,6 +123,7 @@ final class SyncServiceTest extends TestCase {
 			$this->createStub(IAppConfig::class),
 			$this->tagSync,
 			$this->trash,
+			$this->trashReconcile,
 			$this->times,
 			new NullLogger(),
 		);

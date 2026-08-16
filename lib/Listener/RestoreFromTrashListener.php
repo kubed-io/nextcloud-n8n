@@ -70,7 +70,7 @@ final class RestoreFromTrashListener implements IEventListener {
 			: null;
 
 		try {
-			$this->deleteService->restore($id, $mode, $mapping);
+			$this->deleteService->restore($target, $id, $mode, $mapping);
 		} catch (\Throwable $e) {
 			// Log + swallow: see class docblock for rationale.
 			$this->logger->warning('n8n_sync restore: n8n-side restore failed; NC file already back', [

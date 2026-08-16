@@ -39,12 +39,11 @@ Feature: Emptying the trash is the only permanent delete
     When I purge it from the trash
     Then the workflow in n8n is "archived, hidden but preserved"
 
-  # notes: ../AGENTS.md#a-workflow-deleted-in-n8n-leaves-the-trashed-file-alone
-  @n8n @in-n8n @ui @occ @unbuilt
-  Scenario: A workflow deleted in n8n leaves the trashed file alone
+  # notes: ../AGENTS.md#a-workflow-deleted-in-n8n-purges-its-trashed-file
+  @n8n @in-n8n @ui @occ
+  Scenario: A workflow deleted in n8n purges its trashed file
     Given a workflow file in "Automations"
     And the file is in the Nextcloud trash
     And the workflow is in n8n's archive
     When the workflow is permanently deleted in n8n
-    Then the file is still in the Nextcloud trash
-    And no longer exists in n8n
+    Then the file is gone from the Nextcloud trash

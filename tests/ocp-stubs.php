@@ -116,6 +116,16 @@ namespace OCP\Files {
 			 * @return list<Node>
 			 */
 			public function search($query);
+
+			/**
+			 * The node with this file id, or null. How
+			 * {@see \OCA\N8nSync\Service\TrashReconcileService} finds a mirror again
+			 * after restoring it from the trash: the id survives the trip, and the
+			 * NAME may not (something else can have taken the original one meanwhile).
+			 *
+			 * Typed, unlike `search()` — core types this one (NC 29+).
+			 */
+			public function getFirstNodeById(int $id): ?Node;
 		}
 	}
 	// The storage root — declared after Folder, which it extends. The extension
@@ -188,11 +198,15 @@ namespace OCP {
 		}
 	}
 	// {@see \OCA\N8nSync\Migration\MigrateFileExtension} walks every seen user, because
-	// a workflow file outside any mapping still has to be migrated. Signature mirrors
-	// core (`lib/public/IUserManager.php`), which declares no return type.
+	// a workflow file outside any mapping still has to be migrated, and
+	// {@see \OCA\N8nSync\Service\TrashControl} resolves the sync actor to a user before
+	// it can read their trash. Signatures mirror core (`lib/public/IUserManager.php`),
+	// which declares no return type on either.
 	if (!interface_exists(IUserManager::class, false)) {
 		interface IUserManager {
 			public function callForSeenUsers(\Closure $callback);
+
+			public function get($uid);
 		}
 	}
 }

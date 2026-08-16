@@ -59,7 +59,8 @@ Feature: Restoring a workflow file from the trash
     # ── RULE: the world may have moved while the file sat in the trash ─────────
     # notes: ../AGENTS.md#the-world-may-have-moved-while-the-file-sat-in-the-trash
 
-  @user @in-nextcloud @gesture @ui @unbuilt
+  # notes: ../AGENTS.md#restoring-a-file-whose-workflow-was-deleted-in-n8n-gives-it-a-new-one
+  @user @in-nextcloud @gesture @ui
   Scenario: Restoring a file whose workflow was deleted in n8n gives it a new one
     Given a workflow file in "Automations"
     And the file is in the Nextcloud trash
@@ -94,11 +95,11 @@ Feature: Restoring a workflow file from the trash
       | n8n_mode    | the mapping's mode |
 
   # notes: ../AGENTS.md#unarchiving-a-workflow-in-n8n-brings-its-file-back-out-of-the-trash
-  @n8n @in-n8n @ui @occ @unbuilt
+  @n8n @in-n8n @ui @occ
   Scenario: Unarchiving a workflow in n8n brings its file back out of the trash
     Given a workflow file in "Automations"
     And the file is in the Nextcloud trash
     And the workflow is in n8n's archive
     When someone unarchives the workflow in n8n
     Then the file is back in "Automations"
-    And there is exactly one file for that workflow
+    And the file is not in the Nextcloud trash
