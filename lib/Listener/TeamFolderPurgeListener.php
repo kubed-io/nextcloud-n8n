@@ -93,6 +93,8 @@ use Psr\Log\LoggerInterface;
  * left to act on. That matches the rest of this app's trash handling, which is root-only
  * on purpose ({@see \OCA\N8nSync\Service\TrashControl::listTrashed}): a folder is trashed,
  * restored and purged as a unit, and its contents settle on the pull that follows.
+ *
+ * @implements IEventListener<CacheEntryRemovedEvent>
  */
 final class TeamFolderPurgeListener implements IEventListener {
 	/** The home trash, which {@see TrashPurgeHook} already covers on a better signal. */
@@ -142,15 +144,22 @@ final class TeamFolderPurgeListener implements IEventListener {
 		if (!$managed->isSync()) {
 			$this->logger->debug('n8n_sync purge: nothing to delete for a non-sync file', [
 				'app' => Application::APP_ID,
+				'path' => $path,
+				'fileId' => $fileId,
 				'workflowId' => $managed->workflowId,
 				'mode' => $managed->mode,
 			]);
 			return;
 		}
 
-		$this->logger->debug('n8n_sync purge: deleting the workflow of a file purged from a Team Folder trash', [
+		// "a trash the legacy hook cannot see", not "a Team Folder", even though a Team
+		// Folder is the only one in practice: this listener never learns which backend
+		// ran, so naming one in the log would be a guess printed as a fact — and a
+		// diagnostic that guesses is worse than one that says less.
+		$this->logger->debug('n8n_sync purge: deleting the workflow of a file purged from a trash the legacy hook cannot see', [
 			'app' => Application::APP_ID,
 			'path' => $path,
+			'fileId' => $fileId,
 			'workflowId' => $managed->workflowId,
 		]);
 
@@ -164,6 +173,7 @@ final class TeamFolderPurgeListener implements IEventListener {
 			$this->logger->warning('n8n_sync purge: could not delete the workflow in n8n', [
 				'app' => Application::APP_ID,
 				'path' => $path,
+				'fileId' => $fileId,
 				'workflowId' => $managed->workflowId,
 				'exception' => $e,
 			]);
