@@ -192,10 +192,36 @@ final class Application extends App implements IBootstrap {
 		// at `{nc:}metadata-n8n_id` etc.
 		$container->get(WorkflowMetadata::class)->register();
 
-		// Register the scheduled n8n→NC pull (§17.3). IJobList::add is idempotent,
-		// so calling it every boot just ensures the TimedJob exists; the job
-		// self-gates on `schedule_enabled` and reads its interval from app config.
-		$container->get(\OCP\BackgroundJob\IJobList::class)->add(ScheduledPullJob::class);
+		// Register the scheduled n8n→NC pull (§17.3). The job self-gates on
+		// `schedule_enabled` and reads its interval from app config.
+		//
+		// ## `IJobList::add()` IS NOT IDEMPOTENT, AND CALLING IT EVERY BOOT STARVED THE JOB
+		//
+		// This line used to run unconditionally, on the belief — written right here —
+		// that `add()` on an existing job is a no-op. It is not. Core's `JobList::add()`
+		// takes the `else` branch and UPDATES the row:
+		//
+		//     ->set('reserved_at', 0)
+		//     ->set('last_checked', $firstCheck)   // = now
+		//     ->set('last_run', 0)
+		//
+		// `boot()` runs on every request that loads the app, so `last_checked` was
+		// being reset to *now* many times a minute. Cron picks work with
+		// `ORDER BY last_checked ASC` — oldest first — so the job kept being pushed to
+		// the back of its own queue and only ran when the instance happened to go quiet.
+		//
+		// Measured on a live instance set to `5m`: consecutive runs 21 minutes apart,
+		// then 11, while `last_run` sat at 0 permanently and `last_checked` moved every
+		// few seconds. The interval was not being applied to anything. Nothing looked
+		// broken — the pull is correct when it runs — so it read as "sync is just slow",
+		// and the only reliable way to get a workflow mirrored was Sync now.
+		//
+		// `has()` is the guard core itself uses inside `add()`; asking first means the
+		// registration happens once and the row is then left alone.
+		$jobList = $container->get(\OCP\BackgroundJob\IJobList::class);
+		if (!$jobList->has(ScheduledPullJob::class, null)) {
+			$jobList->add(ScheduledPullJob::class);
+		}
 
 		// EMPTYING THE TRASH IS NOT AN EVENT. Nextcloud fires no typed event when a
 		// file is purged from the trash — the trashbin emits the legacy

@@ -356,6 +356,27 @@ trait CreateSteps {
 				continue;
 			}
 
+			// A COPY'S OWN IDENTITY: present, and DIFFERENT from what the ORIGINAL still
+			// carries. The anti-hijack claim in one row, and stronger than either half.
+			//
+			// LIVES HERE RATHER THAN IN `the copy holds:`, where it used to be passed in
+			// as a one-off. The same sentence is now needed by a copy made in Nextcloud
+			// and by a duplicate made in n8n, and this trait's own docblock says why that
+			// matters: one engine, so the two steps cannot drift into two vocabularies.
+			// `copyOriginalBefore` is captured by whichever arrange named the original.
+			if ($expected === "its own, not the original's") {
+				if (($actual ?? '') === '') {
+					throw new \RuntimeException("$path carries no $key — nothing registered it as its own workflow");
+				}
+				$before = (string)($this->copyOriginalBefore[$key] ?? '');
+				if ($actual === $before) {
+					throw new \RuntimeException(
+						"$path inherited the original's $key ('$actual') — a copy must never hijack identity",
+					);
+				}
+				continue;
+			}
+
 			// A MINT, NOT A RESTORE. The file carried an id in and the app decided it was
 			// not usable here — the workflow was hard-deleted in n8n, or a sibling in the
 			// landing folder already tracks it. Both end with a fresh id, and asserting

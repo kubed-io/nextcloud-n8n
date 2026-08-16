@@ -24,10 +24,17 @@ trait RenameSteps {
 	 * every rename here. The Background says what the folder is, so this arrange does
 	 * not restate the mode.
 	 *
+	 * `whose tags are` is the same arrange with labels on it. `copy.feature`'s base
+	 * case needs a file that is BOTH named (so it can spell the collision name it
+	 * expects) and tagged (so it can claim the tags travelled), and those were two
+	 * arranges that could not be used together — which is why the tags were a scenario
+	 * of their own rather than part of the end state they belong to.
+	 *
 	 * @Given a workflow file named :filename in :folder
+	 * @Given a workflow file named :filename in :folder whose tags are :tags
 	 * @Given a workflow file named :filename in a subfolder of :folder
 	 */
-	public function aWorkflowFileNamedIn(string $filename, string $folder): void {
+	public function aWorkflowFileNamedIn(string $filename, string $folder, string $tags = ''): void {
 		if (str_contains((string)func_get_arg(1), 'subfolder')) {
 			$folder .= '/Nested';
 		}
@@ -42,15 +49,11 @@ trait RenameSteps {
 		// arranges one in "Scratch", where there is no id by definition and that is the
 		// arrange rather than a failure. Asserted arrangements fail in the least
 		// informative place there is: the Given, before the behaviour under test has run.
+		$names = self::tagList($tags);
 		if ($this->isMappedFolder($folder)) {
-			$this->putManagedFile($path, $stem);
+			$this->putManagedFile($path, $stem, $names);
 		} else {
-			$this->davPut($path, json_encode([
-				'name' => $stem,
-				'nodes' => [],
-				'connections' => new \stdClass(),
-				'settings' => new \stdClass(),
-			], JSON_THROW_ON_ERROR));
+			$this->davPut($path, json_encode(self::starterWorkflow($stem, $names), JSON_THROW_ON_ERROR));
 			$this->currentFilePath = $path;
 			$this->lastWorkflowId = null;
 		}

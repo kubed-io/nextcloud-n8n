@@ -44,19 +44,54 @@ trait SetupTrait {
 	}
 
 	/** PUT a starter workflow body and capture the n8n id the app stamped. */
-	private function putManagedFile(string $path, string $name): void {
-		$body = json_encode([
-			'name' => $name,
-			'nodes' => [],
-			'connections' => new \stdClass(),
-			'settings' => new \stdClass(),
-		], JSON_THROW_ON_ERROR);
-		$this->davPut($path, $body);
+	/** @param list<string> $tagNames */
+	private function putManagedFile(string $path, string $name, array $tagNames = []): void {
+		$this->davPut($path, json_encode(self::starterWorkflow($name, $tagNames), JSON_THROW_ON_ERROR));
 		$this->currentFilePath = $path;
 		$id = $this->davReadMetadataId($path);
 		Assert::assertNotNull($id, "the file at $path was not stamped with an n8n_id — create-on-land did not run");
 		$this->lastWorkflowId = $id;
 		$this->createdWorkflowIds[] = $id;
+	}
+
+	/**
+	 * The body every arrange writes for a workflow file — ONE definition, so a
+	 * fixture cannot be realistic in one feature and a stub in another.
+	 *
+	 * ## IT HAS A NODE NOW, AND THAT IS THE WHOLE POINT
+	 *
+	 * This used to be `'nodes' => []`. A workflow with no nodes has no
+	 * `nodes/0/parameters`, and `nodes/0/parameters` is the field n8n rejected when a
+	 * real workflow was copied into a mapped folder — so the entire copy feature was
+	 * green while its base case could not work on anything a user would actually make.
+	 * A fixture stripped down far enough stops standing in for the thing it represents,
+	 * and nothing in a green suite says which of those two it is.
+	 *
+	 * `parameters` is an empty OBJECT because that is what n8n stores for a node whose
+	 * parameters have not been filled in — the ordinary state of a first draft, and the
+	 * exact shape that used to be flattened to `[]` on the way through Nextcloud.
+	 *
+	 * @param list<string> $tagNames
+	 * @return array<string,mixed>
+	 */
+	private static function starterWorkflow(string $name, array $tagNames = []): array {
+		$body = [
+			'name' => $name,
+			'nodes' => [[
+				'id' => 'a1b2c3d4-0000-4000-8000-000000000001',
+				'name' => 'When clicking Test workflow',
+				'type' => 'n8n-nodes-base.manualTrigger',
+				'typeVersion' => 1,
+				'position' => [0, 0],
+				'parameters' => new \stdClass(),
+			]],
+			'connections' => new \stdClass(),
+			'settings' => new \stdClass(),
+		];
+		if ($tagNames !== []) {
+			$body['tags'] = array_map(static fn (string $n): object => (object)['name' => $n], $tagNames);
+		}
+		return $body;
 	}
 
 	/**

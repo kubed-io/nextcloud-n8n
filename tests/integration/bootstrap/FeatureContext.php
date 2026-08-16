@@ -164,12 +164,6 @@ final class FeatureContext implements Context {
 	private string $copyFilePath = '';
 	private ?string $copyWorkflowId = null;
 	/**
-	 * Workflow ids a scenario duplicated inside n8n, oldest first.
-	 *
-	 * @var list<string>
-	 */
-	private array $n8nDuplicateIds = [];
-	/**
 	 * The folder a scenario last named the whole contents of, and the names it found.
 	 *
 	 * Held so a following step can re-read the SAME set — "these names survive another
