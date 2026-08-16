@@ -378,6 +378,46 @@ canonical rows back. That is the END STATE of the tags being right, not a separa
 behaviour — and "n8n's tag catalog gained an entry" is implementation detail. The
 scenario that asserted it was the arrival scenario again with one extra line.
 
+### The base case carries the whole end state, and the fixture has a node in it
+
+**A copy of a real workflow reached n8n never, and every copy scenario was green.**
+n8n answered `request/body/nodes/0/parameters must be object`, `CopyService` logged it
+and swallowed it — correctly, the file is already on disk — and the user was left with
+an untracked `.n8n` beside the original.
+
+The cause is a lossy round trip. `N8nClient::decode()` decodes with `json_decode(…,
+true)`, and PHP cannot tell `{}` from `[]` once that has happened: both are the empty
+array. So the pull wrote `"parameters": []` into every mirror, and n8n's validator
+rejects that the moment anything sends it back. `N8nWorkflowBody` already put the shape
+back — but only for three TOP-LEVEL fields, never inside `nodes`.
+
+**Why the suite could not have caught it.** Every arrange built its fixture as
+`'nodes' => []`. A workflow with no nodes has no `nodes/0/parameters`, so the field that
+n8n rejects did not exist in a single test. And the fixture was uploaded directly, never
+pulled — so the bytes under test were the suite's own tidy JSON rather than n8n's, and a
+defect introduced BY the pull could not appear in them.
+
+Two lessons, and neither is "add an example":
+
+- **A fixture stripped down far enough stops standing in for the thing it represents.**
+  `nodes: []` is not a small version of a workflow, it is a different object. The
+  starter body now carries one real node with empty `parameters`, in one place
+  ({@see SetupTrait::starterWorkflow}) so it cannot be realistic in one feature and a
+  stub in another.
+- **An arrange that uploads its own file is not arranging a mirror.** Every file in a
+  mapped folder got there through a pull. The copy arrange now syncs its source, so the
+  bytes being copied are the ones the app actually produces.
+
+The `{}`-versus-`[]` rule itself is pinned in the unit suite, asserted on the ENCODED
+JSON — a test that decodes cannot see the difference and would pass against the bug.
+
+**The base case now states its whole end state.** It used to be three scenarios sharing
+one pre-state, one gesture and one post-state, with the post-state divided between them:
+identity in the first, the name in the second, the tags in a third that was `@unbuilt`.
+That is not three behaviours, it is one behaviour described a third at a time — and the
+naming scenario in particular read as a requirement about Nextcloud's collision suffix
+rather than as what a copy IS. Merged, with the tags finally built.
+
 ### The copy belongs to where it lands
 
 THE ONLY INPUT IS THE DESTINATION. A copy is always a new instance — never the

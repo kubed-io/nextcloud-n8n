@@ -39,12 +39,10 @@ trait CopySteps {
 		$this->davMkdir($folder);
 		$name = 'Source-' . bin2hex(random_bytes(3));
 		$path = $folder . '/' . $name . '.n8n';
-		$body = ['name' => $name, 'nodes' => [], 'connections' => new \stdClass(), 'settings' => new \stdClass()];
-		$names = array_values(array_filter(array_map('trim', explode(',', $tags))));
-		if ($names !== []) {
-			$body['tags'] = array_map(static fn (string $n): object => (object)['name' => $n], $names);
-		}
-		$this->davPut($path, json_encode($body, JSON_THROW_ON_ERROR));
+		$this->davPut($path, json_encode(
+			self::starterWorkflow($name, self::tagList($tags)),
+			JSON_THROW_ON_ERROR,
+		));
 		$this->currentFolder = $folder;
 		$this->currentFilePath = $path;
 		// CREATE-ON-LAND RENAMES THE FILE to match the workflow's name, so the path we
@@ -56,8 +54,45 @@ trait CopySteps {
 		if (is_string($this->lastWorkflowId) && $this->lastWorkflowId !== '') {
 			$this->createdWorkflowIds[] = $this->lastWorkflowId;
 		}
+		$this->settleSourceFromN8n($folder);
 		$this->originalPath = $this->currentFilePath;
 		$this->copyOriginalBefore = $this->readManagedMetadata($this->originalPath);
+	}
+
+	/** The tag names in a `"prod, billing"` cell. @return list<string> */
+	private static function tagList(string $tags): array {
+		return array_values(array_filter(array_map('trim', explode(',', $tags))));
+	}
+
+	/**
+	 * Make the source file what a source file REALLY is: a body written by the pull.
+	 *
+	 * ## AN ARRANGE THAT UPLOADS ITS OWN FIXTURE IS NOT THE THING IT STANDS FOR
+	 *
+	 * Every file in a mapped folder has been through a pull — that is how a mirror
+	 * comes to exist and how it is kept true. This arrange used to PUT its fixture and
+	 * stop, so the bytes under test were the suite's own tidy JSON and never n8n's.
+	 *
+	 * That is what hid the copy bug. The pull writes the workflow as n8n returned it,
+	 * and empty objects were being flattened to `[]` on the way through — so a real
+	 * mirror held `"parameters": []`, which n8n then refused when anything sent it
+	 * back. A fixture that never made the round trip could not contain the defect, and
+	 * so the base case passed on a body no user has ever had.
+	 *
+	 * SYNC SOURCES ONLY. A pull rewrites a `link` file into a pointer, which is a
+	 * different body with different rules; the two `Pointers` rows are about where a
+	 * copy LANDS, and turning their source into a pointer would quietly change what
+	 * they test. That case deserves saying out loud in its own scenario rather than
+	 * arriving through an arrange.
+	 */
+	private function settleSourceFromN8n(string $folder): void {
+		if ((string)($this->lastWorkflowId ?? '') === '' || !$this->isMappedFolder($folder)) {
+			return; // unmapped: there is no mapping to pull, and that is the arrange
+		}
+		if ($this->mappingModeForFolder($folder) !== 'sync') {
+			return;
+		}
+		$this->runMappingSync('pull', $this->mappingTagForFolder($folder));
 	}
 
 	/**
@@ -162,27 +197,11 @@ trait CopySteps {
 		if ((string)$this->copyFilePath === '') {
 			throw new \RuntimeException('no copy to inspect — a When must make one');
 		}
-		$this->assertManagedMetadata($this->copyFilePath, $table, [
-			// THROWN, NOT ASSERTED, and the message says where the copy actually IS. A
-			// failing PHPUnit assertion inside Behat dies in
-			// `PHPUnit\TextUI\Configuration\Registry::get()` — there is no PHPUnit run to
-			// configure — so the reader gets a TypeError instead of the diagnosis. That
-			// cost a CI cycle on this very table: three scenarios failed and said only
-			// "Type error". `MappingSteps::fail` documents the same trap.
-			"its own, not the original's" => function (string $key, ?string $actual): void {
-				if (($actual ?? '') === '') {
-					throw new \RuntimeException(
-						"the copy at '{$this->copyFilePath}' carries no $key — create-on-copy did not run for it",
-					);
-				}
-				$before = (string)($this->copyOriginalBefore[$key] ?? '');
-				if ($actual === $before) {
-					throw new \RuntimeException(
-						"the copy inherited the original's $key ('$actual') — a copy must never hijack identity",
-					);
-				}
-			},
-		]);
+		// `its own, not the original's` is understood by the shared engine — see
+		// {@see CreateSteps::assertManagedMetadata}. It used to be handed in here as a
+		// one-off closure, which meant only THIS step could say it; the n8n-side
+		// duplicate needs the same sentence about the same end state.
+		$this->assertManagedMetadata($this->copyFilePath, $table);
 	}
 
 	/** @Then the copy holds no n8n DAV metadata at all */
@@ -407,30 +426,17 @@ trait CopySteps {
 			throw new \RuntimeException("workflow '$id' does not exist in n8n");
 		}
 		$tag = $this->mappingTagForFolder($this->currentFolder);
-		$this->n8nDuplicateIds[] = $this->createN8nWorkflow(
+		$duplicate = $this->createN8nWorkflow(
 			(string)($original['name'] ?? 'Untitled'),
 			[$this->ensureN8nTag($tag)],
 		);
+		// THE DUPLICATE IS NOW THE WORKFLOW UNDER TEST, so the Then that looks for "a
+		// matching file" looks for ITS file and not the original's. Without this the
+		// scenario would find the file it started with and pass having proved nothing —
+		// the same trap `the duplicate arrives as its own file` was written to dodge,
+		// which is why that step could be retired rather than kept beside its twin.
+		$this->lastWorkflowId = $duplicate;
 		$this->runMappingSync('pull', $tag);
-	}
-
-	/**
-	 * @Then the duplicate arrives as its own file in :folder
-	 *
-	 * ITS OWN FILE — found by the id n8n minted, not by name. A pull that wrote the
-	 * duplicate over the original would leave one file and pass a name-based check,
-	 * which is exactly the failure this scenario exists to catch.
-	 */
-	public function theDuplicateArrivesAsItsOwnFileIn(string $folder): void {
-		$want = end($this->n8nDuplicateIds);
-		foreach ($this->davListWorkflowFiles($folder) as $name) {
-			$path = $folder . '/' . $name;
-			if ((string)$this->davReadMetadataId($path) === $want) {
-				$this->copyFilePath = $path;
-				return;
-			}
-		}
-		throw new \RuntimeException("no file in '$folder' mirrors the duplicated workflow '$want'");
 	}
 
 	/**

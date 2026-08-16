@@ -28,46 +28,34 @@ Feature: Copying a workflow file always makes a new instance
     # ── RULE: the copy belongs to where it LANDS, never to where it came from ──
     # notes: ../AGENTS.md#the-copy-belongs-to-where-it-lands
 
-  @user @in-nextcloud @gesture @ui
-  Scenario Outline: A copy landing in a mapped folder is a brand-new workflow there
-    Given a workflow file in "<source>"
-    When I copy the file into "<destination>"
-    Then the copy holds this DAV metadata:
-      | n8n_id         | its own, not the original's |
-      | n8n_mapping    | the mapping's id            |
-      | n8n_mode       | the mapping's mode          |
-      | n8n_versionId  | set                         |
-      | n8n_syncedHash | set                         |
-    And the copy's workflow carries the "<destination>" mapping tag, and no other mapping's
-    And the original file and its workflow are unchanged
-
-    Examples: within one mapping, the binding is simply kept
-      | source  | destination |
-      | Demo    | Demo        |
-      | Scratch | Demo        |
-
-    Examples: and across mappings it is REPLACED — the copy belongs where it landed
-      | source   | destination |
-      | Demo     | Pointers    |
-      | Demo     | Shared      |
-      | Pointers | Demo        |
-
   # notes: ../AGENTS.md#a-copy-made-in-nextcloud-is-named-by-nextcloud
   @user @in-nextcloud @gesture @ui
-  Scenario Outline: A copy is named by Nextcloud, and that is its name everywhere
-    Given a workflow file named "Fleet Health.n8n" in "<source>"
-    When I copy the file into "Demo"
+  Scenario Outline: A copy landing in a mapped folder is a brand-new workflow there
+    Given a workflow file named "Fleet Health.n8n" in "<source>" whose tags are "prod, billing"
+    When I copy the file into "<destination>"
     Then the copy holds this DAV metadata:
       | filename         | "<copy>"                    |
       | name in the file | "<named>"                   |
       | name in n8n      | "<named>"                   |
       | n8n_id           | its own, not the original's |
+      | n8n_mapping      | the mapping's id            |
+      | n8n_mode         | the mapping's mode          |
+      | n8n_versionId    | set                         |
+      | n8n_syncedHash   | set                         |
+    And the copy's normal tags are "prod, billing" in n8n and in Nextcloud
+    And the copy's workflow carries the "<destination>" mapping tag, and no other mapping's
     And the original file and its workflow are unchanged
 
-    Examples: a copy landing beside its source is named by Nextcloud, and that is its name everywhere
-      | source  | copy                 | named            |
-      | Demo    | Fleet Health (1).n8n | Fleet Health (1) |
-      | Scratch | Fleet Health.n8n     | Fleet Health     |
+    Examples: within one mapping, the binding is simply kept
+      | source  | destination | copy                 | named            |
+      | Demo    | Demo        | Fleet Health (1).n8n | Fleet Health (1) |
+      | Scratch | Demo        | Fleet Health.n8n     | Fleet Health     |
+
+    Examples: and across mappings it is REPLACED — the copy belongs where it landed
+      | source   | destination | copy             | named        |
+      | Demo     | Pointers    | Fleet Health.n8n | Fleet Health |
+      | Demo     | Shared      | Fleet Health.n8n | Fleet Health |
+      | Pointers | Demo        | Fleet Health.n8n | Fleet Health |
 
     # ── RULE: a workflow duplicated in n8n keeps the name n8n gave it ──────────
 
@@ -76,8 +64,8 @@ Feature: Copying a workflow file always makes a new instance
   Scenario: A workflow duplicated in n8n arrives as its own file
     Given a workflow file named "Fleet Health.n8n" in "Demo"
     When someone duplicates its workflow in n8n, keeping the name
-    Then the duplicate arrives as its own file in "Demo"
-    And the copy holds this DAV metadata:
+    Then a matching file is created in "Demo"
+    And the file holds this DAV metadata:
       | filename         | "Fleet Health (1).n8n"      |
       | name in the file | "Fleet Health"              |
       | name in n8n      | "Fleet Health"              |
@@ -97,14 +85,6 @@ Feature: Copying a workflow file always makes a new instance
       | Fleet Health (1).n8n |
       | Fleet Health (2).n8n |
     And all three workflows are still named "Fleet Health" in n8n
-
-  # notes: ../AGENTS.md#a-copy-carries-the-tags-that-travelled-in-its-body
-  @user @in-nextcloud @gesture @ui @unbuilt
-  Scenario: A copy carries the tags that travelled in its body
-    Given a workflow file in "Demo" whose tags are "prod, billing"
-    When I copy the file into "Shared"
-    Then the copy's normal tags are "prod, billing" in n8n and in Nextcloud
-    And the copy's workflow carries the "Shared" mapping tag, and no other mapping's
 
   # notes: ../AGENTS.md#a-copy-landing-outside-every-mapping-is-a-plain-document
   @user @in-nextcloud @gesture @ui

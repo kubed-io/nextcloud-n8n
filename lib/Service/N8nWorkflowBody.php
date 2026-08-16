@@ -33,7 +33,19 @@ final class N8nWorkflowBody {
 	private const WRITABLE = ['name', 'nodes', 'connections', 'settings', 'staticData'];
 
 	/** Object-typed fields whose empty `[]` must be coerced to `{}` for n8n's validator. */
-	private const OBJECT_FIELDS = ['connections', 'settings', 'staticData'];
+	private const OBJECT_FIELDS = ['connections', 'settings', 'staticData', 'pinData'];
+
+	/**
+	 * The same coercion, one level down, inside every entry of `nodes`.
+	 *
+	 * THIS IS THE ONE THAT WAS MISSING, and it cost the whole copy feature. n8n
+	 * answered `request/body/nodes/0/parameters must be object` for any workflow with a
+	 * node whose parameters are empty — which is most first drafts — so copying a REAL
+	 * workflow into a mapped folder left an untracked `.n8n` and a warning in the log.
+	 * The top-level list above was written from a trivial workflow and stops at the
+	 * fields such a workflow has.
+	 */
+	private const NODE_OBJECT_FIELDS = ['parameters', 'credentials'];
 
 	/**
 	 * n8n's `WorkflowSettings` schema is `additionalProperties: false` with this
@@ -128,12 +140,25 @@ final class N8nWorkflowBody {
 	}
 
 	/**
-	 * Full workflow JSON for `sync` mode, verbatim — so a later writeback is a
-	 * simple PUT of the file contents.
+	 * Full workflow JSON for `sync` mode — so a later writeback is a simple PUT of the
+	 * file contents.
+	 *
+	 * ## "VERBATIM" WAS THE CLAIM AND IT WAS NOT TRUE
+	 *
+	 * This used to hand the decoded workflow straight to `json_encode`, which wrote
+	 * `"parameters": []` for every empty object n8n had sent as `{}` — the loss happens
+	 * in {@see N8nClient::decode}, long before here, and nothing put it back. The mirror
+	 * was therefore NOT a faithful copy, and the moment anything sent it back to n8n
+	 * (a copy, a save) the validator rejected it.
+	 *
+	 * So the same coercion the outbound bodies get is applied here. A file written by
+	 * an older version differs from its workflow by exactly these empty objects, so the
+	 * first pull after this ships rewrites it once and is stable after that.
 	 *
 	 * @param array<string,mixed> $workflow
 	 */
 	public static function encodeSync(array $workflow): string {
+		self::coerceEmptyObjects($workflow);
 		return json_encode($workflow, self::JSON_PRETTY);
 	}
 
@@ -166,12 +191,85 @@ final class N8nWorkflowBody {
 		$body['settings'] = $filtered;
 	}
 
-	/** Coerce empty `[]` to `{}` for the object-typed fields (nodes stays a list). */
-	private static function coerceEmptyObjects(array &$body): void {
+	/**
+	 * Coerce empty `[]` to `{}` everywhere n8n's schema says object — `nodes` itself
+	 * stays a list, and so does everything under `connections`' `main` arrays.
+	 *
+	 * ## WHY THIS EXISTS AT ALL, AND WHY IT HAS TO BE A LIST OF POSITIONS
+	 *
+	 * PHP cannot tell `{}` from `[]` once JSON has been decoded to an associative
+	 * array: both are the empty array. {@see N8nClient::decode} decodes that way and
+	 * everything downstream reads arrays, so by the time a workflow reaches disk every
+	 * empty object in it has already become an empty list. n8n's validator is strict
+	 * about the difference, so the shape has to be put back by NAMING the positions
+	 * that are objects. A blanket "every empty array becomes an object" would be
+	 * wrong in the other direction and would corrupt genuinely empty lists.
+	 *
+	 * Applied on the way OUT to n8n and on the way IN to the file, so a mirror is a
+	 * faithful copy rather than something that only happens to work until it is sent
+	 * back.
+	 *
+	 * @param array<string,mixed>|\stdClass $body
+	 */
+	private static function coerceEmptyObjects(array|\stdClass &$body): void {
 		foreach (self::OBJECT_FIELDS as $k) {
-			if (isset($body[$k]) && $body[$k] === []) {
-				$body[$k] = new \stdClass();
+			if (self::get($body, $k) === []) {
+				self::set($body, $k, new \stdClass());
 			}
+		}
+
+		// One level into `connections`: the map is keyed by node name and each value is
+		// itself an object of output-name → connection lists. A node wired to nothing
+		// has an empty one.
+		$connections = self::get($body, 'connections');
+		if (is_array($connections)) {
+			foreach ($connections as $node => $outputs) {
+				if ($outputs === []) {
+					$connections[$node] = new \stdClass();
+				}
+			}
+			self::set($body, 'connections', $connections);
+		}
+
+		$nodes = self::get($body, 'nodes');
+		if (!is_array($nodes)) {
+			return;
+		}
+		foreach ($nodes as $i => $node) {
+			if (!is_array($node) && !$node instanceof \stdClass) {
+				continue;
+			}
+			foreach (self::NODE_OBJECT_FIELDS as $k) {
+				if (self::get($node, $k) === []) {
+					self::set($node, $k, new \stdClass());
+				}
+			}
+			$nodes[$i] = $node;
+		}
+		self::set($body, 'nodes', $nodes);
+	}
+
+	/**
+	 * Read one key off either JSON shape.
+	 *
+	 * BOTH SHAPES REACH HERE, which is the whole reason these two helpers exist. A
+	 * create/update body is built from `json_decode($file, false)` — objects, so nodes
+	 * are `stdClass`. A file body is built from {@see N8nClient::decode}'s associative
+	 * arrays. One coercion has to serve both or the two paths drift, and drifting is
+	 * exactly what let the send side be repaired while the file kept its `[]`.
+	 *
+	 * @param array<string,mixed>|\stdClass $subject
+	 */
+	private static function get(array|\stdClass $subject, string $key): mixed {
+		return is_array($subject) ? ($subject[$key] ?? null) : ($subject->$key ?? null);
+	}
+
+	/** @param array<string,mixed>|\stdClass $subject */
+	private static function set(array|\stdClass &$subject, string $key, mixed $value): void {
+		if (is_array($subject)) {
+			$subject[$key] = $value;
+		} else {
+			$subject->$key = $value;
 		}
 	}
 

@@ -128,4 +128,79 @@ final class N8nWorkflowBodyTest extends TestCase {
 		$workflow = ['id' => 'wf-1', 'name' => 'Flow', 'nodes' => [['x' => 1]]];
 		self::assertSame($workflow, json_decode(N8nWorkflowBody::encodeSync($workflow), true));
 	}
+
+	// ── `{}` vs `[]`, which is the difference n8n 400s on ────────────────────────
+	//
+	// ASSERTED ON THE ENCODED JSON, never on the decoded array. `json_decode(…, true)`
+	// gives `[]` for both shapes, so a test that decodes cannot tell them apart and
+	// would pass against the very bug these pin. The string is what n8n receives, so
+	// the string is what is checked.
+
+	/**
+	 * THE EXACT REQUEST n8n REJECTED, reproduced: `request/body/nodes/0/parameters
+	 * must be object`. A workflow whose first node has no parameters yet — most first
+	 * drafts — could not be copied into a mapped folder at all.
+	 */
+	public function testCreateBodyCoercesEmptyNodeParametersToAnObject(): void {
+		$wf = $this->obj([
+			'name' => 'Fleet Health',
+			'nodes' => [$this->obj(['name' => 'Start', 'type' => 'n8n-nodes-base.manualTrigger', 'parameters' => []])],
+		]);
+		$json = json_encode(N8nWorkflowBody::toCreateBody($wf, 'Fleet Health.n8n'));
+		self::assertStringContainsString('"parameters":{}', $json);
+		self::assertStringNotContainsString('"parameters":[]', $json);
+	}
+
+	public function testUpdateBodyCoercesEmptyNodeParametersToAnObject(): void {
+		$wf = $this->obj([
+			'name' => 'Fleet Health',
+			'nodes' => [$this->obj(['name' => 'Start', 'parameters' => [], 'credentials' => []])],
+		]);
+		$json = json_encode(N8nWorkflowBody::toUpdateBody($wf));
+		self::assertStringContainsString('"parameters":{}', $json);
+		self::assertStringContainsString('"credentials":{}', $json);
+	}
+
+	/**
+	 * The mirror has to hold what n8n holds. Before this, the pull wrote `[]` for
+	 * every empty object and the file was the thing that later failed to send.
+	 */
+	public function testEncodeSyncWritesEmptyObjectsAsObjects(): void {
+		$json = N8nWorkflowBody::encodeSync([
+			'name' => 'Fleet Health',
+			'connections' => [],
+			'pinData' => [],
+			'nodes' => [['name' => 'Start', 'parameters' => []]],
+		]);
+		self::assertStringContainsString('"parameters": {}', $json);
+		self::assertStringContainsString('"connections": {}', $json);
+		self::assertStringContainsString('"pinData": {}', $json);
+	}
+
+	/**
+	 * THE OTHER HALF OF THE RULE, and the reason the coercion names positions instead
+	 * of rewriting every empty array it meets: `nodes` is a list, and so is each output
+	 * list inside `connections`. Turning either into an object would break n8n in the
+	 * opposite direction, which is a worse bug because it would look like valid JSON.
+	 */
+	public function testCoercionLeavesGenuineListsAsLists(): void {
+		$json = N8nWorkflowBody::encodeSync([
+			'name' => 'Fleet Health',
+			'nodes' => [],
+			'connections' => ['Start' => ['main' => [[]]]],
+		]);
+		$decoded = json_decode($json);
+		self::assertIsArray($decoded->nodes, 'nodes is a list even when empty');
+		self::assertIsArray($decoded->connections->Start->main, 'a connection output list stays a list');
+		self::assertIsArray($decoded->connections->Start->main[0], 'and so does an empty one');
+	}
+
+	/** A node wired to nothing: the per-node map is an object, its output lists are not. */
+	public function testCoercionFixesAnEmptyConnectionsEntry(): void {
+		$json = N8nWorkflowBody::encodeSync([
+			'name' => 'Fleet Health',
+			'connections' => ['Start' => []],
+		]);
+		self::assertStringContainsString('"Start": {}', $json);
+	}
 }
