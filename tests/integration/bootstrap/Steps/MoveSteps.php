@@ -524,7 +524,14 @@ trait MoveSteps {
 		// The Team Folder in the Background is shared with the `admin` group, so the
 		// member needs it to see the file at all. This grants group membership, not
 		// ownership of anything — which is the distinction under test.
-		$this->occ('group:adduser admin ' . escapeshellarg($user));
+		//
+		// CHECKED, because a silent failure here surfaces much later as a bare DAV 404 on
+		// a file the member cannot see, which reads as a bug in the app rather than in
+		// the arrange.
+		$res = $this->occ('group:adduser admin ' . escapeshellarg($user));
+		if ($res['exit'] !== 0) {
+			throw new \RuntimeException("could not add '$user' to the admin group:\n{$res['output']}");
+		}
 
 		// Share the admin-owned folder TO them, as the owner. occ has no share command;
 		// the OCS API is the only route, and it is the same call the Files UI makes.
@@ -534,7 +541,11 @@ trait MoveSteps {
 				'path' => '/' . $folder,
 				'shareType' => 0,          // user share
 				'shareWith' => $user,
-				'permissions' => 31,       // all but share — resharing off is the norm
+				// 15 = read+update+create+delete. NOT 31, which adds SHARE (16) — the
+				// comment here used to say "all but share" while granting exactly that.
+				// Resharing off is both the ordinary setting and the honest one for a
+				// scenario about what a non-owner may do.
+				'permissions' => 15,
 			],
 		]);
 		$this->assertStatus($share, [200], "share '$folder' with $user");

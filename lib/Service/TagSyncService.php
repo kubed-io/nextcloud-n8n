@@ -261,14 +261,6 @@ final class TagSyncService {
 	}
 
 	/**
-	 * Remove ONE tag from a workflow in n8n, leaving every other tag on it.
-	 *
-	 * The unbind's only write ({@see TagReconcileService::unbindIfMappingTagDropped}).
-	 * Reserved `n8n:*` markers are preserved along with the rest, because
-	 * {@see N8nClient::setWorkflowTags} is a full replace and this is a subtraction of
-	 * exactly one name, not a re-statement of what the workflow should carry.
-	 */
-	/**
 	 * Add ONE tag to a workflow in n8n, leaving every other tag on it — the exact
 	 * mirror of {@see dropSourceTag}, and its partner in a rebind
 	 * ({@see MotionService::rebind}), where one mapping's tag replaces another's.
@@ -288,6 +280,15 @@ final class TagSyncService {
 		$this->pushSourceTags($workflowId, $names);
 	}
 
+	/**
+	 * Remove ONE tag from a workflow in n8n, leaving every other tag on it.
+	 *
+	 * The unbind's only write ({@see TagReconcileService::unbindIfMappingTagDropped}),
+	 * and the other half of a rebind beside {@see addMappingTag}. Reserved `n8n:*`
+	 * markers are preserved along with the rest, because
+	 * {@see N8nClient::setWorkflowTags} is a full replace and this is a subtraction of
+	 * exactly one name, not a re-statement of what the workflow should carry.
+	 */
 	public function dropSourceTag(string $workflowId, string $tag): void {
 		$workflow = $this->n8n->getWorkflow($workflowId);
 		$keep = array_values(array_filter(

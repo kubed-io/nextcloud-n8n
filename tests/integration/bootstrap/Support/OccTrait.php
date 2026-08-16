@@ -36,18 +36,12 @@ trait OccTrait {
 	}
 
 	/**
-	 * Run an occ command with data piped on stdin (for `set-api-key`, which reads
-	 * the key from stdin to keep it off the process list).
-	 *
-	 * @return array{exit:int, output:string}
-	 */
-	/**
 	 * `occ` with extra environment — the only way to hand a password to `user:add`
 	 * without a TTY (`--password-from-env` reads `OC_PASS`). Values are escaped and
 	 * prefixed to the command rather than exported, so nothing leaks into later calls.
 	 *
 	 * @param array<string,string> $env
-	 * @return array{exit:int,output:string}
+	 * @return array{exit:int, output:string}
 	 */
 	private function occEnv(string $args, array $env): array {
 		$prefix = '';
@@ -63,6 +57,12 @@ trait OccTrait {
 		return ['exit' => $exit, 'output' => $this->lastOutput];
 	}
 
+	/**
+	 * Run an occ command with data piped on stdin (for `set-api-key`, which reads
+	 * the key from stdin to keep it off the process list).
+	 *
+	 * @return array{exit:int, output:string}
+	 */
 	private function occStdin(string $cmd, string $stdin): array {
 		$descriptors = [0 => ['pipe', 'r'], 1 => ['pipe', 'w'], 2 => ['pipe', 'w']];
 		$proc = proc_open($cmd, $descriptors, $pipes);
