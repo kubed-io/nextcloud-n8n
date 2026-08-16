@@ -46,16 +46,33 @@ Feature: Copying a workflow file always makes a new instance
     And the copy's workflow carries the "<destination>" mapping tag, and no other mapping's
     And the original file and its workflow are unchanged
 
-    Examples: within one mapping, the binding is simply kept
+    Examples: Nextcloud names the copy, and that is its name everywhere
       | source  | destination | copy                 | named            |
       | Demo    | Demo        | Fleet Health (1).n8n | Fleet Health (1) |
       | Scratch | Demo        | Fleet Health.n8n     | Fleet Health     |
+      | Demo    | Shared      | Fleet Health.n8n     | Fleet Health     |
 
-    Examples: and across mappings it is REPLACED — the copy belongs where it landed
-      | source   | destination | copy             | named        |
-      | Demo     | Pointers    | Fleet Health.n8n | Fleet Health |
-      | Demo     | Shared      | Fleet Health.n8n | Fleet Health |
-      | Pointers | Demo        | Fleet Health.n8n | Fleet Health |
+    # ── RULE: a link is not copyable, and a link mapping is not a destination ──
+    # notes: ../AGENTS.md#a-link-is-not-copyable-and-a-link-mapping-is-not-a-destination
+
+  @user @in-nextcloud @gesture @ui
+  Scenario Outline: Copying a link, or into a link mapping, is refused
+    Given a workflow file named "Fleet Health.n8n" in "<source>"
+    When I try to copy the file into "<destination>"
+    Then the copy is refused with a message
+    And no file is added to "<destination>"
+    And no workflow is created in n8n for the copy
+    And the original file and its workflow are unchanged
+
+    Examples: a link is read-only in Nextcloud, and there is nowhere it may go
+      | source   | destination |
+      | Pointers | Demo        |
+      | Pointers | Scratch     |
+      | Pointers | Pointers    |
+
+    Examples: and a link mapping is filled from n8n, whatever is arriving
+      | source | destination |
+      | Demo   | Pointers    |
 
     # ── RULE: a workflow duplicated in n8n keeps the name n8n gave it ──────────
 
@@ -98,8 +115,7 @@ Feature: Copying a workflow file always makes a new instance
     And the original file and its workflow are unchanged
 
     Examples: the identity is stripped; the labels the file carries are not
-      | source   |
-      | Demo     |
-      | Pointers |
-      | Scratch  |
+      | source  |
+      | Demo    |
+      | Scratch |
 

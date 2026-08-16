@@ -106,7 +106,10 @@ final class TagMerge {
 	 * @return list<string>
 	 */
 	private static function sortedKeys(array $set): array {
-		$keys = array_map(static fn ($k): string => substr((string)$k, 1), array_keys($set));
+		// No `(string)` cast: {@see set} NUL-prefixes every key precisely so PHP cannot
+		// turn a numeric tag name into an int key, which is what a cast here would have
+		// been guarding against. The prefix already makes that impossible.
+		$keys = array_map(static fn (string $k): string => substr($k, 1), array_keys($set));
 		sort($keys);
 		return $keys;
 	}

@@ -213,6 +213,6 @@ final class TrashPurgeHook {
 			return $uid;
 		}
 		$fsUser = \OC_User::getUser();
-		return $fsUser === false ? '' : (string)$fsUser;
+		return $fsUser === false ? '' : $fsUser;
 	}
 }

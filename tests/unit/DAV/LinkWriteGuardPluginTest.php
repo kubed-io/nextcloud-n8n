@@ -13,6 +13,7 @@ use OCA\DAV\Connector\Sabre\File as DavFile;
 use OCA\N8nSync\DAV\LinkWriteGuardPlugin;
 use OCA\N8nSync\Service\ManagedFile;
 use OCA\N8nSync\Service\Mapping;
+use OCA\N8nSync\Service\MappingService;
 use OCA\N8nSync\Service\SyncNotifier;
 use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\IUser;
@@ -34,12 +35,14 @@ use Sabre\DAV\INode;
 #[CoversClass(LinkWriteGuardPlugin::class)]
 final class LinkWriteGuardPluginTest extends TestCase {
 	private WorkflowMetadata $metadata;
+	private MappingService $mappings;
 	private SyncNotifier $notifier;
 	private IUserSession $userSession;
 	private LinkWriteGuardPlugin $plugin;
 
 	protected function setUp(): void {
 		$this->metadata = $this->createMock(WorkflowMetadata::class);
+		$this->mappings = $this->createMock(MappingService::class);
 		$this->notifier = $this->createMock(SyncNotifier::class);
 		$this->userSession = $this->createMock(IUserSession::class);
 
@@ -49,6 +52,7 @@ final class LinkWriteGuardPluginTest extends TestCase {
 
 		$this->plugin = new LinkWriteGuardPlugin(
 			$this->metadata,
+			$this->mappings,
 			$this->notifier,
 			$this->userSession,
 			new NullLogger(),
@@ -100,7 +104,7 @@ final class LinkWriteGuardPluginTest extends TestCase {
 		foreach ([WorkflowMetadata::MODE_UNMAPPED] as $mode) {
 			$metadata = $this->createMock(WorkflowMetadata::class);
 			$metadata->method('read')->willReturn(new ManagedFile('w1', $mode, '', '', ''));
-			$plugin = new LinkWriteGuardPlugin($metadata, $this->notifier, $this->userSession, new NullLogger());
+			$plugin = new LinkWriteGuardPlugin($metadata, $this->mappings, $this->notifier, $this->userSession, new NullLogger());
 			$data = 'x';
 			$modified = false;
 			self::assertTrue($plugin->beforeWriteContent('files/flow.n8n', $this->davFile(), $data, $modified));

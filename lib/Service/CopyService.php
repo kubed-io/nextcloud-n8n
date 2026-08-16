@@ -90,6 +90,21 @@ final class CopyService {
 		if ($mapping === null) {
 			return; // landed outside any mapping — a plain, untracked file
 		}
+		// A LINK MAPPING IS FILLED FROM n8n AND FROM NOWHERE ELSE. The user-facing
+		// refusal is {@see \OCA\N8nSync\DAV\LinkWriteGuardPlugin}, which stops the copy
+		// before a file exists at all; this is the backstop for every other route (occ,
+		// another app, a script), where the file is already on disk and the most this can
+		// do is decline to mint a workflow for it. Registering one would put a workflow in
+		// n8n that the mapping's own tag does not select, and the next pull would delete
+		// the file it came from.
+		if ($mapping->mode === Mapping::MODE_LINK) {
+			$this->logger->warning('n8n_sync copy: a link mapping is filled from n8n; the copy was left untracked', [
+				'app' => Application::APP_ID,
+				'fileId' => $node->getId(),
+				'path' => $node->getPath(),
+			]);
+			return;
+		}
 
 		// Inside a mapping → a brand-new workflow with its own fresh id, carrying the
 		// name Nextcloud just gave the file rather than the one it was copied from.

@@ -418,6 +418,42 @@ That is not three behaviours, it is one behaviour described a third at a time �
 naming scenario in particular read as a requirement about Nextcloud's collision suffix
 rather than as what a copy IS. Merged, with the tags finally built.
 
+### A link is not copyable, and a link mapping is not a destination
+
+Two halves of one rule, and copy was the hole left in a rule the rest of the app already
+states. A link is a read-only projection of a workflow that lives in n8n: editing one is
+refused, deleting one is refused, moving one out is refused — and copying one was
+allowed, producing a second file claiming the same workflow and duplicating nothing. The
+other direction is the same rule seen from the folder: a `link` mapping is filled from
+its tag in n8n and from nowhere else, so a file put there by hand is at best ignored and
+at worst minted as a workflow the tag does not select, which the next pull then deletes.
+
+**Two Examples blocks, because the two halves are independent.** The first is the source
+rule and it is TOTAL — there is no destination that makes copying a link meaningful, so
+`Pointers → Demo`, `Pointers → Scratch` and `Pointers → Pointers` are all rows of the
+same sentence rather than three cases. The second block is the destination rule, which
+only needs a source that is not already refused by the first.
+
+**And it takes two mechanisms, not one.** The Sabre plugin answers **403 with a reason**,
+which is what a person needs, but it only sees WebDAV — `occ`, another app, or a script
+using the Files API never touches Sabre. So {@see CopyGuardListener} carries the same
+rule on `BeforeNodeCopiedEvent`, where the SOURCE node is still available: by the time
+`CopyService` runs on `NodeCopiedEvent` the copy's inherited metadata has been stripped
+and nothing left on disk says the source was a link.
+
+**The refusal has to be a 403, and the typed event cannot give one.** Throwing
+`AbortedEventException` from `BeforeNodeCopiedEvent` DOES stop the copy — measured in a
+pod, the target never appears — but `View::copy()` swallows it and Sabre still answers
+201. The user is told it worked and no file exists, which is worse than either outcome
+on its own. So the user-facing refusal is a Sabre `beforeBind` guard scoped to COPY,
+next to the `beforeWriteContent` and `beforeUnbind` guards that refuse the edit and the
+delete; `CopyService` keeps a service-level backstop for routes that never touch DAV.
+
+**This also removes a row from `A copy landing outside every mapping is a plain
+document`.** Copying a link into `Scratch` used to be a plain document; it is now
+refused, because "a link is not copyable" does not have an exception for where it was
+going.
+
 ### The copy belongs to where it lands
 
 THE ONLY INPUT IS THE DESTINATION. A copy is always a new instance — never the
