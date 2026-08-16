@@ -64,15 +64,15 @@ Feature: Copying a workflow file always makes a new instance
     And no workflow is created in n8n for the copy
     And the original file and its workflow are unchanged
 
-    Examples: a link is read-only in Nextcloud, wherever it is going
+    Examples: a link is read-only in Nextcloud, and there is nowhere it may go
       | source   | destination |
       | Pointers | Demo        |
       | Pointers | Scratch     |
+      | Pointers | Pointers    |
 
     Examples: and a link mapping is filled from n8n, whatever is arriving
-      | source   | destination |
-      | Demo     | Pointers    |
-      | Pointers | Pointers    |
+      | source | destination |
+      | Demo   | Pointers    |
 
     # ── RULE: a workflow duplicated in n8n keeps the name n8n gave it ──────────
 

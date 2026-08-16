@@ -428,10 +428,18 @@ other direction is the same rule seen from the folder: a `link` mapping is fille
 its tag in n8n and from nowhere else, so a file put there by hand is at best ignored and
 at worst minted as a workflow the tag does not select, which the next pull then deletes.
 
-**Two Examples blocks, because the two halves are independent.** `Pointers → Demo` and
-`Pointers → Scratch` are refused by the source; `Demo → Pointers` by the destination;
-`Pointers → Pointers` by both, which is worth a row precisely because a guard that only
-checks one end still passes it.
+**Two Examples blocks, because the two halves are independent.** The first is the source
+rule and it is TOTAL — there is no destination that makes copying a link meaningful, so
+`Pointers → Demo`, `Pointers → Scratch` and `Pointers → Pointers` are all rows of the
+same sentence rather than three cases. The second block is the destination rule, which
+only needs a source that is not already refused by the first.
+
+**And it takes two mechanisms, not one.** The Sabre plugin answers **403 with a reason**,
+which is what a person needs, but it only sees WebDAV — `occ`, another app, or a script
+using the Files API never touches Sabre. So {@see CopyGuardListener} carries the same
+rule on `BeforeNodeCopiedEvent`, where the SOURCE node is still available: by the time
+`CopyService` runs on `NodeCopiedEvent` the copy's inherited metadata has been stripped
+and nothing left on disk says the source was a link.
 
 **The refusal has to be a 403, and the typed event cannot give one.** Throwing
 `AbortedEventException` from `BeforeNodeCopiedEvent` DOES stop the copy — measured in a

@@ -136,7 +136,7 @@ trait CopySteps {
 	public function noFileIsAddedTo(string $folder): void {
 		$now = $this->davListWorkflowFiles($folder);
 		$added = array_values(array_diff($now, $this->copyAttemptBefore));
-		Assert::assertSame([], $added, "the refusal still left " . implode(', ', $added) . " in '$folder'");
+		Assert::assertSame([], $added, 'the refusal still left ' . implode(', ', $added) . " in '$folder'");
 	}
 
 	/**

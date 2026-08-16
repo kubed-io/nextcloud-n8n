@@ -15,6 +15,7 @@ use OCA\Files_Trashbin\Events\NodeRestoredEvent;
 use OCA\N8nSync\BackgroundJob\ScheduledPullJob;
 use OCA\N8nSync\Listener\BodyTagListener;
 use OCA\N8nSync\Listener\ContentTagListener;
+use OCA\N8nSync\Listener\CopyGuardListener;
 use OCA\N8nSync\Listener\CopyListener;
 use OCA\N8nSync\Listener\CreateInN8nListener;
 use OCA\N8nSync\Listener\DeleteToN8nListener;
@@ -39,6 +40,7 @@ use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
 use OCP\AppFramework\Bootstrap\IRegistrationContext;
 use OCP\Files\Cache\CacheEntryRemovedEvent;
+use OCP\Files\Events\Node\BeforeNodeCopiedEvent;
 use OCP\Files\Events\Node\BeforeNodeDeletedEvent;
 use OCP\Files\Events\Node\BeforeNodeRenamedEvent;
 use OCP\Files\Events\Node\NodeCopiedEvent;
@@ -126,6 +128,12 @@ final class Application extends App implements IBootstrap {
 		// misses it; this listener strips the copy's inherited identity and registers
 		// it as a fresh workflow if it landed in a mapping (see CopyService).
 		$context->registerEventListener(NodeCopiedEvent::class, CopyListener::class);
+
+		// …and the guard that runs BEFORE it. A link is a pointer, so copying one
+		// duplicates nothing, and a link mapping is filled from its tag in n8n rather
+		// than by hand. LinkWriteGuardPlugin refuses both over WebDAV with a 403 the
+		// user can read; this is the same rule for every route that never touches Sabre.
+		$context->registerEventListener(BeforeNodeCopiedEvent::class, CopyGuardListener::class);
 
 		// Three-way name sync: keep filename stem ≡ JSON `name` ≡ n8n name for
 		// two-way files. Rename → name into JSON (writeback pushes); edit name +
