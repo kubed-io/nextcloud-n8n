@@ -71,6 +71,8 @@ A copy never inherits the original's identity — the metadata is stripped the i
 
 Nextcloud's trash is reversible, so trashing a workflow is too. Nothing is destroyed until you say you mean it.
 
+Trash a **sync** file and here's what n8n does:
+
 | Gesture | What n8n does |
 |---|---|
 | 🗑️ Move to trash | Workflow is **archived** — hidden, preserved |
@@ -95,13 +97,15 @@ This is the part we're smug about. 😏
 
 A workflow's tags are part of the workflow, so they're part of the mirror. n8n keeps tags on the workflow; Nextcloud has its own first-class **system tags** — those searchable coloured pills in Files. n8n Sync keeps the two sets identical, which means **your mirror is as searchable as n8n itself**. Want every `prod` workflow? Filter for it the Nextcloud-native way. 🔍
 
-There are **three** places to change a workflow's tags, and all three agree with each other:
+There are **three** places to change a **sync** workflow's tags, and all three agree with each other:
 
 | Change them… | …and |
 |---|---|
 | 🏷️ On the file's pills in Files | It pushes to n8n on its own — no "Sync to n8n" click needed |
 | 📝 In the `tags` array inside the `.n8n` | Saving pushes to n8n and updates the pills |
 | 🔧 In n8n | The next sync brings them to both the file and its pills |
+
+(A **link** is read-only, and an **unmapped** file has no n8n side left to push to — both keep their pills and `tags` array in step locally. More on that below. 👇)
 
 Adding, removing, or doing both at once is **one gesture** wherever you do it. You can even add a tag by name alone — write `{"name": "prod"}`, save, and n8n mints the real id for you. Nothing rewrites the file out from under you while you're typing in it.
 
