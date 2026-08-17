@@ -115,7 +115,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
   @user @in-nextcloud @gesture @ui
   Scenario Outline: Keeping one version of a duplicate leaves one file and one workflow
     Given a workflow file named "Turnbuckle.n8n" in "Automations"
-    And an unmapped file named "Turnbuckle.n8n" in "Scratch" carrying the same "n8n_id"
+    And an unmapped file named "Turnbuckle.n8n" in "Scratch" carrying "<its id>"
     And that file's nodes differ from the workflow's
     When I move the unmapped file into "Automations"
     And I select "<kept>"
@@ -127,16 +127,20 @@ Feature: Moving a workflow file is the same workflow leaving and returning
       | n8n_mode    | the mapping's mode                 |
     And the workflow's tags are "alpha" in Nextcloud, in the file and in n8n
 
-    Examples: one workflow either way — the answer only decides whose body it keeps
-      | kept                 | the body that wins     |
-      | the existing version | the file already there |
-      | the new version      | the file that arrived  |
+    Examples: the answer decides whose body it keeps, and the id it arrived with never does
+      | kept                 | its id             | the body that wins     |
+      | the existing version | the same n8n_id    | the file already there |
+      | the existing version | a different n8n_id | the file already there |
+      | the existing version | no n8n_id at all   | the file already there |
+      | the new version      | the same n8n_id    | the file that arrived  |
+      | the new version      | a different n8n_id | the file that arrived  |
+      | the new version      | no n8n_id at all   | the file that arrived  |
 
   # notes: ../AGENTS.md#keeping-both-versions-of-a-duplicate-makes-the-arrival-its-own-workflow
   @user @in-nextcloud @gesture @ui
   Scenario: Keeping both versions of a duplicate makes the arrival its own workflow
     Given a workflow file named "Turnbuckle.n8n" in "Automations"
-    And an unmapped file named "Turnbuckle.n8n" in "Scratch" carrying the same "n8n_id"
+    And an unmapped file named "Turnbuckle.n8n" in "Scratch" carrying "a different n8n_id"
     And that file's nodes differ from the workflow's
     When I move the unmapped file into "Automations"
     And I select "both versions"

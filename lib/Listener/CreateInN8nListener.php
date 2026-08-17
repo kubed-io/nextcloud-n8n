@@ -13,11 +13,14 @@ use OCA\N8nSync\AppInfo\Application;
 use OCA\N8nSync\Service\CreateService;
 use OCA\N8nSync\Service\FilenameCodec;
 use OCA\N8nSync\Service\MappingService;
+use OCA\N8nSync\Service\MotionService;
+use OCA\N8nSync\Service\ReplacedByMoveStore;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\SyncNotifier;
 use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
+use OCP\Files\File;
 use OCP\Files\Events\Node\NodeRenamedEvent;
 use OCP\Files\Events\Node\NodeWrittenEvent;
 use OCP\IUserSession;
@@ -63,6 +66,8 @@ final class CreateInN8nListener implements IEventListener {
 	public function __construct(
 		private CreateService $createService,
 		private MappingService $mappings,
+		private MotionService $motion,
+		private ReplacedByMoveStore $replaced,
 		private WorkflowMetadata $metadata,
 		private SyncGuard $guard,
 		private IUserSession $userSession,
@@ -90,6 +95,36 @@ final class CreateInN8nListener implements IEventListener {
 		$managed = $this->metadata->read($node->getId());
 		if ($managed?->isManaged()) {
 			return; // already an n8n-tracked file — writeback owns it
+		}
+
+		// AN OVERWRITE INHERITS, IT DOES NOT CREATE — even from a file that arrived
+		// carrying nothing. A copied `.n8n` has no `n8n_id` (a copy does not inherit
+		// the metadata row), so dragging one over a synced file lands here rather than
+		// in {@see \OCA\N8nSync\Service\MotionService::moveIn}. Create-on-land would
+		// mint a second workflow and leave the one the file replaced live, tagged for
+		// this mapping and file-less — which the next pull writes back beside it.
+		//
+		// The rule is the same whatever the arrival carried: the destination's identity
+		// survives and the arrival contributes only its body. `moveIn` already knows how
+		// to adopt, so this hands over rather than repeating it.
+		$adopted = $node instanceof File ? $this->replaced->adoptedWorkflowId($node->getId()) : null;
+		if ($adopted !== null) {
+			$this->logger->info('n8n_sync create-on-land: an overwrite inherits the workflow it replaced', [
+				'app' => Application::APP_ID,
+				'fileId' => $node->getId(),
+				'workflowId' => $adopted,
+			]);
+			try {
+				$this->motion->moveIn($node, $adopted, $mapping);
+			} catch (\Throwable $e) {
+				$this->logger->warning('n8n_sync create-on-land: inheriting the replaced workflow failed', [
+					'app' => Application::APP_ID,
+					'fileId' => $node->getId(),
+					'workflowId' => $adopted,
+					'exception' => $e,
+				]);
+			}
+			return;
 		}
 
 		try {

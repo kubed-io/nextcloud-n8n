@@ -2754,9 +2754,27 @@ enforces.** It reads as one line per answer:
 
 So the metadata row says `the id the destination already had` rather than
 `the id both files carried`, which is what the ARRANGE happens to produce and not
-what the app promises. Stated the enforceable way, the row still holds the day a
-scenario gives the two files different ids — which is the case the rule exists for,
-and the one the unit tests cover.
+what the app promises.
+
+**WHAT THE ARRIVAL CARRIED IS A COLUMN, AND IT HAS THREE VALUES.** The rule does
+not depend on it, so the Outline varies it and asserts the same end state each
+time — which is the only way to show the app is not simply keeping whatever the
+arrival brought:
+
+  · `the same n8n_id` — the two files mirror one workflow (a move-out, an
+    unarchive in n8n, and a pull that rewrites the mirror).
+  · `a different n8n_id` — two workflows, one name. The case the rule exists for.
+  · `no n8n_id at all` — **the copy case.** A copy does not carry the metadata
+    row, so an unmapped `.n8n` duplicated in the file manager has no id
+    whatsoever. It does not reach `MotionService` at all: with nothing stamped it
+    lands in `CreateInN8nListener`, whose whole job is to mint. Left alone it
+    would mint a second workflow and leave the one it replaced live, tagged for
+    this mapping and file-less. The listener now consults the same store and hands
+    over to `moveIn` to adopt, rather than repeating the rule in a second place.
+
+That third row is why the rule had to be written down before it could be
+implemented: two of the three paths into a mapped folder had to agree about it,
+and only one of them was ever going to be found by testing the obvious one.
 
 **AN OVERWRITE REPLACES CONTENTS, NOT IDENTITY**, and this is the rule the whole
 "keep the new version" path turns on. It is invisible while both files carry the

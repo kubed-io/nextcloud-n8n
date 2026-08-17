@@ -236,11 +236,17 @@ trait MoveSteps {
 	 * useless the moment a scenario needs both files to carry the SAME NAME, which is
 	 * the entire premise of a conflict.
 	 *
-	 * @Given an unmapped file named :filename in :folder carrying the same :key
+	 * WHICH ID IT CARRIES IS A COLUMN, because the rule does not depend on it. An
+	 * overwrite preserves the DESTINATION's identity whatever the arrival was bound to,
+	 * and a scenario whose two files always shared an id could never show that — the
+	 * assertion would be satisfied by an app that simply kept the arrival's id. The two
+	 * arrangements reach the same shape (an unmapped `$filename` in `$folder`, a synced
+	 * `$filename` in the mapping) by different routes.
+	 *
+	 * @Given an unmapped file named :filename in :folder carrying :whichId
 	 */
-	public function anUnmappedFileNamedCarryingTheSameId(string $filename, string $folder, string $key): void {
+	public function anUnmappedFileNamedCarrying(string $filename, string $folder, string $whichId): void {
 		Assert::assertNotNull($this->lastWorkflowId, 'no workflow id from the managed sync file');
-		$this->collisionWorkflowId = $this->lastWorkflowId;
 
 		// THE MAPPING IS WHICHEVER ONE THE PRECEDING GIVEN USED. Hardcoded
 		// `nextcloud:alpha` here tied this arrange to one feature's tag naming, in a
@@ -248,47 +254,77 @@ trait MoveSteps {
 		$sourceFolder = $this->currentFolder;
 		$sourceTag = $this->currentTag;
 
-		// Move the synced file OUT into the NAMED folder → the unmapped copy (id
-		// preserved, workflow archived). Any leftover at the destination is cleared
-		// first: `davMove` sends `Overwrite: F`, so a previous scenario's file would
-		// refuse this arrange with a 412 that reads like a permissions problem.
 		$this->davMkdir($folder);
 		$dest = $folder . '/' . $filename;
+		// Any leftover at the destination is cleared first: `davMove` sends
+		// `Overwrite: F`, so a previous scenario's file would refuse this arrange with a
+		// 412 that reads like a permissions problem.
 		if ($this->davExists($dest)) {
 			$this->davDelete($dest);
 		}
-		$this->davMove($this->currentFilePath, $dest);
+
+		if ($whichId === 'no n8n_id at all') {
+			// NOTHING TO INHERIT FROM, which is the copy case: a copy does not carry the
+			// metadata row, so an unmapped `.n8n` duplicated in the file manager has no
+			// id at all. It lands in create-on-land rather than the motion path, and the
+			// rule has to hold there too. Written straight into `$folder`, which is
+			// outside every mapping, so nothing stamps it on the way in.
+			$this->collisionSyncedPath = $this->currentFilePath;
+			$stem = preg_replace('/\.n8n$/', '', $filename) ?? $filename;
+			$this->davPut($dest, json_encode(self::starterWorkflow($stem), JSON_THROW_ON_ERROR));
+			if (($this->davReadMetadataId($dest) ?? '') !== '') {
+				throw new \RuntimeException("setup: the file at $dest was stamped with an id; it should carry none");
+			}
+		} elseif ($whichId === 'a different n8n_id') {
+			// A SECOND WORKFLOW ENTIRELY. The file already in the mapping stays exactly
+			// where it is — it is the destination — and a freshly created managed file
+			// is walked out to `$folder` under the colliding name. Two files, two
+			// workflows, one name.
+			$this->collisionSyncedPath = $this->currentFilePath;
+			$other = 'Other-' . bin2hex(random_bytes(3));
+			$this->putManagedFile($sourceFolder . '/' . $other . '.n8n', $other);
+			$this->davMove($this->currentFilePath, $dest);
+		} else {
+			// THE SAME WORKFLOW, TWICE. Move the synced file OUT (id preserved, workflow
+			// archived), bring the workflow back to life, and pull the mapping so a
+			// fresh SYNCED file is written into it from n8n. Net: one workflow, mirrored
+			// by two files, one of them outside every mapping.
+			$this->davMove($this->currentFilePath, $dest);
+			$this->n8nUnarchiveWorkflow((string)$this->lastWorkflowId);
+			$this->runMappingSync('pull', $sourceTag);
+
+			// FOUND BY WORKFLOW ID, not by filename. This assumed `Mover.n8n`, the name
+			// one arrange happened to use — so the moment a scenario arranged its file
+			// any other way, the setup asserted against a path that was never written.
+			// The pull also names a mirror after its WORKFLOW, so the filename is n8n's
+			// to choose anyway.
+			$this->collisionSyncedPath = '';
+			foreach ($this->propfindWorkflowIds($sourceFolder) as $href => $wid) {
+				if ($wid === $this->lastWorkflowId) {
+					$this->collisionSyncedPath = $this->hrefToFilesPath((string)$href);
+					break;
+				}
+			}
+			if ($this->collisionSyncedPath === '') {
+				throw new \RuntimeException(
+					"setup: the pull wrote no file for workflow {$this->lastWorkflowId} into $sourceFolder",
+				);
+			}
+		}
+
 		$this->currentFilePath = $dest;
 		$this->expectedArchived = true;
-		if ($this->davReadMetadata($dest, self::META_MODE) !== 'unmapped') {
+		// A FILE CARRYING NOTHING HAS NO MODE EITHER — it was never one of ours, which
+		// is the whole point of that row. The other two arrangements walked a managed
+		// file out of a mapping, so `unmapped` is the state that proves it happened.
+		if ($whichId !== 'no n8n_id at all' && $this->davReadMetadata($dest, self::META_MODE) !== 'unmapped') {
 			throw new \RuntimeException("setup: the moved-out copy at $dest is not unmapped");
 		}
 		$this->collisionIncomingPath = $dest;
+		$this->collisionWorkflowId = (string)($this->davReadMetadataId($dest) ?? '');
 
-		// Bring the workflow back to life and pull the mapping so a fresh SYNCED file is
-		// written into it from n8n — the "existing synced copy" the move-in must defer to.
-		$this->n8nUnarchiveWorkflow($this->collisionWorkflowId);
-		$this->runMappingSync('pull', $sourceTag);
-
-		// FOUND BY WORKFLOW ID, not by filename. This assumed `Mover.n8n`, the name
-		// one arrange happened to use — so the moment a scenario arranged its file any
-		// other way, the setup asserted against a path that was never written and the
-		// failure read as "the pulled file does not carry the shared id". The pull also
-		// names a mirror after its WORKFLOW, so the filename is n8n's to choose anyway.
-		$this->collisionSyncedPath = '';
-		foreach ($this->propfindWorkflowIds($sourceFolder) as $href => $wid) {
-			if ($wid === $this->collisionWorkflowId) {
-				$this->collisionSyncedPath = $this->hrefToFilesPath((string)$href);
-				break;
-			}
-		}
-		if ($this->collisionSyncedPath === '') {
-			throw new \RuntimeException(
-				"setup: the pull wrote no file for workflow {$this->collisionWorkflowId} into $sourceFolder",
-			);
-		}
 		if ($this->davReadMetadata($this->collisionSyncedPath, self::META_MODE) !== 'sync') {
-			throw new \RuntimeException("setup: the pulled file at {$this->collisionSyncedPath} is not in sync mode");
+			throw new \RuntimeException("setup: the file at {$this->collisionSyncedPath} is not in sync mode");
 		}
 
 		// THIS ARRANGE REDEFINES "the original". The file the Given made was moved out
