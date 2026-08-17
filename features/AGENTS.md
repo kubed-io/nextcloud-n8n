@@ -1199,9 +1199,6 @@ follows: **if a scenario touches the trash, it runs on both backends.** The cost
 is one extra Examples row each; the alternative is finding out from production
 again.
 
-### Moving a duplicate in mints a brand-new workflow
-
-
 ## workflows/restore
 
 `features/workflows/restore.feature`
@@ -1354,7 +1351,8 @@ gesture that already means "I do not want this mirrored".
 
 `features/connection/sync-now.feature`
 
-THE FIRST SYNC, AND ONLY THAT.
+THE FIRST SYNC, AND ONLY THAT — in the pull direction. The push direction is a
+different promise and is stated once, at the end of this section.
 
 ### sync-now scope
 
@@ -1455,6 +1453,55 @@ started. Creation time especially — it is the one clock a later run can never
 reconstruct, because after this run there is no "before" left to read it
 from. One reusable sentence, so any later behaviour that produces a mirror
 can assert it the same way.
+
+### A sync to n8n makes n8n match Nextcloud
+
+**This is not the row that was retired into `edit.feature`, and the difference is
+the whole reason it comes back.** The table above sends "the button pushes local
+changes up" to `workflows/edit`, and that was right: a person who edits a file
+wants n8n to have the edit, and the button was a mechanism for it. What is stated
+here is a DIFFERENT thing an admin does — *n8n is wrong, Nextcloud is right, make
+n8n match* — and nobody reaches that by editing a file. It is one gesture with
+one reason, and it had no scenario anywhere.
+
+**The pre-state is what makes it a source-of-truth claim rather than a catch-up.**
+Files holding changes n8n never saw is only half of it; the discriminating Given
+is *one of its workflows was changed in n8n after its file was written*. Without
+that row the scenario passes for an implementation that merely pushes what is
+newer, which is a sync, not a declaration. Nextcloud winning where the two
+disagree is the behaviour, and it is only visible where they actually disagree.
+
+**One scenario, admin only.** There is no scheduled push, and there should not be:
+"periodically overwrite n8n with whatever is on disk" is not a thing to do on a
+timer. The pull scenario above has a `the schedule` row because a scheduled pull
+exists; this one has no second actor because there is no second actor.
+
+**The link and unmapped exclusions are not stated here.** `pushOne` skips `link`
+mappings and never sees an unmapped file, which are already the subjects of
+*a sync holds the workflow, a link holds a pointer* and *a file outside every
+mapping is never pushed*. Restating them here would be three scenarios wearing
+one coat again — the exact mistake the table above records.
+
+**THE DIVERGENCE IS ARRANGED BY NOT DOING SOMETHING, which is the part worth
+copying.** `timing` defaults to `async`, so a PUT enqueues `PushWorkflowJob` and a
+pill enqueues `ReconcileTagsJob`, and neither runs until a test drains it. The
+arrange therefore writes the files, adds the pills, and simply does not drain —
+which is the state a real instance sits in between a save and the next worker
+tick, rather than a fiction reached around the app. The step then VERIFIES the
+divergence before handing over; if a future default made the push inline, every
+assertion downstream would still pass against an already-updated workflow and the
+scenario would grade nothing.
+
+**"Its files' tags" means the PILLS.** `reconcilePush` reads
+`TagSyncService::readNcContentTags` — the file's system tags — not the body's
+`tags` array, and merges them three-way against the stamped baseline. So the
+arrange adds a pill, and the assertion is that it ARRIVED; nothing here claims
+n8n's own tags were removed, because a merge does not remove them.
+
+`SyncService::pushAll`/`pushOne` and `occ n8n_sync:sync push` were already built,
+which is why this was `@todo` rather than `@unbuilt` — only the grading was
+missing, and it is now written. Note that `SyncController`'s docblock still calls
+push "a stub … records a no-op run", which has not been true for some time.
 
 ## workflows/edit
 
@@ -2599,18 +2646,221 @@ workflow there` had a `Pointers` destination — an unmapped file moved into the
 mapping. The destination rule refuses that now, "whatever is arriving" including a file
 that belonged to nothing. CI caught it, which is the row doing its job.
 
-### Moving a duplicate in under the same name is refused (the workflow is already synced here)
+### Keeping one version of a duplicate leaves one file and one workflow
 
 Move-in duplicate (saga §14.19). A file carrying an id is moved into a mapping
-where that workflow is ALREADY synced — e.g. an admin restored it in n8n and it
-synced back into the folder while an unmapped copy still existed. This is not the
-same file relocating; it's a duplicate. Nextcloud's own rules lead the behaviour:
-  • same name → the move is refused (WebDAV Overwrite:F → 412), exactly like any
-                NC same-name move. The existing synced file is the source of truth.
-  • diff name → the incoming is minted as a BRAND-NEW workflow (copy semantics,
-                §14.5): MotionService::moveIn sees a sibling already carrying the
-                id and hands the file to CreateService, which strips the carried id
-                and creates a fresh workflow — the existing file is left untouched.
+where that workflow is ALREADY synced — e.g. an admin unarchived it in n8n and it
+synced back into the folder while an unmapped copy still sat outside. This is not
+the same file relocating; it is a duplicate, and it is reported from live use.
+
+**THE NOTE THAT USED TO SIT HERE WAS WRONG, and it was wrong in the way that
+matters: it said the app decides.** It claimed a same-name move-in "is refused
+(WebDAV Overwrite:F → 412), exactly like any NC same-name move". Neither half
+holds. Read in the running pod (NC 34.0.3):
+
+  · `3rdparty/sabre/dav/lib/DAV/Server.php::getCopyAndMoveInfo` — an absent
+    `Overwrite` header defaults to **T**, not F. 412 is what you get only when a
+    client explicitly asks for F, which the Files app never does.
+  · `CorePlugin::httpMove` — when the destination exists and overwrite is on, it
+    calls `tree->delete($destination)` and THEN moves. An overwrite is a delete
+    plus a move, not a content replace.
+
+**Nextcloud asks the user, and the answer is the behaviour.** `apps/files`'
+`moveOrCopyAction.ts` PROPFINDs the destination first, and on a collision opens
+`openConflictPicker(…, { overwriting: true })` — the "Which files do you want to
+keep?" dialog. Confirmed byte-for-byte in this instance's shipped
+`dist/files-main.js`, not merely upstream. Its answer splits the selection three
+ways before a single request is sent:
+
+| the answer | what Nextcloud actually does |
+|---|---|
+| existing version | the node is filtered out of the list — **no request at all** |
+| both versions | `getUniqueName()` → `Turnbuckle (1).n8n`, one MOVE to the new name |
+| new version | one MOVE to the original name; sabre deletes the destination first |
+
+So there are three end states, they are chosen by a person, and the Outline's
+column is that choice. This is the same shape as the mapping tag in `rebind`: the
+app is not guessing what the user meant, it is reading what the user said.
+
+**TWO OF THE THREE ANSWERS ARE THE SAME SCENARIO; THE THIRD IS NOT.** Keeping the
+existing version and keeping the new one both end with ONE file called
+`Turnbuckle.n8n` naming ONE workflow, on the id both files were carrying. The only
+thing the answer decides is whose body survives — so that is an Outline, and the
+column is literally the body:
+
+| kept | the body that wins |
+|---|---|
+| the existing version | the file already there |
+| the new version | the file that arrived |
+
+That column is only discriminating because the Given says the arriving file's nodes
+DIFFER from the workflow's. Without that line the two rows are indistinguishable and
+the Outline grades nothing.
+
+Keeping BOTH is a different end state — two files, two workflows, one of them minted
+— so it is its own scenario with a `Then` per file rather than a third row bending
+the shape. See below.
+
+**An earlier draft made all three one Outline**, with an `existing file` / `new file`
+pair of columns where an empty cell meant "not in the destination". It reads well and
+it was wrong to keep: it forced every assertion to be phrased over "each file in the
+folder", which is weaker than naming the two files and saying what each one is, and
+which is what the split now buys.
+
+**What is deliberately NOT asserted.** Neither scenario says what else is in the
+folder. Other files may perfectly well be there, and a mapping owning its subtree has
+never implied a folder holds only what a scenario put in it. Nor is the trash
+asserted: keeping the new version trashes what it replaced, because that is how sabre
+performs an overwrite for ANY file type, so a trash entry is Nextcloud behaving
+normally rather than a defect of ours. And nothing states where the arriving file
+went when it was not kept — the picker filtered it out before a request was sent, so
+it never moved at all.
+
+**"Keep the new version" is the one with teeth.** The destination file is DELETED
+— a real trash event on a synced mirror — and only then does the arrival land. So
+the delete listener archives that workflow in n8n, and a moment later a file
+claiming the same id arrives asking for it back. The end state we want is boring
+(one file, one live workflow, holding the body that arrived), and nothing
+currently guarantees it. `its workflow in n8n is LIVE` is the line that fails if
+the two halves race — the workflow does not go missing, it comes back archived,
+which is why the word carrying that assertion is `live` rather than `exists`.
+
+**THE PICKER IS A WEB-UI AFFORDANCE, AND THAT IS THE OPEN QUESTION.** The desktop
+client, a WebDAV mount and `occ` all send a bare MOVE, which means `Overwrite: T`
+— the "keep the new version" path, with nobody asked. The app therefore cannot
+assume it will be told. The heuristic the live report reached for is the sane
+default and is written down here rather than specified: same name AND same id is
+knowably the same workflow, so replacing the body is safe; same name with a
+different id, or none, is not, and `(1)` is the honest answer. It is not a
+scenario yet because nothing has decided whether the app should impose that on a
+client that never asked a question.
+
+**AND THE OLD NOTE'S 412 CAME FROM THE HARNESS, WHICH IS THE REAL LESSON.**
+`WebDavTrait::davMove` sends `Overwrite: F` on every move it makes. So the retired
+scenario genuinely DID get a 412 — not because Nextcloud refuses same-name moves,
+but because the suite was the one client in the world that asks to be refused. A
+test fixture's incidental choice was read back as a fact about the product and
+written into the notes as one. Worth remembering the shape: the evidence was real,
+the conclusion was not, and nothing in a green suite distinguishes them.
+
+**THE DESTINATION'S ID SURVIVES EVERY ANSWER, and that is the rule this file
+enforces.** It reads as one line per answer:
+
+| kept | the file in the mapping | its workflow | what else |
+|---|---|---|---|
+| the existing version | unchanged | the id it had, contents it had | nothing moved |
+| the new version | new contents | the id it had, contents replaced | — |
+| both versions | unchanged | the id it had, contents it had | a second file, a NEW workflow, the arriving contents |
+
+So the metadata row says `the id the destination already had` rather than
+`the id both files carried`, which is what the ARRANGE happens to produce and not
+what the app promises.
+
+**WHAT THE ARRIVAL CARRIED IS A COLUMN, AND IT HAS THREE VALUES.** The rule does
+not depend on it, so the Outline varies it and asserts the same end state each
+time — which is the only way to show the app is not simply keeping whatever the
+arrival brought:
+
+  · `the same n8n_id` — the two files mirror one workflow (a move-out, an
+    unarchive in n8n, and a pull that rewrites the mirror).
+  · `a different n8n_id` — two workflows, one name. The case the rule exists for.
+  · `no n8n_id at all` — **the copy case.** A copy does not carry the metadata
+    row, so an unmapped `.n8n` duplicated in the file manager has no id
+    whatsoever. It does not reach `MotionService` at all: with nothing stamped it
+    lands in `CreateInN8nListener`, whose whole job is to mint. Left alone it
+    would mint a second workflow and leave the one it replaced live, tagged for
+    this mapping and file-less. The listener now consults the same store and hands
+    over to `moveIn` to adopt, rather than repeating the rule in a second place.
+
+That third row is why the rule had to be written down before it could be
+implemented: two of the three paths into a mapped folder had to agree about it,
+and only one of them was ever going to be found by testing the obvious one.
+
+**AN OVERWRITE REPLACES CONTENTS, NOT IDENTITY**, and this is the rule the whole
+"keep the new version" path turns on. It is invisible while both files carry the
+same workflow and obvious the moment they do not: the folder holds `foo.n8n` bound
+to **A**, an unmapped `foo.n8n` bound to **B** is moved in over it, and if the
+arrival keeps B then A is still live, still carrying the mapping's tag, and no
+longer has a file. The next pull finds a tagged workflow with no mirror and writes
+one, so `foo (1).n8n` reappears beside the file that replaced it. One overwrite,
+and the mapping has forked.
+
+So the DESTINATION's id wins and the arrival contributes only its body — exactly as
+if its bytes had been pasted into the existing file, which is what the person
+answering the dialog thought they were doing. B is left alone: not deleted, not
+archived, not re-minted, just a workflow whose file is gone, which is the state
+every unmapped file's workflow is already in.
+
+Two pieces carry it. `ReplacedByMovePlugin` records the destination's workflow id
+from sabre's `beforeMove` — the only hook that fires while both halves are still
+one gesture — keyed by the MOVING file's id, because a move preserves it and that
+is what lets the two halves recognise each other later. `MotionService::moveIn`
+then adopts that id instead of the one the file carried, and stamps `n8n_id` along
+with the mode and mapping (a no-op for every other move-in).
+
+**And the body has to travel, or the overwrite undoes itself.** `moveIn` used to
+unarchive and re-stamp without ever sending the file up, so n8n kept the old
+workflow while the file held the new one — and the next pull, finding n8n
+authoritative, would overwrite the file with the older body. The user's choice
+survives the gesture and is destroyed by a scheduled job minutes later. Not
+specific to overwrites (every move-in of an edited unmapped file had it), but it is
+what makes "keep the new version" mean anything at all. Gated on
+`n8n_syncedHash`, so an ordinary move-out-and-back stays a pure identity operation.
+
+**Suppressing the archive breaks the unarchive, which is how CI found it.** With
+the delete listener standing down, the workflow is still live when the arrival
+lands, and n8n answers an unarchive with `Workflow is not archived.` — which
+`moveIn` treated as a failure and bailed on, before the stamp or the push. It is
+now idempotent success, the mirror of `moveOut` treating a 404 on archive the same
+way. The log line `move-in (restore) failed Workflow is not archived.` is what
+named it; the scenario had only said the nodes were wrong.
+
+**The `When` announces and the answer performs**, which is not a convenience. The
+Files app PROPFINDs the destination, finds the collision and opens the picker
+BEFORE a single request goes out — so a step that moved the file and then
+"resolved" the conflict would be modelling a client that does not exist. The
+destination is recorded by `I move …` and consumed by `I select …`.
+
+`uniqueNameIn()` reimplements `getUniqueName()` rather than hardcoding `(1)`, and
+it FAILS if the name it was told would collide is actually free. A scenario about
+a conflict that quietly runs without one is the failure mode worth catching.
+
+#### Keeping both versions of a duplicate makes the arrival its own workflow
+
+The rename is Nextcloud's — `getUniqueName()` → `Turnbuckle (1).n8n` — so the file
+that lands is one carrying an `n8n_id` a SIBLING already holds, which is exactly the
+case `MotionService::moveIn` hands to `CreateService`: strip the carried id, mint a
+fresh workflow. Nothing new is needed for it; what was needed was saying so honestly.
+
+**A `Then` per file, which is the reason this is not a row.** The two files end up in
+genuinely different states and the interesting claim is the CONTRAST between them:
+`Turnbuckle.n8n` keeps the id the destination already had and the nodes it always had, while
+`Turnbuckle (1).n8n` gets *its own, not the one it arrived with* and the nodes that
+arrived. Squeezed into an Outline that has to speak about "each file", the one thing
+worth asserting — that these two are now different workflows — can only be said
+sideways.
+
+`its own, not the one it arrived with` is the same sentence `copy.feature` and the
+hard-deleted restore fallback already use, and it means the same thing here.
+
+**IT ONLY MINTS WHEN THE TWO FILES ARE THE SAME WORKFLOW, and that is why this
+scenario stays on `the same n8n_id` while its sibling varies the column.** Keeping
+both was briefly rewritten to arrive with a DIFFERENT id, and CI answered by
+holding the arrival's id — correctly. With a different id there is no duplicate:
+`findSyncedSibling` looks for a sibling carrying the SAME workflow, finds none, and
+the arrival is simply an unmapped file restoring under a name Nextcloud picked. Two
+files, two workflows, nothing minted because nothing needed to be.
+
+So the id column belongs to the sibling scenario, where the assertions hold for
+every value of it, and not here, where the whole claim is *a duplicate is minted*
+and only one value of the column produces a duplicate. Worth writing down because
+the scenario title says "makes the arrival its own workflow", which reads as though
+it were about the arrival — it is about the arrival being a SECOND COPY OF THE
+DESTINATION's workflow, which is a narrower thing.
+
+**The old note had the outcome right and the cause wrong**, calling this the "diff
+name" case as though a user had typed one. One MOVE happens, of one inode, to a
+name Nextcloud picked.
 
 ### Moving an unmapped file between unmapped locations changes nothing
 

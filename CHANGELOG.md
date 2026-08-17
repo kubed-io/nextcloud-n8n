@@ -81,6 +81,8 @@ The first release since `0.1.5`, and the one where the mirror became properly tw
 - The mapping Mode help no longer offers a "Backup" mode — there has not been one since 0.1.3.
 - The Sync Actions panel no longer prints an internal note next to a run that succeeded, where a stale one could sit for months.
 - The admin "Test connection" button is CSRF-protected.
+- Answering "keep the new version" when a workflow file replaces one already in a mapped folder no longer archives the workflow you kept, and no longer leaves a second workflow behind in n8n — the file that lands keeps the workflow that was already there and simply gives it new contents.
+- Moving a workflow file back into a mapped folder now sends up any changes made to it while it was outside; edits made outside a mapping were quietly overwritten by the next scheduled sync.
 
 ## [0.1.5] - 2026-07-22
 

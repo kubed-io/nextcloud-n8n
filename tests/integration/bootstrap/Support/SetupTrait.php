@@ -23,6 +23,17 @@ use PHPUnit\Framework\Assert;
  */
 trait SetupTrait {
 	/**
+	 * The single node {@see starterWorkflow} writes.
+	 *
+	 * NAMED, because a scenario now has to say "the body that was already there"
+	 * and compare against it. Spelled out in a `Then` it would be a literal that
+	 * agrees with this fixture by luck and stops agreeing the day the fixture
+	 * changes — silently, since a node that is not there fails the same way as a
+	 * node that was renamed.
+	 */
+	private const STARTER_NODE_NAME = 'When clicking Test workflow';
+
+	/**
 	 * Create an admin-owned mapping for $tag in mode $mode + its backing folder,
 	 * wiring the connection so create/push/delete can reach n8n. Records the tag
 	 * for tag-strip assertions and sets currentFolder.
@@ -78,7 +89,7 @@ trait SetupTrait {
 			'name' => $name,
 			'nodes' => [[
 				'id' => 'a1b2c3d4-0000-4000-8000-000000000001',
-				'name' => 'When clicking Test workflow',
+				'name' => self::STARTER_NODE_NAME,
 				'type' => 'n8n-nodes-base.manualTrigger',
 				'typeVersion' => 1,
 				'position' => [0, 0],

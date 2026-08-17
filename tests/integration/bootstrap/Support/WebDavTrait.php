@@ -108,6 +108,26 @@ trait WebDavTrait {
 		$this->assertStatus($res, [201, 204], "MOVE $from → $to");
 	}
 
+	/**
+	 * MOVE a file ONTO an existing name — an overwrite.
+	 *
+	 * `Overwrite: T` IS THE INTERESTING PART, and the reason this exists beside
+	 * {@see davMove}. Every other move this suite makes sends `F`, which made the
+	 * suite the one client in the world that asks to be refused — and the 412 it
+	 * consequently got was written into the notes as a fact about Nextcloud. It is
+	 * not: an absent header means T, so this is what a desktop client, a WebDAV
+	 * mount, and the Files app's "keep the new version" all actually send.
+	 *
+	 * 204 rather than 201, because sabre answers an overwrite with "no content".
+	 */
+	private function davMoveOverwrite(string $from, string $to): void {
+		$dest = $this->ncBaseUrl . '/remote.php/dav/files/' . rawurlencode($this->ncUser) . '/' . $this->davEncode($to);
+		$res = $this->davClient()->request('MOVE', $this->davEncode($from), [
+			'headers' => ['Destination' => $dest, 'Overwrite' => 'T'],
+		]);
+		$this->assertStatus($res, [201, 204], "MOVE (overwrite) $from → $to");
+	}
+
 	/** MOVE a file, returning the raw status (so move-refused scenarios can inspect it). */
 	private function davMoveStatus(string $from, string $to): int {
 		$dest = $this->ncBaseUrl . '/remote.php/dav/files/' . rawurlencode($this->ncUser) . '/' . $this->davEncode($to);

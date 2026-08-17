@@ -14,6 +14,7 @@ use OCA\N8nSync\Service\DeleteService;
 use OCA\N8nSync\Service\FilenameCodec;
 use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\MappingService;
+use OCA\N8nSync\Service\ReplacedByMoveStore;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\EventDispatcher\Event;
@@ -73,6 +74,7 @@ final class DeleteToN8nListener implements IEventListener {
 		private MappingService $mappings,
 		private WorkflowMetadata $metadata,
 		private SyncGuard $guard,
+		private ReplacedByMoveStore $replaced,
 		private LoggerInterface $logger,
 	) {
 	}
@@ -84,6 +86,22 @@ final class DeleteToN8nListener implements IEventListener {
 		}
 		$node = $event->getNode();
 		if (!FilenameCodec::isWorkflowFile($node)) {
+			return;
+		}
+
+		// AN OVERWRITE IS NOT A DELETE, and this is the only place that can know.
+		// Sabre performs a MOVE onto an existing name as `tree->delete($destination)`
+		// followed by the move, so the file being REPLACED arrives here looking exactly
+		// like one a user asked to delete. It is not: the user answered "keep the new
+		// version" in a conflict dialog, and the workflow they kept must stay live.
+		// {@see \OCA\N8nSync\DAV\ReplacedByMovePlugin} marks it from sabre's `beforeMove`,
+		// which fires while both halves are still one gesture.
+		if ($this->replaced->isReplaced($node->getId())) {
+			$this->logger->info('n8n_sync delete: this file is being replaced by a move, not deleted', [
+				'app' => Application::APP_ID,
+				'fileId' => $node->getId(),
+				'file' => $node->getName(),
+			]);
 			return;
 		}
 
