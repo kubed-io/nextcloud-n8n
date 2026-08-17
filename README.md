@@ -292,6 +292,7 @@ A mapping binds an n8n workflow tag to a Nextcloud folder and defines who can se
 **Constraints:**
 - The storage backend (Team Folder vs admin-owned) is fixed at creation time. Switching requires deleting and recreating the mapping.
 - The app never creates groups — it only uses groups that already exist.
+- **Remove the mapping before you delete its folder.** Deleting the folder is not how a mapping comes off — removing the mapping is, and it leaves your files alone (sync files stay put and become unmapped; links go, since they hold nothing of their own). Renaming or moving the folder is fine and changes nothing about the mapping.
 
 **Per-mapping sync controls** let you pull or push an individual mapping without triggering a full sync across all folders.
 

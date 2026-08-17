@@ -2,7 +2,7 @@
 
 Feature: Removing a folder mapping
   As a Nextcloud admin
-  I want removing a mapping to remove only the mapping
+  I want removing a mapping to remove only the mapping, and to be the only way off
   So that disconnecting the two sides can never cost me a workflow or a file
 
   Background:
@@ -50,3 +50,17 @@ Feature: Removing a folder mapping
 
     # A link is a pointer at something n8n owns. Without the mapping it points
     # nowhere, and there is no content to keep — so it goes, as if never written.
+
+    # ── RULE: deleting the folder is not how a mapping comes off ──────────────
+
+  # notes: ../AGENTS.md#deleting-the-mapped-folder-is-refused
+  @admin @in-nextcloud @gesture @ui @unbuilt
+  Scenario: Deleting the mapped folder is refused
+    Given a workflow file in "Automations"
+    When I try to delete the folder "Automations"
+    Then the delete is refused with a message
+    And "Automations" holds the same files it held before
+    And nothing changes in n8n
+
+    # Remove the mapping first and the folder is ordinary again, which is the
+    # gesture above — and the one that says the files survive.

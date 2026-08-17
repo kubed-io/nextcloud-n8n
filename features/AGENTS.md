@@ -306,6 +306,37 @@ case of its own. Porting the scenarios records the intended end state; wearing
 `@todo` would have claimed code that is not there. The status tag is the one thing
 a port must re-decide, because it describes THIS repo.
 
+### Deleting the mapped folder is refused
+
+**IT IS THE SAME GESTURE, TAKEN BY THE WRONG ROUTE.** Deleting the mapped folder
+is an attempt to remove the mapping — the admin is done with this connection and
+reaches for the folder to say so — and it gets stopped. That is why it lives in
+this file rather than a folder-lifecycle one of its own: there is one way a
+mapping comes off, and the scenarios above are it.
+
+**It is also the question the dropped name-reuse scenario was reaching for and
+never asked** — what should a mapping do when its folder is gone? The answer
+proposed here is that the question should not arise.
+
+**`@unbuilt`, and left that way deliberately.** Nothing refuses this today: a
+mapped folder can be trashed and the mapping is simply left pointing at nothing.
+Whether refusal is the right answer is worth pondering — the alternative is to let
+it go and treat the mapping as dangling — so the scenario states the intent and
+waits rather than driving code nobody has agreed to.
+
+**THE MULTI-APP CASE IS A CONSTRAINT ON HOW IT IS BUILT**, and is a note here
+rather than a scenario of its own. One Nextcloud folder can be a Penpot team, a
+Grafana folder and an n8n tag at once, and each app would hook the delete
+independently. Three refusals have to compose: the user sees a refusal, the folder
+is whole, and every app's mapping still points at it. The hazard is not the
+refusal — it is a sibling that ACTS before another aborts, leaving a folder that is
+neither deleted nor intact. Which app's message wins does not matter. This app
+cannot arrange Penpot or Grafana state in its own suite anyway, which is a further
+reason it is a note and not a `Then`.
+
+**The README says the order out loud**: remove the mapping first, then the folder.
+A refusal the user meets without being told is a wall; documented, it is a step.
+
 ## mapping/move
 
 `features/mapping/move.feature`
