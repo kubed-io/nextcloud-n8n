@@ -1,14 +1,14 @@
 # Notes, decisions and history for this feature: ../AGENTS.md#connectionsync-now
 
-Feature: Syncing a mapped n8n tag into Nextcloud
-  As an admin who has just mapped a tag
-  I want the workflows already in n8n to appear in Nextcloud
-  So that the mirror starts out true, however the sync was started
+Feature: Syncing every mapping
+  As a Nextcloud admin
+  I want one sync to bring every mapped folder up to date
+  So that the mirror stays true without anyone tending it
 
   Background:
     Given the app is connected to n8n
 
-  # ── one behaviour, three ways to start it ──────────────────────────────────
+  # ── one behaviour, two ways to start it across every mapping ───────────────
   # notes: ../AGENTS.md#sync-now-scope
 
   @admin @occ @ui
@@ -21,18 +21,9 @@ Feature: Syncing a mapped n8n tag into Nextcloud
     And each file carries its n8n metadata
     And each file carries its workflow's tags as Nextcloud tags
 
-    Examples: every way a sync starts
+    Examples: both ways an instance-wide sync starts
       | actor        | scope         | tag               |
-      | the admin    | one mapping   | nextcloud:alpha   |
       | the admin    | every mapping | nextcloud:bravo   |
       | the schedule | every mapping | nextcloud:charlie |
 
     # notes: ../AGENTS.md#carries-its-n8n-dates
-
-  @admin @ui @occ
-  Scenario: A sync never touches a file outside every mapping
-    Given a folder mapped as "sync" to the n8n tag "nextcloud:alpha"
-    And an unmapped workflow file exists outside every mapping
-    When the admin syncs every mapping
-    Then the unmapped file is left untouched (it is outside the mapping's scope)
-    # notes: ../AGENTS.md#a-sync-never-touches-a-file-outside-every-mapping

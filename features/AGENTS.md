@@ -271,6 +271,172 @@ differs and the behaviour must not.
 The `@decision` scenario that used to sit beside these — "there is no way to
 change a mapping except its groups" — is gone. It had no `When`, because there is
 no operation to perform; that is what this file's existence already says.
+nc
+## mapping/delete
+
+`features/mapping/delete.feature`
+
+Ported from `nextcloud-grafana/features/mapping/delete.feature`, which asked the
+question this app had never written down: an admin removes a mapping — what
+happens to the files? Both scenarios came across intact, because the rule they
+encode is not about dashboards or workflows but about what a mapping OWNS.
+
+### Removing a mapping removes only the mapping
+
+**A sync file survives its mapping.** It holds the whole workflow, so deleting the
+mapping cannot cost anything: the file stays where it is, keeps its `n8n_id`
+because the workflow is still there, and becomes `unmapped` — claimed by nothing,
+which is exactly what unmapped means. Nothing is sent to n8n; the mapping is a
+Nextcloud-side statement about which tag fills which folder, and removing it is
+not a statement about the workflow.
+
+**A link goes with it.** A link file is a pointer at something n8n owns and holds
+no content of its own. Without the mapping it points nowhere, so it goes, as if it
+had never been written. This is the same asymmetry the workflow features already
+turn on — a link may not be edited, copied, moved or deleted precisely because it
+is not the thing, and here it is the reason it can be removed without loss.
+
+**`@unbuilt` here, though the sibling says `@todo`, and the difference is the
+point.** In this repo `@todo` means the code exists and only the test is missing,
+`@unbuilt` means a spec awaiting code — and this app has not built either case:
+`MappingController::destroy` deletes the mapping and, with an explicit `purge`
+flag, deletes the managed files, but the no-purge path leaves every file still
+stamped with the id of a mapping that no longer exists, and a link mapping has no
+case of its own. Porting the scenarios records the intended end state; wearing
+`@todo` would have claimed code that is not there. The status tag is the one thing
+a port must re-decide, because it describes THIS repo.
+
+### Deleting the mapped folder is refused
+
+**IT IS THE SAME GESTURE, TAKEN BY THE WRONG ROUTE.** Deleting the mapped folder
+is an attempt to remove the mapping — the admin is done with this connection and
+reaches for the folder to say so — and it gets stopped. That is why it lives in
+this file rather than a folder-lifecycle one of its own: there is one way a
+mapping comes off, and the scenarios above are it.
+
+**It is also the question the dropped name-reuse scenario was reaching for and
+never asked** — what should a mapping do when its folder is gone? The answer
+proposed here is that the question should not arise.
+
+**`@unbuilt`, and left that way deliberately.** Nothing refuses this today: a
+mapped folder can be trashed and the mapping is simply left pointing at nothing.
+Whether refusal is the right answer is worth pondering — the alternative is to let
+it go and treat the mapping as dangling — so the scenario states the intent and
+waits rather than driving code nobody has agreed to.
+
+**THE MULTI-APP CASE IS A CONSTRAINT ON HOW IT IS BUILT**, and is a note here
+rather than a scenario of its own. One Nextcloud folder can be a Penpot team, a
+Grafana folder and an n8n tag at once, and each app would hook the delete
+independently. Three refusals have to compose: the user sees a refusal, the folder
+is whole, and every app's mapping still points at it. The hazard is not the
+refusal — it is a sibling that ACTS before another aborts, leaving a folder that is
+neither deleted nor intact. Which app's message wins does not matter. This app
+cannot arrange Penpot or Grafana state in its own suite anyway, which is a further
+reason it is a note and not a `Then`.
+
+**The README says the order out loud**: remove the mapping first, then the folder.
+A refusal the user meets without being told is a wall; documented, it is a step.
+
+## mapping/move
+
+`features/mapping/move.feature`
+
+### A mapping follows the folder it was pointed at
+
+Shared with `mapping/rename` below: both files describe the same rule reached by
+two different gestures, so the reasoning lives once, here.
+
+**THE GESTURE IS NOT AN EDIT TO THE MAPPING.** Nothing here makes the mapped
+folder editable — that field is fixed at creation and stays fixed, which is what
+`mapping/manage-groups` already says by being the only file about a field you can
+change. What these two describe is somebody moving or renaming the folder from
+OUTSIDE the app: the Files explorer for an admin-owned folder, the Team Folders
+view (`occ groupfolders:rename`) for a Team Folder. The mapping is not being
+edited; it is *responding*.
+
+**So the behaviour under test is that the mapping tracks the folder itself, not
+its name.** Get that right and both gestures are safe by construction. Get it
+wrong and reorganising a folder silently disconnects every workflow in it, which
+is the failure these scenarios exist to forbid.
+
+**This is `@unbuilt`, and specifically so.** {@see MappingService::resolveForPath}
+matches a folder by NAME prefix against `Mapping::teamFolder`. A rename therefore
+stops the mapping resolving, and — the sharper half — a brand-new folder that
+merely reuses the name IS adopted, which is why the sibling's third scenario came
+across too. It is the same rule seen from the other side, and it is the one a
+name-matching implementation fails loudest on.
+
+**The n8n side is not portable, and not because of a gap.** The sibling has a
+`Move the mapped Grafana folder` and a `Rename the mapped Grafana folder`, because
+Grafana has folders. n8n has tags: a tag cannot be renamed through the API this app
+uses, and "moving" one is not a thing anybody can do. There is no gesture, so
+there is no scenario — this is the one place the two apps genuinely diverge rather
+than one lagging the other.
+
+**Why rename has two rows and move has one.** A mapped folder can be renamed on
+either storage kind, and the two surfaces differ enough to be worth a row each —
+this repo has learned twice now (`purge.feature`, `workflows/move.feature`) that
+the storage kind is the axis a bug hides in. A move is different: a Team Folder is
+mounted at the user's files root and is not a node that can be dragged inside
+another folder, so there is only the admin-owned case to state.
+
+### A mapped folder that was deleted is not re-adopted by name — NOT PORTED
+
+The sibling has it (`@unbuilt`), it was drafted here, and it was dropped. Two
+reasons, either of which is sufficient.
+
+**It cannot fail on its own.** Once the mapping holds a folder id, a new folder
+has a new id and the mapping cannot resolve to it — the claim is structural, not
+behavioural. And `Rename the mapped Nextcloud folder` and `Move the mapped
+Nextcloud folder` can only pass if the mapping tracks by id, so there is no state
+in which those two pass and this one fails. The single thing it would have caught
+is an implementation that tracks by id *with a name fallback*, which is guarding a
+mechanism, not a behaviour.
+
+**Its `When` was `I create the folder`.** A create gesture in a move feature —
+so even if the claim had earned a scenario, this was not its file. What the
+premise ("the mapped folder is in the trash") actually reaches for is a different
+question nobody has asked: what should a mapping do when its folder is DELETED?
+That is worth deciding on its own terms, in its own place, rather than arriving
+sideways as a negative assertion about names.
+
+## mapping/rename
+
+`features/mapping/rename.feature`
+
+The other gesture that reaches the same rule — see
+*A mapping follows the folder it was pointed at* under `mapping/move` above, which
+covers both files. Renaming is the one of the two that works on either storage
+kind, so this file is an outline over both; `mapping/move` is not.
+
+## mapping/sync-now
+
+`features/mapping/sync-now.feature`
+
+### Syncing one mapping fills its folder
+
+**The scenario already existed; what was wrong was where it lived.** Syncing ONE
+mapping was a row in `connection/sync-now.feature`'s outline, next to the two
+instance-wide triggers, under a caption reading "every way a sync starts". That
+made three triggers look like one behaviour with a column for the difference — but
+"fill this one folder I just mapped" and "bring every mapped folder up to date"
+are different promises to a different reader. The sibling splits them for exactly
+that reason, and it is the split this file restores: the per-mapping card here,
+the whole-instance sync and the schedule in `connection/sync-now`.
+
+The narrative moved with it. "As an admin who has just mapped a tag" was always a
+statement about ONE mapping, so it belonged to this file; `connection/sync-now`
+now opens with the instance-wide one it had been borrowing against.
+
+**No behaviour changed and no scenario was invented.** The step
+(`the admin syncs one mapping` → `runMappingSync('pull', $currentTag)`) already
+ran the per-mapping path; it is the same run, read from the use case it serves.
+`connection/sync-now`'s outline is two rows now, captioned for what it covers.
+
+**The sibling's second scenario is not portable.** "A root mapping mirrors the
+whole instance" is about a Grafana folder TREE appearing as nested Nextcloud
+subfolders. n8n has tags, which are flat and have no root, so there is nothing to
+mirror and no scenario to write.
 
 ## connection/connection
 
@@ -1210,10 +1376,16 @@ renamed in n8n is `rename.feature`, deleted in n8n is `delete.feature`, tagged i
 n8n is `tag-sync.feature`. The sync is how the news arrives, not what happened.
 Once those files own their behaviours there is no "second sync" left to describe.
 
-**The trigger is data.** Three ways to start one sync — the card's button, the
-section's button, the schedule — same pre-state, same post-state. Columns, not
+**The trigger is data.** Two ways to start an instance-wide sync — the section's
+button and the schedule — same pre-state, same post-state. Columns, not
 scenarios. Whether a run is synchronous or queued is a mechanism and is asserted
 nowhere.
+
+The card's button was a third column here, under a caption reading "every way a
+sync starts". It is not an instance-wide sync: "fill the one folder I just
+mapped" is a different promise to a different reader, and the sibling keeps the
+two apart. It now lives in `mapping/sync-now.feature`, which is where an admin
+looking for what a mapping does will go.
 
 The schedule row drives the REAL job, forced past its interval and the worker's
 last-run gate with `background-job:execute --force-execute`. Asserting a row
@@ -2200,15 +2372,19 @@ a file, so nested mappings work and the nearest enclosing one wins. Each scenari
 lands a real file over WebDAV and reads the resulting n8n_mapping stamp back, so
 these are server-observable assertions of MappingService::resolveForPath.
 
-### A sync never touches a file outside every mapping
+### A sync never touches a file outside every mapping — DELETED
 
-THE SCOPE OF A SYNC IS A MEMBERSHIP QUESTION, so it is answered here rather than
-in a file about syncing. "Which files does this mapping own" is what this file
-exists to say; a sync merely acts on that answer.
+THE SCOPE OF A SYNC IS A MEMBERSHIP QUESTION, and it was answered here rather than
+in a file about syncing: "which files does this mapping own" is what this section
+exists to say, and a sync merely acts on that answer. It had already moved once,
+out of a scenario about the sync button where it was one `Then` among four.
 
-It moved from a scenario about the sync button, where it was one `Then` among
-four — so "an unmapped file is out of scope" could only ever fail as part of "the
-button worked", and never named itself.
+**It is now gone entirely, as an unnecessary negative test.** Every positive
+scenario in `connection/sync-now` and `mapping/sync-now` states which files a sync
+writes; a file outside every mapping is not in that set, and asserting that a
+gesture did NOT touch something it was never pointed at proves nothing a reader
+did not already have. The rule it guarded is not lost — it is what "unmapped"
+means, stated wherever unmapped files appear.
 
 ## workflows/move
 
@@ -2506,10 +2682,16 @@ renamed in n8n is `rename.feature`, deleted in n8n is `delete.feature`, tagged i
 n8n is `tag-sync.feature`. The sync is how the news arrives, not what happened.
 Once those files own their behaviours there is no "second sync" left to describe.
 
-**The trigger is data.** Three ways to start one sync — the card's button, the
-section's button, the schedule — same pre-state, same post-state. Columns, not
+**The trigger is data.** Two ways to start an instance-wide sync — the section's
+button and the schedule — same pre-state, same post-state. Columns, not
 scenarios. Whether a run is synchronous or queued is a mechanism and is asserted
 nowhere.
+
+The card's button was a third column here, under a caption reading "every way a
+sync starts". It is not an instance-wide sync: "fill the one folder I just
+mapped" is a different promise to a different reader, and the sibling keeps the
+two apart. It now lives in `mapping/sync-now.feature`, which is where an admin
+looking for what a mapping does will go.
 
 The schedule row drives the REAL job, forced past its interval and the worker's
 last-run gate with `background-job:execute --force-execute`. Asserting a row
