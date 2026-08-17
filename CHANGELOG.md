@@ -29,19 +29,15 @@ The first release since `0.1.5`, and the one where the mirror became properly tw
 
 ### Added
 
-- Tags are one set across n8n, the Nextcloud pills, and the file's own `tags` array — change any of the three and the other two follow.
-- A tag change reaches n8n on its own, with no "Sync to n8n" click.
-- A tag written by name alone gets its n8n id filled in for you.
-- Tags on a workflow file outside any mapped folder are kept in step, so they survive being moved or copied.
-- A file that arrives already tagged keeps its tags when it becomes a workflow.
+- **Tags are one set across n8n, the Nextcloud pills, and the file's own `tags` array** — change any of the three and the other two follow, with no "Sync to n8n" click. Add one by name alone and n8n fills in the id for you.
+- Tags keep up outside a mapped folder too, so they survive a move or a copy — and a file that arrives already tagged keeps those tags when it becomes a workflow.
 - A `link` mapping mirrors tags one way, so a pointer is searchable too.
 - A workflow file now carries the workflow's own created and modified dates, not the sync's — so Recent, Popular files, and sorting a folder by date all mean something.
-- Archiving a workflow in n8n now moves its file to the Nextcloud trash, and unarchiving brings it back out; an archived workflow used to sit in your folder as though it were live.
+- **The Nextcloud trash now mirrors n8n's archive in both directions**: archiving a workflow trashes its file, unarchiving brings it back out, and deleting it for good clears the trashed file. An archived workflow used to sit in your folder as though it were live.
 - Archiving a workflow in n8n removes its **link** file outright, with no trash entry — there is nothing to restore a pointer to, because the workflow itself is fine.
 - Restoring a workflow file from a Team Folder's trash now unarchives its workflow in n8n; only the personal trash ever did, so the file came back while the workflow stayed hidden.
-- Moving a workflow file straight from one mapped folder to another now rebinds it to the folder it landed in; it used to be refused, telling you to move it out and back in by hand.
-- A copy is named once: the filename, the JSON name and the n8n name all say `Fleet Health (1)`.
-- Workflows in one mapping may share a name; their files take a numbered suffix and keep it.
+- Moving a workflow file straight from one mapped folder to another now rebinds it to the folder it landed in, Team Folders included; it used to be refused, telling you to move it out and back in by hand.
+- A copy is named once: the filename, the JSON name and the n8n name all say `Fleet Health (1)`. Workflows in one mapping may share a name, and their files take a numbered suffix and keep it.
 - A bulk "Sync from n8n" now says how many files it removed.
 - `occ n8n_sync:set-groups` changes the groups a mapped folder is shared with.
 
@@ -58,7 +54,7 @@ The first release since `0.1.5`, and the one where the mirror became properly tw
 - A mapped folder appears as soon as you save the mapping, and one that cannot be provisioned is not saved at all.
 - The groups a mapped folder is shared with are read from the folder, so sharing it anywhere shows up here.
 - A `link` mapping's folder is no longer read-only.
-- The REST API card shows whether an API key is already stored.
+- The REST API card shows whether an API key is already stored, and Test connection tells a missing key apart from a rejected one.
 - Syncing a workflow's tags is faster.
 
 ### Removed
@@ -66,25 +62,19 @@ The first release since `0.1.5`, and the one where the mirror became properly tw
 - **BREAKING:** the `n8n:sync` / `n8n:link` / `n8n:unmapped` pills are gone. The mapping decides a file's mode and the file still shows you what it is, so the pills were a second copy nobody could edit. They are deleted on upgrade and disappear from the tag picker.
 - **BREAKING:** the `n8n:ignore` tag is gone. Move a file out of its mapped folder to keep it in Nextcloud only, or drop the mapping tag to keep it in n8n only. Files currently marked ignored become ordinary workflow files again on the next sync.
 - **BREAKING:** the admin "Purge Nextcloud files" button is gone, along with `occ n8n_sync:purge`. It deleted every mirrored file in one click on the promise that a sync would bring them back — which was only true for files that were faithful mirrors, and the ones that were not are exactly the ones you would miss. Removing a mapping still cleans up its own files.
+- A link file can no longer be opened in the text editor.
 
 ### Fixed
 
 - Saving an edit to a workflow file reaches n8n again.
 - Copying a workflow file in a mapped folder makes the new workflow in n8n again; any workflow with a node was left as an untracked file beside the original.
 - A copy made beside its source is no longer invisible to the app — it had no workflow in n8n and did nothing on click.
-- Moving a workflow file between two Team Folders keeps the workflow it already had, instead of making a second copy in n8n and pulling the original back into the folder you moved it out of.
 - The scheduled sync now keeps to its interval; a mapped folder could take twenty minutes to see a change.
 - Scheduled n8n → Nextcloud sync can be turned on again — the checkbox now saves.
 - A sync no longer marks every workflow file as modified.
 - Emptying the trash now really deletes the workflow in n8n.
 - Emptying a Team Folder's trash now deletes the workflow in n8n, instead of leaving it archived for good.
-- Deleting a workflow out of n8n's archive now clears its file from the Nextcloud trash.
-- Unarchiving a workflow in n8n brings its own file back out of the trash instead of writing a second copy.
 - Restoring a file whose workflow was deleted in n8n while it sat in the trash now creates the workflow again.
-- Tag changes made from the command line now reach n8n.
-- A link file can no longer be opened in the text editor.
-- Test connection tells a missing API key apart from a rejected one.
-- A tag you never chose can no longer appear on a workflow.
 - The admin "Test connection" and "Test webhook" buttons are CSRF-protected.
 
 ## [0.1.5] - 2026-07-22
