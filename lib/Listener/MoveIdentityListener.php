@@ -69,6 +69,17 @@ final class MoveIdentityListener implements IEventListener {
 	) {
 	}
 
+	/**
+	 * `@param Event` DELIBERATELY WIDER THAN THE `@implements` ABOVE. Psalm reads the
+	 * template parameter as the type of `$event`, so after the first branch returns it
+	 * narrows the union to its other member and calls the second `instanceof`
+	 * redundant. It is not: the dispatcher hands this method whatever it is registered
+	 * for, and both checks are what make an unrelated event a no-op rather than a
+	 * TypeError. Restating the real parameter type is the fix; deleting a live guard to
+	 * satisfy a static reading of a docblock is not.
+	 *
+	 * @param Event $event
+	 */
 	#[\Override]
 	public function handle(Event $event): void {
 		if ($event instanceof BeforeNodeRenamedEvent) {
