@@ -167,6 +167,18 @@ final class FeatureContext implements Context {
 	private string $collisionWorkflowId = '';
 	private string $collisionSyncedPath = '';
 	private string $collisionIncomingPath = '';
+	/**
+	 * The conflict dialog, in three fields.
+	 *
+	 * `conflictDestination` is set by the move and consumed by the ANSWER, because the
+	 * Files app opens the picker before it sends anything — so the destination is known
+	 * one step before the request that uses it exists.
+	 */
+	private string $conflictDestination = '';
+	/** The node name the incoming file carries, so "whose body survived" has an answer. */
+	private string $arrivedNodeName = '';
+	/** The file a `Then` named, so the sentence after it can say "its workflow". */
+	private string $namedFileUnderTest = '';
 	/** The copy made by a copy step, and the workflow id (if any) it was registered as. */
 	private string $copyFilePath = '';
 	private ?string $copyWorkflowId = null;

@@ -2735,12 +2735,30 @@ different id, or none, is not, and `(1)` is the honest answer. It is not a
 scenario yet because nothing has decided whether the app should impose that on a
 client that never asked a question.
 
-**Why both scenarios are `@todo`, and what that costs.** Keeping both versions is
-the one behaviour here that is already built and was already green — the old
-scenario graded it, via a harness that renamed the file itself. Re-stating it as
-an answer somebody gives takes it out of CI until the conflict step exists. That
-is a real, temporary loss of coverage on a path this repo has broken before, and
-it is the price of not shipping a scenario that lies about how the rename happens.
+**AND THE OLD NOTE'S 412 CAME FROM THE HARNESS, WHICH IS THE REAL LESSON.**
+`WebDavTrait::davMove` sends `Overwrite: F` on every move it makes. So the retired
+scenario genuinely DID get a 412 — not because Nextcloud refuses same-name moves,
+but because the suite was the one client in the world that asks to be refused. A
+test fixture's incidental choice was read back as a fact about the product and
+written into the notes as one. Worth remembering the shape: the evidence was real,
+the conclusion was not, and nothing in a green suite distinguishes them.
+
+**Only `both versions` is implemented.** `I select` throws on the other two rather
+than doing something adjacent, because they are `@todo` in the feature file and a
+step that quietly approximates an unimplemented answer is worse than an undefined
+one. Keeping the existing version sends no request at all; keeping the new one
+makes Nextcloud trash the destination before the arrival lands, and nothing here
+yet guarantees the app survives that.
+
+**The `When` announces and the answer performs**, which is not a convenience. The
+Files app PROPFINDs the destination, finds the collision and opens the picker
+BEFORE a single request goes out — so a step that moved the file and then
+"resolved" the conflict would be modelling a client that does not exist. The
+destination is recorded by `I move …` and consumed by `I select …`.
+
+`uniqueNameIn()` reimplements `getUniqueName()` rather than hardcoding `(1)`, and
+it FAILS if the name it was told would collide is actually free. A scenario about
+a conflict that quietly runs without one is the failure mode worth catching.
 
 #### Keeping both versions of a duplicate makes the arrival its own workflow
 

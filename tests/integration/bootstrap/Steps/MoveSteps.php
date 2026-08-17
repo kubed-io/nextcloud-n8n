@@ -229,10 +229,15 @@ trait MoveSteps {
 	 * re-creates the synced file in place from n8n. Net: the synced copy lives in
 	 * alpha (id W) and the original, now unmapped, copy waits outside (also id W).
 	 *
-	 * @Given an unmapped copy of that same workflow with the same :key outside any mapping
-	 * @Given an unmapped copy of that same workflow with the same :key in :folder
+	 * THE FOLDER AND THE NAME ARE HONOURED NOW. The previous phrasing took a `:folder`
+	 * argument and ignored it, moving the file to an invented `unmapped-xxxx` instead —
+	 * harmless while the only thing that mattered was "outside every mapping", and
+	 * useless the moment a scenario needs both files to carry the SAME NAME, which is
+	 * the entire premise of a conflict.
+	 *
+	 * @Given an unmapped file named :filename in :folder carrying the same :key
 	 */
-	public function anUnmappedCopyOfThatSameWorkflow(string $key, string $folder = ''): void {
+	public function anUnmappedFileNamedCarryingTheSameId(string $filename, string $folder, string $key): void {
 		Assert::assertNotNull($this->lastWorkflowId, 'no workflow id from the managed sync file');
 		$this->collisionWorkflowId = $this->lastWorkflowId;
 
@@ -242,12 +247,22 @@ trait MoveSteps {
 		$sourceFolder = $this->currentFolder;
 		$sourceTag = $this->currentTag;
 
-		// Move the synced file OUT → it becomes the unmapped copy (id preserved, workflow archived).
-		$this->iMoveTheFileToAnUnmappedFolder();
-		if ($this->davReadMetadata($this->currentFilePath, self::META_MODE) !== 'unmapped') {
-			throw new \RuntimeException('setup: the moved-out copy is not unmapped');
+		// Move the synced file OUT into the NAMED folder → the unmapped copy (id
+		// preserved, workflow archived). Any leftover at the destination is cleared
+		// first: `davMove` sends `Overwrite: F`, so a previous scenario's file would
+		// refuse this arrange with a 412 that reads like a permissions problem.
+		$this->davMkdir($folder);
+		$dest = $folder . '/' . $filename;
+		if ($this->davExists($dest)) {
+			$this->davDelete($dest);
 		}
-		$this->collisionIncomingPath = $this->currentFilePath;
+		$this->davMove($this->currentFilePath, $dest);
+		$this->currentFilePath = $dest;
+		$this->expectedArchived = true;
+		if ($this->davReadMetadata($dest, self::META_MODE) !== 'unmapped') {
+			throw new \RuntimeException("setup: the moved-out copy at $dest is not unmapped");
+		}
+		$this->collisionIncomingPath = $dest;
 
 		// Bring the workflow back to life and pull the mapping so a fresh SYNCED file is
 		// written into it from n8n — the "existing synced copy" the move-in must defer to.
@@ -288,79 +303,203 @@ trait MoveSteps {
 	}
 
 	/**
-	 * Move the unmapped copy INTO the mapping under a FRESH name. Because a sibling
-	 * already tracks this workflow, MotionService::moveIn mints the incoming as a
-	 * brand-new instance (copy semantics) rather than restoring it — see saga §14.19.
+	 * Give the incoming file a body of its own, so "whose nodes survived" is a
+	 * question with an answer. Without it, keeping either version leaves the same
+	 * bytes behind and nothing downstream can tell the two apart.
 	 *
-	 * @When I move the unmapped copy into the :tag folder under a different name
+	 * SAFE TO WRITE, because the file is unmapped: `NodeWrittenListener` skips it, so
+	 * this edit reaches nothing in n8n — which is `edit.feature`'s own claim, relied
+	 * on here rather than restated.
+	 *
+	 * @Given that file's nodes differ from the workflow's
 	 */
-	public function iMoveTheUnmappedCopyIntoTheFolder(string $tag): void {
-		$this->iMoveTheUnmappedCopyInto($this->folderNameForTag($tag));
+	public function thatFilesNodesDifferFromTheWorkflows(): void {
+		$path = $this->collisionIncomingPath !== '' ? $this->collisionIncomingPath : $this->currentFilePath;
+		// Object decode: an assoc round-trip flattens the empty `connections` and
+		// `settings` objects to `[]`, which n8n rejects when this body is minted.
+		$wf = json_decode($this->davGet($path), false, 512, JSON_THROW_ON_ERROR);
+		Assert::assertInstanceOf(\stdClass::class, $wf, "the incoming file at $path is not a JSON object");
+		$this->arrivedNodeName = 'Arrived-' . bin2hex(random_bytes(3));
+		$wf->nodes = [(object)[
+			'name' => $this->arrivedNodeName,
+			'type' => 'n8n-nodes-base.noOp',
+			'typeVersion' => 1,
+			'position' => [0, 0],
+			'parameters' => new \stdClass(),
+		]];
+		$this->davPut($path, json_encode($wf, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT));
 	}
 
-	/** @When I move the unmapped copy into :folder under a different name */
-	public function iMoveTheUnmappedCopyInto(string $folder): void {
-		$dest = $folder . '/Mover-incoming.n8n';
+	/**
+	 * THE MOVE IS ANNOUNCED HERE AND PERFORMED BY THE ANSWER, which is not a
+	 * convenience — it is what the Files app does. `moveOrCopyAction.ts` PROPFINDs the
+	 * destination, finds the collision, and opens the conflict picker BEFORE a single
+	 * request goes out; the answer then decides whether one is sent at all, and under
+	 * what name. A step that moved the file here and "resolved" afterwards would be
+	 * modelling a client that does not exist.
+	 *
+	 * @When I move the unmapped file into :folder
+	 */
+	public function iMoveTheUnmappedFileInto(string $folder): void {
+		// THE ID IT ARRIVED WITH, pinned before anything can overwrite it — `its own,
+		// not the one it arrived with` compares against this, and re-reading it
+		// afterwards would compare the minted id with itself and pass.
+		$this->idArrivedWith = (string)($this->davReadMetadataId($this->currentFilePath) ?? '');
+		$this->conflictDestination = $folder;
+	}
+
+	/**
+	 * Answer the "Which files do you want to keep?" dialog.
+	 *
+	 * Only `both versions` is implemented, and deliberately so: it is the one answer
+	 * whose behaviour this app already has. The other two are `@todo` in the feature
+	 * file — keeping the existing version sends no request at all, and keeping the new
+	 * one makes Nextcloud trash the destination before the arrival lands, which nothing
+	 * here yet guarantees the app survives. An unimplemented answer says so rather than
+	 * quietly doing something adjacent.
+	 *
+	 * @When I select :answer
+	 */
+	public function iSelect(string $answer): void {
+		Assert::assertNotSame('', $this->conflictDestination, 'no move announced — a When must name the destination');
+		if ($answer !== 'both versions') {
+			throw new \RuntimeException(
+				"the '$answer' answer is not implemented yet; only 'both versions' is (see AGENTS.md)",
+			);
+		}
+		$dest = $this->conflictDestination . '/' . $this->uniqueNameIn(
+			$this->conflictDestination,
+			basename($this->currentFilePath),
+		);
 		$this->davMove($this->currentFilePath, $dest);
 		$this->currentFilePath = $dest;
-	}
+		$this->currentFolder = $this->conflictDestination;
 
-	/**
-	 * Try to move the unmapped copy in under the SAME name as the existing synced
-	 * file. Nextcloud's WebDAV MOVE uses Overwrite:F, so the destination-exists case
-	 * is refused with a 412 before any rename event fires — exactly like any NC
-	 * same-name move. Capture the status for the refusal assertion.
-	 *
-	 * @When I try to move the unmapped copy into the :tag folder under the same name
-	 */
-	public function iTryToMoveTheUnmappedCopyIntoTheFolderUnderTheSameName(string $tag): void {
-		$this->iTryToMoveTheUnmappedCopyIntoUnderTheSameName($this->folderNameForTag($tag));
-	}
-
-	/** @When I try to move the unmapped copy into :folder under the same name */
-	public function iTryToMoveTheUnmappedCopyIntoUnderTheSameName(string $folder): void {
-		$dest = $folder . '/' . basename($this->collisionSyncedPath);
-		$this->lastMoveStatus = $this->davMoveStatus($this->currentFilePath, $dest);
-	}
-
-	/**
-	 * After a differently-named duplicate lands, the moved-in file carries a FRESH id
-	 * (not the shared one) and that new workflow exists live in n8n.
-	 *
-	 * @Then the moved-in file becomes a brand-new workflow in n8n
-	 */
-	public function theMovedInFileBecomesABrandNewWorkflow(): void {
-		$newId = $this->davReadMetadataId($this->currentFilePath);
-		Assert::assertNotNull($newId, 'the moved-in file has no n8n_id');
-		Assert::assertNotSame('', $newId, 'the moved-in file has an empty n8n_id');
-		Assert::assertNotSame(
-			$this->collisionWorkflowId,
-			$newId,
-			'no new instance was minted — the moved-in file still carries the shared id',
-		);
-		Assert::assertIsArray($this->n8nGetWorkflow($newId), "the new workflow $newId does not exist in n8n");
-		// Register for teardown so the minted workflow is cleaned up.
-		if (!in_array($newId, $this->createdWorkflowIds, true)) {
-			$this->createdWorkflowIds[] = $newId;
+		// Register whatever was minted so teardown deletes it. Read from the file
+		// rather than assumed: if the app restored instead of minting, this records
+		// the shared id, which teardown already holds — and the assertions say so.
+		$minted = (string)($this->davReadMetadataId($dest) ?? '');
+		if ($minted !== '' && !in_array($minted, $this->createdWorkflowIds, true)) {
+			$this->createdWorkflowIds[] = $minted;
 		}
 	}
 
-	/** @Then the original synced file is unchanged */
-	public function theOriginalSyncedFileRemainsUnchanged(): void {
-		Assert::assertSame(
-			'sync',
-			$this->davReadMetadata($this->collisionSyncedPath, self::META_MODE),
-			'the existing synced file changed mode',
-		);
-		Assert::assertSame(
-			$this->collisionWorkflowId,
-			$this->davReadMetadataId($this->collisionSyncedPath),
-			'the existing synced file changed its workflow id',
-		);
-		Assert::assertIsArray(
-			$this->n8nGetWorkflow($this->collisionWorkflowId),
-			'the original workflow vanished from n8n',
-		);
+	/**
+	 * What `getUniqueName()` picks: the name as-is if it is free, else ` (n)` inserted
+	 * BEFORE the extension, counting up from 1.
+	 *
+	 * Reimplemented rather than hardcoded to `(1)` so a scenario cannot silently pass
+	 * on a name that happened to be free for a different reason — and so the step
+	 * fails loudly if the destination is not in the state the arrange claims.
+	 */
+	private function uniqueNameIn(string $folder, string $filename): string {
+		$ext = pathinfo($filename, PATHINFO_EXTENSION);
+		$stem = $ext !== '' ? substr($filename, 0, -(strlen($ext) + 1)) : $filename;
+		$suffix = $ext !== '' ? '.' . $ext : '';
+		if (!$this->davExists($folder . '/' . $filename)) {
+			throw new \RuntimeException(
+				"there is no '$filename' in $folder to collide with — this scenario needs a conflict to answer",
+			);
+		}
+		for ($n = 1; $n <= 50; $n++) {
+			$candidate = $stem . ' (' . $n . ')' . $suffix;
+			if (!$this->davExists($folder . '/' . $candidate)) {
+				return $candidate;
+			}
+		}
+		throw new \RuntimeException("could not find a free name for $filename in $folder");
+	}
+
+	/**
+	 * The metadata table, applied to a file this scenario NAMES rather than to
+	 * whichever one the last gesture touched. A conflict leaves two files standing and
+	 * the whole claim is the contrast between them, so "the file" is not a thing the
+	 * scenario can say.
+	 *
+	 * Remembers the path so the sentence after it can say "its workflow" — the two are
+	 * read as one statement about one file, which is how they are written.
+	 *
+	 * @Then :filename in :folder holds this DAV metadata:
+	 */
+	public function theNamedFileHolds(string $filename, string $folder, TableNode $table): void {
+		$path = $folder . '/' . $filename;
+		if (!$this->davExists($path)) {
+			throw new \RuntimeException("there is no file at $path");
+		}
+		$this->namedFileUnderTest = $path;
+		$this->currentFolder = $folder;
+		$this->assertManagedMetadata($path, $table);
+	}
+
+	/**
+	 * The n8n half of the file named above: it is there, it is NOT archived, it carries
+	 * the name the scenario spells, and it holds the body the scenario says it should.
+	 *
+	 * `live` IS THE ASSERTION, not decoration. The failure this guards is not a missing
+	 * workflow — it is one that came back archived, because keeping a version trashes
+	 * what it replaced and the delete listener answers a trash by archiving.
+	 *
+	 * A REGEX, NOT TWO `:name` ANNOTATIONS. Behat hands a method only the placeholders
+	 * it captured, so two sentences differing in their tail would arrive identical and
+	 * the step could not tell which body it was asked about. Spelling the alternation
+	 * out also makes a typo in the sentence an undefined step rather than a silently
+	 * different assertion.
+	 *
+	 * @Then /^its workflow in n8n is live, named "([^"]+)", and holds the nodes (it always had|that arrived)$/
+	 */
+	public function itsWorkflowInN8nIsLiveNamedAndHolds(string $name, string $which): void {
+		$wantArrived = $which === 'that arrived';
+		$path = $this->namedFileUnderTest;
+		Assert::assertNotSame('', $path, 'no named file to read a workflow off — a metadata Then must come first');
+
+		$id = (string)($this->davReadMetadataId($path) ?? '');
+		if ($id === '') {
+			throw new \RuntimeException("$path carries no n8n_id, so it names no workflow");
+		}
+		$wf = $this->n8nGetWorkflow($id);
+		if (!is_array($wf)) {
+			throw new \RuntimeException("the workflow $id behind $path is gone from n8n");
+		}
+		if (($wf['isArchived'] ?? false) === true) {
+			throw new \RuntimeException("the workflow $id behind $path is archived, not live");
+		}
+		Assert::assertSame($name, (string)($wf['name'] ?? ''), "the workflow behind $path has the wrong name");
+
+		$want = $wantArrived ? $this->arrivedNodeName : 'When clicking Test workflow';
+		$got = $this->n8nWorkflowNodeNames($id);
+		if (!in_array($want, $got, true)) {
+			throw new \RuntimeException(
+				"the workflow behind $path does not hold '$want'; n8n holds: " . implode(', ', $got),
+			);
+		}
+	}
+
+	/**
+	 * Both files, all three surfaces, one sentence. Stated over the pair because the
+	 * claim is that BOTH belong to the mapping now — asserting one of them would pass
+	 * for a minted workflow that never joined anything.
+	 *
+	 * @Then the tags on both files are :tags in Nextcloud, in the file and in n8n
+	 */
+	public function theTagsOnBothFilesAre(string $tags): void {
+		$this->settleFromN8n();
+		foreach ([$this->collisionSyncedPath, $this->currentFilePath] as $path) {
+			Assert::assertNotSame('', $path, 'one of the two files has no path — the arrange did not record it');
+			self::assertTagSet($tags, $this->fileSystemTags($path), "$path: the Nextcloud pills");
+
+			$wf = json_decode($this->davGet($path), true);
+			Assert::assertIsArray($wf, "the file at $path is not JSON");
+			$names = [];
+			foreach ((array)($wf['tags'] ?? []) as $tag) {
+				Assert::assertIsArray($tag, "a body tag entry in $path is not an object");
+				$names[] = (string)($tag['name'] ?? '');
+			}
+			self::assertTagSet($tags, $names, "$path: the file's tags array");
+
+			$id = (string)($this->davReadMetadataId($path) ?? '');
+			Assert::assertNotSame('', $id, "$path carries no workflow id");
+			self::assertTagSet($tags, $this->n8nWorkflowTagNames($id), "$path: the workflow's n8n tags");
+		}
 	}
 
 	/** @When I try to move the file to a folder that is not mapped */

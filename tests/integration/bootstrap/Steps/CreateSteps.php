@@ -460,6 +460,12 @@ trait CreateSteps {
 				// shipped green for exactly this reason. This one is pinned before the
 				// gesture and cannot be answered by whatever the file ended up holding.
 				$expected === 'the id it arrived with' => $this->idArrivedWith,
+				// A DUPLICATE'S SHARED ID, pinned by the arrange that made the second
+				// file. Distinct from `the id it arrived with` on purpose: that one is
+				// about the file that MOVED, and a conflict leaves two files standing —
+				// the one that did not move needs a way to say "still the id I had"
+				// that does not resolve through whichever file the last gesture touched.
+				$expected === 'the id both files carried' => $this->collisionWorkflowId,
 				$expected === "the mapping's id" => $this->mappingIdForFolder($this->currentFolder),
 				$expected === "the mapping's mode" => $this->mappingModeForFolder($this->currentFolder),
 				(bool)preg_match('/^the "([^"]+)" mapping\'s id$/', $expected, $m) => $this->mappingIdForTag($m[1]),

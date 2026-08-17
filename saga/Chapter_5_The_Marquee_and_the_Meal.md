@@ -1832,12 +1832,38 @@ heuristic on a client that never asked a question (same name *and* same id is kn
 the same workflow; same name with a different id is a `(1)`) is a decision, and it is
 written down rather than specified.
 
-### What this cost, stated plainly
+### The 412 came from our own test harness
 
-Both go in as `@todo`, which means the Outline's middle row — the one behaviour here that
-was built and green — leaves CI until the conflict step exists. That is real coverage
-lost on a path this repo has broken before. It is the price of not shipping a scenario
-that describes a rename nobody performs.
+The best part of the second finding arrived last, while wiring the steps up. The retired
+note claimed a same-name move-in gets a 412 — and it did. `WebDavTrait::davMove` sends
+`Overwrite: F` on every move the suite makes. The suite was the one client in the world
+that asks to be refused, and its incidental choice of header was read back as a fact
+about Nextcloud and written into the notes as one.
+
+The evidence was real. The conclusion was not. Nothing in a green suite tells those two
+apart, which is the same lesson as the day of the missing axes, arriving from a direction
+nobody was watching: not an untested axis this time, but a *tested* one whose fixture was
+quietly answering a different question than the one being asked.
+
+### What got graded, and what did not
+
+The push direction is implemented and green. The arrange is worth copying: `timing`
+defaults to async, so a save enqueues a job that nothing runs, and the divergence the
+scenario needs is produced by simply *not draining* — the state a real instance sits in
+between a save and the next worker tick, rather than a fiction reached around the app.
+The step then verifies the divergence exists before handing over, because if a future
+default made the push inline, every assertion downstream would still pass against an
+already-updated workflow and the whole scenario would grade nothing.
+
+`Keeping both versions` is implemented too — it was the one answer whose behaviour the
+app already had. `I select` throws on the other two rather than doing something adjacent
+to them: keeping the existing version sends no request at all, and keeping the new one
+makes Nextcloud trash the destination before the arrival lands, which nothing yet
+guarantees the app survives. That one stays `@todo` until somebody decides whether the
+delete listener should be muzzled for the length of an overwrite, or whether the arrival
+should be allowed to un-archive what was archived a moment earlier.
+
+So one scenario is left ungraded, on purpose, and the notes say which and why.
 
 > **Dr K, chairs already up:** *"You found it by eating here. That's the only way anyone
 > finds it. Reading your own menu tells you what you meant to cook."*

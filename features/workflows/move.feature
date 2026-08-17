@@ -133,7 +133,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
       | the new version      | the file that arrived  |
 
   # notes: ../AGENTS.md#keeping-both-versions-of-a-duplicate-makes-the-arrival-its-own-workflow
-  @user @in-nextcloud @gesture @ui @todo
+  @user @in-nextcloud @gesture @ui
   Scenario: Keeping both versions of a duplicate makes the arrival its own workflow
     Given a workflow file named "Turnbuckle.n8n" in "Automations"
     And an unmapped file named "Turnbuckle.n8n" in "Scratch" carrying the same "n8n_id"
