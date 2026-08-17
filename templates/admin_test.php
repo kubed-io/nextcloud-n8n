@@ -22,9 +22,11 @@ $webhookEnabled = (bool)($_['webhook_enabled'] ?? false);
 		<span id="n8n-sync-test-status" class="msg"></span>
 	</div>
 	<div class="n8n-sync-test-wrap">
-		<?php /* Same rule as sync_settings.php: never concatenate a TRANSLATED string
-		         into an attribute through print_unescaped() — one straight double quote
-		         from a translator closes the attribute early. `p()` uses ENT_QUOTES. */ ?>
+		<?php
+		// Same rule as sync_settings.php: never concatenate a TRANSLATED string into an
+		// attribute through print_unescaped() — one straight double quote from a translator
+		// closes the attribute early. p() uses ENT_QUOTES.
+		?>
 		<button type="button" id="n8n-sync-webhook-btn" class="button"
 			<?php if (!$webhookEnabled) { ?>disabled title="<?php p($l->t('Enable and save the Webhook channel above to test it.')); ?>"<?php } ?>>
 			<?php p($l->t('Test webhook')); ?>
