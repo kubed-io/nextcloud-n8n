@@ -349,16 +349,25 @@ the storage kind is the axis a bug hides in. A move is different: a Team Folder 
 mounted at the user's files root and is not a node that can be dragged inside
 another folder, so there is only the admin-owned case to state.
 
-### A mapped folder that was deleted is not re-adopted by name
+### A mapped folder that was deleted is not re-adopted by name — NOT PORTED
 
-The sharper half of the same rule, and the one a name-matching implementation
-fails loudest on: delete the mapped folder, make a new one that merely reuses its
-name, and `resolveForPath` hands it the mapping — so files dropped into a folder
-nobody chose become managed, and start creating workflows in n8n under a tag the
-admin bound to something else.
+The sibling has it (`@unbuilt`), it was drafted here, and it was dropped. Two
+reasons, either of which is sufficient.
 
-A folder that shares a name is a different folder. Ported from the sibling, where
-it is `@unbuilt` for the same reason it is here.
+**It cannot fail on its own.** Once the mapping holds a folder id, a new folder
+has a new id and the mapping cannot resolve to it — the claim is structural, not
+behavioural. And `Rename the mapped Nextcloud folder` and `Move the mapped
+Nextcloud folder` can only pass if the mapping tracks by id, so there is no state
+in which those two pass and this one fails. The single thing it would have caught
+is an implementation that tracks by id *with a name fallback*, which is guarding a
+mechanism, not a behaviour.
+
+**Its `When` was `I create the folder`.** A create gesture in a move feature —
+so even if the claim had earned a scenario, this was not its file. What the
+premise ("the mapped folder is in the trash") actually reaches for is a different
+question nobody has asked: what should a mapping do when its folder is DELETED?
+That is worth deciding on its own terms, in its own place, rather than arriving
+sideways as a negative assertion about names.
 
 ## mapping/rename
 

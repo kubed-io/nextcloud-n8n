@@ -32,17 +32,3 @@ Feature: Moving a mapped folder
 
     # Nothing is sent to n8n: the mapping names a TAG there, and the Nextcloud
     # folder it pairs with is the one it has always pointed at.
-
-    # ── RULE: a folder that is gone is gone, not re-adopted by name ───────────
-
-  # notes: ../AGENTS.md#a-mapped-folder-that-was-deleted-is-not-re-adopted-by-name
-  @admin @in-nextcloud @gesture @ui @unbuilt
-  Scenario: A new folder reusing the mapped folder's name is not adopted
-    Given a workflow file in "Automations"
-    And "Automations" is in the Nextcloud trash
-    When I create the folder "Automations"
-    Then the mapping does not resolve to the new "Automations"
-    And a workflow file created in the new "Automations" is not managed
-
-    # A folder that merely shares the name is a different folder, and adopting it
-    # would point the mapping at something nobody chose.
