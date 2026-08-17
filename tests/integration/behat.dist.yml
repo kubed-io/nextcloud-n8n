@@ -67,6 +67,7 @@ default:
       - '%paths.base%/../../features/connection/connection.feature'
       - '%paths.base%/../../features/connection/sync-now.feature'
       - '%paths.base%/../../features/mapping/create.feature'
+      - '%paths.base%/../../features/mapping/delete.feature'
       - '%paths.base%/../../features/mapping/manage-groups.feature'
       contexts: &contexts
       - OCA\N8nSync\Tests\Integration\FeatureContext

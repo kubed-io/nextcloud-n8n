@@ -272,6 +272,50 @@ The `@decision` scenario that used to sit beside these — "there is no way to
 change a mapping except its groups" — is gone. It had no `When`, because there is
 no operation to perform; that is what this file's existence already says.
 
+## mapping/delete
+
+`features/mapping/delete.feature`
+
+Ported from `nextcloud-grafana/features/mapping/delete.feature`, which asked the
+question this app had never written down: an admin removes a mapping — what
+happens to the files? Both scenarios came across intact, because the rule they
+encode is not about dashboards or workflows but about what a mapping OWNS.
+
+### Removing a mapping removes only the mapping
+
+**A sync file survives its mapping.** It holds the whole workflow, so deleting the
+mapping cannot cost anything: the file stays where it is, keeps its `n8n_id`
+because the workflow is still there, and becomes `unmapped` — claimed by nothing,
+which is exactly what unmapped means. Nothing is sent to n8n; the mapping is a
+Nextcloud-side statement about which tag fills which folder, and removing it is
+not a statement about the workflow.
+
+**A link goes with it.** A link file is a pointer at something n8n owns and holds
+no content of its own. Without the mapping it points nowhere, so it goes, as if it
+had never been written. This is the same asymmetry the workflow features already
+turn on — a link may not be edited, copied, moved or deleted precisely because it
+is not the thing, and here it is the reason it can be removed without loss.
+
+**`@unbuilt` here, though the sibling says `@todo`, and the difference is the
+point.** In this repo `@todo` means the code exists and only the test is missing,
+`@unbuilt` means a spec awaiting code — and this app has not built either case:
+`MappingController::destroy` deletes the mapping and, with an explicit `purge`
+flag, deletes the managed files, but the no-purge path leaves every file still
+stamped with the id of a mapping that no longer exists, and a link mapping has no
+case of its own. Porting the scenarios records the intended end state; wearing
+`@todo` would have claimed code that is not there. The status tag is the one thing
+a port must re-decide, because it describes THIS repo.
+
+**What was NOT ported, and why.** The sibling's `mapping/sync-now.feature` is
+already covered here by `connection/sync-now.feature`, which states the same
+behaviour across all three ways a sync starts rather than only the per-mapping
+card. Its `mapping/move.feature` and `mapping/rename.feature` rest on "a mapping
+is a pair of ids, so a move is a no-op" — true there, false here: {@see Mapping}
+holds `n8nTag` and `teamFolder` as NAMES, and `MappingService::resolveForPath`
+matches a folder by name prefix. Porting them would have asserted a premise this
+app does not have. The behaviour is worth deciding on; inventing it inside a port
+is not.
+
 ## connection/connection
 
 `features/connection/connection.feature`
