@@ -111,17 +111,36 @@ Feature: Moving a workflow file is the same workflow leaving and returning
       | n8n_mapping | the mapping's id                     |
       | n8n_mode    | the mapping's mode                   |
 
-  # notes: ../AGENTS.md#moving-a-duplicate-in-mints-a-brand-new-workflow
-  @user @in-nextcloud @gesture @ui
-  Scenario: Moving a duplicate in mints a brand-new workflow
-    Given a workflow file in "Automations"
-    And an unmapped copy of that same workflow with the same "n8n_id" in "Scratch"
-    When I move the unmapped copy into "Automations" under a different name
-    Then the file holds this DAV metadata:
-      | n8n_id      | its own, not the one it arrived with |
-      | n8n_mapping | the mapping's id                     |
-      | n8n_mode    | the mapping's mode                   |
-    And the original file and its workflow are unchanged
+  # notes: ../AGENTS.md#moving-a-duplicate-in-is-settled-by-the-version-i-keep
+  @user @in-nextcloud @gesture @ui @todo
+  Scenario Outline: Moving a duplicate in is settled by the version I keep
+    Given a workflow file named "Turnbuckle.n8n" in "Automations"
+    And an unmapped file named "Turnbuckle.n8n" in "Scratch" carrying the same "n8n_id"
+    And that file's nodes differ from the workflow's
+    When I move the unmapped file into "Automations"
+    And I select "<kept>"
+    Then "Automations" holds exactly the workflow files "<files>"
+    And "Scratch" holds exactly the workflow files "<left behind>"
+    And n8n holds exactly the workflows "<workflows>" tagged "alpha"
+    And no "Turnbuckle" workflow is archived in n8n
+    And each workflow holds the nodes of the file that names it
+    And each file in "Automations" holds this DAV metadata:
+      | n8n_id      | the id of the workflow it names |
+      | n8n_mapping | the mapping's id                |
+      | n8n_mode    | the mapping's mode              |
+    And the tags on each file in "Automations" are "alpha" in Nextcloud, in the file and in n8n
+
+    Examples: keeping what was already synced there moves nothing and says nothing
+      | kept                 | files          | left behind    | workflows  |
+      | the existing version | Turnbuckle.n8n | Turnbuckle.n8n | Turnbuckle |
+
+    Examples: keeping both is Nextcloud renaming the arrival, so the arrival is new
+      | kept          | files                              | left behind | workflows                  |
+      | both versions | Turnbuckle.n8n, Turnbuckle (1).n8n | nothing     | Turnbuckle, Turnbuckle (1) |
+
+    Examples: keeping the new one hands the workflow the body that arrived
+      | kept            | files          | left behind | workflows  |
+      | the new version | Turnbuckle.n8n | nothing     | Turnbuckle |
 
   # notes: ../AGENTS.md#the-tags-a-file-arrives-with-are-the-tags-its-workflow-ends-up-with
   @user @in-nextcloud @gesture @ui

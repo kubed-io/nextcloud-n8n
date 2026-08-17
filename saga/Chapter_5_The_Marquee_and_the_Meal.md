@@ -1741,6 +1741,87 @@ nothing. So it comes out now and comes back when there is something to come back
 > **Dr K, wiping down the pass:** *"A dish you can't cook isn't on the menu. It's on the
 > whiteboard in the back. Customers read menus."*
 
+## 2026-08-17 · **ONE LAST WALK OF THE ROOM**
+
+The chapter was about to close. It didn't, because the last walk of the room turned up
+two things — one missing, one wrong — and both were found the same way: by using the app
+rather than by reading it.
+
+### The direction nobody wrote down
+
+`connection/sync-now.feature` describes an instance-wide sync. It has always described
+exactly one of them. The pull is there in two flavours, admin and schedule, and the push
+— *n8n is wrong, Nextcloud is right, make n8n match* — appears nowhere in the
+specification at all.
+
+It is not missing from the app. `SyncService::pushAll` and `pushOne` are written,
+`occ n8n_sync:sync push` runs them, and `POST /sync/push` is routed and authorised. What
+is missing is anybody having said what it is FOR, which is how it also came to be missing
+a test. `SyncController`'s docblock still calls push "a stub — the manual button records
+a no-op run", which stopped being true a long time ago and which nobody noticed, because
+there was no scenario to disagree with it.
+
+The reason it slipped is on the record and is, in isolation, still correct. When this
+file was rebuilt, a row reading *the button pushes local changes up* was retired into
+`edit.feature` on the grounds that nobody edits a workflow in order to press a button.
+True — and it quietly disposed of a second, different gesture that happened to share the
+button. Retiring a row for what it usually means will lose the thing it occasionally
+means. The new scenario's discriminating Given is the one that keeps them apart: *one of
+its workflows was changed in n8n after its file was written*. Push that back anyway and
+you have made a declaration. Skip it and you have merely caught up.
+
+### The dialog we had been talking over
+
+The second is better, because the app was already right and the notes were already wrong.
+
+`workflows/move.feature` carried a rule for what happens when a file bearing an `n8n_id`
+is moved into a mapping where that workflow is already synced. It said: same name, the
+move is refused — `Overwrite: F` → 412 — "exactly like any NC same-name move."
+
+Neither half survives contact with the source, which was read in the running pod rather
+than remembered. Sabre defaults an absent `Overwrite` header to **T**, so 412 is what a
+client gets only when it explicitly asks to be refused, and the Files app never asks.
+And an overwrite is not a content replace: `CorePlugin::httpMove` calls
+`tree->delete($destination)` and only then moves.
+
+What actually happens is better than what we had specified. Nextcloud **asks**:
+
+> *Which files do you want to keep? If you select both versions, the incoming file will
+> have a number added to its name.*
+
+and the answer decides everything. Filtered out of the request list, renamed via
+`getUniqueName()` to `Turnbuckle (1).n8n`, or moved over the top — three end states, one
+per answer, chosen by a person. So the scenario becomes an Outline whose column is the
+answer, which is the same posture the mapping rebind already takes: the app is not
+guessing what someone meant, it is reading what they said.
+
+Two things fell out of reading it properly. **"Keep both" is a rename, not a copy** —
+one MOVE, one inode, a name Nextcloud picked — so it lands on the rule we already have
+(a sibling already holds that id, therefore mint a new workflow) rather than needing a
+new one. The old note had the outcome right and the cause wrong, calling it "diff name"
+as though a user had typed one. And **"keep the new version" is the one with teeth**: the
+destination is trashed before the arrival lands, so the delete listener archives that
+workflow in n8n a moment before a file turns up asking for it back. `no "Turnbuckle"
+workflow is archived in n8n` is in the Then because that is the line that fails when
+those two race.
+
+The open question is left open on purpose. The picker is a **web-UI** affordance. The
+desktop client, a WebDAV mount and `occ` all send a bare MOVE — which is `Overwrite: T`,
+the destructive answer, with nobody asked. Whether the app should impose the sane
+heuristic on a client that never asked a question (same name *and* same id is knowably
+the same workflow; same name with a different id is a `(1)`) is a decision, and it is
+written down rather than specified.
+
+### What this cost, stated plainly
+
+Both go in as `@todo`, which means the Outline's middle row — the one behaviour here that
+was built and green — leaves CI until the conflict step exists. That is real coverage
+lost on a path this repo has broken before. It is the price of not shipping a scenario
+that describes a rename nobody performs.
+
+> **Dr K, chairs already up:** *"You found it by eating here. That's the only way anyone
+> finds it. Reading your own menu tells you what you meant to cook."*
+
 ---
 
 Sources / cross-links:
@@ -1751,3 +1832,7 @@ Sources / cross-links:
 - Nextcloud `stable33`: `apps/files_trashbin/lib/Trashbin.php`,
   `lib/Trash/LegacyTrashBackend.php`, `lib/Sabre/AbstractTrash.php` — the purge chain
   above, read rather than assumed.
+- Nextcloud `34.0.3`, read in the running pod for the move-conflict section:
+  `3rdparty/sabre/dav/lib/DAV/Server.php::getCopyAndMoveInfo`,
+  `3rdparty/sabre/dav/lib/DAV/CorePlugin.php::httpMove`, and the shipped
+  `dist/files-main.js` (the built form of `apps/files/src/actions/moveOrCopyAction.ts`).
