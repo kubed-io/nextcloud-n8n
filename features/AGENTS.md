@@ -271,7 +271,7 @@ differs and the behaviour must not.
 The `@decision` scenario that used to sit beside these — "there is no way to
 change a mapping except its groups" — is gone. It had no `When`, because there is
 no operation to perform; that is what this file's existence already says.
-
+nc
 ## mapping/delete
 
 `features/mapping/delete.feature`
@@ -306,15 +306,43 @@ case of its own. Porting the scenarios records the intended end state; wearing
 `@todo` would have claimed code that is not there. The status tag is the one thing
 a port must re-decide, because it describes THIS repo.
 
-**What was NOT ported, and why.** The sibling's `mapping/sync-now.feature` is
-already covered here by `connection/sync-now.feature`, which states the same
-behaviour across all three ways a sync starts rather than only the per-mapping
-card. Its `mapping/move.feature` and `mapping/rename.feature` rest on "a mapping
-is a pair of ids, so a move is a no-op" — true there, false here: {@see Mapping}
-holds `n8nTag` and `teamFolder` as NAMES, and `MappingService::resolveForPath`
-matches a folder by name prefix. Porting them would have asserted a premise this
-app does not have. The behaviour is worth deciding on; inventing it inside a port
-is not.
+**What was NOT ported, and why.** `mapping/move.feature` and
+`mapping/rename.feature` rest on "a mapping is a pair of ids, so a move is a
+no-op" — true there, false here: {@see Mapping} holds `n8nTag` and `teamFolder` as
+NAMES, and `MappingService::resolveForPath` matches a folder by name prefix.
+Porting them would have asserted a premise this app does not have. The behaviour
+is worth deciding on; inventing it inside a port is not. Their remote halves
+(move/rename the mapped *Grafana folder*) have no analogue at all — n8n has tags,
+not folders.
+
+## mapping/sync-now
+
+`features/mapping/sync-now.feature`
+
+### Syncing one mapping fills its folder
+
+**The scenario already existed; what was wrong was where it lived.** Syncing ONE
+mapping was a row in `connection/sync-now.feature`'s outline, next to the two
+instance-wide triggers, under a caption reading "every way a sync starts". That
+made three triggers look like one behaviour with a column for the difference — but
+"fill this one folder I just mapped" and "bring every mapped folder up to date"
+are different promises to a different reader. The sibling splits them for exactly
+that reason, and it is the split this file restores: the per-mapping card here,
+the whole-instance sync and the schedule in `connection/sync-now`.
+
+The narrative moved with it. "As an admin who has just mapped a tag" was always a
+statement about ONE mapping, so it belonged to this file; `connection/sync-now`
+now opens with the instance-wide one it had been borrowing against.
+
+**No behaviour changed and no scenario was invented.** The step
+(`the admin syncs one mapping` → `runMappingSync('pull', $currentTag)`) already
+ran the per-mapping path; it is the same run, read from the use case it serves.
+`connection/sync-now`'s outline is two rows now, captioned for what it covers.
+
+**The sibling's second scenario is not portable.** "A root mapping mirrors the
+whole instance" is about a Grafana folder TREE appearing as nested Nextcloud
+subfolders. n8n has tags, which are flat and have no root, so there is nothing to
+mirror and no scenario to write.
 
 ## connection/connection
 
@@ -1254,10 +1282,16 @@ renamed in n8n is `rename.feature`, deleted in n8n is `delete.feature`, tagged i
 n8n is `tag-sync.feature`. The sync is how the news arrives, not what happened.
 Once those files own their behaviours there is no "second sync" left to describe.
 
-**The trigger is data.** Three ways to start one sync — the card's button, the
-section's button, the schedule — same pre-state, same post-state. Columns, not
+**The trigger is data.** Two ways to start an instance-wide sync — the section's
+button and the schedule — same pre-state, same post-state. Columns, not
 scenarios. Whether a run is synchronous or queued is a mechanism and is asserted
 nowhere.
+
+The card's button was a third column here, under a caption reading "every way a
+sync starts". It is not an instance-wide sync: "fill the one folder I just
+mapped" is a different promise to a different reader, and the sibling keeps the
+two apart. It now lives in `mapping/sync-now.feature`, which is where an admin
+looking for what a mapping does will go.
 
 The schedule row drives the REAL job, forced past its interval and the worker's
 last-run gate with `background-job:execute --force-execute`. Asserting a row
@@ -2550,10 +2584,16 @@ renamed in n8n is `rename.feature`, deleted in n8n is `delete.feature`, tagged i
 n8n is `tag-sync.feature`. The sync is how the news arrives, not what happened.
 Once those files own their behaviours there is no "second sync" left to describe.
 
-**The trigger is data.** Three ways to start one sync — the card's button, the
-section's button, the schedule — same pre-state, same post-state. Columns, not
+**The trigger is data.** Two ways to start an instance-wide sync — the section's
+button and the schedule — same pre-state, same post-state. Columns, not
 scenarios. Whether a run is synchronous or queued is a mechanism and is asserted
 nowhere.
+
+The card's button was a third column here, under a caption reading "every way a
+sync starts". It is not an instance-wide sync: "fill the one folder I just
+mapped" is a different promise to a different reader, and the sibling keeps the
+two apart. It now lives in `mapping/sync-now.feature`, which is where an admin
+looking for what a mapping does will go.
 
 The schedule row drives the REAL job, forced past its interval and the worker's
 last-run gate with `background-job:execute --force-execute`. Asserting a row
