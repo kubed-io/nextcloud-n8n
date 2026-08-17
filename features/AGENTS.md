@@ -2743,6 +2743,21 @@ test fixture's incidental choice was read back as a fact about the product and
 written into the notes as one. Worth remembering the shape: the evidence was real,
 the conclusion was not, and nothing in a green suite distinguishes them.
 
+**THE DESTINATION'S ID SURVIVES EVERY ANSWER, and that is the rule this file
+enforces.** It reads as one line per answer:
+
+| kept | the file in the mapping | its workflow | what else |
+|---|---|---|---|
+| the existing version | unchanged | the id it had, contents it had | nothing moved |
+| the new version | new contents | the id it had, contents replaced | — |
+| both versions | unchanged | the id it had, contents it had | a second file, a NEW workflow, the arriving contents |
+
+So the metadata row says `the id the destination already had` rather than
+`the id both files carried`, which is what the ARRANGE happens to produce and not
+what the app promises. Stated the enforceable way, the row still holds the day a
+scenario gives the two files different ids — which is the case the rule exists for,
+and the one the unit tests cover.
+
 **AN OVERWRITE REPLACES CONTENTS, NOT IDENTITY**, and this is the rule the whole
 "keep the new version" path turns on. It is invisible while both files carry the
 same workflow and obvious the moment they do not: the folder holds `foo.n8n` bound
@@ -2801,7 +2816,7 @@ fresh workflow. Nothing new is needed for it; what was needed was saying so hone
 
 **A `Then` per file, which is the reason this is not a row.** The two files end up in
 genuinely different states and the interesting claim is the CONTRAST between them:
-`Turnbuckle.n8n` keeps the id both files carried and the nodes it always had, while
+`Turnbuckle.n8n` keeps the id the destination already had and the nodes it always had, while
 `Turnbuckle (1).n8n` gets *its own, not the one it arrived with* and the nodes that
 arrived. Squeezed into an Outline that has to speak about "each file", the one thing
 worth asserting — that these two are now different workflows — can only be said

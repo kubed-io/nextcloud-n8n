@@ -460,12 +460,17 @@ trait CreateSteps {
 				// shipped green for exactly this reason. This one is pinned before the
 				// gesture and cannot be answered by whatever the file ended up holding.
 				$expected === 'the id it arrived with' => $this->idArrivedWith,
-				// A DUPLICATE'S SHARED ID, pinned by the arrange that made the second
-				// file. Distinct from `the id it arrived with` on purpose: that one is
-				// about the file that MOVED, and a conflict leaves two files standing —
-				// the one that did not move needs a way to say "still the id I had"
-				// that does not resolve through whichever file the last gesture touched.
-				$expected === 'the id both files carried' => $this->collisionWorkflowId,
+				// THE RULE AN OVERWRITE IS ENFORCED BY, and it is deliberately not
+				// "the id both files carried" — which is what the arrange happens to
+				// produce, not what the app promises. An overwrite replaces CONTENTS,
+				// never identity: whatever the arrival was bound to, the file standing
+				// in the mapping afterwards answers to the id the destination already
+				// had. Stated that way the row still holds the day a scenario gives the
+				// two files different ids, which is the case the rule exists for.
+				//
+				// Read off the DESTINATION before the gesture, so it cannot be answered
+				// by whatever the file ended up carrying.
+				$expected === 'the id the destination already had' => $this->destinationIdBefore,
 				$expected === "the mapping's id" => $this->mappingIdForFolder($this->currentFolder),
 				$expected === "the mapping's mode" => $this->mappingModeForFolder($this->currentFolder),
 				(bool)preg_match('/^the "([^"]+)" mapping\'s id$/', $expected, $m) => $this->mappingIdForTag($m[1]),

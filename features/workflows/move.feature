@@ -122,9 +122,9 @@ Feature: Moving a workflow file is the same workflow leaving and returning
     Then "Turnbuckle.n8n" in "Automations" holds the nodes of "<the body that wins>"
     And its workflow in n8n is live and holds those same nodes
     And "Turnbuckle.n8n" in "Automations" holds this DAV metadata:
-      | n8n_id      | the id both files carried |
-      | n8n_mapping | the mapping's id          |
-      | n8n_mode    | the mapping's mode        |
+      | n8n_id      | the id the destination already had |
+      | n8n_mapping | the mapping's id                   |
+      | n8n_mode    | the mapping's mode                 |
     And the workflow's tags are "alpha" in Nextcloud, in the file and in n8n
 
     Examples: one workflow either way — the answer only decides whose body it keeps
@@ -141,9 +141,9 @@ Feature: Moving a workflow file is the same workflow leaving and returning
     When I move the unmapped file into "Automations"
     And I select "both versions"
     Then "Turnbuckle.n8n" in "Automations" holds this DAV metadata:
-      | n8n_id      | the id both files carried |
-      | n8n_mapping | the mapping's id          |
-      | n8n_mode    | the mapping's mode        |
+      | n8n_id      | the id the destination already had |
+      | n8n_mapping | the mapping's id                   |
+      | n8n_mode    | the mapping's mode                 |
     And its workflow in n8n is live, named "Turnbuckle", and holds the nodes it always had
     And "Turnbuckle (1).n8n" in "Automations" holds this DAV metadata:
       | n8n_id      | its own, not the one it arrived with |

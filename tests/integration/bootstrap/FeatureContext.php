@@ -181,6 +181,14 @@ final class FeatureContext implements Context {
 	private string $namedFileUnderTest = '';
 	/** The node a `Then` said should have survived, so n8n is held to the SAME body. */
 	private string $expectedNodeName = '';
+	/**
+	 * The workflow id the file being OVERWRITTEN carried, pinned before the gesture.
+	 *
+	 * An overwrite replaces contents and never identity, so this is what the file
+	 * standing in the mapping afterwards must still answer to — whichever id the
+	 * arrival happened to bring with it.
+	 */
+	private string $destinationIdBefore = '';
 	/** The copy made by a copy step, and the workflow id (if any) it was registered as. */
 	private string $copyFilePath = '';
 	private ?string $copyWorkflowId = null;

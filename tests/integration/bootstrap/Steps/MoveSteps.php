@@ -298,6 +298,12 @@ trait MoveSteps {
 		$this->originalPath = $this->collisionSyncedPath;
 		$this->copyOriginalBefore = $this->readManagedMetadata($this->collisionSyncedPath);
 
+		// THE ID THE DESTINATION ALREADY HAD, pinned here while it is still the only
+		// thing standing in the mapping. This is what an overwrite must preserve, and
+		// reading it afterwards would compare the surviving id with itself.
+		$this->destinationIdBefore = (string)($this->davReadMetadataId($this->collisionSyncedPath) ?? '');
+		Assert::assertNotSame('', $this->destinationIdBefore, 'setup: the destination file carries no workflow id');
+
 		// The incoming copy (still unmapped, outside alpha) is what the scenario moves in next.
 		$this->currentFilePath = $this->collisionIncomingPath;
 		$this->lastWorkflowId = $this->collisionWorkflowId;
