@@ -40,6 +40,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Moving a workflow file between two Team Folders keeps the workflow it already had; Nextcloud drops everything the app stamped on a file when it crosses between storages, so the move made a second copy of the workflow in n8n and the next sync pulled the original back into the folder you moved it out of.
 - Moving a workflow file straight from one mapped folder to another now rebinds it to the folder it landed in; it used to be refused, telling you to move it out and back in by hand.
 - Moving a linked workflow file anywhere, or moving anything into a link-mode folder, is refused with a message — a link could previously be moved into another mapping, which silently changed its mode.
 - Copying a workflow file in a mapped folder makes the new workflow in n8n again; any workflow with a node was rejected, leaving an untracked file beside the original.
