@@ -32,7 +32,7 @@ Feature: Syncing every mapping
     # ── RULE: the other direction — Nextcloud is declared the source of truth ──
 
   # notes: ../AGENTS.md#a-sync-to-n8n-makes-n8n-match-nextcloud
-  @admin @occ @ui @todo
+  @admin @occ @ui
   Scenario: A sync to n8n makes n8n match Nextcloud
     Given a folder mapped as "sync" to the n8n tag "nextcloud:delta"
     And its files hold nodes and tags that never reached n8n

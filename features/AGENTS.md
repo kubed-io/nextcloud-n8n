@@ -1482,10 +1482,26 @@ mappings and never sees an unmapped file, which are already the subjects of
 mapping is never pushed*. Restating them here would be three scenarios wearing
 one coat again — the exact mistake the table above records.
 
-`SyncService::pushAll`/`pushOne` and `occ n8n_sync:sync push` are BUILT, which is
-why this is `@todo` and not `@unbuilt`. What is missing is the grading. Note that
-`SyncController`'s docblock still calls push "a stub … records a no-op run",
-which has not been true for some time and should go when this is implemented.
+**THE DIVERGENCE IS ARRANGED BY NOT DOING SOMETHING, which is the part worth
+copying.** `timing` defaults to `async`, so a PUT enqueues `PushWorkflowJob` and a
+pill enqueues `ReconcileTagsJob`, and neither runs until a test drains it. The
+arrange therefore writes the files, adds the pills, and simply does not drain —
+which is the state a real instance sits in between a save and the next worker
+tick, rather than a fiction reached around the app. The step then VERIFIES the
+divergence before handing over; if a future default made the push inline, every
+assertion downstream would still pass against an already-updated workflow and the
+scenario would grade nothing.
+
+**"Its files' tags" means the PILLS.** `reconcilePush` reads
+`TagSyncService::readNcContentTags` — the file's system tags — not the body's
+`tags` array, and merges them three-way against the stamped baseline. So the
+arrange adds a pill, and the assertion is that it ARRIVED; nothing here claims
+n8n's own tags were removed, because a merge does not remove them.
+
+`SyncService::pushAll`/`pushOne` and `occ n8n_sync:sync push` were already built,
+which is why this was `@todo` rather than `@unbuilt` — only the grading was
+missing, and it is now written. Note that `SyncController`'s docblock still calls
+push "a stub … records a no-op run", which has not been true for some time.
 
 ## workflows/edit
 

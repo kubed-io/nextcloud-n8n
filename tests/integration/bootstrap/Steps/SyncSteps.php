@@ -55,6 +55,27 @@ trait SyncSteps {
 	/** The decoded JSON the last `occ n8n_sync:sync` run printed — what the run reports. */
 	private array $lastSyncResult = [];
 
+	/**
+	 * The push scenario's mirrors, keyed by files-root path.
+	 *
+	 * `pushWorkflowIds` is read off the folder BEFORE the push and is what every
+	 * assertion afterwards resolves ids against — reading them back off the files
+	 * would let a push that rewrote an id compare the new value with itself.
+	 *
+	 * @var array<string,string> path ⇒ the workflow id it was pulled with
+	 */
+	private array $pushWorkflowIds = [];
+
+	/** @var array<string,string> path ⇒ the node name the un-pushed local edit put in it */
+	private array $pushLocalNodes = [];
+
+	/** @var array<string,string> path ⇒ the Nextcloud-only pill added and never pushed */
+	private array $pushLocalTags = [];
+
+	/** The mirror whose workflow was changed in n8n after the file was written, and by what. */
+	private string $pushChangedInN8nPath = '';
+	private string $pushChangedInN8nNode = '';
+
 	/** Mirror etags (files-root path ⇒ etag) as of the last "has already been pulled". */
 	private array $reconcileEtagsBefore = [];
 
@@ -513,7 +534,207 @@ trait SyncSteps {
 		return $etags;
 	}
 
-	// ── Then (push) ───────────────────────────────────────────────────────────
+	// ── the push direction: Nextcloud declared the source of truth ────────────
+
+	/**
+	 * The pre-state for "make n8n match Nextcloud": mirrors that have been edited
+	 * locally, whose edits are still sitting in Nextcloud.
+	 *
+	 * NOTHING IS DRAINED HERE, AND THAT IS THE WHOLE ARRANGE. `timing` defaults to
+	 * `async`, so a PUT enqueues {@see PushWorkflowJob} and a pill enqueues
+	 * {@see ReconcileTagsJob}, neither of which runs until something forces it. That
+	 * is exactly the state a real instance is in between a save and the next worker
+	 * tick — so the divergence is produced by NOT doing something, rather than by
+	 * reaching around the app to fake it.
+	 *
+	 * BOTH SURFACES, because "its files' tags" means the pills: `reconcilePush`
+	 * reads {@see TagSyncService::readNcContentTags}, not the body's `tags` array.
+	 * A local edit that moved only the nodes would leave the tag half of the
+	 * scenario unexercised.
+	 *
+	 * The precondition is VERIFIED rather than assumed. If a future default made the
+	 * push inline, every assertion downstream would still pass — against a workflow
+	 * that had already been updated — and the scenario would grade nothing at all.
+	 *
+	 * @Given its files hold nodes and tags that never reached n8n
+	 */
+	public function itsFilesHoldChangesThatNeverReachedN8n(): void {
+		Assert::assertNotSame('', $this->currentTag, 'no mapping under test — a Given must map a folder first');
+		$this->n8nHasWorkflowsTagged($this->currentTag);
+		$this->runMappingSync('pull', $this->currentTag);
+
+		$folder = $this->folderNameForTag($this->currentTag);
+		foreach ($this->propfindWorkflowIds($folder) as $href => $workflowId) {
+			$path = $this->hrefToFilesPath((string)$href);
+			// PINNED BEFORE THE PUSH. Every later assertion reads the id from here
+			// rather than off the file, so "the workflow's id" cannot be answered by
+			// whatever the push happened to leave behind.
+			$this->pushWorkflowIds[$path] = (string)$workflowId;
+
+			// Object decode: an assoc round-trip flattens the empty `connections` and
+			// `settings` objects to `[]`, which n8n rejects on the push.
+			$wf = json_decode($this->davGet($path), false, 512, JSON_THROW_ON_ERROR);
+			Assert::assertInstanceOf(\stdClass::class, $wf, "the mirror at $path is not a JSON object");
+			$node = 'PushedFromNc-' . bin2hex(random_bytes(3));
+			$wf->nodes = [(object)[
+				'name' => $node,
+				'type' => 'n8n-nodes-base.noOp',
+				'typeVersion' => 1,
+				'position' => [0, 0],
+				'parameters' => new \stdClass(),
+			]];
+			$this->davPut($path, json_encode($wf, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT));
+			$this->pushLocalNodes[$path] = $node;
+
+			$tag = 'nc-only-' . bin2hex(random_bytes(3));
+			$this->assignSystemTag($path, $tag);
+			$this->pushLocalTags[$path] = $tag;
+		}
+		Assert::assertNotSame([], $this->pushWorkflowIds, "the pull wrote no mirrors into $folder");
+
+		foreach ($this->pushLocalNodes as $path => $node) {
+			$id = $this->pushWorkflowIds[$path];
+			if (in_array($node, $this->n8nWorkflowNodeNames($id), true)) {
+				throw new \RuntimeException(
+					"setup: the edit to $path already reached workflow $id, so there is no divergence left to push",
+				);
+			}
+		}
+	}
+
+	/**
+	 * The row that turns a catch-up into a declaration.
+	 *
+	 * Without it the scenario passes for an implementation that merely pushes what is
+	 * newer. n8n is made newer than the file ON PURPOSE, so "each workflow holds its
+	 * file's nodes" afterwards can only be true if Nextcloud won where the two
+	 * disagreed — which is what an admin means by "n8n should match".
+	 *
+	 * @Given one of its workflows was changed in n8n after its file was written
+	 */
+	public function oneOfItsWorkflowsWasChangedInN8n(): void {
+		Assert::assertNotSame([], $this->pushWorkflowIds, 'no mirrors to diverge — the previous Given did not run');
+		$path = (string)array_key_first($this->pushWorkflowIds);
+		$id = $this->pushWorkflowIds[$path];
+		$wf = $this->n8nGetWorkflow($id);
+		Assert::assertIsArray($wf, "workflow $id is gone from n8n");
+
+		$this->pushChangedInN8nNode = 'ChangedInN8n-' . bin2hex(random_bytes(3));
+		$this->n8nUpdateWorkflow($id, [
+			'name' => (string)($wf['name'] ?? 'Changed'),
+			'nodes' => [(object)[
+				'name' => $this->pushChangedInN8nNode,
+				'type' => 'n8n-nodes-base.noOp',
+				'typeVersion' => 1,
+				'position' => [0, 0],
+				'parameters' => new \stdClass(),
+			]],
+			'connections' => new \stdClass(),
+			'settings' => new \stdClass(),
+		]);
+		$this->pushChangedInN8nPath = $path;
+	}
+
+	/**
+	 * The section's other button. `--all` with no `--mapping`, the same surface the
+	 * bulk control posts to ({@see \OCA\N8nSync\Controller\SyncController::push}).
+	 *
+	 * @When the admin syncs every mapping to n8n
+	 */
+	public function theAdminSyncsEveryMappingToN8n(): void {
+		$this->runMappingSync('push', null);
+	}
+
+	/**
+	 * NODE NAMES, NOT WHOLE BODIES — n8n rewrites ids, versionId and its own clocks,
+	 * so a byte comparison fails for reasons that have nothing to do with the push.
+	 *
+	 * The workflow changed in n8n gets its own message, because that failure means
+	 * something quite different from the others: not "the push did not run" but "the
+	 * push ran and deferred to n8n", which is the opposite of what this scenario says.
+	 *
+	 * @Then each workflow in n8n holds its file's nodes
+	 */
+	public function eachWorkflowInN8nHoldsItsFilesNodes(): void {
+		Assert::assertNotSame([], $this->pushLocalNodes, 'no pushed files to check');
+		foreach ($this->pushLocalNodes as $path => $node) {
+			$id = $this->pushWorkflowIds[$path];
+			$got = $this->n8nWorkflowNodeNames($id);
+			if (in_array($node, $got, true)) {
+				continue;
+			}
+			$why = $path === $this->pushChangedInN8nPath
+				? "workflow $id still holds the change made in n8n ('{$this->pushChangedInN8nNode}') — "
+					. 'the push deferred to n8n instead of declaring Nextcloud the source of truth'
+				: "the edit to $path never reached workflow $id";
+			throw new \RuntimeException($why . '; n8n holds: ' . implode(', ', $got));
+		}
+	}
+
+	/**
+	 * "Its file's tags" is the PILLS. `reconcilePush` merges
+	 * {@see TagSyncService::readNcContentTags} — the file's system tags — with n8n
+	 * against the stamped baseline, so a tag added in Nextcloud and never pushed is
+	 * exactly what this asserts arrives.
+	 *
+	 * A merge, not an overwrite: nothing here claims n8n's own tags were removed,
+	 * because they were not and should not be.
+	 *
+	 * @Then each workflow in n8n carries its file's tags
+	 */
+	public function eachWorkflowInN8nCarriesItsFilesTags(): void {
+		Assert::assertNotSame([], $this->pushLocalTags, 'no pushed files to check');
+		foreach ($this->pushLocalTags as $path => $tag) {
+			$id = $this->pushWorkflowIds[$path];
+			$got = $this->n8nWorkflowTagNames($id);
+			if (!in_array($tag, $got, true)) {
+				throw new \RuntimeException(
+					"the tag '$tag' on $path never reached workflow $id; n8n holds: " . implode(', ', $got),
+				);
+			}
+		}
+	}
+
+	/**
+	 * The membership survives the push. A reconcile that converged n8n on the
+	 * Nextcloud content set and dropped the mapping tag with it would unbind every
+	 * workflow in the mapping — the next pull would find nothing tagged and prune the
+	 * whole folder. The tag is not a content tag and is not the file's to remove.
+	 *
+	 * @Then each workflow in n8n still carries the mapping's tag
+	 */
+	public function eachWorkflowStillCarriesTheMappingTag(): void {
+		Assert::assertNotSame([], $this->pushWorkflowIds, 'no pushed files to check');
+		foreach ($this->pushWorkflowIds as $path => $id) {
+			$got = $this->n8nWorkflowTagNames($id);
+			if (!in_array($this->currentTag, $got, true)) {
+				throw new \RuntimeException(
+					"workflow $id (mirrored at $path) lost the mapping tag '{$this->currentTag}'; n8n holds: "
+						. implode(', ', $got),
+				);
+			}
+		}
+	}
+
+	/**
+	 * The same metadata vocabulary every other feature uses, applied to every mirror
+	 * the push touched rather than to "the file under test" — a bulk run has no one
+	 * file, and asserting the last one would let the rest ship unstamped.
+	 *
+	 * `lastWorkflowId` is repointed per file to the id PINNED BEFORE THE PUSH, so
+	 * `the workflow's id` is answered from the arrange rather than from whatever the
+	 * file now carries. Read back off the file it would compare a value with itself
+	 * and pass — the trap {@see CreateSteps::assertManagedMetadata} documents.
+	 *
+	 * @Then each file holds this DAV metadata:
+	 */
+	public function eachFileHoldsThisDavMetadata(TableNode $table): void {
+		Assert::assertNotSame([], $this->pushWorkflowIds, 'no pushed files to check');
+		foreach ($this->pushWorkflowIds as $path => $id) {
+			$this->lastWorkflowId = $id;
+			$this->assertManagedMetadata($path, $table);
+		}
+	}
 
 	// ── helpers: drive the occ sync surface ───────────────────────────────────
 
