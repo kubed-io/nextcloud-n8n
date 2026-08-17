@@ -191,6 +191,32 @@ final class MotionServiceTest extends TestCase {
 		$this->service->rebind($this->file(11), 'wf1', $this->mapping('map-src', 'team:src'), $this->mapping('map-dst', 'team:dst'));
 	}
 
+	/**
+	 * THE TAG LIVES ON THREE SURFACES. n8n is settled by the two calls above; the
+	 * Nextcloud pill is settled here, inline, because writing a pill takes no file lock.
+	 * Leaving it would show the user the folder the file came from.
+	 */
+	public function testRebindSwapsTheMappingPill(): void {
+		$this->tagSync->expects(self::once())->method('swapMappingPill')
+			->with(11, 'team:src', 'team:dst')->willReturn(['team:dst']);
+
+		$this->service->rebind($this->file(11), 'wf1', $this->mapping('map-src', 'team:src'), $this->mapping('map-dst', 'team:dst'));
+	}
+
+	/**
+	 * n8n HAS ALREADY BEEN WRITTEN by the time the pill is touched, so a pill failure is
+	 * not a failed rebind — it is one lagging surface that the next pull corrects. Throwing
+	 * would tell MotionListener the move failed when it succeeded, and the stamp is
+	 * already down.
+	 */
+	public function testRebindSurvivesAPillFailure(): void {
+		$this->tagSync->method('swapMappingPill')->willThrowException(new \RuntimeException('tag backend down'));
+		$this->metadata->expects(self::once())->method('write');
+		$this->createService->expects(self::never())->method('createForFile');
+
+		$this->service->rebind($this->file(11), 'wf1', $this->mapping('map-src', 'team:src'), $this->mapping('map-dst', 'team:dst'));
+	}
+
 	// ── moveIn ───────────────────────────────────────────────────────────────────
 
 	public function testMoveInUnarchivesAndStampsSync(): void {

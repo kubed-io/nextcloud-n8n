@@ -113,6 +113,46 @@ final class WorkflowMetadata {
 	}
 
 	/**
+	 * Every managed key currently stamped on a file, in the canonical vocabulary and
+	 * in exactly the shape {@see write()} takes back — so a set read here can be
+	 * re-applied verbatim to another file id.
+	 *
+	 * Keys the file does not carry are OMITTED rather than returned empty, because
+	 * `write()` treats an explicit empty string as "blank this out": including them
+	 * would turn a restore into a partial erase.
+	 *
+	 * Exists for {@see MoveIdentityStore} — a move across storages destroys the row,
+	 * and the only chance to read it is before the move happens.
+	 *
+	 * @return array{
+	 *     n8n_id?:string,
+	 *     n8n_mode?:string,
+	 *     n8n_versionId?:string,
+	 *     n8n_syncedHash?:string,
+	 *     n8n_mapping?:string,
+	 *     n8n_syncedTags?:string
+	 * }
+	 */
+	public function readRaw(int $fileId): array {
+		try {
+			$metadata = $this->manager->getMetadata($fileId, false);
+		} catch (FilesMetadataNotFoundException) {
+			return [];
+		}
+		$values = [];
+		foreach (self::KEYS as $key) {
+			if (!$metadata->hasKey($key)) {
+				continue;
+			}
+			$value = $this->fromWire($key, $metadata->getString($key));
+			if ($value !== '') {
+				$values[$key] = $value;
+			}
+		}
+		return $values;
+	}
+
+	/**
 	 * Upsert the managed keys for a file. Any key omitted from `$values` is left
 	 * as-is; pass an explicit empty string to overwrite. The mode is given in the
 	 * canonical vocabulary (`sync`/`link`/`unmapped`/`ignored`); `link` is stored

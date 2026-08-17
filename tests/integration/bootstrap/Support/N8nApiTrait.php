@@ -44,6 +44,34 @@ trait N8nApiTrait {
 	}
 
 	/**
+	 * Every workflow n8n currently holds under `$name`, archived ones included.
+	 *
+	 * COUNTING IS THE POINT. A gesture that is supposed to relocate ONE workflow can
+	 * fail by leaving two — the same mirror registered twice under two ids — and no
+	 * assertion phrased around "the" workflow can see that, because it is answered by
+	 * whichever id the file happens to be holding. So the steps that claim a workflow
+	 * moved ask this how many there are.
+	 *
+	 * @return list<array<string,mixed>>
+	 */
+	private function n8nWorkflowsNamed(string $name): array {
+		$res = $this->n8nClient()->request('GET', 'workflows', [
+			'query' => ['limit' => 250, 'excludePinnedData' => 'true'],
+		]);
+		Assert::assertSame(200, $res->getStatusCode(), 'listing n8n workflows failed: ' . (string)$res->getBody());
+		$decoded = json_decode((string)$res->getBody(), true);
+		$rows = is_array($decoded) ? ($decoded['data'] ?? []) : [];
+
+		$out = [];
+		foreach (is_array($rows) ? $rows : [] as $row) {
+			if (is_array($row) && (string)($row['name'] ?? '') === $name) {
+				$out[] = $row;
+			}
+		}
+		return $out;
+	}
+
+	/**
 	 * PUT an n8n workflow body — the n8n-side edit an `@in-n8n` scenario arranges.
 	 * Only the writable fields are accepted (the schema is `additionalProperties:
 	 * false` and `tags` is `readOnly`, saga §5.6.3), so callers pass exactly those:

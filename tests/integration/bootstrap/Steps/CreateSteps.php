@@ -244,6 +244,7 @@ trait CreateSteps {
 	 * uses one vocabulary for state wherever it appears:
 	 *
 	 *   the workflow's id                 the id the app stamped when the file landed
+	 *   the id it arrived with            a RELOCATION: the same id it carried in
 	 *   its own, not the one it arrived with   a MINT: different from the id carried in
 	 *   n8n's current one                 matches the workflow's versionId right now
 	 *   the file's hash                   sha1 of the file's current bytes
@@ -451,6 +452,14 @@ trait CreateSteps {
 			}
 			$want = match (true) {
 				$expected === "the workflow's id" => (string)$this->lastWorkflowId,
+				// THE MIRROR OF `its own, not the one it arrived with`, and the reason it
+				// had to exist: `the workflow's id` reads $lastWorkflowId, which the move
+				// step re-reads off the file afterwards so a legitimate mint is followed.
+				// That makes it self-satisfying for a gesture that must NOT mint — it
+				// compares the new id with itself and passes. A move between mappings
+				// shipped green for exactly this reason. This one is pinned before the
+				// gesture and cannot be answered by whatever the file ended up holding.
+				$expected === 'the id it arrived with' => $this->idArrivedWith,
 				$expected === "the mapping's id" => $this->mappingIdForFolder($this->currentFolder),
 				$expected === "the mapping's mode" => $this->mappingModeForFolder($this->currentFolder),
 				(bool)preg_match('/^the "([^"]+)" mapping\'s id$/', $expected, $m) => $this->mappingIdForTag($m[1]),
