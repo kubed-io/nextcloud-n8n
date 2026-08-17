@@ -47,6 +47,7 @@ final class MotionService {
 		private TagSyncService $tagSync,
 		private WorkflowMetadata $metadata,
 		private SyncGuard $guard,
+		private ReplacedByMoveStore $replaced,
 		private LoggerInterface $logger,
 	) {
 	}
@@ -193,30 +194,84 @@ final class MotionService {
 			return;
 		}
 
+		// AN OVERWRITE INHERITS THE IDENTITY IT LANDED ON, rather than imposing its own.
+		// See {@see ReplacedByMoveStore} for why: letting the arrival keep its id leaves
+		// the destination's workflow live, still tagged for this mapping, and with no
+		// file — so the next pull writes it back as `foo (1).n8n` beside the file that
+		// replaced it, and one overwrite has forked the mapping. Replacing a file's
+		// CONTENTS is what the user asked for; replacing what it points at is not.
+		$adopted = $this->replaced->adoptedWorkflowId($node->getId());
+		if ($adopted !== null && $adopted !== $id) {
+			$this->logger->info('n8n_sync motion: an overwrite inherits the workflow it replaced', [
+				'app' => Application::APP_ID,
+				'fileId' => $node->getId(),
+				'arrivedWith' => $id,
+				'adopted' => $adopted,
+			]);
+			$id = $adopted;
+		}
+
 		try {
 			$this->n8n->unarchiveWorkflow($id);
 		} catch (N8nApiException $e) {
-			if ($e->httpStatus !== 404) {
+			if ($e->httpStatus === 404) {
+				// Workflow was hard-deleted in n8n — recreate from the file we still hold.
+				// createForFile() stamps a fresh id + mode=sync + mapping itself.
+				$this->logger->info('n8n_sync motion: workflow gone in n8n; creating fresh on move-in', [
+					'app' => Application::APP_ID,
+					'workflowId' => $id,
+				]);
+				$this->createService->createForFile($node, $tgtMapping);
+				return;
+			}
+			// ALREADY LIVE IS ALREADY DONE. An overwrite reaches here with the workflow
+			// never having been archived — that is the POINT of suppressing the archive —
+			// and n8n answers "Workflow is not archived.". Treating that as a failure
+			// aborted the move-in before it could stamp or push, which is exactly how the
+			// first CI run of this behaviour failed. The mirror of `moveOut`, where a 404
+			// on archive is likewise idempotent success.
+			if (!$this->isLiveInN8n($id)) {
 				throw $e;
 			}
-			// Workflow was hard-deleted in n8n — recreate from the file we still hold.
-			// createForFile() stamps a fresh id + mode=sync + mapping itself.
-			$this->logger->info('n8n_sync motion: workflow gone in n8n; creating fresh on move-in', [
+			$this->logger->info('n8n_sync motion: the workflow was already live; nothing to unarchive', [
 				'app' => Application::APP_ID,
 				'workflowId' => $id,
 			]);
-			$this->createService->createForFile($node, $tgtMapping);
-			return;
 		}
 
-		$this->guard->run(function () use ($node, $tgtMapping): void {
+		// THE ID IS WRITTEN TOO, because an overwrite may have changed it. For every
+		// other move-in it is the value already there and the write is a no-op.
+		$this->guard->run(function () use ($node, $tgtMapping, $id): void {
 			$this->metadata->write($node->getId(), [
+				WorkflowMetadata::KEY_ID => $id,
 				WorkflowMetadata::KEY_MODE => Mapping::MODE_SYNC,
 				WorkflowMetadata::KEY_MAPPING => $tgtMapping->id,
 			]);
 		});
 
 		$this->pushIfTheFileIsAhead($node);
+	}
+
+	/**
+	 * Does this workflow exist in n8n and is it NOT archived?
+	 *
+	 * Only ever asked after an unarchive has already failed, so it costs nothing on
+	 * the ordinary path. A lookup that cannot answer says "no", which sends the
+	 * original failure on to the caller rather than swallowing it.
+	 */
+	private function isLiveInN8n(string $id): bool {
+		try {
+			$wf = $this->n8n->getWorkflow($id);
+		} catch (\Throwable) {
+			return false;
+		}
+		// AN ANSWER WITHOUT AN ID IS NOT AN ANSWER. `isArchived` merely being absent
+		// would otherwise read as "live", so an empty or malformed response would
+		// swallow the failure it was called to explain.
+		if ((string)($wf['id'] ?? '') === '') {
+			return false;
+		}
+		return ($wf['isArchived'] ?? false) !== true;
 	}
 
 	/**

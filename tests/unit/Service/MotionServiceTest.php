@@ -16,6 +16,7 @@ use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\MotionService;
 use OCA\N8nSync\Service\N8nClient;
 use OCA\N8nSync\Service\PushService;
+use OCA\N8nSync\Service\ReplacedByMoveStore;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\TagSyncService;
 use OCA\N8nSync\Service\WorkflowMetadata;
@@ -44,6 +45,7 @@ final class MotionServiceTest extends TestCase {
 	private PushService $push;
 	private TagSyncService $tagSync;
 	private WorkflowMetadata $metadata;
+	private ReplacedByMoveStore $replaced;
 	private MotionService $service;
 
 	protected function setUp(): void {
@@ -52,6 +54,9 @@ final class MotionServiceTest extends TestCase {
 		$this->push = $this->createMock(PushService::class);
 		$this->tagSync = $this->createMock(TagSyncService::class);
 		$this->metadata = $this->createMock(WorkflowMetadata::class);
+		// A REAL STORE, not a double: it is a request-scoped array with no
+		// collaborators, so stubbing it would only restate its two lines.
+		$this->replaced = new ReplacedByMoveStore();
 
 		// SyncGuard just brackets the callback in enter/leave — a stub that runs it inline.
 		$guard = $this->createStub(SyncGuard::class);
@@ -64,6 +69,7 @@ final class MotionServiceTest extends TestCase {
 			$this->tagSync,
 			$this->metadata,
 			$guard,
+			$this->replaced,
 			new NullLogger(),
 		);
 	}
@@ -243,6 +249,7 @@ final class MotionServiceTest extends TestCase {
 		$this->n8n->expects(self::once())->method('unarchiveWorkflow')->with('wf1');
 		$this->createService->expects(self::never())->method('createForFile');
 		$this->metadata->expects(self::once())->method('write')->with(9, [
+			WorkflowMetadata::KEY_ID => 'wf1',
 			WorkflowMetadata::KEY_MODE => Mapping::MODE_SYNC,
 			WorkflowMetadata::KEY_MAPPING => 'map-beta',
 		]);
@@ -297,6 +304,7 @@ final class MotionServiceTest extends TestCase {
 		$this->n8n->expects(self::once())->method('unarchiveWorkflow')->with('wf1');
 		$this->createService->expects(self::never())->method('createForFile');
 		$this->metadata->expects(self::once())->method('write')->with(9, [
+			WorkflowMetadata::KEY_ID => 'wf1',
 			WorkflowMetadata::KEY_MODE => Mapping::MODE_SYNC,
 			WorkflowMetadata::KEY_MAPPING => 'map-beta',
 		]);
@@ -342,6 +350,54 @@ final class MotionServiceTest extends TestCase {
 		$node = $this->arrivingFile(9, $content, new ManagedFile('wf1', 'sync', '', sha1($content), 'map-beta'));
 		$this->n8n->expects(self::once())->method('unarchiveWorkflow')->with('wf1');
 		$this->push->expects(self::never())->method('push');
+
+		$this->service->moveIn($node, 'wf1', $this->mapping('map-beta'));
+	}
+
+	/**
+	 * AN OVERWRITE REPLACES CONTENTS, NOT IDENTITY — the rule stated where it is
+	 * easiest to get wrong, with two DIFFERENT workflows.
+	 *
+	 * The mapped folder held a file bound to `wf-dest`; a file bound to `wf-src` is
+	 * moved in over it. Let the arrival keep `wf-src` and the folder now mirrors it
+	 * while `wf-dest` is still live, still carrying the mapping's tag, and no longer
+	 * has a file — so the next pull writes it back beside the file that replaced it
+	 * and the mapping has quietly forked.
+	 *
+	 * `wf-src` is deliberately NOT touched here: not deleted, not archived, not
+	 * re-minted. It is simply a workflow whose file is gone.
+	 */
+	public function testMoveInAdoptsTheWorkflowItOverwrote(): void {
+		$node = $this->arrivingFile(9, '{"nodes":[]}', new ManagedFile('wf-src', 'sync', '', 'stale', 'map-beta'));
+		$this->replaced->mark(77, 9, 'wf-dest');
+
+		$this->n8n->expects(self::once())->method('unarchiveWorkflow')->with('wf-dest');
+		$this->n8n->expects(self::never())->method('archiveWorkflow');
+		$this->createService->expects(self::never())->method('createForFile');
+		$this->metadata->expects(self::once())->method('write')->with(9, [
+			WorkflowMetadata::KEY_ID => 'wf-dest',
+			WorkflowMetadata::KEY_MODE => Mapping::MODE_SYNC,
+			WorkflowMetadata::KEY_MAPPING => 'map-beta',
+		]);
+
+		$this->service->moveIn($node, 'wf-src', $this->mapping('map-beta'));
+	}
+
+	/**
+	 * AN OVERWRITE ARRIVES WITH THE WORKFLOW ALREADY LIVE, because suppressing the
+	 * archive is the whole point — and n8n answers an unarchive of a live workflow
+	 * with an error. Treating that as a failure aborted the move-in before it could
+	 * stamp or push, which is exactly how the first CI run of this behaviour failed.
+	 * The mirror of `moveOut`, where a 404 on archive is likewise idempotent success.
+	 */
+	public function testMoveInTreatsAnAlreadyLiveWorkflowAsUnarchived(): void {
+		$node = $this->arrivingFile(9, '{"nodes":[]}', new ManagedFile('wf1', 'sync', '', 'stale', 'map-beta'));
+		$this->n8n->method('unarchiveWorkflow')
+			->willThrowException(new N8nApiException('Workflow is not archived.', 400));
+		$this->n8n->method('getWorkflow')->willReturn(['id' => 'wf1', 'isArchived' => false]);
+		$this->createService->expects(self::never())->method('createForFile');
+		$this->metadata->expects(self::once())->method('write');
+		$this->push->expects(self::once())->method('push');
 
 		$this->service->moveIn($node, 'wf1', $this->mapping('map-beta'));
 	}

@@ -2743,12 +2743,44 @@ test fixture's incidental choice was read back as a fact about the product and
 written into the notes as one. Worth remembering the shape: the evidence was real,
 the conclusion was not, and nothing in a green suite distinguishes them.
 
-**Only `both versions` is implemented.** `I select` throws on the other two rather
-than doing something adjacent, because they are `@todo` in the feature file and a
-step that quietly approximates an unimplemented answer is worse than an undefined
-one. Keeping the existing version sends no request at all; keeping the new one
-makes Nextcloud trash the destination before the arrival lands, and nothing here
-yet guarantees the app survives that.
+**AN OVERWRITE REPLACES CONTENTS, NOT IDENTITY**, and this is the rule the whole
+"keep the new version" path turns on. It is invisible while both files carry the
+same workflow and obvious the moment they do not: the folder holds `foo.n8n` bound
+to **A**, an unmapped `foo.n8n` bound to **B** is moved in over it, and if the
+arrival keeps B then A is still live, still carrying the mapping's tag, and no
+longer has a file. The next pull finds a tagged workflow with no mirror and writes
+one, so `foo (1).n8n` reappears beside the file that replaced it. One overwrite,
+and the mapping has forked.
+
+So the DESTINATION's id wins and the arrival contributes only its body — exactly as
+if its bytes had been pasted into the existing file, which is what the person
+answering the dialog thought they were doing. B is left alone: not deleted, not
+archived, not re-minted, just a workflow whose file is gone, which is the state
+every unmapped file's workflow is already in.
+
+Two pieces carry it. `ReplacedByMovePlugin` records the destination's workflow id
+from sabre's `beforeMove` — the only hook that fires while both halves are still
+one gesture — keyed by the MOVING file's id, because a move preserves it and that
+is what lets the two halves recognise each other later. `MotionService::moveIn`
+then adopts that id instead of the one the file carried, and stamps `n8n_id` along
+with the mode and mapping (a no-op for every other move-in).
+
+**And the body has to travel, or the overwrite undoes itself.** `moveIn` used to
+unarchive and re-stamp without ever sending the file up, so n8n kept the old
+workflow while the file held the new one — and the next pull, finding n8n
+authoritative, would overwrite the file with the older body. The user's choice
+survives the gesture and is destroyed by a scheduled job minutes later. Not
+specific to overwrites (every move-in of an edited unmapped file had it), but it is
+what makes "keep the new version" mean anything at all. Gated on
+`n8n_syncedHash`, so an ordinary move-out-and-back stays a pure identity operation.
+
+**Suppressing the archive breaks the unarchive, which is how CI found it.** With
+the delete listener standing down, the workflow is still live when the arrival
+lands, and n8n answers an unarchive with `Workflow is not archived.` — which
+`moveIn` treated as a failure and bailed on, before the stamp or the push. It is
+now idempotent success, the mirror of `moveOut` treating a 404 on archive the same
+way. The log line `move-in (restore) failed Workflow is not archived.` is what
+named it; the scenario had only said the nodes were wrong.
 
 **The `When` announces and the answer performs**, which is not a convenience. The
 Files app PROPFINDs the destination, finds the collision and opens the picker

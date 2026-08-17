@@ -11,7 +11,25 @@ namespace OCA\N8nSync\Service;
 
 /**
  * Request-scoped note that a file is about to be REPLACED by a move rather than
- * deleted, so the delete path can tell the two apart.
+ * deleted — and of the identity the replaced file held, so the arrival can inherit
+ * it instead of imposing its own.
+ *
+ * ## AN OVERWRITE REPLACES CONTENTS, NOT IDENTITY
+ *
+ * That is the whole rule, and it is easiest to see when the two files are NOT the
+ * same workflow. Say the mapped folder holds `foo.n8n` bound to workflow **A**, and
+ * an unmapped `foo.n8n` bound to **B** is moved in over it. Let the arrival keep B
+ * and the folder now mirrors B — while A is still live in n8n, still carrying the
+ * mapping's tag, and no longer has a file. The next pull finds a tagged workflow
+ * with no mirror and writes one, so `foo (1).n8n` reappears beside the file that
+ * replaced it. One overwrite, and the mapping has quietly forked.
+ *
+ * So the destination's workflow id wins. The arrival contributes its BODY — which
+ * is what the person answering "keep the new version" was choosing between — and
+ * inherits the binding that was already there, exactly as if its bytes had been
+ * pasted into the existing file. B is left alone: not deleted, not archived, not
+ * re-minted. It is simply a workflow whose file is gone, which is the same state
+ * any unmapped file's workflow is in.
  *
  * ## WHY NEXTCLOUD CANNOT TELL YOU THIS ITSELF
  *
@@ -42,14 +60,36 @@ namespace OCA\N8nSync\Service;
  * events, and the thing that makes them one gesture lives only between them.
  */
 final class ReplacedByMoveStore {
-	/** @var array<int,true> file ids being replaced by a move in this request */
-	private array $marked = [];
+	/** @var array<int,true> file ids about to be replaced — their workflow is not deleted */
+	private array $replaced = [];
 
-	public function mark(int $fileId): void {
-		$this->marked[$fileId] = true;
+	/** @var array<int,string> moving file id ⇒ the workflow id it should ADOPT on landing */
+	private array $adopt = [];
+
+	/**
+	 * Record one overwrite: $replacedFileId is being destroyed to make room for
+	 * $movingFileId, and $workflowId is the identity the destination held.
+	 *
+	 * An empty $workflowId records the suppression without an adoption — the file
+	 * being replaced was not one of ours, so there is nothing to inherit.
+	 */
+	public function mark(int $replacedFileId, int $movingFileId, string $workflowId): void {
+		$this->replaced[$replacedFileId] = true;
+		if ($workflowId !== '') {
+			$this->adopt[$movingFileId] = $workflowId;
+		}
 	}
 
-	public function isMarked(int $fileId): bool {
-		return isset($this->marked[$fileId]);
+	/** Is this file being replaced by a move rather than deleted? */
+	public function isReplaced(int $fileId): bool {
+		return isset($this->replaced[$fileId]);
+	}
+
+	/**
+	 * The workflow the file landing at this id should bind to, or null when it is
+	 * not arriving through an overwrite and keeps whatever it carried.
+	 */
+	public function adoptedWorkflowId(int $movingFileId): ?string {
+		return $this->adopt[$movingFileId] ?? null;
 	}
 }

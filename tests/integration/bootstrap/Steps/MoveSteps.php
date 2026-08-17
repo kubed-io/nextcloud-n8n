@@ -380,7 +380,6 @@ trait MoveSteps {
 					);
 				}
 				return;
-
 			case 'both versions':
 				$dest = $folder . '/' . $this->uniqueNameIn($folder, $name);
 				$this->davMove($this->currentFilePath, $dest);
@@ -561,6 +560,14 @@ trait MoveSteps {
 			throw new \RuntimeException("the workflow $id behind $path is ARCHIVED, not live");
 		}
 		if ($wantName !== null) {
+			// THE NAME ARRIVES ON A JOB, NOT INLINE. Nextcloud picks `Turnbuckle (1)`
+			// and the app renames the workflow to match from `ReconcileNameJob` — the
+			// deferral is deliberate and documented (a rename before the client has
+			// looked at the file breaks the Files app, which stats the path IT chose).
+			// The Gherkin states the end state and never how long it took to arrive, so
+			// the waiting belongs here.
+			$this->drainJobs('OCA\\N8nSync\\BackgroundJob\\ReconcileNameJob');
+			$wf = $this->n8nGetWorkflow($id) ?? $wf;
 			Assert::assertSame($wantName, (string)($wf['name'] ?? ''), "the workflow behind $path has the wrong name");
 		}
 		$got = $this->n8nWorkflowNodeNames($id);

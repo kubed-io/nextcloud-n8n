@@ -96,7 +96,7 @@ final class DeleteToN8nListener implements IEventListener {
 		// version" in a conflict dialog, and the workflow they kept must stay live.
 		// {@see \OCA\N8nSync\DAV\ReplacedByMovePlugin} marks it from sabre's `beforeMove`,
 		// which fires while both halves are still one gesture.
-		if ($this->replaced->isMarked($node->getId())) {
+		if ($this->replaced->isReplaced($node->getId())) {
 			$this->logger->info('n8n_sync delete: this file is being replaced by a move, not deleted', [
 				'app' => Application::APP_ID,
 				'fileId' => $node->getId(),

@@ -13,6 +13,7 @@ use OCA\DAV\Connector\Sabre\File as DavFile;
 use OCA\N8nSync\AppInfo\Application;
 use OCA\N8nSync\Service\FilenameCodec;
 use OCA\N8nSync\Service\ReplacedByMoveStore;
+use OCA\N8nSync\Service\WorkflowMetadata;
 use Psr\Log\LoggerInterface;
 use Sabre\DAV\Server;
 use Sabre\DAV\ServerPlugin;
@@ -56,6 +57,7 @@ use Sabre\DAV\ServerPlugin;
 final class ReplacedByMovePlugin extends ServerPlugin {
 	public function __construct(
 		private ReplacedByMoveStore $store,
+		private WorkflowMetadata $metadata,
 		private LoggerInterface $logger,
 	) {
 	}
@@ -84,22 +86,53 @@ final class ReplacedByMovePlugin extends ServerPlugin {
 		if (!$node instanceof DavFile || !FilenameCodec::isWorkflowName($node->getName())) {
 			return true;
 		}
-		try {
-			$fileId = $node->getId();
-		} catch (\Throwable $e) {
-			$this->logger->debug('n8n_sync overwrite: could not read the id of the file being replaced', [
-				'app' => Application::APP_ID,
-				'destination' => $destination,
-				'exception' => $e,
-			]);
+
+		// THE MOVING FILE IS RESOLVED HERE TOO, because the adoption is keyed by it.
+		// A move preserves the source's file id, so the id read now is the id the
+		// arriving node will carry when `NodeRenamedEvent` fires — which is what lets
+		// the two halves of this gesture recognise each other.
+		$moving = $this->fileIdAt($source);
+		$replaced = $this->fileIdAt($destination);
+		if ($moving === null || $replaced === null) {
 			return true;
 		}
-		$this->store->mark($fileId);
-		$this->logger->info('n8n_sync overwrite: a move is replacing a workflow file; its workflow stays live', [
+
+		$workflowId = '';
+		try {
+			$workflowId = $this->metadata->read($replaced)?->workflowId ?? '';
+		} catch (\Throwable $e) {
+			// Suppress the archive anyway. A replaced file whose stamp we cannot read
+			// is still not a file anybody asked to delete.
+			$this->logger->debug('n8n_sync overwrite: could not read the replaced file’s stamp', [
+				'app' => Application::APP_ID,
+				'fileId' => $replaced,
+				'exception' => $e,
+			]);
+		}
+
+		$this->store->mark($replaced, $moving, $workflowId);
+		$this->logger->info('n8n_sync overwrite: a move is replacing a workflow file; the arrival inherits its workflow', [
 			'app' => Application::APP_ID,
-			'fileId' => $fileId,
+			'replacedFileId' => $replaced,
+			'movingFileId' => $moving,
+			'workflowId' => $workflowId,
 			'file' => $node->getName(),
 		]);
 		return true;
+	}
+
+	/** The Nextcloud file id behind a Sabre path, or null when it is not a file of ours. */
+	private function fileIdAt(string $path): ?int {
+		try {
+			$node = $this->server?->tree->getNodeForPath($path);
+			return $node instanceof DavFile ? $node->getId() : null;
+		} catch (\Throwable $e) {
+			$this->logger->debug('n8n_sync overwrite: could not resolve a path to a file id', [
+				'app' => Application::APP_ID,
+				'path' => $path,
+				'exception' => $e,
+			]);
+			return null;
+		}
 	}
 }
