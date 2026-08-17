@@ -22,6 +22,7 @@ use OCA\N8nSync\Listener\DeleteToN8nListener;
 use OCA\N8nSync\Listener\LoadFilesScriptListener;
 use OCA\N8nSync\Listener\MotionListener;
 use OCA\N8nSync\Listener\MoveGuardListener;
+use OCA\N8nSync\Listener\MoveIdentityListener;
 use OCA\N8nSync\Listener\NameSyncListener;
 use OCA\N8nSync\Listener\NodeWrittenListener;
 use OCA\N8nSync\Listener\RegisterDavPluginsListener;
@@ -102,6 +103,17 @@ final class Application extends App implements IBootstrap {
 		// file) slips past it. Our own pull / sync↔link re-mode writes use the View/Node
 		// API, not Sabre, so they never reach the plugin.
 		$context->registerEventListener(SabrePluginAddEvent::class, RegisterDavPluginsListener::class);
+
+		// §14.2 a move must not lose the file's identity, and REGISTRATION ORDER IS THE
+		// POINT: same-priority listeners run in the order they are registered, so this
+		// pair brackets the move ahead of every other rename listener below. A move
+		// across storages (two Team Folders, or a Team Folder and a home folder) is a
+		// copy + unlink, and the unlink destroys the file's `files_metadata` row — so
+		// the file arrives with no `n8n_id` and create-on-land would adopt a workflow
+		// that already exists, minting a duplicate. This reads the stamp off the source
+		// before the move and puts it back on the target after.
+		$context->registerEventListener(BeforeNodeRenamedEvent::class, MoveIdentityListener::class);
+		$context->registerEventListener(NodeRenamedEvent::class, MoveIdentityListener::class);
 
 		// §17.2 create-on-land: a `.n8n` without `n8n_id` appearing in a
 		// mapped folder (created via the New menu, saved by the Text editor,

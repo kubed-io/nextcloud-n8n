@@ -281,6 +281,30 @@ final class TagSyncService {
 	}
 
 	/**
+	 * Swap ONE Nextcloud pill for another on a file, leaving every other pill alone —
+	 * the Nextcloud-side half of a rebind ({@see MotionService::rebind}), where the tag
+	 * that binds a file to its mapping changes because the file changed folder.
+	 *
+	 * A SET OPERATION, NOT A REWRITE. The pills are the user's tags too, and a rebind
+	 * is not a statement about `prod` or `billing`; only the mapping tag moves. Passing
+	 * the freshly-read `$current` through means the reconcile does one read, not two.
+	 *
+	 * Returns the resulting pill set so the caller can carry it onward without a
+	 * re-read (the file body is converged from the same set).
+	 *
+	 * @return list<string> the file's content tags after the swap
+	 */
+	public function swapMappingPill(int $fileId, string $from, string $to): array {
+		$current = $this->readNcContentTags($fileId);
+		$desired = array_values(array_unique(array_merge(
+			array_values(array_filter($current, static fn (string $n): bool => $n !== $from)),
+			[$to],
+		)));
+		$this->writeNcContentTags($fileId, $desired, $current);
+		return $desired;
+	}
+
+	/**
 	 * Remove ONE tag from a workflow in n8n, leaving every other tag on it.
 	 *
 	 * The unbind's only write ({@see TagReconcileService::unbindIfMappingTagDropped}),

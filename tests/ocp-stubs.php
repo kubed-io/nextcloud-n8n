@@ -220,6 +220,45 @@ namespace OCP\EventDispatcher {
 		class Event {
 		}
 	}
+
+	// Implemented by every listener in lib/Listener. Needed the moment one of them
+	// gets a unit test — PHP resolves an `implements` at declaration time, so without
+	// this the class cannot even autoload and every test in the file errors with
+	// "Interface OCP\EventDispatcher\IEventListener not found" rather than failing.
+	if (!interface_exists(IEventListener::class, false)) {
+		interface IEventListener {
+			public function handle(Event $event): void;
+		}
+	}
+}
+
+namespace OCP\Files\Events\Node {
+	// The rename pair, and the only two members of it this app reads. NC fires these
+	// for a move as well as a rename (a move IS a rename to a new path), which is why
+	// the move listeners live on them. Declaration-only: the tests double these rather
+	// than construct them, so the bodies never run.
+	if (!class_exists(BeforeNodeRenamedEvent::class, false)) {
+		class BeforeNodeRenamedEvent extends \OCP\EventDispatcher\Event {
+			public function getSource(): \OCP\Files\Node {
+				throw new \RuntimeException('stub');
+			}
+
+			public function getTarget(): \OCP\Files\Node {
+				throw new \RuntimeException('stub');
+			}
+		}
+	}
+	if (!class_exists(NodeRenamedEvent::class, false)) {
+		class NodeRenamedEvent extends \OCP\EventDispatcher\Event {
+			public function getSource(): \OCP\Files\Node {
+				throw new \RuntimeException('stub');
+			}
+
+			public function getTarget(): \OCP\Files\Node {
+				throw new \RuntimeException('stub');
+			}
+		}
+	}
 }
 
 namespace OCP\Settings {

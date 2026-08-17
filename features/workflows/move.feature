@@ -53,16 +53,21 @@ Feature: Moving a workflow file is the same workflow leaving and returning
     # ── RULE: leaving a mapping ────────────────────────────────────────────────
 
   @user @in-nextcloud @gesture @ui
-  Scenario: Moving a sync file out of its mapping unmaps it and archives in n8n
-    Given a workflow file in "Automations"
+  Scenario Outline: Moving a sync file out of its mapping unmaps it and archives in n8n
+    Given a workflow file in "<source>"
     When I move the file into "Scratch"
     Then the file holds this DAV metadata:
-      | n8n_id        | the workflow's id |
-      | n8n_versionId | set               |
-      | n8n_mode      | unmapped          |
-      | n8n_mapping   | cleared           |
+      | n8n_id        | the id it arrived with |
+      | n8n_versionId | set                    |
+      | n8n_mode      | unmapped               |
+      | n8n_mapping   | cleared                |
     And the workflow is archived (hidden, preserved) in n8n
     And the full workflow JSON is still in the Nextcloud file
+
+    Examples: from either storage kind, because leaving is leaving
+      | source      |
+      | Automations |
+      | Pipelines   |
 
   # notes: ../AGENTS.md#a-link-is-not-movable-and-a-link-mapping-is-not-a-destination
   @user @in-nextcloud @gesture @ui
@@ -128,36 +133,41 @@ Feature: Moving a workflow file is the same workflow leaving and returning
       | n8n_id      | set                |
       | n8n_mapping | the mapping's id   |
       | n8n_mode    | the mapping's mode |
-    And the workflow's normal tags are "<tags>" in n8n and in Nextcloud
-    And the workflow carries the mapping's tag
+    And the workflow's tags are "<tags after>" in Nextcloud
+    And the workflow's tags are "<tags after>" in the file
+    And the workflow's tags are "<tags after>" in n8n
 
-    Examples: the tags it arrived carrying are the tags it ends up with
-      | destination | tags                    |
-      | Automations | prod, billing, critical |
-      | Pipelines   | prod                    |
+    Examples: the tags it arrived carrying, plus the tag of the folder it landed in
+      | destination | tags                    | tags after                     |
+      | Automations | prod, billing, critical | alpha, billing, critical, prod |
+      | Pipelines   | prod                    | beta, prod                     |
 
     # ── RULE: between two mappings, the binding follows the folder ─────────────
 
   # notes: ../AGENTS.md#moving-a-workflow-to-another-mapped-folder
   @user @in-nextcloud @gesture @ui
   Scenario Outline: Moving a workflow to another mapped folder rebinds it
-    Given a workflow file in "<source>"
+    Given a workflow file named "Foo.n8n" in "<source>" whose tags are "prod"
     When I move the file into "<destination>"
-    Then the file holds this DAV metadata:
-      | n8n_id      | the workflow's id  |
-      | n8n_mapping | the mapping's id   |
-      | n8n_mode    | the mapping's mode |
-    And the workflow carries the mapping's tag, and no other mapping's
+    Then the workflow is now under "<destination>"
+    And the workflow named "Foo" is no longer under "<source>"
+    And the file holds this DAV metadata:
+      | n8n_id      | the id it arrived with |
+      | n8n_mapping | the mapping's id       |
+      | n8n_mode    | the mapping's mode     |
+    And the workflow's tags are "<tags after>" in Nextcloud
+    And the workflow's tags are "<tags after>" in the file
+    And the workflow's tags are "<tags after>" in n8n
 
-    Examples: across the two storage backends, in both directions
-      | source      | destination |
-      | Automations | Pipelines   |
-      | Pipelines   | Automations |
+    Examples: between the two storage kinds, in both directions
+      | source      | destination | tags after  |
+      | Automations | Pipelines   | beta, prod  |
+      | Pipelines   | Automations | alpha, prod |
 
-    Examples: and within each of them, where the storage never changes
-      | source      | destination |
-      | Automations | Blueprints  |
-      | Pipelines   | Runbooks    |
+    Examples: and between two folders of the same kind
+      | source      | destination | tags after  |
+      | Automations | Blueprints  | gamma, prod |
+      | Pipelines   | Runbooks    | delta, prod |
 
   # notes: ../AGENTS.md#the-one-move-nextcloud-refuses-before-we-see-it
   @user @in-nextcloud @gesture @ui

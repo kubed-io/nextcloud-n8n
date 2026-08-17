@@ -92,14 +92,26 @@ final class MotionService {
 	 * pull could decide its file is stale, so the new tag goes on before the old comes
 	 * off.
 	 *
+	 * ## THE PILL MOVES WITH IT, THE BODY IS THE SYNC'S JOB
+	 *
+	 * The tag lives on three surfaces: n8n's tags, the Nextcloud pills, and the file's
+	 * own JSON `tags` array. The first two are settled here — a pill write takes no file
+	 * lock, so it costs nothing to be exact about the folder the user is looking at.
+	 *
+	 * The body is NOT written here, and not by a job either. The file is locked for the
+	 * length of a rename, so `putContent()` from this call throws (the trap
+	 * {@see \OCA\N8nSync\BackgroundJob\ReconcileNameJob} exists to avoid) — and a
+	 * deferred writer racing the user is a worse cure than the disease. The file's body
+	 * is a mirror of n8n, n8n is correct the moment the two calls above return, and
+	 * writing mirrors is what the pull already does. So the body settles on the next
+	 * sync, exactly like every other change made on the n8n side.
+	 *
 	 * ## WHAT THIS DELIBERATELY DOES NOT DO
 	 *
-	 * It does not rewrite the file's body when the two mappings differ in mode. A `link`
-	 * moving into a `sync` mapping is re-stamped `sync` here and still holds a pointer
-	 * until the next pull writes the full JSON over it — the same way a link file is
-	 * materialised in the first place. Writing it here would mean `putContent()` on a
-	 * node the move handler still holds locks on, which is the trap
-	 * {@see \OCA\N8nSync\BackgroundJob\ReconcileNameJob} exists to avoid.
+	 * It does not rewrite the rest of the file's body when the two mappings differ in
+	 * mode. A `link` moving into a `sync` mapping is re-stamped `sync` here and still
+	 * holds a pointer until the next pull writes the full JSON over it — the same way a
+	 * link file is materialised in the first place.
 	 *
 	 * @throws N8nApiException on a non-404 n8n failure
 	 */
@@ -128,6 +140,20 @@ final class MotionService {
 				WorkflowMetadata::KEY_MAPPING => $tgtMapping->id,
 			]);
 		});
+
+		// Best-effort against the n8n write that has already landed: a failure here
+		// leaves a stale pill that the next pull corrects, and throwing would tell
+		// MotionListener the rebind failed when it did not.
+		try {
+			$this->tagSync->swapMappingPill($node->getId(), $srcMapping->n8nTag, $tgtMapping->n8nTag);
+		} catch (\Throwable $e) {
+			$this->logger->warning('n8n_sync motion: swapping the mapping pill failed', [
+				'app' => Application::APP_ID,
+				'fileId' => $node->getId(),
+				'workflowId' => $id,
+				'exception' => $e,
+			]);
+		}
 	}
 
 	/**

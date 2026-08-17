@@ -466,30 +466,202 @@ trait MoveSteps {
 	}
 
 	/**
-	 * The workflow's tags on both surfaces, as one claim — see
-	 * {@see CopySteps::theCopysNormalTagsAre} for why they are asserted together.
-	 * This one reads the file the move landed, rather than a copy.
+	 * A mapping owns a workflow by its tag, so "under a folder" is two things at once:
+	 * the file is there, and n8n agrees the workflow belongs to that folder's mapping.
 	 *
-	 * @Then the workflow's normal tags are :tags in n8n and in Nextcloud
+	 * ## THE DUPLICATE CHECK LIVES HERE, NOT IN THE GHERKIN
+	 *
+	 * A move can fail by leaving TWO workflows — one the file points at, one orphaned
+	 * under the old mapping's tag — and every assertion phrased around "the" workflow
+	 * is answered by whichever id the file is holding, so all of them pass. That is not
+	 * hypothetical: it is exactly how a move between two Team Folders shipped green
+	 * while minting a duplicate on every drag. Counting is the only question that
+	 * cannot be answered by the wrong workflow, so it is asked here, once, as part of
+	 * what "the workflow is now under X" means rather than as a line of prose.
+	 *
+	 * @Then the workflow is now under :folder
 	 */
-	public function theMovedWorkflowsNormalTagsAre(string $tags): void {
-		$want = array_values(array_filter(array_map('trim', explode(',', $tags))));
-		sort($want);
+	public function theWorkflowIsNowUnder(string $folder): void {
+		Assert::assertStringStartsWith($folder . '/', $this->currentFilePath, "the file is not in $folder");
+		Assert::assertTrue($this->davExists($this->currentFilePath), "the file is not in $folder at all");
 
-		$mappingTag = $this->mappingTagForFolder($this->currentFolder);
-		$strip = fn (array $names): array => array_values(array_filter(
-			$names,
-			static fn (string $n): bool => $n !== '' && $n !== $mappingTag,
-		));
+		$id = $this->movedWorkflowId();
+		if ($this->idArrivedWith !== '') {
+			Assert::assertSame(
+				$this->idArrivedWith,
+				$id,
+				'the file is pointing at a DIFFERENT workflow than the one it moved with — it was re-created, not relocated',
+			);
+		}
 
-		$id = (string)$this->davReadMetadataId($this->currentFilePath);
-		Assert::assertNotSame('', $id, 'the moved file has no workflow to read tags from');
-		$inN8n = $strip($this->n8nWorkflowTagNames($id));
-		sort($inN8n);
-		$inNextcloud = $strip($this->fileSystemTags($this->currentFilePath));
-		sort($inNextcloud);
+		$name = preg_replace('/\.n8n$/', '', basename($this->currentFilePath)) ?? '';
+		$found = $this->n8nWorkflowsNamed($name);
+		if (count($found) !== 1) {
+			throw new \RuntimeException(sprintf(
+				'n8n holds %d workflows named "%s" — a move must relocate one, never mint another',
+				count($found),
+				$name,
+			));
+		}
 
-		Assert::assertSame(['n8n' => $want, 'Nextcloud' => $want], ['n8n' => $inN8n, 'Nextcloud' => $inNextcloud]);
+		$on = $this->n8nWorkflowTagNames($id);
+		$want = $this->mappingTagForFolder($folder);
+		if (!in_array($want, $on, true)) {
+			throw new \RuntimeException(sprintf(
+				"the workflow does not carry '%s', the tag that binds it to %s — it carries [%s]",
+				$want,
+				$folder,
+				implode(', ', $on) ?: '(none)',
+			));
+		}
+	}
+
+	/**
+	 * The other half of the same claim, and the one that catches the orphan: nothing
+	 * named this is still bound to the folder it left — no file there, and nothing in
+	 * n8n wearing that mapping's tag. A workflow left carrying its old tag is pulled
+	 * back into the old folder on the next sync, which is how one file becomes two.
+	 *
+	 * @Then the workflow named :name is no longer under :folder
+	 */
+	public function theWorkflowNamedIsNoLongerUnder(string $name, string $folder): void {
+		$stem = preg_replace('/\.n8n$/', '', $name) ?? $name;
+		Assert::assertFalse(
+			$this->davExists($folder . '/' . $stem . '.n8n'),
+			"$stem.n8n is still in $folder",
+		);
+
+		$tag = $this->mappingTagForFolder($folder);
+		foreach ($this->n8nWorkflowsNamed($stem) as $row) {
+			$names = [];
+			foreach ((array)($row['tags'] ?? []) as $t) {
+				if (is_array($t)) {
+					$names[] = (string)($t['name'] ?? '');
+				}
+			}
+			Assert::assertNotContains(
+				$tag,
+				$names,
+				"a workflow named \"$stem\" still carries '$tag' — the next pull writes it back into $folder",
+			);
+		}
+	}
+
+	/**
+	 * THE WHOLE TAG SET, MAPPING TAGS INCLUDED — one surface per sentence, the same
+	 * shape `tags.feature` uses.
+	 *
+	 * Deliberately NOT the `normal tags` steps, which drop the mapping tag before
+	 * comparing. That is right where the mapping is fixed and the scenario is about the
+	 * user's own labels; it is exactly wrong here, where the mapping tag is the thing
+	 * under test. Asserting the full set is also stricter than naming the tags that
+	 * should and should not be there: a leftover tag fails it, a missing one fails it,
+	 * and so does a set that is somehow both.
+	 *
+	 * @Then the workflow's tags are :tags in Nextcloud
+	 */
+	public function theMovedWorkflowsTagsAreInNextcloud(string $tags): void {
+		$this->settleFromN8n();
+		self::assertTagSet($tags, $this->fileSystemTags($this->currentFilePath), "the file's Nextcloud pills");
+	}
+
+	/**
+	 * The file's own `tags` array — the surface that outlives Nextcloud, and the one
+	 * that pushes back to n8n on the next save, so a stale entry here re-binds the
+	 * workflow to the folder it left.
+	 *
+	 * @Then the workflow's tags are :tags in the file
+	 */
+	public function theMovedWorkflowsTagsAreInTheFile(string $tags): void {
+		$this->settleFromN8n();
+		$wf = json_decode($this->davGet($this->currentFilePath), true);
+		Assert::assertIsArray($wf, "the file at {$this->currentFilePath} is not JSON");
+
+		$names = [];
+		foreach ((array)($wf['tags'] ?? []) as $tag) {
+			Assert::assertIsArray($tag, 'a body tag entry is not an object');
+			$names[] = (string)($tag['name'] ?? '');
+		}
+		self::assertTagSet($tags, $names, "the file's tags array");
+	}
+
+	/**
+	 * n8n's own answer, read from its API rather than from anything this app reports —
+	 * a `Then` that only asks this app proves the app agrees with itself.
+	 *
+	 * @Then the workflow's tags are :tags in n8n
+	 */
+	public function theMovedWorkflowsTagsAreInN8n(string $tags): void {
+		$this->settleFromN8n();
+		self::assertTagSet($tags, $this->n8nWorkflowTagNames($this->movedWorkflowId()), "the workflow's n8n tags");
+	}
+
+	/**
+	 * The workflow the file under test currently claims. Read from the FILE rather
+	 * than from `$lastWorkflowId`, because the move step re-reads that field to follow
+	 * a legitimate mint — so trusting it would let a scenario about relocation grade
+	 * the workflow it should have proven does not exist.
+	 */
+	private function movedWorkflowId(): string {
+		$id = (string)($this->davReadMetadataId($this->currentFilePath) ?? '');
+		Assert::assertNotSame('', $id, 'the file under test carries no workflow id');
+		return $id;
+	}
+
+	/**
+	 * COMPARED AS STRINGS, AND THAT IS NOT COSMETIC. A failing PHPUnit assertion inside
+	 * Behat dies in `PHPUnit\TextUI\Configuration\Registry::get()` — there is no PHPUnit
+	 * run to configure — and the real message is replaced by a TypeError. Scalars survive
+	 * it; ARRAYS do not, because the diff needs the exporter, which needs that config. So
+	 * the three tag-set steps failed with `Return value must be of type Configuration,
+	 * null returned` and told the reader nothing at all.
+	 *
+	 * A comma list also reads better than a var-dump of two arrays: `beta, prod` against
+	 * `alpha, beta, prod` names the leftover tag on sight.
+	 *
+	 * @param list<string> $actual
+	 */
+	private static function assertTagSet(string $want, array $actual, string $surface): void {
+		$got = implode(', ', self::sortedNames($actual));
+		$expected = implode(', ', self::tagList($want));
+		if ($got !== $expected) {
+			throw new \RuntimeException("$surface are [$got], expected [$expected]");
+		}
+	}
+
+	/**
+	 * Bring the file up to date with n8n before reading a surface off it.
+	 *
+	 * The file's own `tags` array is a mirror, and mirrors are written by the sync, not
+	 * by the gesture — a rebind cannot write the body inline because the file is locked
+	 * for the length of a rename, and create-on-land does not write the mapping tag onto
+	 * the pills until something pulls. A Gherkin `Then` states the effect and never how
+	 * long it took to arrive, so the waiting belongs here.
+	 *
+	 * IT USED TO LIVE IN THE `When`, which was wrong for a reason worth keeping: a sync
+	 * on every move is a side effect every OTHER move scenario pays for, and it broke the
+	 * move-in restore, whose arrange leaves `currentFolder` pointing at a mapping the file
+	 * has already left. Settling in the step that reads the surface touches only the
+	 * scenarios that ask.
+	 */
+	private function settleFromN8n(): void {
+		if ($this->currentFolder === '' || !$this->isMappedFolder($this->currentFolder)) {
+			return; // outside every mapping there is nothing to mirror from
+		}
+		$this->runMappingSync('pull', $this->tagForFolder($this->currentFolder));
+	}
+
+	/**
+	 * De-duplicated, sorted, blanks dropped — so a set comparison is about membership
+	 * and never about the order two APIs happened to answer in.
+	 *
+	 * @param list<string> $names
+	 * @return list<string>
+	 */
+	private static function sortedNames(array $names): array {
+		$out = array_values(array_unique(array_filter($names, static fn (string $n): bool => $n !== '')));
+		sort($out);
+		return $out;
 	}
 
 	/**

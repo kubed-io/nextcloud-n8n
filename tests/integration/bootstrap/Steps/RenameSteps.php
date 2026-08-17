@@ -43,6 +43,27 @@ trait RenameSteps {
 		$stem = preg_replace('/\.n8n$/', '', $filename) ?? $filename;
 		$path = $folder . '/' . $filename;
 
+		// A NAMED FILE MUST BE A NEW FILE, and in a Team Folder that is not free.
+		//
+		// The teardown deletes the folders it made, but a Team Folder is provisioned by
+		// the app rather than by MKCOL, so a DELETE of its mount point does not clear it
+		// — anything a scenario left inside is still there for the next one. A PUT over
+		// that leftover reuses its file id AND its metadata row, so the "new" file is born
+		// already carrying an `n8n_id` whose workflow the previous teardown deleted from
+		// n8n. create-on-land then bails (the file looks managed), and the first n8n call
+		// of whatever follows 404s on a dead id.
+		//
+		// That cost a whole CI cycle to find, and it is the same lesson
+		// {@see MoveSteps::arrangeManagedFileIn} already carries: it solved it by
+		// generating a unique name. A scenario that SAYS its filename cannot do that, so
+		// it clears the ground instead.
+		//
+		// EVERY MAPPED FOLDER, not just this one. A move scenario ends with the file
+		// somewhere it did not start, so the leftover the next row trips over is usually
+		// in the DESTINATION — where it also collides by name, and Nextcloud refuses that
+		// move with a 412 long before this app sees it.
+		$this->clearNamedFileEverywhere($filename, $folder);
+
 		// MANAGED ONLY IF IT LANDED IN A MAPPING. {@see putManagedFile} asserts an
 		// `n8n_id` was stamped, which is right for the rename scenarios that own it and
 		// wrong the moment a scenario names a file in an UNMAPPED folder — `copy.feature`
@@ -64,6 +85,30 @@ trait RenameSteps {
 		// it can only prove the original survived if something read it first.
 		$this->originalPath = $this->currentFilePath;
 		$this->copyOriginalBefore = $this->readManagedMetadata($this->originalPath);
+	}
+
+	/**
+	 * Remove `$filename` from every mapped folder and from `$folder`, so a scenario that
+	 * names its file starts from a clean slate wherever it is about to move it.
+	 *
+	 * Deleting a managed mirror is itself a gesture — it archives the workflow in n8n —
+	 * which is exactly right for a leftover: the previous scenario's teardown has already
+	 * removed the workflow it belonged to, so what is left is a file pointing at nothing.
+	 */
+	private function clearNamedFileEverywhere(string $filename, string $folder): void {
+		$folders = [$folder];
+		foreach ($this->listMappings() as $m) {
+			$mapped = (string)($m['team_folder'] ?? '');
+			if ($mapped !== '' && !in_array($mapped, $folders, true)) {
+				$folders[] = $mapped;
+			}
+		}
+		foreach ($folders as $dir) {
+			$candidate = $dir . '/' . $filename;
+			if ($this->davExists($candidate)) {
+				$this->davDelete($candidate);
+			}
+		}
 	}
 
 	/** True when a mapping owns $folder — i.e. a file landing there becomes managed. */

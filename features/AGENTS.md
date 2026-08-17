@@ -2351,14 +2351,66 @@ reasoning that a link moving *between* mappings never becomes bodiless. It would
 have to change mode to mean anything in a `sync` mapping — see the link rule above — and
 mode is not something a drag decides.
 
-**Four rows, and they are two questions.** `Automations ↔ Pipelines` crosses the storage
-backends in both directions; `Automations → Blueprints` and `Pipelines → Runbooks` stay
-within one. Crossing and not-crossing are different code paths in Nextcloud — one is a
-move between storages, the other a rename inside one — and a rebind writes the file's
-metadata on whichever storage it ends up on.
+**A MOVE BETWEEN TEAM FOLDERS DESTROYS THE FILE'S STAMP, and that is Nextcloud, not us.**
+Measured on a live instance: put an `n8n_id` on a file in one Team Folder, move it to
+another, read it back — the file id was preserved and `files_metadata` came back `[]`. A
+cross-storage move is a copy plus an unlink of the source, and the unlink takes the
+metadata row with it. Two Team Folders are two storages whenever groupfolders is
+configured with `separate-storage` (the default on current versions), and a Team Folder
+and a home folder always are.
+
+The cost was not subtle: the file arrived looking untracked, which is the one shape
+create-on-land adopts, so a workflow that already existed got a SECOND one minted for it
+while the original kept the tag of the folder it left — and the next pull wrote it back
+there. One drag, two workflows, two files. `MoveIdentityListener` brackets the move and
+carries the stamp across; it is registered ahead of every other rename listener, because
+the ones behind it all branch on whether the file is managed.
+
+**This is not a rebind problem.** Move-OUT to an unmapped folder loses the same row for
+the same reason: `MotionListener` bails, the workflow is never archived, and the pull
+brings the file back. That is why `Moving a sync file out of its mapping` is now an
+Outline over both storage kinds.
+
+**The tag lands on three surfaces, and only two of them are instant.** n8n and the
+Nextcloud pills are settled inside the move; the file's own `tags` array is not, because
+the file is locked for the length of a rename and a mirror of n8n is written by the sync.
+A deferred writer racing the user was built and then cut — it is the `ReconcileNameJob`
+shape, and that shape is what made the copy-name work miserable.
+
+**Making the body instant is still on the table** if the lag ever bites. The lever is a
+queued job that rewrites only the body's `tags` from n8n's canonical rows, enqueued from
+`MotionService::rebind` — roughly 60 lines, and it was working before it was cut. The
+argument for it is `BodyTagListener`: it reads the body's `tags` as an authoritative
+Nextcloud-side statement on the next save, so a user who edits and saves a just-moved
+file *before* the sync runs pushes the OLD mapping's tag back to n8n and undoes the move.
+Nobody has hit that. If somebody does, this is the fix, and the reason it was not taken
+first is that a background writer that rewrites a file behind the user is a bigger
+liability than a tag that is briefly stale in one of three places.
+
+**Four rows, and they are two questions.** `Automations ↔ Pipelines` crosses the two
+storage KINDS in both directions; `Automations → Blueprints` and `Pipelines → Runbooks`
+stay within one kind. Note what that does NOT mean: `Pipelines → Runbooks` is two Team
+Folders and therefore still crosses a storage boundary. An earlier caption here read
+"where the storage never changes", which was simply false and is exactly the belief that
+let the identity loss ship green.
 
 That needed TWO new mappings in the Background, not one: `Pointers` is the only other
-admin folder and it is `link`, so neither same-storage pair could borrow it.
+admin folder and it is `link`, so neither same-kind pair could borrow it.
+
+**The scenario grades the workflow it MOVED, not the one the file ended up holding.**
+`the workflow's id` reads `$lastWorkflowId`, which the move step re-reads off the file
+afterwards so a legitimate mint (move-in of a hard-deleted workflow) is followed. That
+makes it self-satisfying for a gesture that must not mint: it compares the new id with
+itself and passes. This scenario says `the id it arrived with`, pinned before the gesture,
+and `the workflow is now under <destination>` counts how many workflows carry the name.
+Counting is the only question a duplicate cannot answer, which is why it is inside the
+step rather than a line of prose.
+
+**Full tag sets, not `normal tags`.** The `normal` steps drop the mapping tag before
+comparing, which is right where the mapping is fixed and wrong here, where the mapping
+tag is the thing under test. A set comparison fails for a leftover tag, a missing tag,
+and a set that is somehow both — which is what "the old tag came off" and "the new one
+went on" amount to when stated once instead of twice.
 
 **And it cost a row elsewhere.** `A file arriving from outside every mapping becomes a
 workflow there` had a `Pointers` destination — an unmapped file moved into the link
