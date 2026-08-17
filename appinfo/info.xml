@@ -41,11 +41,12 @@ by n8n GmbH. "n8n" and the n8n logo are trademarks of n8n GmbH, used here only t
 identify the service this app integrates with.
   ]]></description>
   <version>0.1.5</version>
-  <licence>agpl</licence>
+  <!-- SPDX identifier, not the `agpl` shorthand. The store's XSD still accepts the
+       shorthand but marks it deprecated, and its docs scope it to apps targeting
+       Nextcloud 30 or lower. This app requires 32. -->
+  <licence>AGPL-3.0-or-later</licence>
   <author>Kelly Ferrone</author>
   <namespace>N8nSync</namespace>
-  <category>integration</category>
-  <category>files</category>
   <!--
     DECLARED SO THE APP IS LOADED ON WEBDAV REQUESTS. This is the missing half of
     the trash-purge bug (saga §5.7), and it is invisible until you look for it.
@@ -70,48 +71,38 @@ identify the service this app integrates with.
   <types>
     <filesystem/>
   </types>
+  <documentation>
+    <user>https://github.com/kubed-io/nextcloud-n8n#readme</user>
+    <admin>https://github.com/kubed-io/nextcloud-n8n#-setup-in-three-moves</admin>
+    <developer>https://github.com/kubed-io/nextcloud-n8n/blob/main/CONTRIBUTING.md</developer>
+  </documentation>
+  <category>integration</category>
+  <category>files</category>
   <website>https://github.com/kubed-io/nextcloud-n8n</website>
   <bugs>https://github.com/kubed-io/nextcloud-n8n/issues</bugs>
   <repository type="git">https://github.com/kubed-io/nextcloud-n8n.git</repository>
   <!-- Order is the store's carousel order: the payoff first, the admin surface last.
        Every file here must exist in screenshots/ on main — the store fetches them by
        raw URL, so a rename that misses this list shows the listing a broken image. -->
-  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/n8n-files.png</screenshot>
-  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/create-menu.png</screenshot>
-  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/edit-workflow.png</screenshot>
-  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/context-menu.png</screenshot>
-  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/popular-files.png</screenshot>
-  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/trash-and-restore.png</screenshot>
-  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/tag2folder-mapping.png</screenshot>
-  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/connection-settings.png</screenshot>
-  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/admin-actions.png</screenshot>
+  <screenshot small-thumbnail="https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/thumbnails/n8n-files.png">https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/n8n-files.png</screenshot>
+  <screenshot small-thumbnail="https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/thumbnails/create-menu.png">https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/create-menu.png</screenshot>
+  <screenshot small-thumbnail="https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/thumbnails/edit-workflow.png">https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/edit-workflow.png</screenshot>
+  <screenshot small-thumbnail="https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/thumbnails/context-menu.png">https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/context-menu.png</screenshot>
+  <screenshot small-thumbnail="https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/thumbnails/popular-files.png">https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/popular-files.png</screenshot>
+  <screenshot small-thumbnail="https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/thumbnails/trash-and-restore.png">https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/trash-and-restore.png</screenshot>
+  <screenshot small-thumbnail="https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/thumbnails/tag2folder-mapping.png">https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/tag2folder-mapping.png</screenshot>
+  <screenshot small-thumbnail="https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/thumbnails/connection-settings.png">https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/connection-settings.png</screenshot>
+  <screenshot small-thumbnail="https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/thumbnails/admin-actions.png">https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/admin-actions.png</screenshot>
   <dependencies>
-    <!-- 31, not 30: AutoSyncSettings implements IDeclarativeSettingsFormWithHandlers
+    <!-- Not 30 or 31. AutoSyncSettings implements IDeclarativeSettingsFormWithHandlers
          (@since 31.0.0), which is the only way an ADMIN declarative form can carry a
          CHECKBOX at all — core's INTERNAL storage throws a TypeError on both the read
-         and the write of a bool (see that class's docblock). Nextcloud 30 reached end
-         of life in 2025, so nothing supported is lost. -->
+         and the write of a bool (see that class's docblock). That ruled out 30, which
+         reached end of life in 2025 anyway. The floor is 32 rather than 31 because 31
+         was never once executed by the integration suite: supporting it was a claim,
+         and 32 is the oldest version the suite actually proves. -->
     <nextcloud min-version="32" max-version="34"/>
   </dependencies>
-  <settings>
-    <!-- Test Connection buttons are folded into the Sync Actions panel
-         (SyncSettings); AdminTest stays as the auth target for the test
-         endpoints but is no longer rendered as its own panel. -->
-    <admin>OCA\N8nSync\Settings\MappingSettings</admin>
-    <admin>OCA\N8nSync\Settings\SyncSettings</admin>
-    <admin-section>OCA\N8nSync\Settings\AdminSection</admin-section>
-  </settings>
-  <commands>
-    <command>OCA\N8nSync\Command\ListWorkflows</command>
-    <command>OCA\N8nSync\Command\GetWorkflow</command>
-    <command>OCA\N8nSync\Command\SetApiKey</command>
-    <command>OCA\N8nSync\Command\TestConnection</command>
-    <command>OCA\N8nSync\Command\AddMapping</command>
-    <command>OCA\N8nSync\Command\ListMappings</command>
-    <command>OCA\N8nSync\Command\RemoveMapping</command>
-    <command>OCA\N8nSync\Command\SetGroups</command>
-    <command>OCA\N8nSync\Command\Reconcile</command>
-  </commands>
   <repair-steps>
     <!--
       Installs the application/n8n+json mimetype + icon mapping on every
@@ -144,4 +135,23 @@ identify the service this app integrates with.
       <step>OCA\N8nSync\Migration\UnregisterMimetype</step>
     </uninstall>
   </repair-steps>
+  <commands>
+    <command>OCA\N8nSync\Command\ListWorkflows</command>
+    <command>OCA\N8nSync\Command\GetWorkflow</command>
+    <command>OCA\N8nSync\Command\SetApiKey</command>
+    <command>OCA\N8nSync\Command\TestConnection</command>
+    <command>OCA\N8nSync\Command\AddMapping</command>
+    <command>OCA\N8nSync\Command\ListMappings</command>
+    <command>OCA\N8nSync\Command\RemoveMapping</command>
+    <command>OCA\N8nSync\Command\SetGroups</command>
+    <command>OCA\N8nSync\Command\Reconcile</command>
+  </commands>
+  <settings>
+    <!-- Test Connection buttons are folded into the Sync Actions panel
+         (SyncSettings); AdminTest stays as the auth target for the test
+         endpoints but is no longer rendered as its own panel. -->
+    <admin>OCA\N8nSync\Settings\MappingSettings</admin>
+    <admin>OCA\N8nSync\Settings\SyncSettings</admin>
+    <admin-section>OCA\N8nSync\Settings\AdminSection</admin-section>
+  </settings>
 </info>
