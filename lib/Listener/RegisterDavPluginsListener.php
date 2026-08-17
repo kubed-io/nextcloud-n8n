@@ -11,6 +11,7 @@ namespace OCA\N8nSync\Listener;
 
 use OCA\DAV\Events\SabrePluginAddEvent;
 use OCA\N8nSync\DAV\LinkWriteGuardPlugin;
+use OCA\N8nSync\DAV\ReplacedByMovePlugin;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
 
@@ -33,6 +34,7 @@ use OCP\EventDispatcher\IEventListener;
 final class RegisterDavPluginsListener implements IEventListener {
 	public function __construct(
 		private LinkWriteGuardPlugin $linkWriteGuard,
+		private ReplacedByMovePlugin $replacedByMove,
 	) {
 	}
 
@@ -42,5 +44,8 @@ final class RegisterDavPluginsListener implements IEventListener {
 			return;
 		}
 		$event->getServer()->addPlugin($this->linkWriteGuard);
+		// Marks a workflow file that a MOVE is about to overwrite, so the delete half
+		// of an overwrite is not mistaken for someone deleting a workflow.
+		$event->getServer()->addPlugin($this->replacedByMove);
 	}
 }

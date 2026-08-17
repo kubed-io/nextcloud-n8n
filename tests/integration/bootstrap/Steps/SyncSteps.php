@@ -583,6 +583,13 @@ trait SyncSteps {
 				'position' => [0, 0],
 				'parameters' => new \stdClass(),
 			]];
+			// CONNECTIONS GO WITH THE NODES THEY CONNECT. n8n validates that every
+			// connection references a node that exists, so replacing the node list while
+			// leaving the old wiring behind produces a workflow it rejects outright —
+			// `unknown_connection_source` / `unknown_connection_target`. Caught in CI
+			// against a preloaded fixture that actually had wiring; every fixture this
+			// suite writes itself has none, which is why it had never come up.
+			$wf->connections = new \stdClass();
 			$this->davPut($path, json_encode($wf, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT));
 			$this->pushLocalNodes[$path] = $node;
 
@@ -639,10 +646,26 @@ trait SyncSteps {
 	 * The section's other button. `--all` with no `--mapping`, the same surface the
 	 * bulk control posts to ({@see \OCA\N8nSync\Controller\SyncController::push}).
 	 *
+	 * THE EXIT CODE IS NOT ASSERTED, AND THAT IS NOT LAXITY. `--all` means every
+	 * mapping in the instance — including the ones earlier scenarios in this leg left
+	 * behind, and the folders CI preloads fixtures into. One unrelated mapping holding
+	 * a workflow n8n rejects turns the whole run's status to `error`, and this scenario
+	 * would then fail for something it does not describe.
+	 *
+	 * Nothing is lost by it: this scenario's claim is about ITS files, and the `Then`s
+	 * grade those by name against n8n. A push of them that silently did nothing fails
+	 * on the very next line. What IS asserted here is that a run happened at all — a
+	 * report with no counters means the command never got as far as walking a mapping,
+	 * which no downstream assertion would attribute correctly.
+	 *
 	 * @When the admin syncs every mapping to n8n
 	 */
 	public function theAdminSyncsEveryMappingToN8n(): void {
-		$this->runMappingSync('push', null);
+		$res = $this->occ('n8n_sync:sync push --all');
+		$this->lastSyncResult = self::decodeSyncReport((string)$res['output']);
+		if (!isset($this->lastSyncResult['processed'])) {
+			throw new \RuntimeException("the push reported no run at all:\n{$res['output']}");
+		}
 	}
 
 	/**

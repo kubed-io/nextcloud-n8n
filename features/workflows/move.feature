@@ -112,7 +112,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
       | n8n_mode    | the mapping's mode                   |
 
   # notes: ../AGENTS.md#keeping-one-version-of-a-duplicate-leaves-one-file-and-one-workflow
-  @user @in-nextcloud @gesture @ui @todo
+  @user @in-nextcloud @gesture @ui
   Scenario Outline: Keeping one version of a duplicate leaves one file and one workflow
     Given a workflow file named "Turnbuckle.n8n" in "Automations"
     And an unmapped file named "Turnbuckle.n8n" in "Scratch" carrying the same "n8n_id"

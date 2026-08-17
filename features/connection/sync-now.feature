@@ -34,7 +34,7 @@ Feature: Syncing every mapping
   # notes: ../AGENTS.md#a-sync-to-n8n-makes-n8n-match-nextcloud
   @admin @occ @ui
   Scenario: A sync to n8n makes n8n match Nextcloud
-    Given a folder mapped as "sync" to the n8n tag "nextcloud:delta"
+    Given a folder mapped as "sync" to the n8n tag "nextcloud:echo"
     And its files hold nodes and tags that never reached n8n
     And one of its workflows was changed in n8n after its file was written
     When the admin syncs every mapping to n8n

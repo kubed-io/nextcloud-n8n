@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\N8nSync\Tests\Integration\Steps;
 
+use Behat\Gherkin\Node\TableNode;
 use PHPUnit\Framework\Assert;
 
 /**
@@ -349,31 +350,58 @@ trait MoveSteps {
 	}
 
 	/**
-	 * Answer the "Which files do you want to keep?" dialog.
+	 * Answer the "Which files do you want to keep?" dialog — all three, each doing
+	 * exactly what the Files app does with that answer and nothing more.
 	 *
-	 * Only `both versions` is implemented, and deliberately so: it is the one answer
-	 * whose behaviour this app already has. The other two are `@todo` in the feature
-	 * file — keeping the existing version sends no request at all, and keeping the new
-	 * one makes Nextcloud trash the destination before the arrival lands, which nothing
-	 * here yet guarantees the app survives. An unimplemented answer says so rather than
-	 * quietly doing something adjacent.
+	 *   the existing version → the node is filtered out of the request list, so NO
+	 *                          REQUEST IS SENT AT ALL and the file stays where it is.
+	 *                          Doing nothing is the implementation, not a stub.
+	 *   both versions        → `getUniqueName()` picks a free name and one ordinary
+	 *                          MOVE goes to it (`Overwrite: F` is fine — by
+	 *                          construction the name is free).
+	 *   the new version      → one MOVE to the original name with `Overwrite: T`,
+	 *                          which is what an absent header means. Sabre deletes the
+	 *                          destination and then moves.
 	 *
 	 * @When I select :answer
 	 */
 	public function iSelect(string $answer): void {
-		Assert::assertNotSame('', $this->conflictDestination, 'no move announced — a When must name the destination');
-		if ($answer !== 'both versions') {
-			throw new \RuntimeException(
-				"the '$answer' answer is not implemented yet; only 'both versions' is (see AGENTS.md)",
-			);
+		$folder = $this->conflictDestination;
+		Assert::assertNotSame('', $folder, 'no move announced — a When must name the destination');
+		$name = basename($this->currentFilePath);
+
+		switch ($answer) {
+			case 'the existing version':
+				// Nothing is sent. The incoming file is still sitting where it was, and
+				// `currentFilePath` deliberately still points at it.
+				if (!$this->davExists($folder . '/' . $name)) {
+					throw new \RuntimeException(
+						"there is no '$name' in $folder to collide with — this scenario needs a conflict to answer",
+					);
+				}
+				return;
+
+			case 'both versions':
+				$dest = $folder . '/' . $this->uniqueNameIn($folder, $name);
+				$this->davMove($this->currentFilePath, $dest);
+				break;
+
+			case 'the new version':
+				$dest = $folder . '/' . $name;
+				if (!$this->davExists($dest)) {
+					throw new \RuntimeException(
+						"there is no '$name' in $folder to overwrite — this scenario needs a conflict to answer",
+					);
+				}
+				$this->davMoveOverwrite($this->currentFilePath, $dest);
+				break;
+
+			default:
+				throw new \RuntimeException("unknown conflict answer '$answer'");
 		}
-		$dest = $this->conflictDestination . '/' . $this->uniqueNameIn(
-			$this->conflictDestination,
-			basename($this->currentFilePath),
-		);
-		$this->davMove($this->currentFilePath, $dest);
+
 		$this->currentFilePath = $dest;
-		$this->currentFolder = $this->conflictDestination;
+		$this->currentFolder = $folder;
 
 		// Register whatever was minted so teardown deletes it. Read from the file
 		// rather than assumed: if the app restored instead of minting, this records
@@ -408,6 +436,59 @@ trait MoveSteps {
 			}
 		}
 		throw new \RuntimeException("could not find a free name for $filename in $folder");
+	}
+
+	/**
+	 * WHOSE BODY SURVIVED — the one question a conflict answer exists to settle, and
+	 * the only thing that separates "keep the existing version" from "keep the new
+	 * one" once the dust has settled. Both leave a single file under a single name;
+	 * only its contents say which answer was given.
+	 *
+	 * The expected node is remembered so the sentence after it can hold n8n to the
+	 * SAME body rather than to a body of its own choosing — the two are one claim.
+	 *
+	 * @Then :filename in :folder holds the nodes of :whose
+	 */
+	public function theNamedFileHoldsTheNodesOf(string $filename, string $folder, string $whose): void {
+		$path = $folder . '/' . $filename;
+		if (!$this->davExists($path)) {
+			throw new \RuntimeException("there is no file at $path");
+		}
+		$this->namedFileUnderTest = $path;
+		$this->currentFolder = $folder;
+
+		$want = match ($whose) {
+			'the file already there' => self::STARTER_NODE_NAME,
+			'the file that arrived' => $this->arrivedNodeName,
+			default => throw new \RuntimeException("unknown body '$whose'"),
+		};
+		Assert::assertNotSame('', $want, "the scenario asked for '$whose' but the arrange never recorded one");
+		$this->expectedNodeName = $want;
+
+		$wf = json_decode($this->davGet($path), true);
+		Assert::assertIsArray($wf, "the file at $path is not JSON");
+		$got = [];
+		foreach ((array)($wf['nodes'] ?? []) as $n) {
+			if (is_array($n) && is_string($n['name'] ?? null)) {
+				$got[] = $n['name'];
+			}
+		}
+		if (!in_array($want, $got, true)) {
+			throw new \RuntimeException("$path does not hold '$want'; it holds: " . implode(', ', $got));
+		}
+	}
+
+	/**
+	 * The n8n half of the sentence above, and the one that catches the failure worth
+	 * catching: an overwrite whose body never travelled. The file would look right and
+	 * the next scheduled pull would quietly replace it with n8n's older body — a data
+	 * loss with no gesture attached to it.
+	 *
+	 * @Then its workflow in n8n is live and holds those same nodes
+	 */
+	public function itsWorkflowIsLiveAndHoldsThoseSameNodes(): void {
+		Assert::assertNotSame('', $this->expectedNodeName, 'no body under test — a nodes Then must come first');
+		$this->assertWorkflowLiveAndHolding($this->expectedNodeName, null);
 	}
 
 	/**
@@ -448,9 +529,25 @@ trait MoveSteps {
 	 * @Then /^its workflow in n8n is live, named "([^"]+)", and holds the nodes (it always had|that arrived)$/
 	 */
 	public function itsWorkflowInN8nIsLiveNamedAndHolds(string $name, string $which): void {
-		$wantArrived = $which === 'that arrived';
+		$want = $which === 'that arrived' ? $this->arrivedNodeName : self::STARTER_NODE_NAME;
+		Assert::assertNotSame('', $want, "the scenario asked for the nodes '$which' but none were recorded");
+		$this->assertWorkflowLiveAndHolding($want, $name);
+	}
+
+	/**
+	 * Shared by both "its workflow …" sentences: the file named above points at a
+	 * workflow that is THERE, is NOT ARCHIVED, optionally carries the name the scenario
+	 * spells, and holds the body the scenario says won.
+	 *
+	 * `live` IS AN ASSERTION, not decoration. The failure it guards is not a missing
+	 * workflow — it is one that came back archived, because an overwrite trashes what
+	 * it replaced and a trash is answered by archiving. That is the exact race
+	 * {@see \OCA\N8nSync\DAV\ReplacedByMovePlugin} exists to remove, so a regression
+	 * there lands here rather than in a log nobody reads.
+	 */
+	private function assertWorkflowLiveAndHolding(string $wantNode, ?string $wantName): void {
 		$path = $this->namedFileUnderTest;
-		Assert::assertNotSame('', $path, 'no named file to read a workflow off — a metadata Then must come first');
+		Assert::assertNotSame('', $path, 'no named file to read a workflow off — a naming Then must come first');
 
 		$id = (string)($this->davReadMetadataId($path) ?? '');
 		if ($id === '') {
@@ -461,17 +558,33 @@ trait MoveSteps {
 			throw new \RuntimeException("the workflow $id behind $path is gone from n8n");
 		}
 		if (($wf['isArchived'] ?? false) === true) {
-			throw new \RuntimeException("the workflow $id behind $path is archived, not live");
+			throw new \RuntimeException("the workflow $id behind $path is ARCHIVED, not live");
 		}
-		Assert::assertSame($name, (string)($wf['name'] ?? ''), "the workflow behind $path has the wrong name");
-
-		$want = $wantArrived ? $this->arrivedNodeName : 'When clicking Test workflow';
+		if ($wantName !== null) {
+			Assert::assertSame($wantName, (string)($wf['name'] ?? ''), "the workflow behind $path has the wrong name");
+		}
 		$got = $this->n8nWorkflowNodeNames($id);
-		if (!in_array($want, $got, true)) {
+		if (!in_array($wantNode, $got, true)) {
 			throw new \RuntimeException(
-				"the workflow behind $path does not hold '$want'; n8n holds: " . implode(', ', $got),
+				"the workflow behind $path does not hold '$wantNode'; n8n holds: " . implode(', ', $got),
 			);
 		}
+	}
+
+	/**
+	 * The whole tag set on ONE named file, across all three surfaces.
+	 *
+	 * The singular of {@see theTagsOnBothFilesAre}: a scenario that leaves one file
+	 * standing has no pair to speak about, and saying "both" of one file would be a
+	 * sentence that reads as a stronger claim than it makes.
+	 *
+	 * @Then the workflow's tags are :tags in Nextcloud, in the file and in n8n
+	 */
+	public function theNamedWorkflowsTagsAreEverywhere(string $tags): void {
+		$path = $this->namedFileUnderTest;
+		Assert::assertNotSame('', $path, 'no named file to read tags off — a naming Then must come first');
+		$this->settleFromN8n();
+		$this->assertTagsOnEverySurface($path, $tags);
 	}
 
 	/**
@@ -485,21 +598,26 @@ trait MoveSteps {
 		$this->settleFromN8n();
 		foreach ([$this->collisionSyncedPath, $this->currentFilePath] as $path) {
 			Assert::assertNotSame('', $path, 'one of the two files has no path — the arrange did not record it');
-			self::assertTagSet($tags, $this->fileSystemTags($path), "$path: the Nextcloud pills");
-
-			$wf = json_decode($this->davGet($path), true);
-			Assert::assertIsArray($wf, "the file at $path is not JSON");
-			$names = [];
-			foreach ((array)($wf['tags'] ?? []) as $tag) {
-				Assert::assertIsArray($tag, "a body tag entry in $path is not an object");
-				$names[] = (string)($tag['name'] ?? '');
-			}
-			self::assertTagSet($tags, $names, "$path: the file's tags array");
-
-			$id = (string)($this->davReadMetadataId($path) ?? '');
-			Assert::assertNotSame('', $id, "$path carries no workflow id");
-			self::assertTagSet($tags, $this->n8nWorkflowTagNames($id), "$path: the workflow's n8n tags");
+			$this->assertTagsOnEverySurface($path, $tags);
 		}
+	}
+
+	/** One file, three surfaces, one expected set — shared by the singular and the pair. */
+	private function assertTagsOnEverySurface(string $path, string $tags): void {
+		self::assertTagSet($tags, $this->fileSystemTags($path), "$path: the Nextcloud pills");
+
+		$wf = json_decode($this->davGet($path), true);
+		Assert::assertIsArray($wf, "the file at $path is not JSON");
+		$names = [];
+		foreach ((array)($wf['tags'] ?? []) as $tag) {
+			Assert::assertIsArray($tag, "a body tag entry in $path is not an object");
+			$names[] = (string)($tag['name'] ?? '');
+		}
+		self::assertTagSet($tags, $names, "$path: the file's tags array");
+
+		$id = (string)($this->davReadMetadataId($path) ?? '');
+		Assert::assertNotSame('', $id, "$path carries no workflow id");
+		self::assertTagSet($tags, $this->n8nWorkflowTagNames($id), "$path: the workflow's n8n tags");
 	}
 
 	/** @When I try to move the file to a folder that is not mapped */

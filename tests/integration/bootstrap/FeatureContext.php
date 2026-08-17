@@ -179,6 +179,8 @@ final class FeatureContext implements Context {
 	private string $arrivedNodeName = '';
 	/** The file a `Then` named, so the sentence after it can say "its workflow". */
 	private string $namedFileUnderTest = '';
+	/** The node a `Then` said should have survived, so n8n is held to the SAME body. */
+	private string $expectedNodeName = '';
 	/** The copy made by a copy step, and the workflow id (if any) it was registered as. */
 	private string $copyFilePath = '';
 	private ?string $copyWorkflowId = null;

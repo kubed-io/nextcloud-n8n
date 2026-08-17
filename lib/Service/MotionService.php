@@ -43,6 +43,7 @@ final class MotionService {
 	public function __construct(
 		private N8nClient $n8n,
 		private CreateService $createService,
+		private PushService $push,
 		private TagSyncService $tagSync,
 		private WorkflowMetadata $metadata,
 		private SyncGuard $guard,
@@ -169,9 +170,19 @@ final class MotionService {
 		// workflow — someone has already restored it here. The incoming file is a
 		// DUPLICATE, not the same workflow relocating, so mint it as a brand-new instance
 		// (copy semantics, §14.5): createForFile strips the carried id and creates a fresh
-		// workflow, leaving the existing file and its live workflow untouched. (A same-NAME
-		// duplicate never reaches here — Nextcloud refuses that move with a 412 before the
-		// rename event fires; only a differently-named duplicate lands.)
+		// workflow, leaving the existing file and its live workflow untouched.
+		//
+		// THIS IS THE "KEEP BOTH VERSIONS" ANSWER, and it needs nothing special: the
+		// conflict picker is client-side, so `Turnbuckle (1).n8n` reaches us as an
+		// ordinary MOVE to a free name and lands here like any other duplicate.
+		//
+		// A same-name duplicate DOES reach here, and the note that used to sit on this
+		// line said otherwise: it claimed Nextcloud refuses that move with a 412 before
+		// the rename event fires. It does not. Sabre defaults an absent `Overwrite`
+		// header to T and performs an overwrite as a delete of the destination followed
+		// by a move — so the sibling this scan looks for has been TRASHED by the time we
+		// run, no duplicate is found, and the unarchive path below is what answers.
+		// Whether that is right is undecided (features/workflows/move.feature, `@todo`).
 		if ($this->findSyncedSibling($node, $id) !== null) {
 			$this->logger->info('n8n_sync motion: move-in duplicate of an already-synced workflow; minting a new instance', [
 				'app' => Application::APP_ID,
@@ -204,6 +215,75 @@ final class MotionService {
 				WorkflowMetadata::KEY_MAPPING => $tgtMapping->id,
 			]);
 		});
+
+		$this->pushIfTheFileIsAhead($node);
+	}
+
+	/**
+	 * Send the arriving file's body up when it is not the mirror we last wrote.
+	 *
+	 * ## WITHOUT THIS, A MOVE-IN SILENTLY UNDOES ITSELF
+	 *
+	 * Unarchiving and re-stamping settles the file's IDENTITY and says nothing about
+	 * its CONTENT, and the two can disagree: a file sitting outside every mapping is
+	 * editable and is never pushed ({@see \OCA\N8nSync\Listener\NodeWrittenListener},
+	 * and `edit.feature` says so), so it can come back carrying changes n8n has never
+	 * seen. Left alone, the next pull compares the two, finds n8n authoritative, and
+	 * overwrites the file with the older body — so the user's edit survives the move
+	 * and is destroyed by a scheduled job minutes later. A data loss with no gesture
+	 * attached to it, which is the worst kind to diagnose.
+	 *
+	 * It is most visible in an overwrite ("keep the new version" is a statement about
+	 * WHICH BODY WINS, and would mean nothing if the body never travelled), but the
+	 * bug is not specific to one: every move-in of an edited unmapped file had it.
+	 *
+	 * ## THE HASH IS THE GATE, AND IT IS THE ONE ALREADY THERE
+	 *
+	 * `n8n_syncedHash` is the app's memory of the bytes the two sides last agreed on.
+	 * Equal means this file IS the mirror and there is nothing to send — which is the
+	 * ordinary move-out-and-back, and it stays a pure identity operation with no n8n
+	 * write. Different means the file has something n8n does not.
+	 *
+	 * ## LOGGED, NOT THROWN
+	 *
+	 * The move has already happened and the identity work already succeeded; throwing
+	 * would answer the client with a 500 for a file that did move, and would not put
+	 * the body back. A failure here leaves `syncedHash` stale, so the next save or
+	 * push retries on its own.
+	 */
+	private function pushIfTheFileIsAhead(File $node): void {
+		$managed = $this->metadata->read($node->getId());
+		if (!$managed?->isSync()) {
+			return;
+		}
+		try {
+			$content = $node->getContent();
+		} catch (\Throwable $e) {
+			$this->logger->warning('n8n_sync motion: could not read the arriving file to compare it with n8n', [
+				'app' => Application::APP_ID,
+				'fileId' => $node->getId(),
+				'exception' => $e,
+			]);
+			return;
+		}
+		if ($managed->syncedHash !== '' && $managed->syncedHash === sha1($content)) {
+			return; // this file is the mirror we last wrote — nothing to send
+		}
+		try {
+			$this->push->push($node);
+			$this->logger->info('n8n_sync motion: the arriving file carried changes n8n had not seen; pushed them', [
+				'app' => Application::APP_ID,
+				'fileId' => $node->getId(),
+				'workflowId' => $managed->workflowId,
+			]);
+		} catch (\Throwable $e) {
+			$this->logger->warning('n8n_sync motion: could not push the arriving file’s body; the next save will retry', [
+				'app' => Application::APP_ID,
+				'fileId' => $node->getId(),
+				'workflowId' => $managed->workflowId,
+				'exception' => $e,
+			]);
+		}
 	}
 
 	/**
