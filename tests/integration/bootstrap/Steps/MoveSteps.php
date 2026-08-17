@@ -370,6 +370,14 @@ trait MoveSteps {
 			'position' => [0, 0],
 			'parameters' => new \stdClass(),
 		]];
+		// THE BODY'S NAME AGREES WITH THE FILENAME, which is what any real file at this
+		// path looks like — a name is one value living in three places (`rename.feature`).
+		// The `a different n8n_id` arrange builds this file under another name and walks
+		// it here, so without this it arrives claiming to be `Other-xxxx`; the push on
+		// adoption would then rename the DESTINATION's workflow to that, and the next
+		// pull would rename its mirror to match. A real arrival never disagrees with its
+		// own filename, and a scenario about contents should not smuggle in a rename.
+		$wf->name = preg_replace('/\.n8n$/', '', basename($path)) ?? basename($path);
 		$this->davPut($path, json_encode($wf, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT));
 	}
 
