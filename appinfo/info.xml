@@ -10,13 +10,27 @@
   <summary>Your n8n workflows as native, editable, backed-up Nextcloud files</summary>
   <description><![CDATA[
 n8n Sync surfaces your n8n workflows as native Nextcloud files. Map one or more n8n
-tags to folders and every tagged workflow shows up as a `.n8n` file — with a
-real file icon, deep links back to n8n, and a per-folder sync mode.
+tags to folders and every tagged workflow shows up as a `.n8n` file — with a real
+file icon, deep links back to n8n, and a per-folder sync mode.
+
+Create, read, update and delete a workflow from either side. Make a file in a mapped
+folder and a real workflow appears in n8n; tag a workflow in n8n and its file appears
+in the folder. Moving, copying, renaming, trashing and restoring all mirror across,
+and a trashed workflow is archived rather than destroyed — nothing is permanently
+deleted until you empty the trash.
 
 - **Sync** — full two-way ownership. Edit a workflow in the Files app, over WebDAV,
   or from your desktop client and the change pushes back to n8n; a sync folder
   doubles as a complete, restorable backup of every workflow in it.
 - **Link** — a lightweight pointer (id, name, URL) that opens the workflow in n8n.
+
+Tags are kept as one set across all three surfaces — n8n, the file's own `tags` array,
+and Nextcloud's searchable system tags — so the mirror is as searchable as n8n itself,
+and you can re-tag a workflow from whichever side you happen to be looking at.
+
+Each mirrored file also carries its workflow's own created and modified dates rather
+than the sync's, so Nextcloud's own views — Recent, Popular files, sorting a folder by
+date — tell you the truth about your automation.
 
 Sync is reconcile-based: re-running a pull never duplicates files, because the link
 between a file and its workflow is a stable id stored in the file's metadata — not
@@ -59,11 +73,17 @@ identify the service this app integrates with.
   <website>https://github.com/kubed-io/nextcloud-n8n</website>
   <bugs>https://github.com/kubed-io/nextcloud-n8n/issues</bugs>
   <repository type="git">https://github.com/kubed-io/nextcloud-n8n.git</repository>
-  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/mapped-folder.png</screenshot>
-  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/context-menu.png</screenshot>
-  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/create-workflow.png</screenshot>
+  <!-- Order is the store's carousel order: the payoff first, the admin surface last.
+       Every file here must exist in screenshots/ on main — the store fetches them by
+       raw URL, so a rename that misses this list shows the listing a broken image. -->
+  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/n8n-files.png</screenshot>
+  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/create-menu.png</screenshot>
   <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/edit-workflow.png</screenshot>
-  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/admin-folder-mappings.png</screenshot>
+  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/context-menu.png</screenshot>
+  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/popular-files.png</screenshot>
+  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/trash-and-restore.png</screenshot>
+  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/tag2folder-mapping.png</screenshot>
+  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/connection-settings.png</screenshot>
   <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/admin-actions.png</screenshot>
   <dependencies>
     <!-- 31, not 30: AutoSyncSettings implements IDeclarativeSettingsFormWithHandlers
