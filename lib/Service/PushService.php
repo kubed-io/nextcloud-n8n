@@ -74,12 +74,20 @@ final class PushService {
 
 		try {
 			$versionId = $this->pushViaApi($id, $content);
+		} catch (N8nApiException $e) {
+			// ALREADY THE RIGHT TYPE, SO RETHROW IT WHOLE. Re-wrapping it in a new
+			// N8nApiException would keep the message and lose everything that makes
+			// the message actionable: `httpStatus` would flatten to 0 (so a caller
+			// can no longer tell a rejected key from a malformed body) and the
+			// original would drop out of the chain along with its stack.
+			throw $e;
 		} catch (\Throwable $e) {
-			// Don't stamp the synced hash — so the next save retries. n8n's own
-			// message travels as-is; there is no channel name to disambiguate now,
-			// which is what makes it read well in a toast.
-			throw new N8nApiException($e->getMessage());
+			// A LOCAL failure instead — an unparseable file, a JSON encode error.
+			// Callers catch one type, so normalise to it, but keep the original as
+			// `previous` rather than reducing it to a string.
+			throw new N8nApiException($e->getMessage(), 0, $e);
 		}
+		// Either way the synced hash is not stamped, so the next save retries.
 
 		// Stamp the synced hash so this exact content won't re-trigger a push,
 		// plus the new versionId.

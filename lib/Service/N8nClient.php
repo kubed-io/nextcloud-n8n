@@ -166,7 +166,6 @@ final class N8nClient {
 		return $this->decode($res);
 	}
 
-
 	/**
 	 * Create a workflow. Used by the new-file flow (UC-6) and tests.
 	 *
@@ -376,7 +375,6 @@ final class N8nClient {
 			$body,
 		));
 	}
-
 
 	/**
 	 * Single chokepoint for every HTTP call. Reads + decrypts the API key,

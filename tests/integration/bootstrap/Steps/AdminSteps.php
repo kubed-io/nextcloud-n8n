@@ -93,7 +93,6 @@ trait AdminSteps {
 		Assert::assertSame(0, $res['exit'], "storing the (invalid) key failed:\n{$res['output']}");
 	}
 
-
 	/** @Given the admin has set the n8n base URL */
 	public function theAdminHasSetUrlAndEnabledApi(): void {
 		$this->theAdminSetsTheN8nBaseUrl();
