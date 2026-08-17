@@ -9,8 +9,6 @@ return [
 	'routes' => [
 		// Admin-only: test the saved n8n URL + API key by calling /api/v1/workflows.
 		['name' => 'config#testConnection', 'url' => '/testconnection', 'verb' => 'GET'],
-		// Admin-only: test the Webhook channel by POSTing to the test-event path.
-		['name' => 'config#testWebhook', 'url' => '/testwebhook', 'verb' => 'GET'],
 
 		// Folder mappings CRUD (admin-gated via #[AuthorizedAdminSetting]).
 		['name' => 'mapping#index',   'url' => '/mappings',      'verb' => 'GET'],

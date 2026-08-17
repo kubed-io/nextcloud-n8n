@@ -63,6 +63,8 @@ The first release since `0.1.5`, and the one where the mirror became properly tw
 - **BREAKING:** the `n8n:sync` / `n8n:link` / `n8n:unmapped` pills are gone. The mapping decides a file's mode and the file still shows you what it is, so the pills were a second copy nobody could edit. They are deleted on upgrade and disappear from the tag picker.
 - **BREAKING:** the `n8n:ignore` tag is gone. Move a file out of its mapped folder to keep it in Nextcloud only, or drop the mapping tag to keep it in n8n only. Files currently marked ignored become ordinary workflow files again on the next sync.
 - **BREAKING:** the admin "Purge Nextcloud files" button is gone, along with `occ n8n_sync:purge`. It deleted every mirrored file in one click on the promise that a sync would bring them back — which was only true for files that were faithful mirrors, and the ones that were not are exactly the ones you would miss. Removing a mapping still cleans up its own files.
+- **BREAKING:** writeback via webhook is gone — the Webhook settings card, the webhook path and token, and the "Test webhook" button. It was never finished and never tested, but the form still asked for a path and a token, so it read like a feature that worked. Saving a workflow file writes it back over the REST API, which is what it always actually did. The idea is worth having and is recorded for a later version.
+- **BREAKING:** the "Write back via the REST API" checkbox is gone. It existed to let you turn one of two channels off; with one channel, turning it off just meant saving a file silently did nothing.
 - A link file can no longer be opened in the text editor.
 
 ### Fixed
@@ -78,7 +80,7 @@ The first release since `0.1.5`, and the one where the mirror became properly tw
 - Restoring a file whose workflow was deleted in n8n while it sat in the trash now creates the workflow again.
 - The mapping Mode help no longer offers a "Backup" mode — there has not been one since 0.1.3.
 - The Sync Actions panel no longer prints an internal note next to a run that succeeded, where a stale one could sit for months.
-- The admin "Test connection" and "Test webhook" buttons are CSRF-protected.
+- The admin "Test connection" button is CSRF-protected.
 
 ## [0.1.5] - 2026-07-22
 

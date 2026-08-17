@@ -32,10 +32,8 @@ use OCA\N8nSync\Listener\TrashPurgeHook;
 use OCA\N8nSync\Listener\TrashRestoreHook;
 use OCA\N8nSync\Notification\Notifier;
 use OCA\N8nSync\Service\WorkflowMetadata;
-use OCA\N8nSync\Settings\AdminSettings;
 use OCA\N8nSync\Settings\AutoSyncSettings;
 use OCA\N8nSync\Settings\InstanceSettings;
-use OCA\N8nSync\Settings\WebhookSettings;
 use OCP\AppFramework\App;
 use OCP\AppFramework\Bootstrap\IBootContext;
 use OCP\AppFramework\Bootstrap\IBootstrap;
@@ -81,17 +79,18 @@ final class Application extends App implements IBootstrap {
 		// those markers inside a mapped folder is fair game for sync; anything
 		// without them is left alone. No setting needed.
 		//
-		// Section layout (by priority): Instance URL (5) → REST API (10) → Test
-		// connection (15, classic panel via info.xml) → Webhook (20) →
-		// Writeback timing (25) → Mappings/Manual sync (30+). API and Webhook are
-		// independent, composable writeback channels; timing governs *when*
-		// either fires, so it follows both.
+		// Section layout (by priority): Instance — URL + API key (5) → Test
+		// connection (15, classic panel via info.xml) → Writeback timing (25) →
+		// Mappings/Manual sync (30+).
+		//
+		// It used to read "Instance URL (5) → REST API (10) → Test connection (15)
+		// → Webhook (20) → …, API and Webhook are independent, composable writeback
+		// channels". There is one channel now, so the URL and the key live in one
+		// card and timing governs when THE push fires rather than when either does.
 		$context->registerDeclarativeSettings(InstanceSettings::class);
-		$context->registerDeclarativeSettings(AdminSettings::class);
 		$context->registerDeclarativeSettings(AutoSyncSettings::class);
-		$context->registerDeclarativeSettings(WebhookSettings::class);
 
-		// Push wiring: push saved sync-mode files to every enabled channel.
+		// Push wiring: push saved sync-mode files to n8n.
 		$context->registerEventListener(NodeWrittenEvent::class, NodeWrittenListener::class);
 
 		// §14.2c link is read-only on disk: a link file is only a pointer to a workflow

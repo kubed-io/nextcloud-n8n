@@ -444,8 +444,14 @@ mirror and no scenario to write.
 
 The "admin makes the n8n connection" use case — the app's "I'm logged in" gate,
 a prerequisite to every other feature. The admin points the app at n8n (base
-URL), provides the API key, enables the REST API, and tests the connection to
-confirm the URL + key are valid and n8n is reachable.
+URL), provides the API key, and tests the connection to confirm the URL + key are
+valid and n8n is reachable.
+
+**"And the admin enables the REST API" is gone from both scenarios**, because the
+gesture is gone: writeback used to be one of two channels an admin composed, so
+the REST one had a switch. There is one channel now (saga Ch5 — the webhook is
+deferred, not disowned), and "does this app write back?" is not a question an
+admin should have to answer.
 
 (Obtaining the API key is out of the app's scope — that's the n8n admin's job;
 in the tests it's provided as setup.)

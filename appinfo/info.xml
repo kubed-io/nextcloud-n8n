@@ -149,6 +149,10 @@ This is a community integration and is not affiliated with, endorsed by, or spon
            version or two — this app is published, so its population is not ours to
            count; see lib/Migration/MigrateFileExtension.php. -->
       <step>OCA\N8nSync\Migration\MigrateFileExtension</step>
+      <!-- Deletes the retired webhook settings, one of which is an encrypted
+           secret SECURITY.md no longer claims to hold, plus the api_enabled
+           switch. Idempotent; see lib/Migration/RemoveWebhookSettings.php. -->
+      <step>OCA\N8nSync\Migration\RemoveWebhookSettings</step>
     </post-migration>
     <uninstall>
       <!-- Mirror image of RegisterMimetype: reverts the core-tree mimetype/icon

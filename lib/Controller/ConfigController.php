@@ -65,24 +65,4 @@ final class ConfigController extends Controller {
 		}
 	}
 
-	#[AuthorizedAdminSetting(settings: AdminTest::class)]
-	public function testWebhook(): JSONResponse {
-		try {
-			$result = $this->client->pingWebhook();
-			return new JSONResponse([
-				'status' => 'ok',
-				'message' => $result['message'],
-				'httpStatus' => $result['httpStatus'],
-			]);
-		} catch (\RuntimeException $e) {
-			// Covers N8nApiException (n8n's own message) and the friendly
-			// pre-formatted errors (missing path/URL, decrypt failure, …).
-			return new JSONResponse(['status' => 'error', 'message' => $e->getMessage()]);
-		} catch (\Throwable $e) {
-			return new JSONResponse([
-				'status' => 'error',
-				'message' => 'Webhook test failed: ' . $e->getMessage(),
-			]);
-		}
-	}
 }

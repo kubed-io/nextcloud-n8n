@@ -167,45 +167,6 @@ final class N8nClient {
 	}
 
 	/**
-	 * Test the Webhook channel by POSTing a tiny payload to n8n's **test-event**
-	 * path (`/webhook-test/...`), the URL n8n activates while "Listen for test
-	 * event" is open in the editor. Mirrors {@see ping()} for the API.
-	 *
-	 * If the receiving flow isn't currently listening, n8n replies with its own
-	 * "not registered" message — which {@see callWebhook} surfaces verbatim, so
-	 * the admin still gets actionable feedback.
-	 *
-	 * @return array{httpStatus:int, message:string}
-	 */
-	public function pingWebhook(): array {
-		$path = trim($this->config->getValueString(Application::APP_ID, 'webhook_path', ''));
-		if ($path === '') {
-			throw new \RuntimeException('Set the webhook path first.');
-		}
-		$this->callWebhook($this->toTestWebhookPath($path), [
-			'n8n_sync' => 'test',
-			'ts' => date('c'),
-		]);
-		return [
-			'httpStatus' => 200,
-			'message' => 'Webhook test event delivered. Check that your n8n flow received it.',
-		];
-	}
-
-	/**
-	 * Map a production webhook path to n8n's test-event variant:
-	 * `/webhook/foo` → `/webhook-test/foo`. If the path doesn't follow n8n's
-	 * `/webhook/` convention we can't infer the test URL, so we hit it as-is.
-	 */
-	private function toTestWebhookPath(string $path): string {
-		$p = '/' . ltrim($path, '/');
-		if (str_starts_with($p, '/webhook/')) {
-			return '/webhook-test/' . substr($p, strlen('/webhook/'));
-		}
-		return $p;
-	}
-
-	/**
 	 * Create a workflow. Used by the new-file flow (UC-6) and tests.
 	 *
 	 * @param array<string,mixed> $body
@@ -413,51 +374,6 @@ final class N8nClient {
 			[],
 			$body,
 		));
-	}
-
-	/**
-	 * POST a JSON body to the n8n webhook channel under the base URL. The webhook
-	 * has its **own** Bearer secret (`webhook_token`), independent of the REST
-	 * API key — set it and we send `Authorization: Bearer <token>`; leave it
-	 * empty for an unauthenticated webhook. The receiving n8n workflow owns the
-	 * routing/branching logic. `$path` is the webhook path, e.g. `/webhook/n8n-sync`.
-	 *
-	 * @param array<string,mixed> $body
-	 * @return array<string,mixed> decoded response (empty array if none)
-	 */
-	public function callWebhook(string $path, array $body): array {
-		$base = rtrim($this->config->getValueString(Application::APP_ID, 'n8n_url', ''), '/');
-		if ($base === '') {
-			throw new \RuntimeException('Set the n8n base URL first.');
-		}
-
-		$headers = [
-			'Content-Type' => 'application/json',
-			'Accept' => 'application/json',
-		];
-		$enc = $this->config->getValueString(Application::APP_ID, 'webhook_token', '');
-		if ($enc !== '') {
-			try {
-				$headers['Authorization'] = 'Bearer ' . $this->crypto->decrypt($enc);
-			} catch (\Throwable) {
-				throw new \RuntimeException('Stored webhook token could not be decrypted — re-enter it.');
-			}
-		}
-
-		$client = $this->clientService->newClient();
-		try {
-			$res = $client->post($base . '/' . ltrim($path, '/'), [
-				'headers' => $headers,
-				'body' => json_encode($body, JSON_THROW_ON_ERROR | JSON_UNESCAPED_SLASHES),
-				'timeout' => 15,
-				'nextcloud' => ['allow_local_address' => true],
-			]);
-		} catch (LocalServerException $e) {
-			throw new \RuntimeException('Refused to connect to a local address.', 0, $e);
-		} catch (\Throwable $e) {
-			throw $this->toApiException($e);
-		}
-		return $this->decode($res);
 	}
 
 	/**

@@ -13,29 +13,29 @@ use OCA\N8nSync\AppInfo\Application;
 use OCA\N8nSync\Exception\N8nApiException;
 use OCP\Files\File;
 use OCP\Files\Node;
-use OCP\IAppConfig;
 use Psr\Log\LoggerInterface;
 
 /**
- * Push dispatcher (Nextcloud → n8n). On save, a managed sync-mode file is
- * pushed to **every enabled channel** — the two are independent and composable,
- * not an either/or:
+ * Push dispatcher (Nextcloud → n8n). On save, a managed sync-mode file is written
+ * back with `PUT /workflows/{id}`, carrying the writable fields and returning the
+ * new `versionId`.
  *
- *  - REST API (`api_enabled`)     → `PUT /workflows/{id}` with the writable
- *                                   fields; returns the new `versionId`.
- *  - Webhook  (`webhook_enabled`) → POST the file to the configured webhook,
- *                                   authenticated with the webhook's own Bearer
- *                                   token. The receiving flow owns the routing.
+ * ## THERE USED TO BE TWO CHANNELS, AND THE SECOND ONE NEVER GREW UP
  *
- * Both on = belt-and-suspenders (PUT then notify a flow). API off + webhook on =
- * the flow is the only writer. Neither on = the file is stored locally only
- * (a valid no-op, not an error).
+ * A save could also POST the file to a configured n8n webhook, and the two were
+ * described as independent and composable: both on for belt-and-suspenders, API
+ * off and webhook on to make a flow the only writer, neither on for a valid no-op.
+ * That story cost this class a channel switch, a per-channel error prefix, and a
+ * state where saving a file did nothing at all and called it success.
  *
- * Errors are **not** swallowed: each channel's failure is collected and, if any
- * channel failed, re-thrown as an {@see N8nApiException} carrying n8n's own
- * message so the caller (save listener, async job, or bulk push) can surface it
- * as a user notification or an HTTP error. On full success we stamp the file's
- * `n8n_syncedHash` (loop guard) and the n8n `versionId`.
+ * The webhook channel is gone (saga Ch5 — deferred, not disowned), so a push is
+ * one call with one outcome. There is no `api_enabled` to consult, because "does
+ * this app write back?" is not a question an admin should have to answer.
+ *
+ * Errors are **not** swallowed: a failure is re-thrown as an
+ * {@see N8nApiException} carrying n8n's own message so the caller (save listener,
+ * async job, or bulk push) can surface it as a user notification or an HTTP error.
+ * On success we stamp the file's `n8n_syncedHash` (loop guard) and the `versionId`.
  *
  * Scope: **updates** of workflows we already track (have an `n8n_id`). Creating
  * a brand-new workflow from a hand-made file (UC-6) is a follow-up — such files
@@ -43,7 +43,6 @@ use Psr\Log\LoggerInterface;
  */
 final class PushService {
 	public function __construct(
-		private IAppConfig $appConfig,
 		private N8nClient $n8n,
 		private WorkflowMetadata $metadata,
 		private LoggerInterface $logger,
@@ -51,10 +50,9 @@ final class PushService {
 	}
 
 	/**
-	 * Push $node's contents to every enabled channel. Returns true when the file
-	 * was handled (incl. the "no channels enabled" no-op), false when it isn't a
-	 * pushable managed file. Throws {@see N8nApiException} if any enabled channel
-	 * failed.
+	 * Push $node's contents to n8n. Returns true when the file was written back,
+	 * false when it isn't a pushable managed file. Throws {@see N8nApiException}
+	 * when the write fails.
 	 */
 	public function push(Node $node): bool {
 		if (!$node instanceof File) {
@@ -72,38 +70,27 @@ final class PushService {
 		}
 		$id = $managed->workflowId;
 
-		$apiOn = $this->appConfig->getValueBool(Application::APP_ID, 'api_enabled', true);
-		$webhookOn = $this->appConfig->getValueBool(Application::APP_ID, 'webhook_enabled', false);
-
 		$content = $node->getContent();
-		$versionId = null;
-		$errors = [];
-		// Prefix channel names only when both are active, so a single-channel
-		// failure keeps n8n's bare message (nicest in a toast).
-		$both = $apiOn && $webhookOn;
 
-		if ($apiOn) {
-			try {
-				$versionId = $this->pushViaApi($id, $content);
-			} catch (\Throwable $e) {
-				$errors[] = ($both ? 'API: ' : '') . $e->getMessage();
-			}
+		try {
+			$versionId = $this->pushViaApi($id, $content);
+		} catch (N8nApiException $e) {
+			// ALREADY THE RIGHT TYPE, SO RETHROW IT WHOLE. Re-wrapping it in a new
+			// N8nApiException would keep the message and lose everything that makes
+			// the message actionable: `httpStatus` would flatten to 0 (so a caller
+			// can no longer tell a rejected key from a malformed body) and the
+			// original would drop out of the chain along with its stack.
+			throw $e;
+		} catch (\Throwable $e) {
+			// A LOCAL failure instead — an unparseable file, a JSON encode error.
+			// Callers catch one type, so normalise to it, but keep the original as
+			// `previous` rather than reducing it to a string.
+			throw new N8nApiException($e->getMessage(), 0, $e);
 		}
-		if ($webhookOn) {
-			try {
-				$this->pushViaWebhook($node, $id, $content);
-			} catch (\Throwable $e) {
-				$errors[] = ($both ? 'Webhook: ' : '') . $e->getMessage();
-			}
-		}
+		// Either way the synced hash is not stamped, so the next save retries.
 
-		if ($errors !== []) {
-			// Don't stamp the synced hash — so the next save retries.
-			throw new N8nApiException(implode(' · ', $errors));
-		}
-
-		// Full success (incl. the no-channels no-op): stamp the synced hash so
-		// this exact content won't re-trigger a push, plus the new versionId.
+		// Stamp the synced hash so this exact content won't re-trigger a push,
+		// plus the new versionId.
 		$update = [WorkflowMetadata::KEY_SYNCED_HASH => sha1($content)];
 		if ($versionId !== null && $versionId !== '') {
 			$update[WorkflowMetadata::KEY_VERSION_ID] = $versionId;
@@ -134,24 +121,4 @@ final class PushService {
 		return is_string($v) ? $v : null;
 	}
 
-	/**
-	 * POST the file to the configured n8n webhook (Bearer). The receiving n8n
-	 * workflow decides what to do; we don't get a versionId back.
-	 */
-	private function pushViaWebhook(Node $node, string $id, string $content): ?string {
-		$path = $this->appConfig->getValueString(Application::APP_ID, 'webhook_path', '');
-		if ($path === '') {
-			throw new \RuntimeException('Webhook writeback is enabled but no webhook path is configured.');
-		}
-		// Object decode, same as the API path above: the receiving workflow is very
-		// likely to feed this straight into an n8n update node, and an assoc decode
-		// would hand it `connections: []` where the file said `{}`.
-		$wf = json_decode($content, false, 512, JSON_THROW_ON_ERROR);
-		$this->n8n->callWebhook($path, [
-			'n8n_id' => $id,
-			'path' => $node->getPath(),
-			'content' => $wf,
-		]);
-		return null;
-	}
 }

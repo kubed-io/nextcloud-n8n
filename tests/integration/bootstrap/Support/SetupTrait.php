@@ -28,9 +28,8 @@ trait SetupTrait {
 	 * for tag-strip assertions and sets currentFolder.
 	 */
 	private function setupSyncMappingAndFolder(string $mode, string $tag): void {
-		// Connection (idempotent): URL + key + REST API on.
+		// Connection (idempotent): URL + key.
 		$this->occ('config:app:set ' . self::APP_ID . ' n8n_url --value=' . escapeshellarg($this->n8nUrl));
-		$this->occ('config:app:set ' . self::APP_ID . ' api_enabled --value=1');
 		if ($this->n8nApiKey !== '') {
 			$this->occStdin($this->occ . ' n8n_sync:set-api-key', $this->n8nApiKey);
 		}
