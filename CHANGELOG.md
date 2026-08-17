@@ -56,6 +56,7 @@ The first release since `0.1.5`, and the one where the mirror became properly tw
 - A `link` mapping's folder is no longer read-only.
 - The REST API card shows whether an API key is already stored, and Test connection tells a missing key apart from a rejected one.
 - Syncing a workflow's tags is faster.
+- The admin settings say the same things in about a quarter fewer words.
 
 ### Removed
 
@@ -75,6 +76,8 @@ The first release since `0.1.5`, and the one where the mirror became properly tw
 - Emptying the trash now really deletes the workflow in n8n.
 - Emptying a Team Folder's trash now deletes the workflow in n8n, instead of leaving it archived for good.
 - Restoring a file whose workflow was deleted in n8n while it sat in the trash now creates the workflow again.
+- The mapping Mode help no longer offers a "Backup" mode — there has not been one since 0.1.3.
+- The Sync Actions panel no longer prints an internal note next to a run that succeeded, where a stale one could sit for months.
 - The admin "Test connection" and "Test webhook" buttons are CSRF-protected.
 
 ## [0.1.5] - 2026-07-22

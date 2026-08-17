@@ -170,14 +170,21 @@
 		el.className = 'js-card-status' + (kind ? (' msg ' + kind) : '');
 	}
 
-	// Per-field help (mirrors the PHP $desc) + the ⓘ button markup. The CSS
-	// turns the span into a hover/focus tooltip.
+	// Per-field help + the ⓘ button markup. The CSS turns the span into a
+	// hover/focus tooltip.
+	//
+	// THESE MUST STAY WORD-FOR-WORD IDENTICAL to $desc in
+	// templates/mapping_settings.php. The server renders the existing cards and
+	// this renders every card added after load, so a string changed in only one
+	// place makes the same field explain itself two different ways — which is
+	// exactly how the `mode` tip went on describing the removed `backup` mode
+	// here after the template had dropped it. Same text, same translation key.
 	var DESC = {
-		tag: t('n8n_sync', 'Workflows carrying this tag in n8n sync into this folder. One tag per mapping.'),
-		mode: t('n8n_sync', 'Link: a read-only pointer to n8n. Sync: the full workflow JSON lives here and edits push back. Backup: a read-only copy (edits only ever come from n8n).'),
-		folder: t('n8n_sync', 'Name of the Nextcloud folder the workflows appear in.'),
-		tf: t('n8n_sync', 'On = an ownerless Team Folder (groupfolders). Off = a folder in the admin account shared to the groups. Fixed once saved.'),
-		groups: t('n8n_sync', 'Which Nextcloud groups the folder is shared with. Pick at least one — otherwise no one can see it.'),
+		tag: t('n8n_sync', 'Workflows with this tag in n8n appear in this folder. One tag per mapping.'),
+		mode: t('n8n_sync', 'Link: a read-only pointer to n8n. Sync: the full workflow lives here and edits push back.'),
+		folder: t('n8n_sync', 'The Nextcloud folder the workflows appear in.'),
+		tf: t('n8n_sync', 'On: an ownerless Team Folder (groupfolders). Off: an admin-owned folder shared to the groups. Fixed once saved.'),
+		groups: t('n8n_sync', 'Nextcloud groups the folder is shared with. Pick at least one, or no one can see it.'),
 	};
 	function info(tip) {
 		var e = escapeHtml(tip);

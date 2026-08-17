@@ -18,6 +18,7 @@ $webhookEnabled = (bool)($_['webhook_enabled'] ?? false);
 
 /** One-line "last: ..." summary, with a queued/running lead-in. */
 $summary = static function (array $rec) use ($l): string {
+	$status = $rec['status'] ?? null;
 	if (empty($rec) || empty($rec['finished_at'])) {
 		$last = $l->t('last: never');
 	} else {
@@ -36,11 +37,15 @@ $summary = static function (array $rec) use ($l): string {
 			$counters .= sprintf(' · %d %s', $unchanged, $l->t('unchanged'));
 		}
 		$last = $l->t('last: %1$s · %2$s', [(string)$rec['finished_at'], $counters]);
-		if (!empty($rec['message'])) {
+		// `message` is the error summary and is only meaningful on a failed run —
+		// see SyncStatusService's record shape. Appending it unconditionally meant a
+		// record written before a capability landed kept advertising its own absence
+		// forever: a June push left "No-op (Phase 3/4 not implemented)" on the panel
+		// long after push worked, because only the NEXT push clears it.
+		if ($status === 'error' && !empty($rec['message'])) {
 			$last .= ' · ' . (string)$rec['message'];
 		}
 	}
-	$status = $rec['status'] ?? null;
 	if ($status === 'queued') {
 		return $l->t('Queued…') . ' · ' . $last;
 	}
@@ -55,13 +60,13 @@ $summary = static function (array $rec) use ($l): string {
 	<h3><?php p($l->t('Sync Actions')); ?></h3>
 
 	<p class="settings-hint">
-		<?php p($l->t('Run a one-shot bulk sync at any time. These always work regardless of the automatic Sync Settings above.')); ?>
+		<?php p($l->t('Run a one-shot bulk sync at any time, whatever Sync Settings says above.')); ?>
 	</p>
 
 	<div class="n8n-sync-manual__row" data-direction="push">
 		<button type="button" class="button js-run"><?php p($l->t('Sync to n8n')); ?></button>
 		<span class="n8n-sync-manual__last js-last"><?php p($summary($push)); ?></span>
-		<span class="n8n-sync-manual__hint"><?php p($l->t('(two-way sync mappings only)')); ?></span>
+		<span class="n8n-sync-manual__hint"><?php p($l->t('(sync mappings only)')); ?></span>
 	</div>
 
 	<div class="n8n-sync-manual__row" data-direction="pull">
@@ -74,7 +79,7 @@ $summary = static function (array $rec) use ($l): string {
 	</div>
 
 	<p class="settings-hint n8n-sync-actions__sep">
-		<?php p($l->t('Check that Nextcloud can reach n8n — these just test the connection, nothing is synced.')); ?>
+		<?php p($l->t('Check Nextcloud can reach n8n. Nothing is synced.')); ?>
 	</p>
 
 	<div id="n8n-sync-test" class="n8n-sync-test-wrap">
@@ -84,7 +89,7 @@ $summary = static function (array $rec) use ($l): string {
 	<div class="n8n-sync-test-wrap">
 		<button type="button" id="n8n-sync-webhook-btn" class="button"
 			<?php if (!$webhookEnabled) {
-				print_unescaped('disabled title="' . $l->t('Enable the Webhook channel above (and save) to test it.') . '"');
+				print_unescaped('disabled title="' . $l->t('Enable and save the Webhook channel above to test it.') . '"');
 			} ?>><?php p($l->t('Test webhook')); ?></button>
 		<span id="n8n-sync-webhook-status" class="msg"></span>
 	</div>

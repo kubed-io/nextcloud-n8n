@@ -37,19 +37,19 @@ final class WebhookSettings implements IDeclarativeSettingsForm {
 			'section_id' => 'n8n_sync',
 			'storage_type' => DeclarativeSettingsTypes::STORAGE_TYPE_INTERNAL,
 			'title' => 'Webhook',
-			'description' => 'Optional second writeback channel: POST saved workflows to an n8n webhook. Works alongside or instead of the REST API.',
+			'description' => 'Optional second push channel: POST saved workflows to an n8n webhook, alongside or instead of the REST API.',
 			'fields' => [
 				[
 					'id' => 'webhook_enabled',
 					'title' => 'Write back via a webhook',
-					'description' => 'When on, saving a sync file POSTs it to the webhook path below — on its own, or alongside the REST API if that is also enabled.',
+					'description' => 'Saving a sync file POSTs it to the path below — on its own, or alongside the REST API.',
 					'type' => DeclarativeSettingsTypes::CHECKBOX,
 					'default' => '0',
 				],
 				[
 					'id' => 'webhook_path',
 					'title' => 'Webhook path',
-					'description' => 'Path under the base URL, e.g. /webhook/n8n-sync. The Test webhook button posts to the matching /webhook-test/ path.',
+					'description' => 'Path under the base URL. Test webhook posts to the matching /webhook-test/ path.',
 					'type' => DeclarativeSettingsTypes::TEXT,
 					'placeholder' => '/webhook/n8n-sync',
 					'default' => '',
@@ -57,7 +57,7 @@ final class WebhookSettings implements IDeclarativeSettingsForm {
 				[
 					'id' => 'webhook_token',
 					'title' => 'Webhook Bearer token',
-					'description' => 'Optional. Stored encrypted and sent as Authorization: Bearer on the webhook call. Leave empty for an unauthenticated webhook.',
+					'description' => 'Optional, stored encrypted. Sent as Authorization: Bearer. Leave empty for an unauthenticated webhook.',
 					'type' => DeclarativeSettingsTypes::PASSWORD,
 					'placeholder' => 'Paste the webhook token',
 					'default' => '',

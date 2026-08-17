@@ -97,13 +97,20 @@
 		if (!rec || !rec.finished_at) {
 			return t('n8n_sync', 'last: never');
 		}
+		// Mirrors $summary in templates/sync_settings.php — the server renders the
+		// line on page load and this replaces it after a run, so any difference
+		// shows up as the panel changing its mind about the same result.
 		var counters = ((rec.succeeded || 0) + ' ' + t('n8n_sync', 'synced')
 			+ ' · ' + (rec.failed || 0) + ' ' + t('n8n_sync', 'errors'));
+		if ((rec.unchanged || 0) > 0) {
+			counters += ' · ' + rec.unchanged + ' ' + t('n8n_sync', 'unchanged');
+		}
 		var line = t('n8n_sync', 'last: {when} · {counters}', {
 			when: rec.finished_at,
 			counters: counters,
 		});
-		if (rec.message) {
+		// Error summary only — see the same guard in the PHP template.
+		if (rec.status === 'error' && rec.message) {
 			line += ' · ' + rec.message;
 		}
 		return line;

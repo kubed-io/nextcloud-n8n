@@ -23,11 +23,11 @@ $tfAvailable = (bool)($_['team_folders_available'] ?? false);
 
 // Per-field help, shown via the ⓘ tooltip on each label.
 $desc = [
-	'tag' => $l->t('Workflows carrying this tag in n8n sync into this folder. One tag per mapping.'),
-	'mode' => $l->t('Link: a read-only pointer to n8n. Sync: the full workflow JSON lives here and edits push back. Backup: a read-only copy (edits only ever come from n8n).'),
-	'folder' => $l->t('Name of the Nextcloud folder the workflows appear in.'),
-	'tf' => $l->t('On = an ownerless Team Folder (groupfolders). Off = a folder in the admin account shared to the groups. Fixed once saved.'),
-	'groups' => $l->t('Which Nextcloud groups the folder is shared with. Pick at least one — otherwise no one can see it.'),
+	'tag' => $l->t('Workflows with this tag in n8n appear in this folder. One tag per mapping.'),
+	'mode' => $l->t('Link: a read-only pointer to n8n. Sync: the full workflow lives here and edits push back.'),
+	'folder' => $l->t('The Nextcloud folder the workflows appear in.'),
+	'tf' => $l->t('On: an ownerless Team Folder (groupfolders). Off: an admin-owned folder shared to the groups. Fixed once saved.'),
+	'groups' => $l->t('Nextcloud groups the folder is shared with. Pick at least one, or no one can see it.'),
 ];
 
 // Inline an SVG glyph from img/icons/ — the single source of truth for the
@@ -65,7 +65,7 @@ $info = static function (string $tip) use ($icon): string {
 	])); ?>">
 	<h3 class="n8n-sync-mappings__heading"><?php p($l->t('Folder mappings')); ?></h3>
 	<p class="settings-hint">
-		<?php p($l->t('Each mapping projects tagged n8n workflows into a shared Nextcloud folder. Hover the ⓘ on a field for details.')); ?>
+		<?php p($l->t('Each mapping mirrors tagged n8n workflows into a shared folder. Hover ⓘ for details.')); ?>
 		<?php if (!$tfAvailable): ?>
 			<strong><?php p($l->t('Team Folders app not enabled — admin-owned folders only.')); ?></strong>
 		<?php endif; ?>

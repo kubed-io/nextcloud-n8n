@@ -385,8 +385,33 @@ repos/<owner>/<repo>/releases/latest` — the stale-major footgun is documented 
   - **Only ever edit `## [Unreleased]`.** Every versioned section below it is
     **immutable** — those notes shipped with a release; never reword, reorder, or
     remove them. This can only be enforced by convention, so respect it.
-- **Versioning**: SemVer. The release workflow (`publish.yml`) bumps `package.json` and
-  mirrors the version into `appinfo/info.xml` — you don't bump these in feature PRs.
+
+### 🚨 Versioning: never by hand, in any PR, for any reason
+
+**SemVer, and the release workflow owns it.** Bumping a version by hand is a
+violation in this repo — not a style preference and not a maintainer's shortcut.
+Nothing in a feature, fix, or docs PR ever edits:
+
+- `"version"` in `package.json` or `package-lock.json`
+- `<version>` in `appinfo/info.xml`
+- the `## [Unreleased]` heading in `CHANGELOG.md`
+- a `v*` git tag
+
+[`publish.yml`](.github/workflows/publish.yml) does all of it, manually dispatched
+from the Actions tab. It refuses to push from any branch but `main`, runs
+`npm version <bump>` to rewrite `package.json` + the lock, mirrors that version into
+`appinfo/info.xml` with `sed`, and hands the three files to `duplocloud/version-bump`
+to commit, tag and push.
+
+**That action also rewrites `CHANGELOG.md`.** It is what converts `## [Unreleased]`
+into a numbered, dated section at release time. So *preparing the changelog for a
+release* means writing good entries under `## [Unreleased]` — and nothing else.
+Renaming the heading yourself doesn't prepare the release, it fights the tool that
+is about to do it and corrupts the notes in the process.
+
+If a release genuinely needs cutting, that is a maintainer running the workflow, not
+a commit.
+
 - **Tags**: `v<major>.<minor>.<patch>`, applied by the release workflow via
   `duplocloud/version-bump`.
 

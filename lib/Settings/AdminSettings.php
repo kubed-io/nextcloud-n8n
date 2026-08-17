@@ -43,8 +43,8 @@ final class AdminSettings implements IDeclarativeSettingsForm {
 		$hasKey = $this->config->getValueString(Application::APP_ID, 'api_key', '') !== '';
 
 		$keyDescription = $hasKey
-			? '✓ An API key is currently stored (encrypted). Paste a new one to replace it, or use the Test API button to check it still works.'
-			: 'No API key stored yet. Sent as X-N8N-API-KEY to the REST API once saved.';
+			? '✓ A key is stored (encrypted). Paste a new one to replace it, or use Test API to check it still works.'
+			: 'No key stored yet. Sent as X-N8N-API-KEY once saved.';
 		$keyPlaceholder = $hasKey
 			? '•••••••••••••• — a key is stored (paste to replace)'
 			: 'Paste the n8n API key';
@@ -61,12 +61,12 @@ final class AdminSettings implements IDeclarativeSettingsForm {
 			'section_id' => 'n8n_sync',
 			'storage_type' => DeclarativeSettingsTypes::STORAGE_TYPE_INTERNAL,
 			'title' => 'REST API',
-			'description' => 'The REST API channel: pulls workflows, and (when enabled) writes saved files back via PUT /workflows/{id}.',
+			'description' => 'Pulls workflows, and writes saved files back via PUT /workflows/{id} when enabled below.',
 			'fields' => [
 				[
 					'id' => 'api_enabled',
 					'title' => 'Write back via the REST API',
-					'description' => 'When on, saving a sync file updates the workflow in n8n through the REST API. Turn off to push only via the webhook below. (Bulk pull and the Test API button always use the REST API regardless of this toggle.)',
+					'description' => 'Saving a sync file updates the workflow in n8n. Turn off to push only via the webhook below. Bulk pull and Test API use the REST API either way.',
 					'type' => DeclarativeSettingsTypes::CHECKBOX,
 					'default' => '1',
 				],
