@@ -1805,15 +1805,25 @@ workflow in n8n a moment before a file turns up asking for it back. The `Then` s
 file names a **live** workflow, and that adjective is the whole assertion: when those two
 race the workflow does not go missing, it comes back archived.
 
-The Examples table earned its own shape along the way. There are only ever two files in
-play — the one already synced there and the one that arrived — so the table names each of
-them in the destination and lets an **empty cell mean "not in the destination"**. Three
-rows, three columns, and every other column an earlier draft carried (what the folder
-holds, what was left behind, which workflows n8n ends up with) turns out to be derivable
-from those two names and becomes a uniform `Then` instead. The one that pays for itself
-is `no two files in "Automations" name the same workflow`: in the *both versions* row
-that can only hold if the arrival was minted fresh, which is the original scenario's
-entire point, carried without a column for it.
+The shape took three passes to find, and the last one was the reviewer's. A first draft
+made all three answers one Outline over four columns. A second collapsed it to two — the
+file already there and the file that arrived, with an **empty cell meaning "not in the
+destination"** — which reads beautifully and was still wrong, because it forces every
+assertion to be phrased over *each file in the folder* when the whole point is to name
+two files and say what each one now is.
+
+The cut that worked came from asking which answers actually share an end state. Keeping
+the existing version and keeping the new one both leave ONE file called `Turnbuckle.n8n`
+naming ONE workflow on the id both files carried; the only thing the answer decides is
+whose body survives, so the column is literally *the body that wins*. Keeping both leaves
+two files and two workflows, one of them minted — a different end state, so a different
+scenario, with a `Then` per file. That split is what lets the interesting claim be stated
+head-on instead of sideways: `Turnbuckle.n8n` keeps the id it had and the nodes it always
+had, while `Turnbuckle (1).n8n` gets *its own, not the one it arrived with* and the nodes
+that arrived.
+
+A line asserting the folder held nothing else came out in the same pass. Nothing ever
+promised that, and other files being there is fine.
 
 The open question is left open on purpose. The picker is a **web-UI** affordance. The
 desktop client, a WebDAV mount and `occ` all send a bare MOVE — which is `Overwrite: T`,

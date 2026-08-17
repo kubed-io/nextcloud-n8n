@@ -2630,7 +2630,7 @@ workflow there` had a `Pointers` destination — an unmapped file moved into the
 mapping. The destination rule refuses that now, "whatever is arriving" including a file
 that belonged to nothing. CI caught it, which is the row doing its job.
 
-### Moving a duplicate in is settled by the version I keep
+### Keeping one version of a duplicate leaves one file and one workflow
 
 Move-in duplicate (saga §14.19). A file carrying an id is moved into a mapping
 where that workflow is ALREADY synced — e.g. an admin unarchived it in n8n and it
@@ -2666,57 +2666,48 @@ So there are three end states, they are chosen by a person, and the Outline's
 column is that choice. This is the same shape as the mapping tag in `rebind`: the
 app is not guessing what the user meant, it is reading what the user said.
 
-**THE TABLE IS TWO FILES AND AN EMPTY CELL, and that is what makes one Outline
-work.** There are only ever two files in play — the one already synced in the
-mapping and the one that arrived — so the Examples name each of them in the
-destination, and **an empty cell means that file is not in the destination**:
+**TWO OF THE THREE ANSWERS ARE THE SAME SCENARIO; THE THIRD IS NOT.** Keeping the
+existing version and keeping the new one both end with ONE file called
+`Turnbuckle.n8n` naming ONE workflow, on the id both files were carrying. The only
+thing the answer decides is whose body survives — so that is an Outline, and the
+column is literally the body:
 
-| kept | existing file | new file |
-|---|---|---|
-| the existing version | `Turnbuckle.n8n` | |
-| both versions | `Turnbuckle.n8n` | `Turnbuckle (1).n8n` |
-| the new version | | `Turnbuckle.n8n` |
+| kept | the body that wins |
+|---|---|
+| the existing version | the file already there |
+| the new version | the file that arrived |
 
-Every other column an earlier draft carried — what the folder holds, what was left
-behind, which workflows n8n ends up with — is derivable from those two names, so
-they are uniform `Then` lines instead. Two of those lines do the work a column
-would have done badly:
+That column is only discriminating because the Given says the arriving file's nodes
+DIFFER from the workflow's. Without that line the two rows are indistinguishable and
+the Outline grades nothing.
 
-  · `each file … names a live workflow in n8n and holds its nodes` is only
-    discriminating because the Given says the arriving file's nodes DIFFER. That
-    is what grades "keep the new version": the workflow must end up holding the
-    body that arrived, not the one it had. `live` also folds in the archive check
-    — the failure mode below has the workflow archived, not missing.
-  · `no two files … name the same workflow` is the whole anti-duplicate claim,
-    stated once. In the `both versions` row the two files can only satisfy it if
-    the arrival was minted fresh, which is the original scenario's entire point
-    carried without a column for it.
+Keeping BOTH is a different end state — two files, two workflows, one of them minted
+— so it is its own scenario with a `Then` per file rather than a third row bending
+the shape. See below.
 
-**What the empty cell deliberately does not say** is WHY the file is absent, and
-the two reasons are not the same. An empty `new file` means it never moved — the
-picker filtered it out and no request was sent, so it is still sitting where it
-was. An empty `existing file` means it was TRASHED, because that is how sabre
-performs an overwrite. Neither is asserted, and the trash is not asserted either:
-an overwrite in Nextcloud always trashes what it replaced, for any file type, so
-a trash entry here is Nextcloud behaving normally rather than a defect of ours.
+**An earlier draft made all three one Outline**, with an `existing file` / `new file`
+pair of columns where an empty cell meant "not in the destination". It reads well and
+it was wrong to keep: it forced every assertion to be phrased over "each file in the
+folder", which is weaker than naming the two files and saying what each one is, and
+which is what the split now buys.
 
-**"Keep both" is a rename, not a copy**, and that distinction is why it lands on
-the existing rule rather than needing a new one. One MOVE happens, of one inode,
-to a name Nextcloud picked — so the arrival is a file carrying an `n8n_id` that a
-sibling in the same folder already holds, which is precisely the case
-`MotionService::moveIn` already hands to `CreateService` (strip the carried id,
-mint a fresh workflow). The old note had this right; what it had wrong was calling
-it "diff name", as though the user had typed one.
+**What is deliberately NOT asserted.** Neither scenario says what else is in the
+folder. Other files may perfectly well be there, and a mapping owning its subtree has
+never implied a folder holds only what a scenario put in it. Nor is the trash
+asserted: keeping the new version trashes what it replaced, because that is how sabre
+performs an overwrite for ANY file type, so a trash entry is Nextcloud behaving
+normally rather than a defect of ours. And nothing states where the arriving file
+went when it was not kept — the picker filtered it out before a request was sent, so
+it never moved at all.
 
 **"Keep the new version" is the one with teeth.** The destination file is DELETED
 — a real trash event on a synced mirror — and only then does the arrival land. So
 the delete listener archives that workflow in n8n, and a moment later a file
 claiming the same id arrives asking for it back. The end state we want is boring
 (one file, one live workflow, holding the body that arrived), and nothing
-currently guarantees it. `each file … names a LIVE workflow in n8n` is the line
-that fails if the two halves race — the workflow does not go missing, it comes
-back archived, which is why the word carrying that assertion is `live` rather
-than `exists`.
+currently guarantees it. `its workflow in n8n is LIVE` is the line that fails if
+the two halves race — the workflow does not go missing, it comes back archived,
+which is why the word carrying that assertion is `live` rather than `exists`.
 
 **THE PICKER IS A WEB-UI AFFORDANCE, AND THAT IS THE OPEN QUESTION.** The desktop
 client, a WebDAV mount and `occ` all send a bare MOVE, which means `Overwrite: T`
@@ -2728,12 +2719,34 @@ different id, or none, is not, and `(1)` is the honest answer. It is not a
 scenario yet because nothing has decided whether the app should impose that on a
 client that never asked a question.
 
-**Why the whole Outline is `@todo`, and what that costs.** The middle row is the
-one behaviour here that is already built and was already green — the old scenario
-graded it, via a harness that renamed the file itself. Re-stating it as one of
-three answers takes it out of CI until the conflict step exists. That is a real,
-temporary loss of coverage on a path this repo has broken before, and it is the
-price of not shipping a scenario that lies about how the rename happens.
+**Why both scenarios are `@todo`, and what that costs.** Keeping both versions is
+the one behaviour here that is already built and was already green — the old
+scenario graded it, via a harness that renamed the file itself. Re-stating it as
+an answer somebody gives takes it out of CI until the conflict step exists. That
+is a real, temporary loss of coverage on a path this repo has broken before, and
+it is the price of not shipping a scenario that lies about how the rename happens.
+
+#### Keeping both versions of a duplicate makes the arrival its own workflow
+
+The rename is Nextcloud's — `getUniqueName()` → `Turnbuckle (1).n8n` — so the file
+that lands is one carrying an `n8n_id` a SIBLING already holds, which is exactly the
+case `MotionService::moveIn` hands to `CreateService`: strip the carried id, mint a
+fresh workflow. Nothing new is needed for it; what was needed was saying so honestly.
+
+**A `Then` per file, which is the reason this is not a row.** The two files end up in
+genuinely different states and the interesting claim is the CONTRAST between them:
+`Turnbuckle.n8n` keeps the id both files carried and the nodes it always had, while
+`Turnbuckle (1).n8n` gets *its own, not the one it arrived with* and the nodes that
+arrived. Squeezed into an Outline that has to speak about "each file", the one thing
+worth asserting — that these two are now different workflows — can only be said
+sideways.
+
+`its own, not the one it arrived with` is the same sentence `copy.feature` and the
+hard-deleted restore fallback already use, and it means the same thing here.
+
+**The old note had the outcome right and the cause wrong**, calling this the "diff
+name" case as though a user had typed one. One MOVE happens, of one inode, to a
+name Nextcloud picked.
 
 ### Moving an unmapped file between unmapped locations changes nothing
 

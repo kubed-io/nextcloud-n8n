@@ -111,30 +111,46 @@ Feature: Moving a workflow file is the same workflow leaving and returning
       | n8n_mapping | the mapping's id                     |
       | n8n_mode    | the mapping's mode                   |
 
-  # notes: ../AGENTS.md#moving-a-duplicate-in-is-settled-by-the-version-i-keep
+  # notes: ../AGENTS.md#keeping-one-version-of-a-duplicate-leaves-one-file-and-one-workflow
   @user @in-nextcloud @gesture @ui @todo
-  Scenario Outline: Moving a duplicate in is settled by the version I keep
+  Scenario Outline: Keeping one version of a duplicate leaves one file and one workflow
     Given a workflow file named "Turnbuckle.n8n" in "Automations"
     And an unmapped file named "Turnbuckle.n8n" in "Scratch" carrying the same "n8n_id"
     And that file's nodes differ from the workflow's
     When I move the unmapped file into "Automations"
     And I select "<kept>"
-    Then "Automations" holds the workflow file "<existing file>"
-    And "Automations" holds the workflow file "<new file>"
-    And "Automations" holds no other workflow file
-    And each file in "Automations" names a live workflow in n8n and holds its nodes
-    And no two files in "Automations" name the same workflow
-    And each file in "Automations" holds this DAV metadata:
-      | n8n_id      | the id of the workflow it names |
-      | n8n_mapping | the mapping's id                |
-      | n8n_mode    | the mapping's mode              |
-    And the tags on each file in "Automations" are "alpha" in Nextcloud, in the file and in n8n
+    Then "Turnbuckle.n8n" in "Automations" holds the nodes of "<the body that wins>"
+    And its workflow in n8n is live and holds those same nodes
+    And "Turnbuckle.n8n" in "Automations" holds this DAV metadata:
+      | n8n_id      | the id both files carried |
+      | n8n_mapping | the mapping's id          |
+      | n8n_mode    | the mapping's mode        |
+    And the workflow's tags are "alpha" in Nextcloud, in the file and in n8n
 
-    Examples: an empty cell is a file that is not in the destination
-      | kept                 | existing file  | new file           |
-      | the existing version | Turnbuckle.n8n |                    |
-      | both versions        | Turnbuckle.n8n | Turnbuckle (1).n8n |
-      | the new version      |                | Turnbuckle.n8n     |
+    Examples: one workflow either way — the answer only decides whose body it keeps
+      | kept                 | the body that wins     |
+      | the existing version | the file already there |
+      | the new version      | the file that arrived  |
+
+  # notes: ../AGENTS.md#keeping-both-versions-of-a-duplicate-makes-the-arrival-its-own-workflow
+  @user @in-nextcloud @gesture @ui @todo
+  Scenario: Keeping both versions of a duplicate makes the arrival its own workflow
+    Given a workflow file named "Turnbuckle.n8n" in "Automations"
+    And an unmapped file named "Turnbuckle.n8n" in "Scratch" carrying the same "n8n_id"
+    And that file's nodes differ from the workflow's
+    When I move the unmapped file into "Automations"
+    And I select "both versions"
+    Then "Turnbuckle.n8n" in "Automations" holds this DAV metadata:
+      | n8n_id      | the id both files carried |
+      | n8n_mapping | the mapping's id          |
+      | n8n_mode    | the mapping's mode        |
+    And its workflow in n8n is live, named "Turnbuckle", and holds the nodes it always had
+    And "Turnbuckle (1).n8n" in "Automations" holds this DAV metadata:
+      | n8n_id      | its own, not the one it arrived with |
+      | n8n_mapping | the mapping's id                     |
+      | n8n_mode    | the mapping's mode                   |
+    And its workflow in n8n is live, named "Turnbuckle (1)", and holds the nodes that arrived
+    And the tags on both files are "alpha" in Nextcloud, in the file and in n8n
 
   # notes: ../AGENTS.md#the-tags-a-file-arrives-with-are-the-tags-its-workflow-ends-up-with
   @user @in-nextcloud @gesture @ui
