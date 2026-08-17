@@ -140,7 +140,7 @@ Feature: Moving a workflow file is the same workflow leaving and returning
   @user @in-nextcloud @gesture @ui
   Scenario: Keeping both versions of a duplicate makes the arrival its own workflow
     Given a workflow file named "Turnbuckle.n8n" in "Automations"
-    And an unmapped file named "Turnbuckle.n8n" in "Scratch" carrying "a different n8n_id"
+    And an unmapped file named "Turnbuckle.n8n" in "Scratch" carrying "the same n8n_id"
     And that file's nodes differ from the workflow's
     When I move the unmapped file into "Automations"
     And I select "both versions"

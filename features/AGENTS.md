@@ -2843,6 +2843,21 @@ sideways.
 `its own, not the one it arrived with` is the same sentence `copy.feature` and the
 hard-deleted restore fallback already use, and it means the same thing here.
 
+**IT ONLY MINTS WHEN THE TWO FILES ARE THE SAME WORKFLOW, and that is why this
+scenario stays on `the same n8n_id` while its sibling varies the column.** Keeping
+both was briefly rewritten to arrive with a DIFFERENT id, and CI answered by
+holding the arrival's id — correctly. With a different id there is no duplicate:
+`findSyncedSibling` looks for a sibling carrying the SAME workflow, finds none, and
+the arrival is simply an unmapped file restoring under a name Nextcloud picked. Two
+files, two workflows, nothing minted because nothing needed to be.
+
+So the id column belongs to the sibling scenario, where the assertions hold for
+every value of it, and not here, where the whole claim is *a duplicate is minted*
+and only one value of the column produces a duplicate. Worth writing down because
+the scenario title says "makes the arrival its own workflow", which reads as though
+it were about the arrival — it is about the arrival being a SECOND COPY OF THE
+DESTINATION's workflow, which is a narrower thing.
+
 **The old note had the outcome right and the cause wrong**, calling this the "diff
 name" case as though a user had typed one. One MOVE happens, of one inode, to a
 name Nextcloud picked.

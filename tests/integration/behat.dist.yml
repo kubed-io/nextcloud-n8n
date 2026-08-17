@@ -27,12 +27,12 @@ default:
     filters:
       tags: '~@todo&&~@unbuilt&&~@blocked&&~@decision'
 
-  # FIVE SUITES, AND THEY ARE A PARTITION — every feature file belongs to exactly
+  # SIX SUITES, AND THEY ARE A PARTITION — every feature file belongs to exactly
   # one. `bin/check-suites.sh` enforces that mechanically, because the failure
   # mode of getting it wrong is SILENT: a file in no suite is simply never run,
   # and a green build says so confidently.
   #
-  # Running plain `behat` runs all five in sequence, which is exactly the old
+  # Running plain `behat` runs all six in sequence, which is exactly the old
   # single-suite coverage — the split is inert until something selects a suite.
   # That is deliberate: it lets CI prove the partition covers everything BEFORE
   # the workflow starts depending on it (`behat --suite=tags` per matrix leg).
@@ -49,12 +49,23 @@ default:
   #             not merely a different tag; it never interleaves with a gesture.
   #   authoring the verbs that MAKE or CHANGE a workflow: create, copy, edit, rename.
   #             They all end with a workflow that exists and differs from before.
-  #   lifecycle the verbs that move a workflow between STATES rather than change its
-  #             content: delete, restore, purge, move. Every one of them is a round
-  #             trip through n8n's archive or a mapping boundary, which is why they
-  #             are the slow half — `workflow` was one 7-minute leg and is now two.
-  #             Splitting on "does this change the workflow, or where it lives?" keeps
-  #             a scenario's home obvious, which a by-runtime split would not.
+  #   trash     the verbs that move a workflow between STATES rather than change its
+  #             content: delete, restore, purge. Every one is a round trip through
+  #             n8n's archive, and each needs BOTH Nextcloud trashes exercised.
+  #   motion    move.feature alone — the gestures that cross a mapping boundary.
+  #
+  # THE LAST TWO WERE ONE SUITE CALLED `lifecycle`, AND IT GREW PAST TEN MINUTES.
+  # `move.feature` is why: every scenario in it is a real WebDAV move plus an n8n
+  # round trip, several are Outlines over both storage kinds, and the conflict
+  # scenarios each arrange TWO files and a workflow before the gesture. It is now
+  # 39 scenarios in one leg while `core` finishes in two minutes, so the axis was
+  # no longer dividing the work — it was hiding one slow leg behind four fast ones.
+  #
+  # Splitting it out rather than by runtime keeps a scenario's home obvious: "does
+  # this change the workflow's STATE, or WHERE IT LIVES?" is a question a reader
+  # can answer without timing anything. `motion` is the app's own word for it
+  # (`MotionService`, `MotionListener`), so the suite is named after the thing it
+  # tests rather than after how long it takes.
   #   tags      the tag is n8n's only grouping construct — it is what a mapping
   #             binds to and what decides a workflow's membership. Everything
   #             about the tag vocabulary and the three-way sync lives here, and it
@@ -83,11 +94,15 @@ default:
       - '%paths.base%/../../features/workflows/rename.feature'
       contexts: *contexts
 
-    lifecycle:
+    trash:
       paths:
       - '%paths.base%/../../features/workflows/delete.feature'
       - '%paths.base%/../../features/workflows/restore.feature'
       - '%paths.base%/../../features/workflows/purge.feature'
+      contexts: *contexts
+
+    motion:
+      paths:
       - '%paths.base%/../../features/workflows/move.feature'
       contexts: *contexts
 

@@ -45,18 +45,26 @@ apart, and nobody reads two files to answer one question.
 **A scenario describing a behaviour another file owns is a defect**, even when it
 passes. Move it.
 
-## The files are also a partition — four Behat suites
+## The files are also a partition — six Behat suites
 
-Every file above belongs to **exactly one** of four Behat suites, declared in
+Every file above belongs to **exactly one** of six Behat suites, declared in
 `tests/integration/behat.dist.yml`, and the integration matrix runs one suite per
 leg:
 
 | suite | what it holds |
 |---|---|
 | `admin` | the settings surface — the connection and the mapping list |
-| `workflow` | the verbs a user performs on a workflow file: create, copy, move, rename, delete |
+| `authoring` | the verbs that MAKE or CHANGE a workflow: create, copy, edit, rename |
+| `trash` | the verbs that change a workflow's STATE: delete, restore, purge |
+| `motion` | `move.feature` — the gestures that cross a mapping boundary |
 | `tags` | the tag vocabulary and the three-way sync — n8n's only grouping construct |
-| `core` | identity, file type, the first sync, purge, and the app lifecycle |
+| `core` | identity, file type, the first sync, and the app lifecycle |
+
+`trash` and `motion` were one suite called `lifecycle` until it drifted past ten
+minutes while `core` finished in two — at which point the axis had stopped dividing
+the work and was just hiding one slow leg behind four fast ones. `move.feature` is
+the expensive half: every scenario is a real WebDAV move plus an n8n round trip,
+and several are Outlines over both storage kinds.
 
 **The axis is the filename, not a tag.** A tag partition leaks: `@occ`, `@ui` and
 `@in-n8n` are carried by some scenarios and not others, so an untagged scenario

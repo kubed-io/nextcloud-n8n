@@ -89,8 +89,13 @@ jobs:
     needs: versions
 
     # ── THE SUITE AXIS DIVIDES THE SCENARIOS ─────────────────────────────────
-    # Four legs each run a slice of features/, in parallel, so wall time is set
-    # by the longest slice rather than by the sum. The split is by FILENAME
+    # Six legs each run a slice of features/, in parallel, so wall time is set
+    # by the longest slice rather than by the sum. That only holds while no ONE
+    # slice dominates: `lifecycle` (delete + restore + purge + move) drifted past
+    # ten minutes while `core` finished in two, at which point the axis had stopped
+    # dividing the work and was just hiding a slow leg behind four fast ones. It is
+    # now `trash` and `motion` — see behat.dist.yml for why move.feature is the
+    # expensive half. The split is by FILENAME
     # (behat.dist.yml explains why a tag partition leaks), and
     # `bin/check-suites.sh` fails the quality job if features/ is not covered
     # exactly once.
@@ -118,7 +123,7 @@ jobs:
         # on different patch releases. Which versions run is decided by the
         # `versions` job above. SQLite is the fast integration path.
         server-versions: ${{ fromJSON(needs.versions.outputs.matrix) }}
-        suite: [admin, authoring, lifecycle, tags, core]
+        suite: [admin, authoring, trash, motion, tags, core]
 
     services:
       # n8n with the instance owner pre-provisioned via env (no signup wizard,
