@@ -44,7 +44,7 @@ final class AdminSettings implements IDeclarativeSettingsForm {
 
 		$keyDescription = $hasKey
 			? '✓ A key is stored (encrypted). Paste a new one to replace it, or use Test API to check it still works.'
-			: 'No key stored yet. Sent as X-N8N-API-KEY once saved.';
+			: 'No API key stored yet. Sent as X-N8N-API-KEY once saved.';
 		$keyPlaceholder = $hasKey
 			? '•••••••••••••• — a key is stored (paste to replace)'
 			: 'Paste the n8n API key';
