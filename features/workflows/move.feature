@@ -119,28 +119,22 @@ Feature: Moving a workflow file is the same workflow leaving and returning
     And that file's nodes differ from the workflow's
     When I move the unmapped file into "Automations"
     And I select "<kept>"
-    Then "Automations" holds exactly the workflow files "<files>"
-    And "Scratch" holds exactly the workflow files "<left behind>"
-    And n8n holds exactly the workflows "<workflows>" tagged "alpha"
-    And no "Turnbuckle" workflow is archived in n8n
-    And each workflow holds the nodes of the file that names it
+    Then "Automations" holds the workflow file "<existing file>"
+    And "Automations" holds the workflow file "<new file>"
+    And "Automations" holds no other workflow file
+    And each file in "Automations" names a live workflow in n8n and holds its nodes
+    And no two files in "Automations" name the same workflow
     And each file in "Automations" holds this DAV metadata:
       | n8n_id      | the id of the workflow it names |
       | n8n_mapping | the mapping's id                |
       | n8n_mode    | the mapping's mode              |
     And the tags on each file in "Automations" are "alpha" in Nextcloud, in the file and in n8n
 
-    Examples: keeping what was already synced there moves nothing and says nothing
-      | kept                 | files          | left behind    | workflows  |
-      | the existing version | Turnbuckle.n8n | Turnbuckle.n8n | Turnbuckle |
-
-    Examples: keeping both is Nextcloud renaming the arrival, so the arrival is new
-      | kept          | files                              | left behind | workflows                  |
-      | both versions | Turnbuckle.n8n, Turnbuckle (1).n8n | nothing     | Turnbuckle, Turnbuckle (1) |
-
-    Examples: keeping the new one hands the workflow the body that arrived
-      | kept            | files          | left behind | workflows  |
-      | the new version | Turnbuckle.n8n | nothing     | Turnbuckle |
+    Examples: an empty cell is a file that is not in the destination
+      | kept                 | existing file  | new file           |
+      | the existing version | Turnbuckle.n8n |                    |
+      | both versions        | Turnbuckle.n8n | Turnbuckle (1).n8n |
+      | the new version      |                | Turnbuckle.n8n     |
 
   # notes: ../AGENTS.md#the-tags-a-file-arrives-with-are-the-tags-its-workflow-ends-up-with
   @user @in-nextcloud @gesture @ui

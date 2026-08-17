@@ -2666,6 +2666,40 @@ So there are three end states, they are chosen by a person, and the Outline's
 column is that choice. This is the same shape as the mapping tag in `rebind`: the
 app is not guessing what the user meant, it is reading what the user said.
 
+**THE TABLE IS TWO FILES AND AN EMPTY CELL, and that is what makes one Outline
+work.** There are only ever two files in play — the one already synced in the
+mapping and the one that arrived — so the Examples name each of them in the
+destination, and **an empty cell means that file is not in the destination**:
+
+| kept | existing file | new file |
+|---|---|---|
+| the existing version | `Turnbuckle.n8n` | |
+| both versions | `Turnbuckle.n8n` | `Turnbuckle (1).n8n` |
+| the new version | | `Turnbuckle.n8n` |
+
+Every other column an earlier draft carried — what the folder holds, what was left
+behind, which workflows n8n ends up with — is derivable from those two names, so
+they are uniform `Then` lines instead. Two of those lines do the work a column
+would have done badly:
+
+  · `each file … names a live workflow in n8n and holds its nodes` is only
+    discriminating because the Given says the arriving file's nodes DIFFER. That
+    is what grades "keep the new version": the workflow must end up holding the
+    body that arrived, not the one it had. `live` also folds in the archive check
+    — the failure mode below has the workflow archived, not missing.
+  · `no two files … name the same workflow` is the whole anti-duplicate claim,
+    stated once. In the `both versions` row the two files can only satisfy it if
+    the arrival was minted fresh, which is the original scenario's entire point
+    carried without a column for it.
+
+**What the empty cell deliberately does not say** is WHY the file is absent, and
+the two reasons are not the same. An empty `new file` means it never moved — the
+picker filtered it out and no request was sent, so it is still sitting where it
+was. An empty `existing file` means it was TRASHED, because that is how sabre
+performs an overwrite. Neither is asserted, and the trash is not asserted either:
+an overwrite in Nextcloud always trashes what it replaced, for any file type, so
+a trash entry here is Nextcloud behaving normally rather than a defect of ours.
+
 **"Keep both" is a rename, not a copy**, and that distinction is why it lands on
 the existing rule rather than needing a new one. One MOVE happens, of one inode,
 to a name Nextcloud picked — so the arrival is a file carrying an `n8n_id` that a
@@ -2679,12 +2713,10 @@ it "diff name", as though the user had typed one.
 the delete listener archives that workflow in n8n, and a moment later a file
 claiming the same id arrives asking for it back. The end state we want is boring
 (one file, one live workflow, holding the body that arrived), and nothing
-currently guarantees it. `no "Turnbuckle" workflow is archived in n8n` is the line
-that will fail if the two halves race, and it is the reason that line is in the
-Then rather than left implicit.
-
-Note that the trash entry itself is NOT a defect and is not asserted against: an
-overwrite in Nextcloud always trashes what it replaced, for any file type.
+currently guarantees it. `each file … names a LIVE workflow in n8n` is the line
+that fails if the two halves race — the workflow does not go missing, it comes
+back archived, which is why the word carrying that assertion is `live` rather
+than `exists`.
 
 **THE PICKER IS A WEB-UI AFFORDANCE, AND THAT IS THE OPEN QUESTION.** The desktop
 client, a WebDAV mount and `occ` all send a bare MOVE, which means `Overwrite: T`

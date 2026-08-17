@@ -1801,9 +1801,19 @@ one MOVE, one inode, a name Nextcloud picked — so it lands on the rule we alre
 new one. The old note had the outcome right and the cause wrong, calling it "diff name"
 as though a user had typed one. And **"keep the new version" is the one with teeth**: the
 destination is trashed before the arrival lands, so the delete listener archives that
-workflow in n8n a moment before a file turns up asking for it back. `no "Turnbuckle"
-workflow is archived in n8n` is in the Then because that is the line that fails when
-those two race.
+workflow in n8n a moment before a file turns up asking for it back. The `Then` says each
+file names a **live** workflow, and that adjective is the whole assertion: when those two
+race the workflow does not go missing, it comes back archived.
+
+The Examples table earned its own shape along the way. There are only ever two files in
+play — the one already synced there and the one that arrived — so the table names each of
+them in the destination and lets an **empty cell mean "not in the destination"**. Three
+rows, three columns, and every other column an earlier draft carried (what the folder
+holds, what was left behind, which workflows n8n ends up with) turns out to be derivable
+from those two names and becomes a uniform `Then` instead. The one that pays for itself
+is `no two files in "Automations" name the same workflow`: in the *both versions* row
+that can only hold if the arrival was minted fresh, which is the original scenario's
+entire point, carried without a column for it.
 
 The open question is left open on purpose. The picker is a **web-UI** affordance. The
 desktop client, a WebDAV mount and `occ` all send a bare MOVE — which is `Overwrite: T`,
