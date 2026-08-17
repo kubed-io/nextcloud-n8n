@@ -156,7 +156,6 @@ trait MoveSteps {
 		// compare against what the file carried IN — re-reading afterwards compares the
 		// new id with itself, which passes for a restore and fails for a mint.
 		$this->idArrivedWith = (string)($this->davReadMetadataId($this->currentFilePath) ?? '');
-		$from = $this->currentFolder;
 		$dest = $folder . '/' . basename($this->currentFilePath);
 		$this->davMove($this->currentFilePath, $dest);
 		$this->currentFilePath = $dest;
@@ -165,21 +164,6 @@ trait MoveSteps {
 		// asked which mapping owns the folder the file just left.
 		$this->currentFolder = $folder;
 		$this->expectedArchived = false; // move-in restores (unarchives) the workflow
-
-		// ADVANCE THE CLOCK, DO NOT CHANGE THE OUTCOME. A rebind settles n8n and the
-		// pills inside the move, but not the file's `tags` array — the file is locked for
-		// the length of a rename, and a mirror of n8n is written by the sync, not by the
-		// gesture. So the sync runs here, in the `When`, exactly as it would on its own
-		// schedule a moment later.
-		//
-		// A Gherkin `Then` states the effect, never how long it took to arrive, so the
-		// waiting belongs in the step. Scoped to the one gesture that leaves a surface
-		// behind — a move between two DIFFERENT mappings — so no other scenario pays for
-		// a sync it did not ask for.
-		if ($from !== '' && $from !== $folder && $this->isMappedFolder($from) && $this->isMappedFolder($folder)) {
-			$this->runMappingSync('pull', $this->tagForFolder($folder));
-		}
-
 		// A move-in can MINT a workflow: create-on-land for an untracked file, or the
 		// create-fallback when the old id was hard-deleted in n8n. Re-capture whatever
 		// id the file now carries so "a matching workflow is created" + teardown see it.
@@ -512,17 +496,24 @@ trait MoveSteps {
 
 		$name = preg_replace('/\.n8n$/', '', basename($this->currentFilePath)) ?? '';
 		$found = $this->n8nWorkflowsNamed($name);
-		Assert::assertCount(
-			1,
-			$found,
-			sprintf('n8n holds %d workflows named "%s" — a move must relocate one, never mint another', count($found), $name),
-		);
+		if (count($found) !== 1) {
+			throw new \RuntimeException(sprintf(
+				'n8n holds %d workflows named "%s" — a move must relocate one, never mint another',
+				count($found),
+				$name,
+			));
+		}
 
-		Assert::assertContains(
-			$this->mappingTagForFolder($folder),
-			$this->n8nWorkflowTagNames($id),
-			"the workflow does not carry the tag that binds it to $folder",
-		);
+		$on = $this->n8nWorkflowTagNames($id);
+		$want = $this->mappingTagForFolder($folder);
+		if (!in_array($want, $on, true)) {
+			throw new \RuntimeException(sprintf(
+				"the workflow does not carry '%s', the tag that binds it to %s — it carries [%s]",
+				$want,
+				$folder,
+				implode(', ', $on) ?: '(none)',
+			));
+		}
 	}
 
 	/**
@@ -570,11 +561,8 @@ trait MoveSteps {
 	 * @Then the workflow's tags are :tags in Nextcloud
 	 */
 	public function theMovedWorkflowsTagsAreInNextcloud(string $tags): void {
-		Assert::assertSame(
-			self::tagList($tags),
-			self::sortedNames($this->fileSystemTags($this->currentFilePath)),
-			"the file's Nextcloud pills are not the expected set",
-		);
+		$this->settleFromN8n();
+		self::assertTagSet($tags, $this->fileSystemTags($this->currentFilePath), "the file's Nextcloud pills");
 	}
 
 	/**
@@ -585,6 +573,7 @@ trait MoveSteps {
 	 * @Then the workflow's tags are :tags in the file
 	 */
 	public function theMovedWorkflowsTagsAreInTheFile(string $tags): void {
+		$this->settleFromN8n();
 		$wf = json_decode($this->davGet($this->currentFilePath), true);
 		Assert::assertIsArray($wf, "the file at {$this->currentFilePath} is not JSON");
 
@@ -593,11 +582,7 @@ trait MoveSteps {
 			Assert::assertIsArray($tag, 'a body tag entry is not an object');
 			$names[] = (string)($tag['name'] ?? '');
 		}
-		Assert::assertSame(
-			self::tagList($tags),
-			self::sortedNames($names),
-			"the file's tags array is not the expected set",
-		);
+		self::assertTagSet($tags, $names, "the file's tags array");
 	}
 
 	/**
@@ -607,11 +592,8 @@ trait MoveSteps {
 	 * @Then the workflow's tags are :tags in n8n
 	 */
 	public function theMovedWorkflowsTagsAreInN8n(string $tags): void {
-		Assert::assertSame(
-			self::tagList($tags),
-			self::sortedNames($this->n8nWorkflowTagNames($this->movedWorkflowId())),
-			"the workflow's n8n tags are not the expected set",
-		);
+		$this->settleFromN8n();
+		self::assertTagSet($tags, $this->n8nWorkflowTagNames($this->movedWorkflowId()), "the workflow's n8n tags");
 	}
 
 	/**
@@ -624,6 +606,49 @@ trait MoveSteps {
 		$id = (string)($this->davReadMetadataId($this->currentFilePath) ?? '');
 		Assert::assertNotSame('', $id, 'the file under test carries no workflow id');
 		return $id;
+	}
+
+	/**
+	 * COMPARED AS STRINGS, AND THAT IS NOT COSMETIC. A failing PHPUnit assertion inside
+	 * Behat dies in `PHPUnit\TextUI\Configuration\Registry::get()` — there is no PHPUnit
+	 * run to configure — and the real message is replaced by a TypeError. Scalars survive
+	 * it; ARRAYS do not, because the diff needs the exporter, which needs that config. So
+	 * the three tag-set steps failed with `Return value must be of type Configuration,
+	 * null returned` and told the reader nothing at all.
+	 *
+	 * A comma list also reads better than a var-dump of two arrays: `beta, prod` against
+	 * `alpha, beta, prod` names the leftover tag on sight.
+	 *
+	 * @param list<string> $actual
+	 */
+	private static function assertTagSet(string $want, array $actual, string $surface): void {
+		$got = implode(', ', self::sortedNames($actual));
+		$expected = implode(', ', self::tagList($want));
+		if ($got !== $expected) {
+			throw new \RuntimeException("$surface are [$got], expected [$expected]");
+		}
+	}
+
+	/**
+	 * Bring the file up to date with n8n before reading a surface off it.
+	 *
+	 * The file's own `tags` array is a mirror, and mirrors are written by the sync, not
+	 * by the gesture — a rebind cannot write the body inline because the file is locked
+	 * for the length of a rename, and create-on-land does not write the mapping tag onto
+	 * the pills until something pulls. A Gherkin `Then` states the effect and never how
+	 * long it took to arrive, so the waiting belongs here.
+	 *
+	 * IT USED TO LIVE IN THE `When`, which was wrong for a reason worth keeping: a sync
+	 * on every move is a side effect every OTHER move scenario pays for, and it broke the
+	 * move-in restore, whose arrange leaves `currentFolder` pointing at a mapping the file
+	 * has already left. Settling in the step that reads the surface touches only the
+	 * scenarios that ask.
+	 */
+	private function settleFromN8n(): void {
+		if ($this->currentFolder === '' || !$this->isMappedFolder($this->currentFolder)) {
+			return; // outside every mapping there is nothing to mirror from
+		}
+		$this->runMappingSync('pull', $this->tagForFolder($this->currentFolder));
 	}
 
 	/**
