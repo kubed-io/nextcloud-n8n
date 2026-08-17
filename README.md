@@ -1,362 +1,245 @@
 # n8n Sync
 
-A Nextcloud app that surfaces n8n workflows as native files — browse, edit, and manage your automation workflows right inside the Files app, with full bidirectional sync back to n8n.
+**Your n8n workflows, living in Nextcloud as real files.** Browse them, edit them, tag them, trash them, restore them — and every one of those gestures lands in n8n for real. 🎉
 
 [![🧪 Tests](https://github.com/kubed-io/nextcloud-n8n/actions/workflows/tests.yml/badge.svg)](https://github.com/kubed-io/nextcloud-n8n/actions/workflows/tests.yml)
 [![🛡️ Quality](https://github.com/kubed-io/nextcloud-n8n/actions/workflows/quality.yml/badge.svg)](https://github.com/kubed-io/nextcloud-n8n/actions/workflows/quality.yml)
 [![🔗 Integration](https://github.com/kubed-io/nextcloud-n8n/actions/workflows/integration.yml/badge.svg)](https://github.com/kubed-io/nextcloud-n8n/actions/workflows/integration.yml)
 [![License: AGPL v3](https://img.shields.io/badge/License-AGPL%20v3-blue.svg)](LICENSE)
-[![Nextcloud](https://img.shields.io/badge/Nextcloud-30--33-0082c9?logo=nextcloud&logoColor=white)](https://apps.nextcloud.com)
+[![Nextcloud](https://img.shields.io/badge/Nextcloud-32--34-0082c9?logo=nextcloud&logoColor=white)](https://apps.nextcloud.com)
 [![PHP](https://img.shields.io/badge/PHP-%E2%89%A58.1-777bb4?logo=php&logoColor=white)](composer.json)
 
-![n8n workflows shown as .n8n files in the Nextcloud Files app, each tagged n8n:sync](screenshots/mapped-folder.png)
+![A mapped Nextcloud folder listing n8n workflows as .n8n files, each with the n8n icon and its n8n tags](screenshots/n8n-files.png)
 
-*Your n8n workflows, living in Nextcloud as native `.n8n` files — tagged, versioned, and synced both ways.*
+*That's a Nextcloud folder. Those are n8n workflows. Real files, real icons, real tags, real dates.*
 
 ---
 
-## How It Works
+## The whole idea, in one breath
 
-n8n Sync maps one or more n8n workflow tags to Nextcloud folders. Every workflow carrying a mapped tag appears in the corresponding folder as a `.n8n` file. Depending on the mode you choose, changes you make in Nextcloud push back to n8n automatically, and changes made in n8n pull back into Nextcloud on a schedule.
+Point the app at your n8n instance, bind an n8n **tag** to a Nextcloud **folder**, and every workflow wearing that tag shows up in that folder as a `.n8n` file.
 
 ```
-n8n (tagged workflows) ⟺ Nextcloud (mapped folder)
+n8n (tagged workflows)  ⟺  Nextcloud (mapped folder)
 ```
 
-The sync is reconcile-based: re-running a pull never duplicates files. The link between a file and its workflow is a stable workflow ID embedded in the file's metadata — not the filename — so renaming, moving, and restoring all work without ever breaking the connection.
+Edit one in the Files app and n8n has it seconds later. Rename it in n8n and the file renames itself. And since Nextcloud is holding the complete workflow JSON, your mapped folder is quietly also the easiest backup you'll never have to think about. 💾
+
+Nothing is matched on filename. Every file carries its workflow's **id**, so renaming, moving, copying, trashing and restoring never break the link — and re-running a sync never duplicates a thing. Ever. 🙅
 
 ---
 
-## Modes
+## ✨ Create, read, update, delete — from either side
 
-Every managed `.n8n` file is in exactly one of four modes. The mode is the single source of truth for how much authority Nextcloud has over the workflow — there is no separate "writeback" setting to reason about.
+That's the pitch. Do it in n8n, do it in Nextcloud, it doesn't matter:
 
-| Mode | File content | In a mapping? | Pushes to n8n? |
-|---|---|---|---|
-| **Sync** | Full workflow JSON | yes | Yes — bidirectional |
-| **Link** | Tiny pointer (id, name, URL) | yes | No — click opens n8n |
-| **Unmapped** | Full JSON, moved *out* of a mapping (archived in n8n, restorable) | no | No |
-| **Ignored** | Full JSON, left *in* a mapped folder but deliberately skipped | yes | No |
+| You do this… | …and this happens |
+|---|---|
+| Make a `.n8n` file in a mapped folder | A real workflow appears in n8n, tagged and live |
+| Tag a workflow in n8n | A file appears in the mapped folder |
+| Save an edit in Nextcloud | The workflow is updated in n8n |
+| Edit the workflow in n8n | The file's JSON is rewritten to match |
+| Rename either one | The filename, the JSON `name`, and n8n all agree |
 
-### Sync
+Author a workflow in your editor of choice, over WebDAV, or from the desktop client — it goes live in n8n without you ever opening the n8n UI. Make a file *outside* a mapped folder and it stays a plain, untracked document, no strings attached.
 
-Full two-way ownership. The workflow JSON lives in Nextcloud and any save — via the web editor, WebDAV, or your desktop client — pushes the updated workflow back to n8n. Renaming the file renames the workflow in n8n, and vice versa. Because Nextcloud always holds the complete JSON, a sync folder is also a full, restorable backup of every workflow in it.
+📋 [`create.feature`](features/workflows/create.feature) · ✍️ [`edit.feature`](features/workflows/edit.feature) · 🔤 [`rename.feature`](features/workflows/rename.feature)
 
-### Link
+![The Nextcloud Files "+ New" menu showing an "n8n workflow" entry alongside the built-in file types](screenshots/create-menu.png)
 
-A lightweight pointer. The file holds only the workflow's ID, name, and URL — not the full JSON. Clicking it opens the workflow in n8n (links are read-only by nature: you edit in n8n, not in the file). Deleting a link just untags the workflow in n8n; the workflow itself is untouched. Use a link to give a folder a "shortcut" to a workflow that lives elsewhere.
-
-### Unmapped
-
-When you **move** a sync workflow *out* of its mapped folder, it becomes **unmapped**: Nextcloud keeps the full JSON (and the workflow's identity), while the workflow is archived in n8n. The file is now a free-standing, self-contained copy you can keep anywhere. Move it back into any mapping and the workflow is **restored** in n8n — same workflow, not a new one. An unmapped file is, in effect, a portable archive of a workflow.
-
-### Ignored
-
-Sometimes you want to keep a workflow file **in** its mapped folder but stop syncing it. Tag it `n8n:ignore` and it becomes **ignored**: it stays put and keeps its identity, the workflow is archived in n8n, and every sync (scheduled or manual) skips it. It's the in-place sibling of *unmapped* — same "parked, archived, restorable" idea, but the file never leaves the folder. Remove the `n8n:ignore` tag and it returns to the mapping's default mode.
-
-## Tags — one searchable set
-
-A workflow's **tags** are part of the object, so a full sync keeps them in step too. n8n holds tags on the workflow; Nextcloud has its own first-class **system tags** (the searchable coloured pills in Files). n8n Sync keeps the two the same set, so **the mirror is as searchable as n8n itself** — filter "every `prod` workflow" the Nextcloud-native way.
-
-There are **three** places to edit a workflow's tags, and all three are kept in agreement:
-
-- **Edit in n8n** → a pull brings the tags into the Nextcloud file and onto its pills.
-- **Edit the file's pills** → the change pushes back to n8n on its own (no "Sync to n8n" click), following the same instant/background timing as the rest of the writeback.
-- **Edit the `tags` array inside the `.n8n`** → saving the file pushes the change to n8n and updates the pills.
-
-You can add a tag by **name alone** — write `{"name": "prod"}` and save. n8n assigns the real tag id, and the next pull fills it in for you; until then the file keeps exactly what you typed. Nothing rewrites a file you're editing.
-
-A tag change **outside** any mapped folder still keeps the file's pills and its `tags` array in step — that pair is purely local, so it works whether or not n8n is involved. This is what makes tags survive travel: pills belong to a file id and are lost on a copy, but the `tags` array is part of the file. Tag an untracked `.n8n`, move it into a mapped folder later, and the workflow n8n creates for it arrives **with those tags already on it**.
-
-Two rules keep it safe. The app's own control tags (the reserved `n8n:` namespace, e.g. `n8n:sync`, `n8n:ignore`) are **never** mixed into your workflow's tags in either direction. And when tags have changed on **both** sides since the last sync, a three-way merge (against the last-synced set the app remembers) tells an *add* apart from a *remove* so nothing is lost.
-
-Tag sync runs in **both** `sync` and `link` mappings for searchability, but they differ in direction. A **sync** file is bidirectional (edit the pills or the `tags` array → push). A **link** file is a **read-only projection**: n8n is the only writer, so its tags flow one way (n8n → Nextcloud) purely to make the pointer searchable. You *can* click a pill on a link, but it isn't pushed and it's wiped on the next pull — to re-tag a linked workflow, edit it in n8n.
-
-> **One n8n-specific caveat:** because a folder mapping is keyed **by tag**, the tag that binds a workflow to its folder is itself a content tag. n8n Sync shows it as a pill for visibility but will **not** unbind a workflow just because you remove that pill — to take a workflow out of a mapping, move its file out (the *unmapped* path) rather than stripping the mapping tag. (Grafana Sync, which maps by real folders, has no such caveat.)
+*Nextcloud's **+ New** menu learns a new trick. Click "n8n workflow", name it, done — it's live in n8n before the dialog closes.*
 
 ---
 
-## Features
+## 🚚 Move it, copy it, duplicate it
 
-This is a high-level showcase. Each feature links to its **executable specification** — a Gherkin `.feature` file under [`features/`](features/) that describes the exact behaviour in plain language and drives the integration tests — and to the **code** that implements it. Docs, tests, and code stay aligned: the `.feature` files *are* the requirements.
+A **move** is always *the same workflow* going somewhere. A **copy** is always *a new one*. Simple rule, and the app is fanatical about it.
 
-### Create a workflow from Nextcloud
+- **Move within your mapping** — a rename or a subfolder shuffle. n8n doesn't even blink.
+- **Move it out** — the file goes **unmapped**: Nextcloud keeps the full JSON *and* the workflow's identity, n8n archives the workflow. Nothing is lost; you're just holding the only live copy. 📦
+- **Move it back in** — the *same* workflow is unarchived in n8n. Not a fresh one. The same one.
+- **Move it to a different mapped folder** — it rebinds to its new home and re-tags itself in n8n.
+- **Copy it** — always a brand-new workflow with its own id and its own name. Duplicating a workflow is now "Ctrl+C, Ctrl+V". 🍝
 
-Make a `.n8n` file in a mapped sync folder (new file, upload, or move-in) and the app registers it as a real n8n workflow — tagged with the mapping and stamped with the workflow's ID. Author in your editor of choice; it goes live in n8n without opening the n8n UI. A file created **outside** any mapped folder stays a plain, untracked document.
+A copy never inherits the original's identity — the metadata is stripped the instant it's copied — so a stray duplicate can't hijack the workflow it came from. And links refuse to be moved or copied at all, because a pointer that wanders is just a bug with extra steps.
 
-📋 spec: [`features/workflows/create.feature`](features/workflows/create.feature) · 🛠 [`lib/Listener/CreateInN8nListener.php`](lib/Listener/CreateInN8nListener.php)
-
-![The Files app New menu with an n8n workflow option](screenshots/create-workflow.png)
-
-*The Files **+ New** menu gains an "n8n workflow" item — create one and it goes live in n8n, no n8n UI needed.*
-
-### Mapping membership follows the folder
-
-Folder mappings are **metadata on the folder**, so a file's mapping is resolved by where it lives. Because mappings are per-folder, you can map a folder **inside** an already-mapped folder — the nearest enclosing mapping wins.
-
-📋 spec: [`features/mapping/create.feature`](features/mapping/create.feature) · 🛠 [`lib/Service/MappingService.php`](lib/Service/MappingService.php)
-
-### Moving a workflow (it's the same workflow, leaving and coming back)
-
-A move in Nextcloud mirrors as the *same workflow* moving in n8n — never a duplicate.
-
-- **Within its own mapping** (rename, or into a subfolder of the same mapped folder): stays managed; nothing changes in n8n.
-- **Out of its mapped folder** (sync only): the file becomes **unmapped** — Nextcloud keeps the full JSON and the workflow's ID, and the workflow is **archived** in n8n. Nothing is lost; you simply hold the only live copy in Nextcloud.
-- **Back into any mapping**: if the file still carries its workflow ID, the workflow is **restored** (unarchived) in n8n — the same workflow returns, not a fresh one.
-- **A link** cannot be moved out of its mapping (ejecting a pointer is meaningless); that move is refused with a message.
-- **Merge on collision**: if you move an unmapped copy back into a mapping that *already* holds that workflow (e.g. someone restored it in n8n and it synced back), the app sees the matching workflow ID, keeps the already-synced file (n8n is the source of truth), and simply removes the incoming copy — it feels like the two merged.
-
-📋 spec: [`features/workflows/move.feature`](features/workflows/move.feature) · 🛠 [`lib/Listener/MoveGuardListener.php`](lib/Listener/MoveGuardListener.php)
-
-### Copying a workflow (always a brand-new instance)
-
-Where a move is "the same workflow," a **copy** is always a *new* one. A copied file never carries the original's n8n identity — its metadata is stripped the moment it is copied.
-
-- **Copy within a mapped sync folder** → the copy becomes a **new** workflow in n8n (new id, its own name).
-- **Copy to outside any mapping** → a plain, untracked `.n8n`.
-- **Copy of an unmapped file** → metadata stripped wherever it lands; it's a new instance.
-
-So duplicating a workflow is as simple as copying its file, and you never have to worry about a copy silently hijacking the original's n8n workflow.
-
-📋 spec: [`features/workflows/copy.feature`](features/workflows/copy.feature) · 🛠 [`lib/Listener/CopyListener.php`](lib/Listener/CopyListener.php) · [`lib/Service/CopyService.php`](lib/Service/CopyService.php)
-
-### Renaming (three-way)
-
-In **sync mode** the filename stem, the JSON `name` field, and the n8n workflow name are kept in agreement. Rename the file → the JSON and n8n update. Edit the `name` inside the JSON → the file is renamed and n8n updates. The stable link is the workflow ID, so no rename ever breaks the connection.
-
-📋 spec: [`features/workflows/rename.feature`](features/workflows/rename.feature) · 🛠 [`lib/Listener/NameSyncListener.php`](lib/Listener/NameSyncListener.php), [`lib/Service/FilenameCodec.php`](lib/Service/FilenameCodec.php)
-
-### Deleting (mode-aware)
-
-Deletion mirrors Nextcloud's two-step trash model, and what happens in n8n depends on the mode:
-
-| Action | Sync | Link | Unmapped |
-|---|---|---|---|
-| Move to trash | Workflow **archived** in n8n | Mapping tag stripped | nothing (already archived) |
-| Purge from trash | Workflow **permanently deleted** | no-op | Workflow **permanently deleted** |
-| Restore from trash | Workflow **unarchived** | Mapping tag re-added | nothing |
-
-If n8n is unreachable on delete, the delete aborts (the file stays) rather than desyncing the two systems.
-
-📋 spec: [`features/workflows/delete.feature`](features/workflows/delete.feature) · 🛠 [`lib/Service/DeleteService.php`](lib/Service/DeleteService.php), [`lib/Listener/DeleteToN8nListener.php`](lib/Listener/DeleteToN8nListener.php)
-
-### Manual per-mapping sync (Sync from / Sync to n8n)
-
-Each mapping has two on-demand buttons in admin settings, both **scoped to that one mapping**:
-
-- **Sync from n8n** (pull) brings the mapping's tagged workflows into its folder — adding new files, updating existing ones in place (matched by workflow ID, never duplicated), and pruning a mapped file whose workflow no longer carries the tag.
-- **Sync to n8n** (push) sends the mapping's sync files up to n8n.
-
-Both **ignore unmapped files entirely** — those live outside any mapping, so a mapping-scoped sync never touches them. (The unmapped-plus-mapped "duplicate" you can briefly hold after a move-out and an n8n-side restore is fine and intentional; it's resolved at *move* time, not by a sync — see [Moving a workflow](#moving-a-workflow-its-the-same-workflow-leaving-and-coming-back).)
-
-📋 spec: [`features/connection/sync-now.feature`](features/connection/sync-now.feature) · 🛠 [`lib/Service/SyncService.php`](lib/Service/SyncService.php)
-
-### A first-class file type: custom mimetype, icon, queryable metadata
-
-A managed workflow isn't a generic JSON blob — it's a proper file type. The app registers the `application/n8n+json` mimetype, so files show the **n8n icon** instead of a generic JSON glyph. Every file's state is exposed over WebDAV — a raw `PROPFIND` returns the metadata in its XML:
-
-| DAV property | What it contains |
-|---|---|
-| `nc:metadata-n8n_id` | The workflow's ID in n8n |
-| `nc:metadata-n8n_mode` | `sync`, `reference`¹, `unmapped`, or `ignored` |
-| `nc:metadata-n8n_versionId` | The version ID of the last successful sync |
-| `nc:metadata-n8n_mapping` | The mapping this file belongs to (empty when unmapped) |
-
-¹ `reference` is the on-the-wire value for **link** mode. The two are synonyms; the metadata value is stored as `reference` *only* because Nextcloud's PROPFIND treats a stored value equal to the built-in `link()` function as a callback (so the literal string `link` would crash it). Everywhere else — UI, tag, docs — it's **link**.
-
-These properties are **read-only** — clients cannot change them via `PROPPATCH`; the sync engine owns them. And because `n8n_mode` is **indexed**, "find every sync workflow" / "every unmapped file" is a fast DAV query (REPORT), not a folder walk.
-
-📋 spec: [`features/workflows/view.feature`](features/workflows/view.feature) · 🛠 [`lib/Migration/RegisterMimetype.php`](lib/Migration/RegisterMimetype.php), [`lib/Service/WorkflowMetadata.php`](lib/Service/WorkflowMetadata.php)
-
-### Opening a workflow: Open in n8n vs text editor
-
-Closely related to the file type, but driven by the file's **mode**. Two openers:
-
-- **Open in n8n** — jumps straight to the live workflow. Offered for **sync** and **link** files (there's a workflow to open), and it's their default click.
-- **Open with text editor** — edits the raw JSON; always available on any workflow file. For **unmapped** and **ignored** files there's no live workflow, so "Open in n8n" is hidden and the text editor is the default.
-
-📋 spec: [`features/workflows/open-with.feature`](features/workflows/open-with.feature) · 🛠 [`src/files.js`](src/files.js)
-
-![The Files app right-click menu showing Open in n8n and Open with text editor](screenshots/context-menu.png)
-
-*Right-click a workflow: **Open in n8n** jumps to the live editor, **Open with text editor** edits the raw JSON.*
-
-### Tagging
-
-Each managed file carries exactly one system tag indicating its mode:
-
-| Tag | Meaning |
-|---|---|
-| `n8n:sync` | Full JSON, edits push back to n8n |
-| `n8n:link` | Pointer only, click opens n8n |
-
-Tags are visible as coloured pills in the Files app. They are **mutually exclusive** — the app keeps exactly one per managed file, always matching the file's mode. On the Nextcloud side these tags are **authoritative and automatic**: the app maintains them; you don't have to.
-
-📋 spec: [`features/workflows/view.feature`](features/workflows/view.feature)
-
-### Sync vs link is set by the folder mapping
-
-A file's mode (**sync** or **link**) comes from its **folder mapping** — that's the single source of truth, and it applies to every workflow the mapping pulls. There is no per-file or per-workflow sync/link override: to change how a folder's workflows are held, change the mapping's mode. (`sync` keeps the full JSON and pushes edits back; `link` keeps just a pointer that opens n8n.)
-
-### Reserved tag — optional per-workflow exclude (n8n side)
-
-A mapping binds **one** n8n tag to a folder + a mode — and that tag can be **any name**; the `nextcloud:` prefix in these docs is just a convention, not a requirement (`team:flows`, `myfoobarflows`, anything works). The mapping's mode is authoritative for every workflow it pulls. The only reserved tag the app honours lets you exclude a **single** workflow from n8n:
-
-| Reserved n8n tag | Effect on that one workflow |
-|---|---|
-| `n8n:ignore` | **Skip** it entirely, even though it carries the mapped tag |
-
-`n8n:ignore` is **optional and hand-set by you** — the app only *reads* it and **never writes it onto your n8n workflows**. Add it to leave a workflow out; remove it to bring the file back to its mapping's mode. The Nextcloud-side `n8n:sync`/`n8n:link` pills are just the automatic mode mirror described above, not an override switch.
-
-📋 spec: [`features/workflows/ignore.feature`](features/workflows/ignore.feature)
-
-### Bidirectional Sync
-
-**Nextcloud → n8n** happens on every file save for sync-mode files. The app compares the file's content hash to the last-pushed hash so unchanged files are never pushed twice. Pushes can go via the REST API, a webhook, or both simultaneously.
-
-**n8n → Nextcloud** happens on a schedule you configure, or on-demand via the per-mapping "Sync from n8n" button. Each pull is **scoped to its mapping**: it fetches the workflows carrying that mapping's tag, writes or updates the corresponding files (matching on workflow ID so renames don't create duplicates), and prunes a mapped file whose workflow has lost the tag. Files outside the mapping — including unmapped workflows — are never touched.
-
-A request-scoped guard prevents the app from pushing its own pull writes back to n8n (the classic bidirectional sync loop problem).
-
-![A .n8n workflow open in the Nextcloud text editor showing the raw n8n workflow JSON](screenshots/edit-workflow.png)
-
-*Open any managed file to edit the raw workflow JSON — hitting **Save** pushes the change straight back to n8n.*
+🚚 [`move.feature`](features/workflows/move.feature) · 🍝 [`copy.feature`](features/workflows/copy.feature)
 
 ---
 
-## Administration
+## 🗑️ Delete, restore, purge
 
-![The n8n admin settings panel with Sync Actions, Purge, and connection test buttons](screenshots/admin-actions.png)
+Nextcloud's trash is reversible, so trashing a workflow is too. Nothing is destroyed until you say you mean it.
 
-*The admin panel: one-shot sync actions, a data-safe purge, and live "Test API / Test webhook" connection checks.*
+Trash a **sync** file and here's what n8n does:
 
-### n8n Instance
-
-| Setting | Description |
+| Gesture | What n8n does |
 |---|---|
-| **n8n URL** | Base URL of your n8n instance, e.g. `https://n8n.example.com`. No trailing slash. Used by both the REST API and webhook channels. |
+| 🗑️ Move to trash | Workflow is **archived** — hidden, preserved |
+| ↩️ Restore from trash | Workflow is **unarchived**, right back where it was |
+| 💥 Empty the trash | Workflow is **permanently deleted** |
+
+It works from the n8n side too: archive a workflow there and its file lands in the Nextcloud trash; unarchive it and the file comes back out. Delete it for good in n8n and the trashed file is cleared. Personal trash, Team Folder trash — both. 🎯
+
+The safety rails you'd hope for are all here: an **unmapped** file is just a file, so purging one leaves n8n completely alone. Deleting a **link** is refused outright — removing one pointer shouldn't un-map a workflow for the whole team. And if n8n is unreachable when you hit delete, the delete aborts rather than letting the two systems drift apart.
+
+🗑️ [`delete.feature`](features/workflows/delete.feature) · ↩️ [`restore.feature`](features/workflows/restore.feature) · 💥 [`purge.feature`](features/workflows/purge.feature)
+
+![The Nextcloud "Deleted files" view showing a trashed .n8n workflow with a Restore button](screenshots/trash-and-restore.png)
+
+*A trashed workflow is archived in n8n, not gone. Hit **Restore** and it's live again on both sides.*
 
 ---
 
-### REST API
+## 🏷️ Tags — one set, three surfaces, every direction
 
-| Setting | Description |
+This is the part we're smug about. 😏
+
+A workflow's tags are part of the workflow, so they're part of the mirror. n8n keeps tags on the workflow; Nextcloud has its own first-class **system tags** — those searchable coloured pills in Files. n8n Sync keeps the two sets identical, which means **your mirror is as searchable as n8n itself**. Want every `prod` workflow? Filter for it the Nextcloud-native way. 🔍
+
+There are **three** places to change a **sync** workflow's tags, and all three agree with each other:
+
+| Change them… | …and |
 |---|---|
-| **Enable REST API** | Master toggle for the REST API channel. When on, file saves and pulls communicate with n8n via its REST API. Pull and Test buttons always use the REST API regardless of this toggle. |
-| **API Key** | Your n8n REST API key. Sent as `X-N8N-API-KEY` on every request. Stored encrypted — never echoed back after saving. |
+| 🏷️ On the file's pills in Files | It pushes to n8n on its own — no "Sync to n8n" click needed |
+| 📝 In the `tags` array inside the `.n8n` | Saving pushes to n8n and updates the pills |
+| 🔧 In n8n | The next sync brings them to both the file and its pills |
 
-Because the key is stored encrypted and never echoed back, the field always looks
-empty — so the card's text tells you whether a key is **currently stored**, and the
-**Test API / Test connection** check confirms whether it actually *works*. A failure
-distinguishes the two cases you care about: **no key set yet** vs. a key that was
-**set but rejected** (invalid/expired) — the same wording on the button and the
-`occ n8n_sync:test-connection` command.
+(A **link** is read-only, and an **unmapped** file has no n8n side left to push to — both keep their pills and `tags` array in step locally. More on that below. 👇)
+
+Adding, removing, or doing both at once is **one gesture** wherever you do it. You can even add a tag by name alone — write `{"name": "prod"}`, save, and n8n mints the real id for you. Nothing rewrites the file out from under you while you're typing in it.
+
+Tags survive travel, too. Pills belong to a file id and are lost on a copy, but the `tags` array is *in* the file — so tag an untracked `.n8n`, drop it into a mapped folder later, and the workflow n8n creates for it arrives **already wearing those tags**. ✈️
+
+Two more things worth knowing:
+
+- **The mapping tag *is* the membership.** Remove the tag that binds a workflow to its folder — from either side — and the workflow leaves the mapping. The file goes, the workflow stays safe in n8n with its other tags intact. Nothing deleted, nothing archived.
+- **A link is a read-only projection.** Its tags flow one way (n8n → Nextcloud) purely to keep the pointer searchable. Click a pill on a link and it'll politely settle back on the next pull — re-tag linked workflows in n8n.
+
+🏷️ [`tags.feature`](features/workflows/tags.feature)
 
 ---
 
-### Webhook
+## 🎨 A first-class file type — icon, mimetype, honest timestamps
 
-The webhook channel provides a second push path alongside the REST API. You can run both for belt-and-suspenders reliability, or use the webhook alone if REST write-back is disabled.
+A managed workflow isn't a generic JSON blob. The app registers the `application/n8n+json` mimetype, so your workflows wear the **real n8n icon** instead of a sad little document glyph.
 
-| Setting | Description |
+Then there's the detail we're quietly proud of: **a mirror gets the timestamps of the thing it mirrors.** n8n's `updatedAt` becomes the file's modification time and `createdAt` its creation time — because "the sync job wrote this file at 15:02" is never the question someone sorting a folder by date is actually asking. A workflow nobody has touched in a year should *look* like it. 🕰️
+
+The payoff is that Nextcloud's own features just work on your automation, for free:
+
+![Nextcloud's Popular files widget listing .n8n workflows with n8n icons and their real "last updated" times](screenshots/popular-files.png)
+
+*Nextcloud's **Popular files** widget, showing n8n workflows with n8n's icon and n8n's real timestamps. We didn't build this view — it just works, because the metadata is honest.*
+
+And every file's state is queryable over WebDAV. A raw `PROPFIND` hands back the workflow's identity in the XML:
+
+| DAV property | What it holds |
 |---|---|
-| **Enable Webhook** | Toggle push via webhook. When on, file saves POST to the configured webhook path in n8n. |
-| **Webhook Path** | Path under the base URL where your n8n workflow receives pushes, e.g. `/webhook/n8n-sync`. |
-| **Webhook Token** | Optional Bearer token for webhook authentication. Leave empty for unauthenticated webhooks. Stored encrypted. |
+| `nc:metadata-n8n_id` | The workflow's id in n8n |
+| `nc:metadata-n8n_mode` | `sync`, `reference`¹, or `unmapped` — and it's **indexed** |
+| `nc:metadata-n8n_versionId` | Version id of the last successful sync |
+| `nc:metadata-n8n_mapping` | The mapping this file belongs to |
 
-A **Test Webhook** button is available to verify the webhook is reachable. It posts to n8n's `/webhook-test/` variant of your path so a test trigger reaches a waiting workflow without activating a production one.
+These are **read-only** — clients can't touch them with `PROPPATCH`; the sync engine owns them. Because `n8n_mode` is indexed, "find every sync workflow" is a fast DAV query rather than a folder walk.
+
+¹ `reference` is the on-the-wire value for **link** mode — Nextcloud's PROPFIND treats a stored `link` as a callback and falls over. Everywhere a human looks, it's **link**.
+
+👀 [`view.feature`](features/workflows/view.feature)
 
 ---
 
-### Sync Schedule
+## 🖱️ Open in n8n, or pop the hood
 
-| Setting | Description |
-|---|---|
-| **Enable scheduled sync** | Master toggle for automatic n8n → Nextcloud pulls. When off, use the "Sync from n8n" button manually. |
-| **Sync interval** | How often to pull from n8n. Format: `<number><unit>` — e.g. `15m`, `1h`, `6h`, `1d`. Minimum 1 minute. Changes take effect on the next cron tick. |
-| **Push timing** | **async** (recommended): push runs in the background after save. **sync**: push runs inline during save for immediate feedback. |
+Two openers, and the file's mode picks the default:
 
----
+- **Open in n8n** — jumps straight to the live editor. Offered for **sync** and **link** files, and it's their default click.
+- **Open with text editor** — the raw JSON, always available. For an **unmapped** file there's no live workflow to jump to, so this becomes the default.
 
-### Folder Mappings
+🖱️ [`open-with.feature`](features/workflows/open-with.feature)
 
-A mapping binds an n8n workflow tag to a Nextcloud folder and defines who can see it and in what mode.
-
-| Field | Description |
-|---|---|
-| **n8n Tag** | The n8n tag whose workflows sync into this folder. **Any name** — the `nextcloud:` prefix is just a convention, not required. Must be unique across all mappings — one folder per tag. Cannot contain commas. Avoid the reserved `n8n:sync`/`n8n:link`/`n8n:ignore` (`n8n:ignore` is the per-workflow exclude, see [Reserved tag](#reserved-tag--optional-per-workflow-exclude-n8n-side); `n8n:sync`/`n8n:link` are the app's own file pills). |
-| **Folder** | The Nextcloud mount point where workflows appear. Backed by either a Team Folder (ownerless, requires the groupfolders app) or an admin-owned shared folder. |
-| **Groups** | The Nextcloud groups who can access the folder. At least one group is required for anyone to see the folder. |
-| **Mode** | `sync` or `link` — see [Modes](#modes) above. (`unmapped` is a *file* state produced by moving a sync file out of a mapping; it is never something you configure on a mapping.) |
-
-**Constraints:**
-- The storage backend (Team Folder vs admin-owned) is fixed at creation time. Switching requires deleting and recreating the mapping.
-- The app never creates groups — it only uses groups that already exist.
-- **Remove the mapping before you delete its folder.** Deleting the folder is not how a mapping comes off — removing the mapping is, and it leaves your files alone (sync files stay put and become unmapped; links go, since they hold nothing of their own). Renaming or moving the folder is fine and changes nothing about the mapping.
-
-**Per-mapping sync controls** let you pull or push an individual mapping without triggering a full sync across all folders.
-
-![The Folder mappings admin UI with n8n tag, mode, folder, team folder toggle, and group checkboxes](screenshots/admin-folder-mappings.png)
-
-*Each mapping binds an n8n tag to a folder, a mode (sync or link), and the groups allowed to see it.*
+<table>
+<tr>
+<td width="45%"><img src="screenshots/context-menu.png" alt="The Files app right-click menu showing Open in n8n and Open with text editor"></td>
+<td width="55%"><img src="screenshots/edit-workflow.png" alt="A .n8n workflow open in the Nextcloud text editor showing the raw n8n workflow JSON"></td>
+</tr>
+<tr>
+<td><em>Right-click: straight to n8n, or straight to the JSON.</em></td>
+<td><em>Hit <strong>Save</strong> and n8n has it. That's the whole workflow — including its <code>tags</code>.</em></td>
+</tr>
+</table>
 
 ---
 
-## CLI Commands
+## 🧭 Sync or Link — the folder decides
 
-Every admin action is available over `occ`, so the whole connection + mappings setup can be automated (e.g. from a Kubernetes init/config job) — the same operations as the admin Settings panel. All commands exit `0` on success and non-zero on error.
+Every mapping is one of two modes, and it applies to every workflow the mapping pulls. One knob, no per-file overrides to reason about.
 
-### Configure the connection
+| Mode | The file holds | Pushes back? |
+|---|---|---|
+| 🔁 **Sync** | The full workflow JSON | **Yes** — fully bidirectional |
+| 🔗 **Link** | A tiny pointer (id, name, URL) | No — clicking it opens n8n |
+
+There's a third state you don't configure: **unmapped**. That's what a sync file *becomes* when you move it out of its folder — full JSON, keeps its identity, archived in n8n, restorable by moving it back. A portable archive of a workflow. 📦
+
+---
+
+## 🛠 Setup, in three moves
+
+**1. Point it at n8n.** Base URL, an API key (stored encrypted, never echoed back), and optionally a webhook as a second push channel. Belt *and* suspenders if you want both.
+
+![The n8n Sync admin settings showing Instance, REST API, Webhook and Sync Settings sections](screenshots/connection-settings.png)
+
+**2. Map a tag to a folder.** Pick the n8n tag, the mode, and which groups get to see it. Backed by a Team Folder or an admin-owned shared folder, your call.
+
+![The Folder mappings admin panel showing n8n tag, mode, folder and group checkboxes for three mappings](screenshots/tag2folder-mapping.png)
+
+**3. Sync it.** Scheduled pulls on whatever interval you like, plus one-shot buttons whenever you're impatient — and "Test API" / "Test webhook" so you're never guessing whether the connection works.
+
+![The Sync Actions admin panel with Sync to n8n, Sync from n8n, Test API and Test webhook buttons](screenshots/admin-actions.png)
+
+🔌 [`connection.feature`](features/connection/connection.feature) · 🗂️ [`mapping/create.feature`](features/mapping/create.feature) · 🔄 [`sync-now.feature`](features/connection/sync-now.feature)
+
+---
+
+## ⌨️ Every button is also a command
+
+The whole setup is scriptable, so a Kubernetes init job can stand the thing up with no clicking. Exit `0` on success, non-zero on failure.
 
 ```sh
-# Point the app at your n8n instance
+# Connect
 occ config:app:set n8n_sync n8n_url --value="https://n8n.example.com"
-
-# Store your n8n API key (encrypted, exactly as the Settings panel does).
-# Pass it as an argument, or pipe it on stdin to keep it out of shell history:
-echo "$N8N_API_KEY" | occ n8n_sync:set-api-key
-
-# Turn the REST API channel on
-occ config:app:set n8n_sync api_enabled --value=1
-
-# Verify it all works — the headless "Test connection" button
+echo "$N8N_API_KEY" | occ n8n_sync:set-api-key      # stdin keeps it out of your history
 occ n8n_sync:test-connection
-```
 
-### Manage folder mappings
-
-```sh
-# Add a mapping (JSON: n8n_tag → folder, with a mode).
-# mode: "sync" (full two-way JSON) or "link" (pointer, click opens n8n).
-occ n8n_sync:add-mapping '{"n8n_tag":"nextcloud:alpha","team_folder":"alpha","nc_groups":["admins"],"mode":"sync","use_team_folder":true}'
-
-# List the configured mappings (JSON)
+# Map a tag to a folder
+occ n8n_sync:add-mapping '{"n8n_tag":"nextcloud:alpha","team_folder":"alpha","nc_groups":["devs"],"mode":"sync","use_team_folder":true}'
 occ n8n_sync:list-mappings
-
-# Remove a mapping by its id (from list-mappings)
+occ n8n_sync:set-groups <mapping-id> devs,admins
 occ n8n_sync:remove-mapping <mapping-id>
-```
 
-### Run a manual sync
-
-The headless equivalent of the admin panel's **Sync from n8n** / **Sync to n8n** buttons — same mapping-scoped contract.
-
-```sh
-# Pull (n8n → Nextcloud): reconcile a mapping's folder against its tag.
-# Push (NC → n8n): send the mapping's sync files up.
-# Target one mapping by its n8n tag (or mapping id); omit --mapping for all mappings.
+# Sync — one mapping, or all of them
 occ n8n_sync:sync pull --mapping=nextcloud:alpha
 occ n8n_sync:sync push --mapping=nextcloud:alpha
-occ n8n_sync:sync pull            # every mapping
-```
+occ n8n_sync:sync pull
 
-### Inspect workflows (smoke tests)
-
-```sh
-# List workflows from n8n (smoke-tests the REST client)
-occ n8n_sync:list-workflows
+# Poke n8n directly
 occ n8n_sync:list-workflows --limit=10 --tag=my-tag
-
-# Fetch a single workflow by ID
 occ n8n_sync:get-workflow <workflow-id>
 ```
+
+---
+
+## 📋 The specs are the docs
+
+Every feature above links to an **executable specification** — a Gherkin `.feature` file under [`features/`](features/) written in plain language, which also *drives the integration tests*. They're written before the code and kept true after it. If a `.feature` file says it, CI proves it. 🧪
+
+Read [`features/README.md`](features/README.md) for how they're organised.
+
+---
+
+## 📜 Licence & trademark
+
+AGPL-3.0-or-later. See [LICENSE](LICENSE).
+
+This is a community integration and is not affiliated with, endorsed by, or sponsored by n8n GmbH. "n8n" and the n8n logo are trademarks of n8n GmbH, used here only to identify the service this app integrates with.

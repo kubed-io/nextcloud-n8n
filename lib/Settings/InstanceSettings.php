@@ -31,12 +31,12 @@ final class InstanceSettings implements IDeclarativeSettingsForm {
 			'section_id' => 'n8n_sync',
 			'storage_type' => DeclarativeSettingsTypes::STORAGE_TYPE_INTERNAL,
 			'title' => 'Instance',
-			'description' => 'The n8n instance everything is scoped to. Shared by both the API and Webhook channels below.',
+			'description' => 'The n8n instance everything is scoped to, shared by both channels below.',
 			'fields' => [
 				[
 					'id' => 'n8n_url',
 					'title' => 'n8n base URL',
-					'description' => 'e.g. https://n8n.example.com (no trailing slash).',
+					'description' => 'No trailing slash.',
 					'type' => DeclarativeSettingsTypes::URL,
 					'placeholder' => 'https://n8n.example.com',
 					'default' => '',

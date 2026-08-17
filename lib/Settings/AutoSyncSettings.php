@@ -92,12 +92,12 @@ final class AutoSyncSettings implements IDeclarativeSettingsFormWithHandlers {
 			// class docblock for why INTERNAL cannot carry the checkbox.
 			'storage_type' => DeclarativeSettingsTypes::STORAGE_TYPE_EXTERNAL,
 			'title' => 'Sync Settings',
-			'description' => 'How Nextcloud and n8n stay in sync automatically. The Manual sync buttons below run a one-off sync in either direction at any time.',
+			'description' => 'How Nextcloud and n8n stay in sync automatically. Sync Actions below runs either direction on demand.',
 			'fields' => [
 				[
 					'id' => self::FIELD_TIMING,
 					'title' => 'Nextcloud → n8n: when you save a workflow file',
-					'description' => 'Async (recommended): the push runs in the background after the save. Sync: pushes during the save for instant feedback, but can briefly lock the file. Only sync mappings push back.',
+					'description' => 'Async runs after the save. Sync runs during it for instant feedback, but can briefly lock the file. Only sync mappings push back.',
 					'type' => DeclarativeSettingsTypes::RADIO,
 					'default' => self::TIMING_ASYNC,
 					'options' => [
@@ -108,7 +108,7 @@ final class AutoSyncSettings implements IDeclarativeSettingsFormWithHandlers {
 				[
 					'id' => self::FIELD_SCHEDULE_ENABLED,
 					'title' => 'n8n → Nextcloud: scheduled sync',
-					'description' => 'Nextcloud periodically pulls workflows from n8n (read-only — nothing changes in n8n). Optional; when off, use the manual “Sync from n8n” button. For near-real-time instead, build an n8n workflow that pushes changes to Nextcloud.',
+					'description' => 'Nextcloud periodically pulls from n8n; nothing in n8n changes. When off, use Sync from n8n below. For near-real-time, have an n8n workflow push to Nextcloud instead.',
 					'type' => DeclarativeSettingsTypes::CHECKBOX,
 					// A real bool: this is what the frontend round-trips. It is safe
 					// here only because EXTERNAL storage never feeds it to
@@ -118,7 +118,7 @@ final class AutoSyncSettings implements IDeclarativeSettingsFormWithHandlers {
 				[
 					'id' => self::FIELD_SCHEDULE_INTERVAL,
 					'title' => 'Schedule — how often',
-					'description' => 'How often to pull, as a number + unit (s/m/h/d). Examples: 15m, 1h, 6h, 1d. A plain number = seconds. Minimum 1m.',
+					'description' => 'Number + unit (s/m/h/d), e.g. 15m, 1h, 6h, 1d. A plain number means seconds. Minimum 1m.',
 					'type' => DeclarativeSettingsTypes::TEXT,
 					'placeholder' => self::DEFAULT_INTERVAL,
 					'default' => self::DEFAULT_INTERVAL,

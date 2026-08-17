@@ -23,6 +23,37 @@ For the user-facing "what does it do?" → [README.md](README.md).
 
 ---
 
+## 🚨 NEVER change a version number. Not once, not ever.
+
+**The release workflow owns the version. You do not.** Editing a version by hand
+is a violation in this repo, not a judgement call, and there is no task for which
+it is the right move. If you think you have found the exception, you have not.
+
+Do **not** touch, and do not offer to touch:
+
+| File | The field |
+|---|---|
+| `package.json` / `package-lock.json` | `"version"` |
+| `appinfo/info.xml` | `<version>` |
+| `CHANGELOG.md` | the `## [Unreleased]` heading itself |
+| anywhere | a `v*` git tag |
+
+**The whole job belongs to `.github/workflows/publish.yml`**, run manually from the
+Actions tab. It validates it is on `main`, runs `npm version <bump>` to rewrite
+`package.json` + the lock, `sed`s the same version into `appinfo/info.xml`, and
+hands all three to `duplocloud/version-bump`, which commits, tags, and pushes.
+
+**That action also rewrites `CHANGELOG.md`** — it is what turns `## [Unreleased]`
+into a numbered, dated release section. So "preparing the changelog for a release"
+means *writing good entries under `## [Unreleased]` and stopping there*. Renaming
+that heading yourself does not prepare a release; it collides with the tool whose
+job it is and corrupts the notes it is about to cut.
+
+The only version-adjacent thing you may ever edit is the **content** of the
+`## [Unreleased]` section. See CONTRIBUTING.md § *Commits, changelog, versions*.
+
+---
+
 ## First moves on any task
 
 1. **Read [README.md](README.md)** if you don't already know what the app does.

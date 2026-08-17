@@ -9,29 +9,63 @@
   <name>n8n Sync</name>
   <summary>Your n8n workflows as native, editable, backed-up Nextcloud files</summary>
   <description><![CDATA[
-n8n Sync surfaces your n8n workflows as native Nextcloud files. Map one or more n8n
-tags to folders and every tagged workflow shows up as a `.n8n` file — with a
-real file icon, deep links back to n8n, and a per-folder sync mode.
+n8n Sync turns a Nextcloud folder into a live, two-way mirror of your n8n workflows.
 
-- **Sync** — full two-way ownership. Edit a workflow in the Files app, over WebDAV,
-  or from your desktop client and the change pushes back to n8n; a sync folder
-  doubles as a complete, restorable backup of every workflow in it.
-- **Link** — a lightweight pointer (id, name, URL) that opens the workflow in n8n.
+Bind an n8n **tag** to a folder, and every workflow wearing that tag shows up as a real `.n8n` file — with the n8n icon, its own tags, and its own dates. Edit it in Nextcloud and n8n has it seconds later. Change it in n8n and the file updates itself.
 
-Sync is reconcile-based: re-running a pull never duplicates files, because the link
-between a file and its workflow is a stable id stored in the file's metadata — not
-the filename — so renaming, moving, and restoring never break the connection.
+Nothing is matched on filename. Every file carries its workflow's id, so renaming, moving, copying, trashing and restoring never break the link — and re-running a sync never duplicates anything.
 
-This is a community integration and is not affiliated with, endorsed by, or sponsored
-by n8n GmbH. "n8n" and the n8n logo are trademarks of n8n GmbH, used here only to
-identify the service this app integrates with.
+## ✨ What you can do
+
+- ✨ **Create, read, update and delete** a workflow from either side
+- 🚚 **Move** a workflow — it stays the same workflow — or **copy** it, which is always a new one
+- 🗑️ **Trash, restore and purge**, mirrored into n8n's archive
+- 🏷️ **Re-tag** it from the Files app, from inside the file, or from n8n
+- 🖱️ **Open in n8n** with a click, or open the raw JSON in the text editor
+- ⌨️ **Script all of it** — every admin action has an `occ` command
+
+## 🗑️ The Nextcloud trash *is* n8n's archive
+
+Trash a workflow file and its workflow is **archived** in n8n — hidden, not gone. Restore it and the workflow comes back. Only when you empty the trash is it permanently deleted.
+
+It works from the other side too: archive a workflow in n8n and its file lands in your Nextcloud trash; unarchive it and the file comes back out. Personal trash and Team Folder trash, both.
+
+## 🏷️ One set of tags, three places to change them
+
+A workflow's tags live in n8n, in the file's own `tags` array, and as Nextcloud's searchable system tags — and all three are kept identical. Change them wherever you happen to be looking and the other two follow, with no "sync now" click.
+
+That means your mirror is as searchable as n8n itself: filter for every `prod` workflow the Nextcloud-native way. 🔍
+
+## 🎨 Honest icons, honest dates
+
+Workflows register their own mimetype, so they wear the real n8n icon instead of a generic document glyph. And each file carries **the workflow's** created and modified dates rather than the sync's — so Recent, Popular files, and sorting a folder by date all tell you the truth about your automation.
+
+## 🧭 Sync or Link — the folder decides
+
+| Mode | The file holds | Pushes back to n8n? |
+|---|---|---|
+| **Sync** | The full workflow JSON | Yes — fully bidirectional |
+| **Link** | A pointer (id, name, URL) | No — clicking it opens n8n |
+
+Move a sync file out of its folder and it becomes **unmapped**: Nextcloud keeps the full JSON and the workflow's identity, while n8n archives the workflow. Move it back into any mapping and the same workflow is restored — not a fresh copy.
+
+## 💾 And it doubles as a backup
+
+A sync folder holds every one of its workflows in full, so it is also a complete, restorable backup — versioned by Nextcloud, synced to your desktop, and searchable by tag.
+
+📖 **[Full documentation, screenshots and the `occ` reference on GitHub](https://github.com/kubed-io/nextcloud-n8n#readme)**
+
+---
+
+This is a community integration and is not affiliated with, endorsed by, or sponsored by n8n GmbH. "n8n" and the n8n logo are trademarks of n8n GmbH, used here only to identify the service this app integrates with.
   ]]></description>
   <version>0.1.5</version>
-  <licence>agpl</licence>
+  <!-- SPDX identifier, not the `agpl` shorthand. The store's XSD still accepts the
+       shorthand but marks it deprecated, and its docs scope it to apps targeting
+       Nextcloud 30 or lower. This app requires 32. -->
+  <licence>AGPL-3.0-or-later</licence>
   <author>Kelly Ferrone</author>
   <namespace>N8nSync</namespace>
-  <category>integration</category>
-  <category>files</category>
   <!--
     DECLARED SO THE APP IS LOADED ON WEBDAV REQUESTS. This is the missing half of
     the trash-purge bug (saga §5.7), and it is invisible until you look for it.
@@ -56,42 +90,42 @@ identify the service this app integrates with.
   <types>
     <filesystem/>
   </types>
+  <documentation>
+    <user>https://github.com/kubed-io/nextcloud-n8n#readme</user>
+    <admin>https://github.com/kubed-io/nextcloud-n8n#-setup-in-three-moves</admin>
+    <developer>https://github.com/kubed-io/nextcloud-n8n/blob/main/CONTRIBUTING.md</developer>
+  </documentation>
+  <!-- Store categories, in display order. `workflow` is the store's name for the
+       flow/automation category and is the most apt of the three; `ai` is available
+       but deliberately unused — n8n hosts AI workloads, this app does not. -->
+  <category>integration</category>
+  <category>workflow</category>
+  <category>files</category>
   <website>https://github.com/kubed-io/nextcloud-n8n</website>
   <bugs>https://github.com/kubed-io/nextcloud-n8n/issues</bugs>
   <repository type="git">https://github.com/kubed-io/nextcloud-n8n.git</repository>
-  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/mapped-folder.png</screenshot>
-  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/context-menu.png</screenshot>
-  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/create-workflow.png</screenshot>
-  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/edit-workflow.png</screenshot>
-  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/admin-folder-mappings.png</screenshot>
-  <screenshot>https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/admin-actions.png</screenshot>
+  <!-- Order is the store's carousel order: the payoff first, the admin surface last.
+       Every file here must exist in screenshots/ on main — the store fetches them by
+       raw URL, so a rename that misses this list shows the listing a broken image. -->
+  <screenshot small-thumbnail="https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/thumbnails/n8n-files.png">https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/n8n-files.png</screenshot>
+  <screenshot small-thumbnail="https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/thumbnails/create-menu.png">https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/create-menu.png</screenshot>
+  <screenshot small-thumbnail="https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/thumbnails/edit-workflow.png">https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/edit-workflow.png</screenshot>
+  <screenshot small-thumbnail="https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/thumbnails/context-menu.png">https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/context-menu.png</screenshot>
+  <screenshot small-thumbnail="https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/thumbnails/popular-files.png">https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/popular-files.png</screenshot>
+  <screenshot small-thumbnail="https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/thumbnails/trash-and-restore.png">https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/trash-and-restore.png</screenshot>
+  <screenshot small-thumbnail="https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/thumbnails/tag2folder-mapping.png">https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/tag2folder-mapping.png</screenshot>
+  <screenshot small-thumbnail="https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/thumbnails/connection-settings.png">https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/connection-settings.png</screenshot>
+  <screenshot small-thumbnail="https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/thumbnails/admin-actions.png">https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/admin-actions.png</screenshot>
   <dependencies>
-    <!-- 31, not 30: AutoSyncSettings implements IDeclarativeSettingsFormWithHandlers
+    <!-- Not 30 or 31. AutoSyncSettings implements IDeclarativeSettingsFormWithHandlers
          (@since 31.0.0), which is the only way an ADMIN declarative form can carry a
          CHECKBOX at all — core's INTERNAL storage throws a TypeError on both the read
-         and the write of a bool (see that class's docblock). Nextcloud 30 reached end
-         of life in 2025, so nothing supported is lost. -->
+         and the write of a bool (see that class's docblock). That ruled out 30, which
+         reached end of life in 2025 anyway. The floor is 32 rather than 31 because 31
+         was never once executed by the integration suite: supporting it was a claim,
+         and 32 is the oldest version the suite actually proves. -->
     <nextcloud min-version="32" max-version="34"/>
   </dependencies>
-  <settings>
-    <!-- Test Connection buttons are folded into the Sync Actions panel
-         (SyncSettings); AdminTest stays as the auth target for the test
-         endpoints but is no longer rendered as its own panel. -->
-    <admin>OCA\N8nSync\Settings\MappingSettings</admin>
-    <admin>OCA\N8nSync\Settings\SyncSettings</admin>
-    <admin-section>OCA\N8nSync\Settings\AdminSection</admin-section>
-  </settings>
-  <commands>
-    <command>OCA\N8nSync\Command\ListWorkflows</command>
-    <command>OCA\N8nSync\Command\GetWorkflow</command>
-    <command>OCA\N8nSync\Command\SetApiKey</command>
-    <command>OCA\N8nSync\Command\TestConnection</command>
-    <command>OCA\N8nSync\Command\AddMapping</command>
-    <command>OCA\N8nSync\Command\ListMappings</command>
-    <command>OCA\N8nSync\Command\RemoveMapping</command>
-    <command>OCA\N8nSync\Command\SetGroups</command>
-    <command>OCA\N8nSync\Command\Reconcile</command>
-  </commands>
   <repair-steps>
     <!--
       Installs the application/n8n+json mimetype + icon mapping on every
@@ -124,4 +158,23 @@ identify the service this app integrates with.
       <step>OCA\N8nSync\Migration\UnregisterMimetype</step>
     </uninstall>
   </repair-steps>
+  <commands>
+    <command>OCA\N8nSync\Command\ListWorkflows</command>
+    <command>OCA\N8nSync\Command\GetWorkflow</command>
+    <command>OCA\N8nSync\Command\SetApiKey</command>
+    <command>OCA\N8nSync\Command\TestConnection</command>
+    <command>OCA\N8nSync\Command\AddMapping</command>
+    <command>OCA\N8nSync\Command\ListMappings</command>
+    <command>OCA\N8nSync\Command\RemoveMapping</command>
+    <command>OCA\N8nSync\Command\SetGroups</command>
+    <command>OCA\N8nSync\Command\Reconcile</command>
+  </commands>
+  <settings>
+    <!-- Test Connection buttons are folded into the Sync Actions panel
+         (SyncSettings); AdminTest stays as the auth target for the test
+         endpoints but is no longer rendered as its own panel. -->
+    <admin>OCA\N8nSync\Settings\MappingSettings</admin>
+    <admin>OCA\N8nSync\Settings\SyncSettings</admin>
+    <admin-section>OCA\N8nSync\Settings\AdminSection</admin-section>
+  </settings>
 </info>
