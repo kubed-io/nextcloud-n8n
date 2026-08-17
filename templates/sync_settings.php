@@ -8,6 +8,12 @@
  *   • Connection tests: Test API / Test webhook (folded in from the old
  *     standalone "Test Connection" panel; wired by admin-test.js).
  *
+ * ESCAPING RULE FOR THIS FILE: a TRANSLATED string is never concatenated into an
+ * HTML attribute through print_unescaped() — one straight double quote from a
+ * translator would close the attribute early. Static markup like `disabled` stays
+ * raw; the title goes through p(), which sanitises with ENT_QUOTES and is therefore
+ * safe inside a quoted attribute.
+ *
  * @var array{status: array{pull: array<string,mixed>, push: array<string,mixed>}, webhook_enabled: bool} $_
  * @var \OCP\IL10N $l
  */
@@ -87,12 +93,6 @@ $summary = static function (array $rec) use ($l): string {
 		<span id="n8n-sync-test-status" class="msg"></span>
 	</div>
 	<div class="n8n-sync-test-wrap">
-		<?php
-		// `disabled` is static markup, but the title is a TRANSLATED string and must not be
-		// concatenated into the attribute through print_unescaped(): one straight double
-		// quote from a translator closes the attribute early. p() sanitises with ENT_QUOTES,
-		// so it is safe inside one.
-		?>
 		<button type="button" id="n8n-sync-webhook-btn" class="button"
 			<?php if (!$webhookEnabled) { ?>disabled title="<?php p($l->t('Enable and save the Webhook channel above to test it.')); ?>"<?php } ?>><?php p($l->t('Test webhook')); ?></button>
 		<span id="n8n-sync-webhook-status" class="msg"></span>
