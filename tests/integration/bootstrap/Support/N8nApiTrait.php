@@ -55,20 +55,35 @@ trait N8nApiTrait {
 	 * @return list<array<string,mixed>>
 	 */
 	private function n8nWorkflowsNamed(string $name): array {
-		$res = $this->n8nClient()->request('GET', 'workflows', [
-			'query' => ['limit' => 250, 'excludePinnedData' => 'true'],
-		]);
-		Assert::assertSame(200, $res->getStatusCode(), 'listing n8n workflows failed: ' . (string)$res->getBody());
-		$decoded = json_decode((string)$res->getBody(), true);
-		$rows = is_array($decoded) ? ($decoded['data'] ?? []) : [];
-
 		$out = [];
-		foreach (is_array($rows) ? $rows : [] as $row) {
-			if (is_array($row) && (string)($row['name'] ?? '') === $name) {
-				$out[] = $row;
+		$cursor = null;
+		// EVERY PAGE, because the answer this feeds is a COUNT. A single page would make
+		// the duplicate check silently weaker the moment the instance outgrows it — the
+		// assertion would still pass, for the wrong reason, which is the exact failure
+		// mode the scenarios using it exist to catch. The bound is a runaway guard, not a
+		// policy: n8n pages at 250, so 40 of them is 10k workflows.
+		for ($page = 0; $page < 40; $page++) {
+			$query = ['limit' => 250, 'excludePinnedData' => 'true'];
+			if ($cursor !== null) {
+				$query['cursor'] = $cursor;
+			}
+			$res = $this->n8nClient()->request('GET', 'workflows', ['query' => $query]);
+			Assert::assertSame(200, $res->getStatusCode(), 'listing n8n workflows failed: ' . (string)$res->getBody());
+
+			$decoded = json_decode((string)$res->getBody(), true);
+			$rows = is_array($decoded) ? ($decoded['data'] ?? []) : [];
+			foreach (is_array($rows) ? $rows : [] as $row) {
+				if (is_array($row) && (string)($row['name'] ?? '') === $name) {
+					$out[] = $row;
+				}
+			}
+
+			$cursor = is_array($decoded) ? ($decoded['nextCursor'] ?? null) : null;
+			if (!is_string($cursor) || $cursor === '') {
+				return $out;
 			}
 		}
-		return $out;
+		Assert::fail('n8n workflow listing did not terminate after 40 pages');
 	}
 
 	/**
