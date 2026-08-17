@@ -78,7 +78,6 @@ the repo:
 
 - **n8n API key** — entered by the admin in the Nextcloud admin section; stored
   encrypted via `OCP\Security\ICrypto`. Never logged.
-- **n8n webhook bearer token** — same handling as the API key.
 - **GitHub App private key** — used by the release workflow to bypass branch protection
   on the version-bump commit. Stored as the `GH_APP_KEY` repo secret. Never echoed.
 - **Future Nextcloud app store signing key** — when Chapter 4 lands, the signing key
@@ -91,7 +90,7 @@ vulnerability and report it via the private channel above. It will be rotated.
 ## Network egress and local addresses (deliberate)
 
 This app makes outbound HTTP requests to **one** destination: the n8n instance an admin
-configures (the base URL, plus the optional webhook path under it). It does **not** fetch
+configures (its base URL). It does **not** fetch
 arbitrary user-supplied URLs.
 
 Those requests are issued through Nextcloud's `IClientService` with
@@ -107,8 +106,8 @@ The trade-off, stated plainly for any audit:
   (`169.254.169.254`, `localhost:6379`, …) and have it issue a request there. **Setting that
   URL is a Nextcloud admin action**, so this is an admin-trust boundary, not an unauthenticated
   SSRF — but it is a real, intentional relaxation of NC's default protection.
-- The request surface is limited to the configured n8n REST API (`X-N8N-API-KEY`, JSON) and the
-  configured webhook path; responses are parsed as n8n JSON, not reflected to the user.
+- The request surface is limited to the configured n8n REST API (`X-N8N-API-KEY`, JSON);
+  responses are parsed as n8n JSON, not reflected to the user.
 
 If a deployment does **not** need local addresses (n8n reachable on a public hostname), a future
 release may expose this as an opt-out setting so the SSRF guard can be left on. Today it is

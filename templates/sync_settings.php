@@ -5,7 +5,7 @@
  *
  * "Sync Actions" panel — all action buttons in one place:
  *   • Manual bulk sync: ⭱ Sync to n8n / ⭳ Sync from n8n
- *   • Connection tests: Test API / Test webhook (folded in from the old
+ *   • Connection test: Test connection (folded in from the old
  *     standalone "Test Connection" panel; wired by admin-test.js).
  *
  * ESCAPING RULE FOR THIS FILE: a TRANSLATED string is never concatenated into an
@@ -14,13 +14,12 @@
  * raw; the title goes through p(), which sanitises with ENT_QUOTES and is therefore
  * safe inside a quoted attribute.
  *
- * @var array{status: array{pull: array<string,mixed>, push: array<string,mixed>}, webhook_enabled: bool} $_
+ * @var array{status: array{pull: array<string,mixed>, push: array<string,mixed>}} $_
  * @var \OCP\IL10N $l
  */
 
 $pull = $_['status']['pull'] ?? [];
 $push = $_['status']['push'] ?? [];
-$webhookEnabled = (bool)($_['webhook_enabled'] ?? false);
 
 /** One-line "last: ..." summary, with a queued/running lead-in. */
 $summary = static function (array $rec) use ($l): string {
@@ -89,13 +88,8 @@ $summary = static function (array $rec) use ($l): string {
 	</p>
 
 	<div id="n8n-sync-test" class="n8n-sync-test-wrap">
-		<button type="button" id="n8n-sync-test-btn" class="button"><?php p($l->t('Test API')); ?></button>
+		<button type="button" id="n8n-sync-test-btn" class="button"><?php p($l->t('Test connection')); ?></button>
 		<span id="n8n-sync-test-status" class="msg"></span>
-	</div>
-	<div class="n8n-sync-test-wrap">
-		<button type="button" id="n8n-sync-webhook-btn" class="button"
-			<?php if (!$webhookEnabled) { ?>disabled title="<?php p($l->t('Enable and save the Webhook channel above to test it.')); ?>"<?php } ?>><?php p($l->t('Test webhook')); ?></button>
-		<span id="n8n-sync-webhook-status" class="msg"></span>
 	</div>
 </div>
 </div>

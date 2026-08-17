@@ -2,7 +2,8 @@
  * SPDX-FileCopyrightText: 2026 Kelly Ferrone
  * SPDX-License-Identifier: AGPL-3.0-or-later
  *
- * "Test Connection" handlers — one button per channel (REST API + Webhook).
+ * "Test Connection" handler. It used to wire one button per writeback channel;
+ * the webhook channel is gone, so there is one.
  * Loaded via Util::addScript() so the Nextcloud CSP nonce is applied
  * automatically — inline <script> tags are blocked by the strict-dynamic CSP.
  */
@@ -53,7 +54,6 @@
 
 	function init() {
 		wire('n8n-sync-test-btn', 'n8n-sync-test-status', '/apps/n8n_sync/testconnection');
-		wire('n8n-sync-webhook-btn', 'n8n-sync-webhook-status', '/apps/n8n_sync/testwebhook');
 	}
 
 	if (document.readyState === 'loading') {

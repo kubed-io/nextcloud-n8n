@@ -11,25 +11,23 @@ namespace OCA\N8nSync\Settings;
 
 use OCA\N8nSync\AppInfo\Application;
 use OCP\AppFramework\Http\TemplateResponse;
-use OCP\IAppConfig;
 use OCP\Settings\IDelegatedSettings;
 use OCP\Util;
 
 /**
- * Classic (non-declarative) "Test" panel: one button to test the REST API and
- * one to test the Webhook channel. Declarative settings cannot include buttons,
- * so the testing for *both* channels is consolidated here in a single section
- * (rather than repeating a whole card per channel just for a button).
+ * Classic (non-declarative) "Test" panel — one button, testing the one
+ * connection. Declarative settings cannot include buttons, which is why this
+ * exists at all; it used to host a second button for the Webhook channel, which
+ * is gone (saga Ch5 — deferred, not disowned).
  *
- * Implements IDelegatedSettings so the controller can gate the test endpoints
- * with the canonical #[AuthorizedAdminSetting] attribute.
+ * **This panel is not registered.** `info.xml` lists only MappingSettings,
+ * SyncSettings and AdminSection, and {@see SyncSettings} folded the button into
+ * its own template — so {@see getForm} and `templates/admin_test.php` are not
+ * reached. The class stays because it is the authorization target the controller
+ * names in `#[AuthorizedAdminSetting(settings: AdminTest::class)]`, which is a
+ * real job even when nothing renders it.
  */
 final class AdminTest implements IDelegatedSettings {
-	public function __construct(
-		private IAppConfig $appConfig,
-	) {
-	}
-
 	#[\Override]
 	public function getForm(): TemplateResponse {
 		// JS + CSS must be added via Util so they pick up the CSP nonce —
@@ -37,11 +35,10 @@ final class AdminTest implements IDelegatedSettings {
 		Util::addScript(Application::APP_ID, 'admin-test');
 		Util::addStyle(Application::APP_ID, 'admin-test');
 		// 'blank' render mode: NC wraps the template in the section container
-		// but does not inject a full page shell. The webhook test button is
-		// disabled unless the webhook channel is enabled (state at page load).
-		return new TemplateResponse(Application::APP_ID, 'admin_test', [
-			'webhook_enabled' => $this->appConfig->getValueBool(Application::APP_ID, 'webhook_enabled', false),
-		], 'blank');
+		// but does not inject a full page shell. The panel needs no state now that
+		// there is one channel to test — it used to pass `webhook_enabled` so the
+		// second button could render disabled.
+		return new TemplateResponse(Application::APP_ID, 'admin_test', [], 'blank');
 	}
 
 	#[\Override]
@@ -50,9 +47,9 @@ final class AdminTest implements IDelegatedSettings {
 	}
 
 	/**
-	 * Priority 22 — rendered below both channel cards (REST API 10, Webhook 20)
-	 * so the two test buttons sit together after everything they test is
-	 * configured. Writeback timing (25), Mappings (30), Manual sync (35) follow.
+	 * Priority 22 — rendered below the Instance card (5), so the button sits after
+	 * the URL and key it tests. Writeback timing (25), Mappings (30), Manual sync
+	 * (35) follow.
 	 */
 	#[\Override]
 	public function getPriority(): int {

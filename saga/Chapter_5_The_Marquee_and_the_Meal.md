@@ -1699,6 +1699,48 @@ every one of them green right up until a real person touched it.
 > tasted it on the plate. The suite wasn't lying to you. You just never asked it the
 > question you actually cared about."*
 
+## 2026-08-17 · **TAKING THE WEBHOOK OFF THE MENU**
+
+The admin section had four cards: Instance (URL), REST API (key + a switch), Webhook
+(a switch, a path, a token), and Sync Settings. Two of those cards, one switch each,
+existed to serve a single sentence: *a saved file reaches n8n through either channel,
+and you may compose them.*
+
+Nobody ever composed them. The webhook channel was never finished, never tested, and —
+this is the part that mattered — **the settings still asked for it**. An admin filling
+in a path and a token had every reason to think something would happen. That is not an
+unfinished feature; that is a form that lies.
+
+### What went, and what it cost to keep
+
+- The `Webhook` card, `webhook_enabled` / `webhook_path` / `webhook_token`.
+- The **Test webhook** button, its route, its controller action, `pingWebhook()`,
+  `callWebhook()`, and the production→test path mapping (`/webhook/x` → `/webhook-test/x`)
+  that existed so the button could hit the URL n8n opens while you watch.
+- `api_enabled`. With one channel there is nothing to switch: "does this app write back?"
+  is not a question an admin should have to answer, and a `false` there meant *saving a
+  file does nothing and reports success*.
+- `PushService`'s channel loop, its per-channel error prefixes, and the "neither on" branch
+  that called a silent no-op a valid outcome.
+
+The section is now **Instance → Sync Settings**, and the Instance card holds the URL and
+the key together — which is where an admin looks for them anyway. They were only ever
+apart to serve a distinction that no longer exists.
+
+### Deferred, not disowned
+
+The idea is still good. "A save notifies a flow, and the flow decides what to do" is a
+genuinely different capability from "a save PUTs the workflow" — it is the difference
+between syncing and *triggering*, and n8n is a trigger engine. It deserves to come back
+as a thought-through feature with its own scenarios: what fires, what the payload is,
+what happens when the flow is down, whether it replaces the PUT or accompanies it.
+
+What it did not deserve was to sit in the settings collecting a token while doing
+nothing. So it comes out now and comes back when there is something to come back to.
+
+> **Dr K, wiping down the pass:** *"A dish you can't cook isn't on the menu. It's on the
+> whiteboard in the back. Customers read menus."*
+
 ---
 
 Sources / cross-links:

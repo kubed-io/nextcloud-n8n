@@ -186,17 +186,17 @@ There's a third state you don't configure: **unmapped**. That's what a sync file
 
 ## 🛠 Setup, in three moves
 
-**1. Point it at n8n.** Base URL, an API key (stored encrypted, never echoed back), and optionally a webhook as a second push channel. Belt *and* suspenders if you want both.
+**1. Point it at n8n.** Base URL and an API key, stored encrypted and never echoed back. That is the whole connection.
 
-![The n8n Sync admin settings showing Instance, REST API, Webhook and Sync Settings sections](screenshots/connection-settings.png)
+![The n8n Sync admin settings showing the Instance and Sync Settings sections](screenshots/connection-settings.png)
 
 **2. Map a tag to a folder.** Pick the n8n tag, the mode, and which groups get to see it. Backed by a Team Folder or an admin-owned shared folder, your call.
 
 ![The Folder mappings admin panel showing n8n tag, mode, folder and group checkboxes for three mappings](screenshots/tag2folder-mapping.png)
 
-**3. Sync it.** Scheduled pulls on whatever interval you like, plus one-shot buttons whenever you're impatient — and "Test API" / "Test webhook" so you're never guessing whether the connection works.
+**3. Sync it.** Scheduled pulls on whatever interval you like, plus one-shot buttons whenever you're impatient — and "Test connection" so you're never guessing whether it works.
 
-![The Sync Actions admin panel with Sync to n8n, Sync from n8n, Test API and Test webhook buttons](screenshots/admin-actions.png)
+![The Sync Actions admin panel with Sync to n8n, Sync from n8n and Test connection buttons](screenshots/admin-actions.png)
 
 🔌 [`connection.feature`](features/connection/connection.feature) · 🗂️ [`mapping/create.feature`](features/mapping/create.feature) · 🔄 [`sync-now.feature`](features/connection/sync-now.feature)
 

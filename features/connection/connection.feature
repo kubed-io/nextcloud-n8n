@@ -12,14 +12,13 @@ Feature: Admin configures the n8n connection
   Scenario: Set up and verify the connection
     When the admin sets the n8n base URL
     And the admin provides the n8n API key
-    And the admin enables the REST API
     And the admin tests the connection
     Then the connection is verified
 
   # notes: ../AGENTS.md#the-connection-test-says-which-of-the-two-key-problems-it-is
   @admin @ui
   Scenario Outline: The connection test says which of the two key problems it is
-    Given the admin has set the n8n base URL and enabled the REST API
+    Given the admin has set the n8n base URL
     And <the key state>
     When the admin tests the connection
     Then the connection test reports a failure

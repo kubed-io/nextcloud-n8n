@@ -10,7 +10,7 @@ declare(strict_types=1);
 namespace OCA\N8nSync\Exception;
 
 /**
- * A failed n8n REST/webhook call, normalised so callers get n8n's *own*
+ * A failed n8n REST call, normalised so callers get n8n's *own*
  * complaint verbatim instead of a multi-line Guzzle dump.
  *
  * The message is the human-readable reason n8n returned (e.g.

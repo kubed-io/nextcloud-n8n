@@ -93,16 +93,10 @@ trait AdminSteps {
 		Assert::assertSame(0, $res['exit'], "storing the (invalid) key failed:\n{$res['output']}");
 	}
 
-	/** @When the admin enables the REST API */
-	public function theAdminEnablesTheRestApi(): void {
-		$res = $this->occ('config:app:set ' . self::APP_ID . ' api_enabled --value=1');
-		Assert::assertSame(0, $res['exit'], "enabling the REST API failed:\n{$res['output']}");
-	}
 
-	/** @Given the admin has set the n8n base URL and enabled the REST API */
+	/** @Given the admin has set the n8n base URL */
 	public function theAdminHasSetUrlAndEnabledApi(): void {
 		$this->theAdminSetsTheN8nBaseUrl();
-		$this->theAdminEnablesTheRestApi();
 	}
 
 	/**

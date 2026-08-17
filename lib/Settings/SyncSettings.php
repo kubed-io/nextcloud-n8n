@@ -12,7 +12,6 @@ namespace OCA\N8nSync\Settings;
 use OCA\N8nSync\AppInfo\Application;
 use OCA\N8nSync\Service\SyncStatusService;
 use OCP\AppFramework\Http\TemplateResponse;
-use OCP\IAppConfig;
 use OCP\Settings\IDelegatedSettings;
 use OCP\Util;
 
@@ -21,17 +20,17 @@ use OCP\Util;
  * (declarative forms can't host buttons, so this classic panel collects them):
  *
  *   • Manual bulk sync — "Sync to n8n" / "Sync from n8n" (async jobs, last-run line).
- *   • Connection tests — "Test API" / "Test webhook" (folded in from the old
- *     standalone "Test Connection" panel; handlers in admin-test.js, endpoints
- *     gated by {@see AdminTest}).
+ *   • Connection test — "Test connection" (folded in from the old standalone
+ *     "Test Connection" panel; handler in admin-test.js, endpoint gated by
+ *     {@see AdminTest}). It used to be one button per writeback channel; the
+ *     webhook channel is gone, so there is one connection to test.
  *
- * Rendered last in the section: channels → Sync Settings → Folder mappings →
+ * Rendered last in the section: Instance → Sync Settings → Folder mappings →
  * Sync Actions. The automatic-sync strategy lives in {@see AutoSyncSettings}.
  */
 final class SyncSettings implements IDelegatedSettings {
 	public function __construct(
 		private SyncStatusService $status,
-		private IAppConfig $appConfig,
 	) {
 	}
 
@@ -46,11 +45,7 @@ final class SyncSettings implements IDelegatedSettings {
 		return new TemplateResponse(
 			Application::APP_ID,
 			'sync_settings',
-			[
-				'status' => $this->status->all(),
-				// Test-webhook button is disabled unless the webhook channel is on.
-				'webhook_enabled' => $this->appConfig->getValueBool(Application::APP_ID, 'webhook_enabled', false),
-			],
+			['status' => $this->status->all()],
 			'blank',
 		);
 	}
