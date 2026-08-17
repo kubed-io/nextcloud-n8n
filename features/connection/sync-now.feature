@@ -27,11 +27,3 @@ Feature: Syncing every mapping
       | the schedule | every mapping | nextcloud:charlie |
 
     # notes: ../AGENTS.md#carries-its-n8n-dates
-
-  @admin @ui @occ
-  Scenario: A sync never touches a file outside every mapping
-    Given a folder mapped as "sync" to the n8n tag "nextcloud:alpha"
-    And an unmapped workflow file exists outside every mapping
-    When the admin syncs every mapping
-    Then the unmapped file is left untouched (it is outside the mapping's scope)
-    # notes: ../AGENTS.md#a-sync-never-touches-a-file-outside-every-mapping

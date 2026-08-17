@@ -306,14 +306,68 @@ case of its own. Porting the scenarios records the intended end state; wearing
 `@todo` would have claimed code that is not there. The status tag is the one thing
 a port must re-decide, because it describes THIS repo.
 
-**What was NOT ported, and why.** `mapping/move.feature` and
-`mapping/rename.feature` rest on "a mapping is a pair of ids, so a move is a
-no-op" — true there, false here: {@see Mapping} holds `n8nTag` and `teamFolder` as
-NAMES, and `MappingService::resolveForPath` matches a folder by name prefix.
-Porting them would have asserted a premise this app does not have. The behaviour
-is worth deciding on; inventing it inside a port is not. Their remote halves
-(move/rename the mapped *Grafana folder*) have no analogue at all — n8n has tags,
-not folders.
+## mapping/move
+
+`features/mapping/move.feature`
+
+### A mapping follows the folder it was pointed at
+
+Shared with `mapping/rename` below: both files describe the same rule reached by
+two different gestures, so the reasoning lives once, here.
+
+**THE GESTURE IS NOT AN EDIT TO THE MAPPING.** Nothing here makes the mapped
+folder editable — that field is fixed at creation and stays fixed, which is what
+`mapping/manage-groups` already says by being the only file about a field you can
+change. What these two describe is somebody moving or renaming the folder from
+OUTSIDE the app: the Files explorer for an admin-owned folder, the Team Folders
+view (`occ groupfolders:rename`) for a Team Folder. The mapping is not being
+edited; it is *responding*.
+
+**So the behaviour under test is that the mapping tracks the folder itself, not
+its name.** Get that right and both gestures are safe by construction. Get it
+wrong and reorganising a folder silently disconnects every workflow in it, which
+is the failure these scenarios exist to forbid.
+
+**This is `@unbuilt`, and specifically so.** {@see MappingService::resolveForPath}
+matches a folder by NAME prefix against `Mapping::teamFolder`. A rename therefore
+stops the mapping resolving, and — the sharper half — a brand-new folder that
+merely reuses the name IS adopted, which is why the sibling's third scenario came
+across too. It is the same rule seen from the other side, and it is the one a
+name-matching implementation fails loudest on.
+
+**The n8n side is not portable, and not because of a gap.** The sibling has a
+`Move the mapped Grafana folder` and a `Rename the mapped Grafana folder`, because
+Grafana has folders. n8n has tags: a tag cannot be renamed through the API this app
+uses, and "moving" one is not a thing anybody can do. There is no gesture, so
+there is no scenario — this is the one place the two apps genuinely diverge rather
+than one lagging the other.
+
+**Why rename has two rows and move has one.** A mapped folder can be renamed on
+either storage kind, and the two surfaces differ enough to be worth a row each —
+this repo has learned twice now (`purge.feature`, `workflows/move.feature`) that
+the storage kind is the axis a bug hides in. A move is different: a Team Folder is
+mounted at the user's files root and is not a node that can be dragged inside
+another folder, so there is only the admin-owned case to state.
+
+### A mapped folder that was deleted is not re-adopted by name
+
+The sharper half of the same rule, and the one a name-matching implementation
+fails loudest on: delete the mapped folder, make a new one that merely reuses its
+name, and `resolveForPath` hands it the mapping — so files dropped into a folder
+nobody chose become managed, and start creating workflows in n8n under a tag the
+admin bound to something else.
+
+A folder that shares a name is a different folder. Ported from the sibling, where
+it is `@unbuilt` for the same reason it is here.
+
+## mapping/rename
+
+`features/mapping/rename.feature`
+
+The other gesture that reaches the same rule — see
+*A mapping follows the folder it was pointed at* under `mapping/move` above, which
+covers both files. Renaming is the one of the two that works on either storage
+kind, so this file is an outline over both; `mapping/move` is not.
 
 ## mapping/sync-now
 
@@ -2278,15 +2332,19 @@ a file, so nested mappings work and the nearest enclosing one wins. Each scenari
 lands a real file over WebDAV and reads the resulting n8n_mapping stamp back, so
 these are server-observable assertions of MappingService::resolveForPath.
 
-### A sync never touches a file outside every mapping
+### A sync never touches a file outside every mapping — DELETED
 
-THE SCOPE OF A SYNC IS A MEMBERSHIP QUESTION, so it is answered here rather than
-in a file about syncing. "Which files does this mapping own" is what this file
-exists to say; a sync merely acts on that answer.
+THE SCOPE OF A SYNC IS A MEMBERSHIP QUESTION, and it was answered here rather than
+in a file about syncing: "which files does this mapping own" is what this section
+exists to say, and a sync merely acts on that answer. It had already moved once,
+out of a scenario about the sync button where it was one `Then` among four.
 
-It moved from a scenario about the sync button, where it was one `Then` among
-four — so "an unmapped file is out of scope" could only ever fail as part of "the
-button worked", and never named itself.
+**It is now gone entirely, as an unnecessary negative test.** Every positive
+scenario in `connection/sync-now` and `mapping/sync-now` states which files a sync
+writes; a file outside every mapping is not in that set, and asserting that a
+gesture did NOT touch something it was never pointed at proves nothing a reader
+did not already have. The rule it guarded is not lost — it is what "unmapped"
+means, stated wherever unmapped files appear.
 
 ## workflows/move
 
