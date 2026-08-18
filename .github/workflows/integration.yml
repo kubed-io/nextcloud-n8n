@@ -219,9 +219,44 @@ jobs:
     # exposure — TeamFolderService resolves the groupfolders FQCN lazily for
     # precisely this reason, and a guard with no test behind it is one refactor
     # from being deleted. It wants one cheap leg, not a second full axis.
+    # THE APP STORE IS SOMEBODY ELSE'S UPTIME, and this step made every leg depend
+    # on it. `occ app:install` fetches from apps.nextcloud.com at run time, and when
+    # that fetch fails the error is `Could not download app groupfolders, it was not
+    # found on the appstore` — which reads like the app was removed and is usually
+    # just the runners being rate-limited. It took out this repo and the Grafana
+    # sibling simultaneously, on green branches, minutes after the same branches had
+    # passed; re-running by hand eventually worked, which is the tell.
+    #
+    # So the download happens ONCE per server version and is cached. On a hit there
+    # is no network at all; on a miss the install is retried before giving up, which
+    # is what turns a rate-limit blip from a red build into a slow step.
+    - name: Cache Team Folders (groupfolders)
+      id: groupfolders-cache
+      uses: actions/cache@v4
+      with:
+        path: apps/groupfolders
+        key: groupfolders-${{ matrix.server-versions }}-v1
+
     - name: Install Team Folders (groupfolders)
       run: |
-        ./occ app:install groupfolders
+        if [ ! -d apps/groupfolders ]; then
+          # Three attempts with backoff: the failure this guards against is a
+          # transient fetch, so the retry is the fix and the cache is the prevention.
+          for attempt in 1 2 3; do
+            if ./occ app:install groupfolders; then
+              break
+            fi
+            if [ "$attempt" = 3 ]; then
+              echo "::error::groupfolders could not be downloaded after 3 attempts — apps.nextcloud.com is likely unreachable or rate-limiting this runner"
+              exit 1
+            fi
+            echo "app:install failed (attempt $attempt) — retrying in $((attempt * 15))s"
+            sleep $((attempt * 15))
+          done
+        else
+          echo "restored groupfolders from cache — no app store fetch"
+        fi
+        # Always enable: a cache hit restores the files but not the DB state.
         ./occ app:enable groupfolders
         ./occ app:list | grep -i groupfolders
 
