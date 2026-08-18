@@ -79,14 +79,19 @@ final class Application extends App implements IBootstrap {
 		// those markers inside a mapped folder is fair game for sync; anything
 		// without them is left alone. No setting needed.
 		//
-		// Section layout (by priority): Instance — URL + API key (5) → Test
-		// connection (15, classic panel via info.xml) → Writeback timing (25) →
-		// Mappings/Manual sync (30+).
+		// Section layout, by the priorities the classes actually return:
+		//   Instance — URL + API key (5, declarative)
+		//   Test connection          (22, classic panel — AdminTest)
+		//   Sync Settings            (33, declarative — AutoSyncSettings)
+		//   Folder mappings          (36, classic panel — MappingSettings)
+		//   Sync Actions             (45, classic panel — SyncSettings)
+		// Read off the sources rather than remembered: this list carried 15/30/35/40
+		// for long enough that three separate comments repeated them.
 		//
 		// It used to read "Instance URL (5) → REST API (10) → Test connection (15)
 		// → Webhook (20) → …, API and Webhook are independent, composable writeback
 		// channels". There is one channel now, so the URL and the key live in one
-		// card and timing governs when THE push fires rather than when either does.
+		// card, and the push fires on a save rather than on a schedule of its own.
 		$context->registerDeclarativeSettings(InstanceSettings::class);
 		$context->registerDeclarativeSettings(AutoSyncSettings::class);
 
@@ -172,7 +177,7 @@ final class Application extends App implements IBootstrap {
 
 		// §5.6.2 reactive tag sync (surface 3): a CONTENT pill add/remove on a managed
 		// sync file reconciles that tag to n8n on its own — the tag-side sibling of the
-		// body writeback, honouring the same `timing` knob (inline vs ReconcileTagsJob).
+		// body writeback, taking the same inline-vs-queued decision from WritebackStrategy.
 		// Loop-safe: its reconcile writes pills under SyncGuard, so the tag events it
 		// re-fires bail here.
 		$context->registerEventListener(TagAssignedEvent::class, ContentTagListener::class);

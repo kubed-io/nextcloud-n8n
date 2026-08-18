@@ -153,6 +153,10 @@ This is a community integration and is not affiliated with, endorsed by, or spon
            secret SECURITY.md no longer claims to hold, plus the api_enabled
            switch. Idempotent; see lib/Migration/RemoveWebhookSettings.php. -->
       <step>OCA\N8nSync\Migration\RemoveWebhookSettings</step>
+      <!-- Drops the retired `timing` radio's stored value. Inline-vs-queued is now
+           derived per request from whether a job could run at all. Idempotent;
+           see lib/Migration/RemoveTimingSetting.php. -->
+      <step>OCA\N8nSync\Migration\RemoveTimingSetting</step>
     </post-migration>
     <uninstall>
       <!-- Mirror image of RegisterMimetype: reverts the core-tree mimetype/icon

@@ -16,11 +16,11 @@ use OCA\N8nSync\Service\PushService;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\SyncNotifier;
 use OCA\N8nSync\Service\WorkflowMetadata;
+use OCA\N8nSync\Service\WritebackStrategy;
 use OCP\BackgroundJob\IJobList;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
 use OCP\Files\Events\Node\NodeWrittenEvent;
-use OCP\IAppConfig;
 use OCP\IUserSession;
 use Psr\Log\LoggerInterface;
 
@@ -44,13 +44,13 @@ use Psr\Log\LoggerInterface;
  */
 final class NodeWrittenListener implements IEventListener {
 	public function __construct(
-		private IAppConfig $config,
 		private IJobList $jobList,
 		private PushService $pushService,
 		private WorkflowMetadata $metadata,
 		private SyncGuard $guard,
 		private IUserSession $userSession,
 		private SyncNotifier $notifier,
+		private WritebackStrategy $strategy,
 		private LoggerInterface $logger,
 	) {
 	}
@@ -96,8 +96,12 @@ final class NodeWrittenListener implements IEventListener {
 		// re-resolves the node through).
 		$uid = $this->userSession->getUser()?->getUID() ?? $node->getOwner()?->getUID() ?? '';
 
-		$timing = $this->config->getValueString(Application::APP_ID, 'timing', 'async');
-		if ($timing !== 'sync' && $uid !== '') {
+		// QUEUED WHEN THAT WILL ACTUALLY RUN, INLINE OTHERWISE. The admin radio that
+		// used to answer this is gone (saga Ch5); {@see WritebackStrategy} derives it
+		// from whether there is a user for the job to act as and whether anything
+		// drains the queue. The `$uid !== ''` half of the old condition lives in there
+		// now, which is how `ContentTagListener` stopped answering it differently.
+		if ($this->strategy->canQueue($uid)) {
 			// Defer to the job, which pushes and surfaces its own failure toast.
 			$this->jobList->add(PushWorkflowJob::class, ['fileId' => $node->getId(), 'userId' => $uid]);
 			return;

@@ -1868,6 +1868,206 @@ So one scenario is left ungraded, on purpose, and the notes say which and why.
 > **Dr K, chairs already up:** *"You found it by eating here. That's the only way anyone
 > finds it. Reading your own menu tells you what you meant to cook."*
 
+## 2026-08-18 · **THE TOGGLE THAT GOVERNS TWO OF FIFTEEN THINGS**
+
+`Sync Settings` has a radio: *push in the background* or *push immediately during the
+save*. It has been there since Chapter 1 (Fork C), it has never been tested as an axis,
+and nobody could say what it actually covered. This is that audit, written down before
+anything is changed, because the answer took a day to establish and would otherwise be
+re-derived wrong in three months.
+
+### What it actually does
+
+`timing` is read in **exactly two places** — `NodeWrittenListener` (the body push after a
+save) and `ContentTagListener` (the tag reconcile after a pill change). Nothing else in
+the app consults it.
+
+It therefore governs **two of the six sites that queue a job**. `ReconcileNameJob` (from
+both `CopyService` and `NameSyncListener`), `ManualSyncJob` and `ScheduledPullJob` are
+async regardless of what the admin picks. "Push immediately during the save" does not
+make the app synchronous; a copy's rename and every bulk sync stay queued. The label
+promises an instance-wide mode and delivers a two-site preference.
+
+### The invariant that decides everything else
+
+One rule forces most of the design, and the repo paid for it in blood. From
+`CreateService`, about writing the body during create-on-land:
+
+> *this runs INSIDE the handler for the very write that created the file, so
+> `putContent()` on the same node hits Nextcloud's lock and the whole create fails.
+> **Tried; it took out every arrange in the suite** that lands a file in a mapped folder.*
+
+**A file's own bytes may only be written outside a file-lifecycle event for that file.**
+Everything else — n8n API calls, `files_metadata`, system-tag pills — is lock-free and
+may run either way.
+
+The architecture already encodes this, which is why it works at all: `reconcileFromBody`
+runs INLINE on `NodeWrittenEvent` and touches pills and n8n but never the body, while
+`reconcileFile` does `putContent` and is reached from `TagAssignedEvent` — not a file
+event, so nothing is locked.
+
+### The matrix
+
+| # | operation | trigger | touches | sync | async | forced by |
+|---|---|---|---|---|---|---|
+| 1 | body push on save | `NodeWrittenEvent` | n8n, metadata | ✅ | ⚠️ | free — but the job needs a uid |
+| 2 | tag reconcile from pills | `TagAssignedEvent` | n8n, pills, **bytes** | ✅ | ⚠️ | free — same uid dependency |
+| 3 | tag reconcile from body | `NodeWrittenEvent` | n8n, pills | ✅ | ✅ | free; hard-coded inline |
+| 4 | create-on-land | `NodeWritten`/`Renamed` | n8n, metadata | ✅ | ✅ | free; hard-coded inline |
+| 5 | restore from trash | `NodeRestoredEvent` | n8n, metadata | ✅ | ✅ | free; hard-coded inline |
+| 6 | motion (out/in/rebind) | `NodeRenamedEvent` | n8n, metadata, pills | ✅ | ⚠️ | practically sync — later listeners branch on the mode it stamps |
+| 7 | name sync | `NodeWritten`/`Renamed` | **bytes + rename** | ❌ | ✅ | **the lock** |
+| 8 | copy naming | `NodeCopiedEvent` | **rename** | ❌ | ✅ | the Files app stats the path IT chose (`CopyNamePlugin`, reverted) |
+| 9 | delete → archive | `BeforeNodeDeletedEvent` | n8n | ❌ | — | **abort semantics**: a job cannot refuse a delete that already happened |
+| 10 | purge → hard delete | Trashbin `preDelete` | n8n | ❌ | — | **last chance**: afterwards the id is gone for good |
+| 11 | move identity stash | `Before`/`NodeRenamed` | metadata | ❌ | — | **request-scoped store** |
+| 12 | overwrite mark | sabre `beforeMove` | store | ❌ | — | same, and it must precede the delete it describes |
+| 13 | the four guards | `Before*` / DAV | a refusal | ❌ | — | **a refusal must precede the act** |
+| 14 | bulk sync | button / `occ` | everything | ✅ | ✅ | chosen by SURFACE, not by setting |
+| 15 | scheduled pull | `TimedJob` | everything | — | ❌ | it *is* the clock |
+
+**Nine of fifteen are decided by physics.** Not by preference, not by policy — by the
+lock, by abort semantics, or by state that does not survive the request. Only five are a
+free choice, and the toggle reaches two of them.
+
+### Is async always available? No — and not for the reason we assumed
+
+The suspicion that prompted this audit was *"sometimes you may not have the async
+option."* Half right, and the right half is the interesting one.
+
+**Enqueueing always works.** `IJobList::add()` is a row insert. It cannot fail for want
+of infrastructure. **Execution is never guaranteed**, for three separate reasons:
+
+  1. **Config.** `backgroundjobs_mode` defaults to **`ajax`** — one job per page visit,
+     which the admin manual itself calls *"the least reliable"*. No visitors, no
+     execution; a backlog drains at one job per page load. `webcron` caps at ~288
+     jobs/day. Only `cron` is recommended, and it is not the default.
+  2. **Capability.** `PushWorkflowJob` re-opens a Files view to find the node again, so
+     it needs a uid. Without one it logs and gives up — async is genuinely unavailable,
+     not merely slow. `NodeWrittenListener` already falls back to inline for exactly
+     this (`if ($timing !== 'sync' && $uid !== '')`). Somebody met the case and handled
+     it quietly.
+  3. **State.** `MoveIdentityStore` and `ReplacedByMoveStore` hold data that exists only
+     between two events of one request. A job runs after that request is gone.
+
+So the two are not symmetric, and the shape is the opposite of the intuition:
+
+> **sync** is always POSSIBLE and sometimes FORBIDDEN — the lock, or work that must
+> outlive the request.
+> **async** is always OFFERABLE and never GUARANTEED — config, capability, or vanished
+> state.
+
+Their unavailability conditions are **disjoint and knowable at the call site**, which is
+what makes an admin toggle the wrong instrument: for any given operation the code can
+tell which options exist, and only where both exist is there anything to choose.
+
+Checked and clear: `timeSensitivity` lives on `TimedJob` only, defaults to
+`TIME_SENSITIVE`, and none of our jobs override it — so `maintenance_window_start`
+cannot silently defer our work to 1am. One trap that is not there.
+
+### What has changed since Fork C
+
+Chapter 1 chose "enqueue" as the recommended default on the reasoning that *"the plugin's
+job is to enqueue; cron-vs-worker is purely who empties the queue"* — deliberately
+infra-agnostic. Two things have moved.
+
+**The default flipped without a decision.** Ch1 §444 specifies the radio as *"default
+`sync`"*. It ships `async`. No entry anywhere records the change.
+
+**Fork C was written when the app did one thing.** Six job sites, three-way tag sync,
+motion and copy-naming later, a single global switch is no longer a coherent control. It
+is the same mistake the webhook channel made (Ch5, *Taking the webhook off the menu*): an
+option offered before there was a considered answer behind it.
+
+And Chapter 2 already filed the debt, in as many words:
+
+> **Async vs sync push timing is untested.** …neither timing is asserted as a distinct
+> behaviour. Future task: scenarios that flip `push_timing` and assert the save lands in
+> n8n under both.
+
+Recorded, never paid. What CI does today is worse than the note suggests: `tags.feature`
+PINS `timing=sync` in its arrange (7 of its 9 scenarios), everything else runs the default
+`async`, and **no scenario compares the two**. Both paths execute; nothing proves they
+agree.
+
+### DAV versus the UI — a real axis, and it points the same way twice
+
+The same `NodeWrittenEvent` fires for a Text-editor save, a Files-app upload, a desktop
+client's sync and a raw `curl` PUT. Nothing at the listener distinguishes them today, and
+the app reads the request nowhere at all.
+
+It *could*, partially. `IRequest::isUserAgent()` ships patterns for the official desktop,
+Android, iOS and Outlook clients. But there is no pattern for a generic WebDAV
+consumer — rclone, davfs2, Finder, Windows Explorer, a script — so "is this a mount or a
+browser?" is **not reliably answerable**. Any branch built on it would be right about
+Nextcloud's own clients and blind to everything else, which is the same leak the suite
+partition rejected tags for.
+
+That said, the axis is real, and both surfaces dislike an inline push for DIFFERENT
+reasons that happen to agree:
+
+  · **In the UI**, a save is a spinner somebody is watching. `N8nClient`'s 10-second
+    timeout is a visible stall on one file, and the Text editor's "saved" is the moment
+    the user stops paying attention.
+  · **Over DAV**, a desktop client uploads a folder as many rapid PUTs. Inline serialises
+    an n8n round trip into the client's upload path — N files times up to ten seconds —
+    and nobody is watching a spinner to notice why the sync crawled.
+
+So the surface does not select a strategy; it multiplies the cost of the wrong one. The
+UI pays the latency once and visibly, DAV pays it repeatedly and silently, and the fix
+for both is the same: **async is the preference wherever it can actually run, inline is
+the fallback, and the fallback has to be fast.**
+
+There is one honest argument on the other side and it is worth naming: inline is the only
+way a save can tell the truth. `SyncNotifier` surfaces a failure as a Nextcloud
+notification, which a browser user sees promptly and a desktop-client user does not see
+until they next open the web UI. Inline turns "saved" into "saved and pushed". That is a
+UX nicety rather than a correctness argument, and it does not outweigh a ten-second stall
+multiplied by a folder upload.
+
+### Does it earn its keep? No.
+
+The cost of keeping it honestly is an Examples axis over both timings on every behaviour
+downstream of those two sites — which is most of the suite, because nearly everything
+begins with saving a file or changing a tag. That doubles the matrix to buy an admin
+preference that governs two of fifteen operations, has the wrong default on a default
+Nextcloud, and that no admin can reason about because the label describes something the
+switch does not do.
+
+The cost of removing it is one repair step and one shared decision.
+
+**The recommendation: delete the option, derive the strategy.** One helper, used by both
+listeners, answering a single question — *can this be queued, and will anything drain the
+queue?*
+
+  · no resolvable uid → **inline** (the job could not do the work)
+  · `backgroundjobs_mode` is `ajax` → **inline** (nothing reliably drains the queue)
+  · otherwise → **queue it**
+
+Note the shape: **queued is the preference and inline is the fallback**, which is the
+opposite of what the admin radio implies by listing them as equals. Inline is what we do
+when async is unavailable, not a mode somebody selects.
+
+This is strictly fewer branches than today, which has an admin toggle × a uid check ×
+two listeners that answer the uid check DIFFERENTLY — `NodeWrittenListener` falls back to
+inline, `ContentTagListener` returns and does nothing at all. Same condition, opposite
+behaviour, and that alone is a bug worth the change.
+
+The test surface collapses with it: two scenarios for the strategy itself, and every other
+scenario goes on stating the effect and never the timing — which is the rule this repo
+already follows everywhere else, and the reason `tags.feature` pins the knob in its
+arrange rather than mentioning it in Gherkin.
+
+**The one number that makes this a judgement call rather than an obvious win:**
+`N8nClient` uses a 10-second timeout. An inline push against a hung n8n can hold a save
+for ten seconds. That is too long for an interactive default, and it is the strongest
+argument the async side has. The answer is to bound the INLINE path more tightly rather
+than to keep a toggle so admins can work around it — a save that waits ten seconds is a
+bug whichever setting produced it.
+
+> **Dr K, looking at the two-item menu:** *"You don't ask the diner how hot the pass runs.
+> You ask the kitchen, and the kitchen already knows."*
+
 ---
 
 Sources / cross-links:

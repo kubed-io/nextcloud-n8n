@@ -15,12 +15,12 @@ use OCA\N8nSync\Service\FilenameCodec;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\TagReconcileService;
 use OCA\N8nSync\Service\TeamFolderService;
+use OCA\N8nSync\Service\WritebackStrategy;
 use OCP\BackgroundJob\IJobList;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
 use OCP\Files\File;
 use OCP\Files\IRootFolder;
-use OCP\IAppConfig;
 use OCP\IUserSession;
 use OCP\SystemTag\ISystemTagManager;
 use OCP\SystemTag\TagAssignedEvent;
@@ -33,8 +33,9 @@ use Psr\Log\LoggerInterface;
  * reconciled to n8n **on its own** — no "Sync to n8n" click.
  *
  * It is the tag-side sibling of {@see NodeWrittenListener} (which pushes a saved body):
- * both watch a user edit, both honour the same `timing` knob — `sync` reconciles inline
- * during the request, `async` enqueues {@see ReconcileTagsJob} for the cron worker.
+ * both watch a user edit, and both take the same inline-vs-queued decision from
+ * {@see \OCA\N8nSync\Service\WritebackStrategy}: queued as {@see ReconcileTagsJob}
+ * where a worker will actually drain it, reconciled inline where none will.
  *
  * It owns CONTENT tags — the actual workflow labels — and splits from the app's own
  * markers by namespace: a change whose tags are ALL reserved (`n8n:*`) is ignored here
@@ -58,7 +59,7 @@ final class ContentTagListener implements IEventListener {
 		private TeamFolderService $teamFolders,
 		private SyncGuard $guard,
 		private IJobList $jobList,
-		private IAppConfig $config,
+		private WritebackStrategy $strategy,
 		private LoggerInterface $logger,
 	) {
 	}
@@ -98,7 +99,9 @@ final class ContentTagListener implements IEventListener {
 			]);
 			return;
 		}
-		$timing = $this->config->getValueString(Application::APP_ID, 'timing', 'async');
+		// See NodeWrittenListener: one derived decision, so the two listeners cannot
+		// answer "is there anybody to act as?" differently again.
+		$canQueue = $this->strategy->canQueue($uid);
 
 		foreach ($event->getObjectIds() as $objectId) {
 			try {
@@ -114,12 +117,12 @@ final class ContentTagListener implements IEventListener {
 			if (!$node instanceof File || !FilenameCodec::isWorkflowFile($node)) {
 				continue;
 			}
-			if ($timing === 'sync') {
-				// Inline: reconcile now (the service gates on managed + sync itself).
-				$this->reconcile->reconcileFile($node);
-			} else {
+			if ($canQueue) {
 				// Background: enqueue and return fast; the job re-resolves + reconciles.
 				$this->jobList->add(ReconcileTagsJob::class, ['fileId' => $node->getId(), 'userId' => $uid]);
+			} else {
+				// Inline: reconcile now (the service gates on managed + sync itself).
+				$this->reconcile->reconcileFile($node);
 			}
 		}
 	}

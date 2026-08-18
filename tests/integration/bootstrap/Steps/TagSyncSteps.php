@@ -84,13 +84,12 @@ trait TagSyncSteps {
 	 * @Given a managed :mode workflow file in :folder whose normal tags are :tags
 	 */
 	public function aManagedFileWhoseNormalTagsAre(string $mode, string $folder, string $tags): void {
-		// TIMING IS NOT IN THE SPEC, AND IS PINNED HERE INSTEAD. Whether the change
-		// reaches n8n during the request or on the worker's next tick is an
-		// implementation detail of this app — the behaviour is that it arrives, and
-		// a scenario that said "async" would be describing our plumbing rather than
-		// anything a person does. The harness still has to pin it, or every scenario
-		// inherits whatever the one before it left behind.
-		$this->setPushTiming('sync');
+		// TIMING IS NOT IN THE SPEC, AND IT IS NOT PINNED ANY MORE EITHER. This used to
+		// force `timing=sync` so the reconcile happened inline and the assertions could
+		// read it straight back. That knob is gone (saga Ch5) — inline-vs-queued is now
+		// derived from the environment — so the arrange stops asserting HOW the change
+		// travels and the Then-steps drain the job instead. Same behaviour graded, one
+		// less thing the harness has to hold still.
 		$normal = self::tagList($tags);
 		$mapping = $this->tagForFolder($folder);
 		$this->tagMappingTag = $mapping;
@@ -128,12 +127,6 @@ trait TagSyncSteps {
 		$this->currentFilePath = $to;
 	}
 
-	/** Pin how the writeback runs. A harness concern; see the arrange above. */
-	private function setPushTiming(string $timing): void {
-		$res = $this->occ('config:app:set ' . self::APP_ID . ' timing --value=' . escapeshellarg($timing));
-		Assert::assertSame(0, $res['exit'], "setting timing=$timing failed:\n{$res['output']}");
-	}
-
 	// ── When: the tags are changed, on one surface ─────────────────────────────
 
 	/**
@@ -153,6 +146,7 @@ trait TagSyncSteps {
 	 */
 	public function iChangeTheNextcloudTagsTo(string $tags): void {
 		$this->applyNextcloudTags(self::tagList($tags));
+		$this->settlePillChange();
 	}
 
 	/**
@@ -168,6 +162,7 @@ trait TagSyncSteps {
 	public function iRemoveTheMappingTag(string $tag): void {
 		$path = $this->tagLocateFile();
 		$this->tagRemoveSystemTag($path, $tag);
+		$this->settlePillChange();
 		// The mirror is expected to be gone now, so the cached path must not be reused
 		// as though it still resolved.
 		$this->tagFilePath = '';
@@ -550,6 +545,25 @@ trait TagSyncSteps {
 		Assert::assertNotSame('', $this->tagWfId, 'no workflow under test to tag');
 		$ids = array_map(fn (string $n): string => $this->ensureN8nTag($n), array_values(array_unique($names)));
 		$this->setN8nWorkflowTags($this->tagWfId, $ids);
+	}
+
+	/**
+	 * Let a PILL change reach n8n — the reconcile, folded into the gesture.
+	 *
+	 * EVERY `When` THAT TOUCHES A PILL NEEDS THIS, which is why it is a helper rather
+	 * than a line in one step. This file's arrange used to pin `timing=sync` so
+	 * `ContentTagListener` ran inline and the assertions could read the result back
+	 * immediately; that knob is gone (saga Ch5) and the listener now enqueues
+	 * {@see ReconcileTagsJob} wherever a worker will drain it. Draining here keeps each
+	 * step meaning the same thing under either outcome — and is a no-op when the
+	 * reconcile already ran inline.
+	 *
+	 * It was added to the tag-SET gesture first and not to the mapping-tag removal,
+	 * which is a different `When` on the same surface. CI found it: the file was still
+	 * mirrored because the unbind was sitting in a queue nobody had emptied.
+	 */
+	private function settlePillChange(): void {
+		$this->drainJobs('OCA\\N8nSync\\BackgroundJob\\ReconcileTagsJob');
 	}
 
 	/** Let a change made in n8n reach Nextcloud — the pull, folded into the gesture. */

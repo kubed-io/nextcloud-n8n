@@ -17,14 +17,12 @@ use OCP\Settings\IDeclarativeSettingsFormWithHandlers;
 
 /**
  * "Sync Settings" — the automatic-sync strategy for both directions: the NC→n8n
- * push timing and the n8n→NC scheduled pull. (User-facing title "Sync Settings";
+ * the n8n→NC scheduled pull. (User-facing title "Sync Settings";
  * persistence is keyed by the form id `data_sync`, not the class name.) The
  * always-available bulk buttons live in their own dedicated panel
  * ({@see SyncSettings}); this form is config only.
  *
  * Values live in appconfig under each field id, read elsewhere by:
- *   - `timing`            → {@see \OCA\N8nSync\Listener\NodeWrittenListener} and
- *                           {@see \OCA\N8nSync\Listener\ContentTagListener} (NC→n8n)
  *   - `schedule_enabled`  → {@see \OCA\N8nSync\BackgroundJob\ScheduledPullJob} (n8n→NC)
  *   - `schedule_interval` → same job's TimedJob interval (seconds)
  *
@@ -59,8 +57,13 @@ use OCP\Settings\IDeclarativeSettingsFormWithHandlers;
  * `DeclarativeManager::getValue()`, which prefers the interface and only falls
  * back to `DeclarativeSettingsGetValueEvent` when the form does not implement it).
  *
- * The KEYS AND THEIR STORAGE ARE UNCHANGED — `occ config:app:get n8n_sync timing`
- * still reads exactly what it always did. Only who does the read and write moves.
+ * The KEYS AND THEIR STORAGE ARE UNCHANGED — `occ config:app:get n8n_sync
+ * schedule_interval` still reads exactly what it always did. Only who does the read
+ * and write moves.
+ *
+ * THE `timing` RADIO IS GONE (saga Ch5). Whether a writeback runs inline or is queued
+ * is derived from the environment by {@see \OCA\N8nSync\Service\WritebackStrategy}
+ * rather than asked of an admin who could not have known the answer.
  *
  * The interface is `@since 31.0.0`, which is why `appinfo/info.xml` requires
  * Nextcloud ≥ 31.
@@ -69,12 +72,8 @@ final class AutoSyncSettings implements IDeclarativeSettingsFormWithHandlers {
 	/** Fallback pull cadence, used as both the placeholder and the stored default. */
 	public const DEFAULT_INTERVAL = '1h';
 
-	private const FIELD_TIMING = 'timing';
 	private const FIELD_SCHEDULE_ENABLED = 'schedule_enabled';
 	private const FIELD_SCHEDULE_INTERVAL = 'schedule_interval';
-
-	private const TIMING_ASYNC = 'async';
-	private const TIMING_SYNC = 'sync';
 
 	public function __construct(
 		private IAppConfig $config,
@@ -85,30 +84,19 @@ final class AutoSyncSettings implements IDeclarativeSettingsFormWithHandlers {
 	public function getSchema(): array {
 		return [
 			'id' => 'data_sync',
-			'priority' => 33, // just below Folder mappings (30); the Manual sync buttons (40) follow
+			'priority' => 33, // above Folder mappings (36); Sync Actions (45) comes last
 			'section_type' => DeclarativeSettingsTypes::SECTION_TYPE_ADMIN,
 			'section_id' => 'n8n_sync',
 			// EXTERNAL so getValue()/setValue() below own the coercion — see the
 			// class docblock for why INTERNAL cannot carry the checkbox.
 			'storage_type' => DeclarativeSettingsTypes::STORAGE_TYPE_EXTERNAL,
 			'title' => 'Sync Settings',
-			'description' => 'How Nextcloud and n8n stay in sync automatically. Sync Actions below runs either direction on demand.',
+			'description' => 'Saving a workflow file always writes it back to n8n — there is nothing to configure for that direction. These settings are the other one: how often Nextcloud pulls from n8n. Sync Actions below runs either direction on demand.',
 			'fields' => [
-				[
-					'id' => self::FIELD_TIMING,
-					'title' => 'Nextcloud → n8n: when you save a workflow file',
-					'description' => 'Async runs after the save. Sync runs during it for instant feedback, but can briefly lock the file. Only sync mappings push back.',
-					'type' => DeclarativeSettingsTypes::RADIO,
-					'default' => self::TIMING_ASYNC,
-					'options' => [
-						['name' => 'Push in the background (asynchronous — recommended)', 'value' => self::TIMING_ASYNC],
-						['name' => 'Push immediately during the save (synchronous)', 'value' => self::TIMING_SYNC],
-					],
-				],
 				[
 					'id' => self::FIELD_SCHEDULE_ENABLED,
 					'title' => 'n8n → Nextcloud: scheduled sync',
-					'description' => 'Nextcloud periodically pulls from n8n; nothing in n8n changes. When off, use Sync from n8n below. For near-real-time, have an n8n workflow push to Nextcloud instead.',
+					'description' => 'Nextcloud periodically pulls from n8n; nothing in n8n changes. A change made in n8n appears here within the interval below. When off, use Sync from n8n in Sync Actions.',
 					'type' => DeclarativeSettingsTypes::CHECKBOX,
 					// A real bool: this is what the frontend round-trips. It is safe
 					// here only because EXTERNAL storage never feeds it to
@@ -134,7 +122,6 @@ final class AutoSyncSettings implements IDeclarativeSettingsFormWithHandlers {
 	#[\Override]
 	public function getValue(string $fieldId, IUser $user): mixed {
 		return match ($fieldId) {
-			self::FIELD_TIMING => $this->readString(self::FIELD_TIMING, self::TIMING_ASYNC),
 			self::FIELD_SCHEDULE_ENABLED => $this->readBool(self::FIELD_SCHEDULE_ENABLED),
 			self::FIELD_SCHEDULE_INTERVAL => $this->readString(self::FIELD_SCHEDULE_INTERVAL, self::DEFAULT_INTERVAL),
 			default => null,
@@ -142,23 +129,14 @@ final class AutoSyncSettings implements IDeclarativeSettingsFormWithHandlers {
 	}
 
 	/**
-	 * Persist one field, normalising what the frontend sent. The radio is pinned
-	 * to its two known values so a malformed POST cannot write a `timing` nothing
-	 * reads; the interval is stored verbatim-but-trimmed because
+	 * Persist one field, normalising what the frontend sent. The interval is stored
+	 * verbatim-but-trimmed because
 	 * {@see \OCA\N8nSync\BackgroundJob\ScheduledPullJob} already owns parsing it
 	 * (and falls back to hourly on anything it cannot read).
 	 */
 	#[\Override]
 	public function setValue(string $fieldId, mixed $value, IUser $user): void {
 		switch ($fieldId) {
-			case self::FIELD_TIMING:
-				$timing = is_string($value) ? strtolower(trim($value)) : '';
-				$this->config->setValueString(
-					Application::APP_ID,
-					self::FIELD_TIMING,
-					$timing === self::TIMING_SYNC ? self::TIMING_SYNC : self::TIMING_ASYNC,
-				);
-				break;
 			case self::FIELD_SCHEDULE_ENABLED:
 				// setValueBool (not a '1'/'0' string) so the job's primary
 				// getValueBool() read succeeds instead of falling through its
