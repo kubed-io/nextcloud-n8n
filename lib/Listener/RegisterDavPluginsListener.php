@@ -20,10 +20,15 @@ use OCP\EventDispatcher\IEventListener;
  *
  * Core fires {@see SabrePluginAddEvent} during DAV server setup (files, public,
  * remote endpoints) so apps can register their own {@see \Sabre\DAV\ServerPlugin}s.
- * We attach {@see LinkWriteGuardPlugin}, which refuses WebDAV overwrites of
- * `link`-mode workflow files (saga §14.2c).
+ * Two are attached:
  *
- * A SECOND PLUGIN LIVED HERE BRIEFLY AND HAD TO GO. `CopyNamePlugin` rewrote a COPY's
+ *   - {@see LinkWriteGuardPlugin} — refuses WebDAV edits/copies/deletes of
+ *     `link`-mode workflow files (saga §14.2c).
+ *   - {@see ReplacedByMovePlugin} — marks a workflow file a MOVE is about to
+ *     overwrite, so the delete half of an overwrite is not mistaken for someone
+ *     deleting a workflow.
+ *
+ * A THIRD PLUGIN LIVED HERE BRIEFLY AND HAD TO GO. `CopyNamePlugin` rewrote a COPY's
  * `Destination` header so a colliding copy was born under our spelling rather than
  * Nextcloud's. It worked, and it broke the Files app, which stats the path IT chose the
  * moment the copy returns. The rename is deferred to {@see \OCA\N8nSync\BackgroundJob\ReconcileNameJob}

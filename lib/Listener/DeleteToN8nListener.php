@@ -112,9 +112,8 @@ final class DeleteToN8nListener implements IEventListener {
 		}
 		$id = $managed->workflowId;
 		$mode = $managed->mode;
-		$mapping = $managed->mappingId !== ''
-			? $this->mappings->getById($managed->mappingId)
-			: null;
+		// getById on an empty mappingId is just null — no guard needed.
+		$mapping = $this->mappings->getById($managed->mappingId);
 
 		// A LINK IS NOT NEXTCLOUD'S TO DELETE. The file is a read-only projection of a
 		// workflow that lives in n8n and is perfectly fine; removing the pointer only

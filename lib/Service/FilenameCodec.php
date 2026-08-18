@@ -20,15 +20,16 @@ use OCP\Files\Node;
  *   1. Clean (default)         <name>.n8n
  *   2. Id-suffixed (opt-in)    <name>.<id>.n8n
  *
- * The clean shape is the default user-facing layout. The id-suffixed shape
- * is an admin opt-in (`id_in_filename` AppConfig flag) for environments
- * where the Files Metadata API exposure over WebDAV ever regresses, or for
- * users who want the deep-link to be resolvable purely from the filename
- * (e.g. offline shortcut creation from a synced desktop client).
+ * The clean shape is the only one the app writes today — every production
+ * caller of {@see format} passes `$idInFilename = false`, and no config flag
+ * selects the other shape. The id-suffixed shape is still *parsed* because
+ * files written by older builds carry it, and kept in {@see format} as the
+ * forward-compat affordance for environments where the Files Metadata API
+ * exposure over WebDAV ever regresses.
  *
  * Both shapes carry exactly the same metadata server-side via the Files
- * Metadata API \u2014 the filename is *only* a redundant carrier. See plan
- * \u00a75-D' "id resolution layers".
+ * Metadata API — the filename is *only* a redundant carrier. See plan
+ * §5-D' "id resolution layers".
  *
  * ## ONE SEGMENT, BECAUSE NEXTCLOUD ONLY EVER READS ONE
  *
@@ -143,13 +144,16 @@ final class FilenameCodec {
 	 * What an n8n workflow id looks like in practice (verified against the
 	 * live instance: e.g. `0oOA4iz0T0GRmICc`, `-7AgWuz-iwnhC4dktuGxS`,
 	 * `PQfdkurMHf6SdR4w`). Mixed case alphanumeric plus `-` and `_`, length
-	 * roughly 16-21. The lower bound of 12 is deliberately lax \u2014 we want to
+	 * roughly 16-21. The lower bound of 12 is deliberately lax — we want to
 	 * recognise an id segment, not validate it; n8n is the source of truth.
 	 *
 	 * The character class explicitly excludes `.` so we can never confuse
 	 * an id with a name fragment that happened to contain dots.
 	 */
 	private const ID_RE = '/^[A-Za-z0-9_-]{12,32}$/';
+
+	/** A trailing Nextcloud collision counter, e.g. the ` (2)` of `Fleet Health (2)`. */
+	private const COUNTER_RE = '/^(?<base>.+) \\((?<n>\\d+)\\)$/';
 
 	/**
 	 * Parse a basename (or full path; we ignore everything before the last
@@ -165,9 +169,6 @@ final class FilenameCodec {
 	 *                                                                         1+ for "(N)" duplicates); `display` is the name with that
 	 *                                                                         counter still on it.
 	 */
-	/** A trailing Nextcloud collision counter, e.g. the ` (2)` of `Fleet Health (2)`. */
-	private const COUNTER_RE = '/^(?<base>.+) \\((?<n>\\d+)\\)$/';
-
 	public static function parse(string $basename): ?array {
 		$slash = strrpos($basename, '/');
 		if ($slash !== false) {
@@ -263,7 +264,7 @@ final class FilenameCodec {
 
 	/**
 	 * Replace characters that are unsafe in NC/WebDAV filenames with `_`.
-	 * Keep this conservative \u2014 we'd rather have a slightly munged but
+	 * Keep this conservative — we'd rather have a slightly munged but
 	 * predictable name than fight every locale's edge cases.
 	 *
 	 * Specifically banned by NC default: `\\ / : * ? " < > |` and control

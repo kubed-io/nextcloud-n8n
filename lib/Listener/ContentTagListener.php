@@ -19,10 +19,8 @@ use OCA\N8nSync\Service\WritebackStrategy;
 use OCP\BackgroundJob\IJobList;
 use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
-use OCP\Files\File;
 use OCP\Files\IRootFolder;
 use OCP\IUserSession;
-use OCP\SystemTag\ISystemTagManager;
 use OCP\SystemTag\TagAssignedEvent;
 use OCP\SystemTag\TagUnassignedEvent;
 use Psr\Log\LoggerInterface;
@@ -37,16 +35,14 @@ use Psr\Log\LoggerInterface;
  * {@see \OCA\N8nSync\Service\WritebackStrategy}: queued as {@see ReconcileTagsJob}
  * where a worker will actually drain it, reconciled inline where none will.
  *
- * It owns CONTENT tags — the actual workflow labels — and splits from the app's own
- * markers by namespace: a change whose tags are ALL reserved (`n8n:*`) is ignored here
- * (those are the mode pills a pull reconciles), and a change touching at least one
- * content tag is a real label edit we act on. The gating (managed? sync?), the unbind
- * check, the guard, and the best-effort error handling live in
- * {@see TagReconcileService} — shared with the async job.
+ * Every tag is a content tag — the reserved `n8n:*` pill namespace this listener
+ * used to split on is gone. The gating (managed? sync?), the unbind check, the
+ * guard, and the best-effort error handling live in {@see TagReconcileService} —
+ * shared with the async job.
  *
  * Loop safety: the reconcile writes pills inside {@see SyncGuard}, so the
- * `TagAssignedEvent`/`TagUnassignedEvent` it re-fires (including a force-kept mapping-tag
- * pop-back) land here with the guard active and bail.
+ * `TagAssignedEvent`/`TagUnassignedEvent` it re-fires land here with the guard
+ * active and bail.
  *
  * @implements IEventListener<TagAssignedEvent|TagUnassignedEvent>
  */
@@ -55,7 +51,6 @@ final class ContentTagListener implements IEventListener {
 		private TagReconcileService $reconcile,
 		private IRootFolder $rootFolder,
 		private IUserSession $userSession,
-		private ISystemTagManager $tagManager,
 		private TeamFolderService $teamFolders,
 		private SyncGuard $guard,
 		private IJobList $jobList,
@@ -74,10 +69,8 @@ final class ContentTagListener implements IEventListener {
 		if ($event->getObjectType() !== 'files' || $this->guard->active()) {
 			return;
 		}
-		// EVERY TAG IS A CONTENT TAG NOW. This used to gate on the change touching
-		// something outside the app's `n8n:` namespace, because the mode pills lived on
-		// the same files and their writes had to be told apart from a user's. Nothing
-		// writes a pill any more, so a tag change is a tag change.
+		// Every tag is a content tag (see the class docblock) — a tag change is a
+		// tag change, with no namespace to split on.
 
 		// A tag change does NOT always have a session. `occ tag:files:add`, and any
 		// other CLI or background caller, dispatches the same event with nobody
@@ -114,7 +107,7 @@ final class ContentTagListener implements IEventListener {
 				]);
 				continue;
 			}
-			if (!$node instanceof File || !FilenameCodec::isWorkflowFile($node)) {
+			if (!FilenameCodec::isWorkflowFile($node)) {
 				continue;
 			}
 			if ($canQueue) {

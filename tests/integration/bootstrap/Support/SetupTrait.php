@@ -65,6 +65,21 @@ trait SetupTrait {
 	}
 
 	/**
+	 * One no-op node, named — what every "replace the nodes" gesture writes.
+	 * ONE definition for the same reason as {@see starterWorkflow}: a fixture
+	 * node cannot be realistic in one feature and a stub in another.
+	 */
+	private static function noOpNode(string $name): object {
+		return (object)[
+			'name' => $name,
+			'type' => 'n8n-nodes-base.noOp',
+			'typeVersion' => 1,
+			'position' => [0, 0],
+			'parameters' => new \stdClass(),
+		];
+	}
+
+	/**
 	 * The body every arrange writes for a workflow file — ONE definition, so a
 	 * fixture cannot be realistic in one feature and a stub in another.
 	 *
@@ -103,6 +118,15 @@ trait SetupTrait {
 		}
 		return $body;
 	}
+
+	/**
+	 * The job classes the suite drains, as constants: a typo'd FQCN string makes
+	 * `background-job:list --class=…` return `[]` and drainJobs a silent no-op,
+	 * which reads as "the job ran" — exactly the failure mode this suite avoids.
+	 */
+	private const JOB_PUSH_WORKFLOW = 'OCA\\N8nSync\\BackgroundJob\\PushWorkflowJob';
+	private const JOB_RECONCILE_NAME = 'OCA\\N8nSync\\BackgroundJob\\ReconcileNameJob';
+	private const JOB_RECONCILE_TAGS = 'OCA\\N8nSync\\BackgroundJob\\ReconcileTagsJob';
 
 	/**
 	 * Execute every queued job of $jobClass now, deterministically.

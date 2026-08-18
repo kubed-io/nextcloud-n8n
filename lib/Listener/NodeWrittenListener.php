@@ -13,6 +13,7 @@ use OCA\N8nSync\AppInfo\Application;
 use OCA\N8nSync\BackgroundJob\PushWorkflowJob;
 use OCA\N8nSync\Service\FilenameCodec;
 use OCA\N8nSync\Service\PushService;
+use OCA\N8nSync\Service\ResolvesActingUser;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\SyncNotifier;
 use OCA\N8nSync\Service\WorkflowMetadata;
@@ -33,16 +34,16 @@ use Psr\Log\LoggerInterface;
  * only when **all** hold:
  *   - guard not active (i.e. not our own pull/push write),
  *   - name ends in `.n8n` (cheap bail for everything else),
- *   - the file is ours (`n8n_id` set) and effective state is `sync` + `two-way`
- *     (reference/backup never push),
+ *   - the file is ours (`n8n_id` set) and its mode is `sync` (a `link` is a
+ *     pointer and never pushes),
  *   - the content actually changed since the last sync (sha1 != n8n_syncedHash) —
  *     this is the loop guard against re-pushing our own / unchanged content.
- *
- * Timing (Fork C): `sync` pushes inline; `async` enqueues {@see PushWorkflowJob}.
  *
  * @implements IEventListener<NodeWrittenEvent>
  */
 final class NodeWrittenListener implements IEventListener {
+	use ResolvesActingUser;
+
 	public function __construct(
 		private IJobList $jobList,
 		private PushService $pushService,
@@ -94,7 +95,7 @@ final class NodeWrittenListener implements IEventListener {
 
 		// Who to notify if the push fails (and which Files view the async job
 		// re-resolves the node through).
-		$uid = $this->userSession->getUser()?->getUID() ?? $node->getOwner()?->getUID() ?? '';
+		$uid = $this->actingUserUid($node);
 
 		// QUEUED WHEN THAT WILL ACTUALLY RUN, INLINE OTHERWISE. The admin radio that
 		// used to answer this is gone (saga Ch5); {@see WritebackStrategy} derives it

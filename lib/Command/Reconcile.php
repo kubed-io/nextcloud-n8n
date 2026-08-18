@@ -58,7 +58,7 @@ final class Reconcile extends Command {
 	#[\Override]
 	protected function execute(InputInterface $input, OutputInterface $output): int {
 		$direction = (string)$input->getArgument('direction');
-		if ($direction !== SyncStatusService::DIR_PULL && $direction !== SyncStatusService::DIR_PUSH) {
+		if (!SyncStatusService::isDirection($direction)) {
 			$output->writeln('<error>direction must be "pull" or "push"</error>');
 			return 1;
 		}

@@ -175,6 +175,19 @@ namespace OCP\BackgroundJob {
 }
 
 namespace OCP {
+	// TeamFolderService's public CONTENT_PERMISSIONS is a constant expression over
+	// these flags; a PHPUnit mock subclass inherits the constant, which makes PHP
+	// resolve it at class-link time — so the values must exist. Mirrors core.
+	if (!class_exists(Constants::class, false)) {
+		final class Constants {
+			public const PERMISSION_READ = 1;
+			public const PERMISSION_UPDATE = 2;
+			public const PERMISSION_CREATE = 4;
+			public const PERMISSION_DELETE = 8;
+			public const PERMISSION_SHARE = 16;
+			public const PERMISSION_ALL = 31;
+		}
+	}
 	// SyncService/MappingService read + write config via get/setValueString; declaration-only.
 	if (!interface_exists(IAppConfig::class, false)) {
 		interface IAppConfig {

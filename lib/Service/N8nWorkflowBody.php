@@ -224,9 +224,6 @@ final class N8nWorkflowBody {
 		// One level into `connections`: the map is keyed by node name and each value is
 		// itself an object of output-name → connection lists. A node wired to nothing
 		// has an empty one.
-		// One level into `connections`: the map is keyed by node name and each value is
-		// itself an object of output-name → connection lists. A node wired to nothing has
-		// an empty one.
 		//
 		// BOTH SHAPES, and this is where getting it wrong hides. A create/update body
 		// comes from `json_decode($file, false)`, so a populated `connections` is a

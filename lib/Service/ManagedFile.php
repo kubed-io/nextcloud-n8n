@@ -20,8 +20,8 @@ namespace OCA\N8nSync\Service;
  * represented by {@see WorkflowMetadata::read()} returning `null`, not by a
  * ManagedFile with empty fields.
  *
- * The mode is in the **canonical** vocabulary (`sync` / `link` / `unmapped` /
- * `ignored`) — the stored `reference` wire value is already translated back to
+ * The mode is in the **canonical** vocabulary (`sync` / `link` / `unmapped`)
+ * — the stored `reference` wire value is already translated back to
  * `link` by {@see WorkflowMetadata::read()} before it reaches here.
  */
 final class ManagedFile {

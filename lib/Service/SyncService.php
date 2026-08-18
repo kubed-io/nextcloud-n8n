@@ -44,6 +44,11 @@ use Psr\Log\LoggerInterface;
  * mirrored file as modified every 5 minutes — see {@see writeWorkflow}.
  */
 final class SyncService {
+	/** The pull counters, zeroed — what a skipped mapping reports. */
+	private const ZERO_PULL = ['processed' => 0, 'succeeded' => 0, 'failed' => 0, 'pruned' => 0, 'purged' => 0, 'unchanged' => 0];
+	/** The push counters, zeroed (message is appended where it applies). */
+	private const ZERO_PUSH = ['processed' => 0, 'succeeded' => 0, 'failed' => 0];
+
 	public function __construct(
 		private MappingService $mappings,
 		private N8nClient $n8n,
@@ -67,18 +72,19 @@ final class SyncService {
 	 *
 	 * @param string $direction SyncStatusService::DIR_PULL|DIR_PUSH
 	 * @param string|null $mappingId a specific mapping, or null = all mappings
-	 *                               (push is all-only for now)
 	 * @param bool $async true = enqueue a background job and return
 	 *                    'queued' immediately; false = run inline
 	 * @return array<string,mixed>
 	 */
 	public function dispatch(string $direction, ?string $mappingId, bool $async): array {
-		if ($direction !== SyncStatusService::DIR_PULL && $direction !== SyncStatusService::DIR_PUSH) {
+		if (!SyncStatusService::isDirection($direction)) {
 			throw new \InvalidArgumentException('direction must be "pull" or "push"');
 		}
 		if ($async) {
 			$this->status->markQueued($direction);
 			$this->jobList->add(ManualSyncJob::class, ['direction' => $direction, 'mappingId' => $mappingId]);
+			// `async` is read by nothing in-repo, but it is part of the endpoint's
+			// live JSON payload — payload shape is behaviour, so it stays.
 			return ['status' => 'queued', 'direction' => $direction, 'async' => true];
 		}
 		return $this->runInline($direction, $mappingId);
@@ -91,30 +97,21 @@ final class SyncService {
 	 * @return array<string,mixed>
 	 */
 	public function runInline(string $direction, ?string $mappingId): array {
-		if ($direction === SyncStatusService::DIR_PUSH) {
-			if ($mappingId !== null && $mappingId !== '') {
-				$mapping = $this->mappings->getById($mappingId);
-				if ($mapping === null) {
-					throw new \OutOfBoundsException('Mapping not found');
-				}
-				$res = $this->pushOne($mapping);
-				$res['status'] = ($res['failed'] ?? 0) === 0 ? 'ok' : 'error';
-				$res['message'] = $res['message'] ?? null;
-				return $res;
-			}
-			return $this->pushAll();
+		$push = $direction === SyncStatusService::DIR_PUSH;
+		if ($mappingId === null || $mappingId === '') {
+			return $push ? $this->pushAll() : $this->pullAll();
 		}
-		if ($mappingId !== null && $mappingId !== '') {
-			$mapping = $this->mappings->getById($mappingId);
-			if ($mapping === null) {
-				throw new \OutOfBoundsException('Mapping not found');
-			}
-			$res = $this->pullOne($mapping);
-			$res['status'] = ($res['failed'] ?? 0) === 0 ? 'ok' : 'error';
+		$mapping = $this->mappings->getById($mappingId);
+		if ($mapping === null) {
+			throw new \OutOfBoundsException('Mapping not found');
+		}
+		$res = $push ? $this->pushOne($mapping) : $this->pullOne($mapping);
+		$res['status'] = ($res['failed'] ?? 0) === 0 ? 'ok' : 'error';
+		if (!$push) {
+			// A pull's per-file errors are counters, not a message.
 			$res['message'] = null;
-			return $res;
 		}
-		return $this->pullAll();
+		return $res;
 	}
 
 	/**
@@ -132,7 +129,7 @@ final class SyncService {
 	public function pullAll(): array {
 		// Backend availability is now per-mapping (Team Folder vs admin-owned),
 		// checked in pullOne.
-		$total = ['processed' => 0, 'succeeded' => 0, 'failed' => 0, 'pruned' => 0, 'purged' => 0, 'unchanged' => 0];
+		$total = self::ZERO_PULL;
 		$errors = [];
 		foreach ($this->mappings->list() as $mapping) {
 			try {
@@ -193,7 +190,7 @@ final class SyncService {
 				'app' => Application::APP_ID,
 				'teamFolder' => $mapping->teamFolder,
 			]);
-			return ['processed' => 0, 'succeeded' => 0, 'failed' => 0, 'pruned' => 0, 'purged' => 0, 'unchanged' => 0];
+			return self::ZERO_PULL;
 		}
 
 		// Guard our own writes: writeWorkflow's putContent fires NodeWrittenEvent,
@@ -345,24 +342,21 @@ final class SyncService {
 	 * @return array{processed:int, succeeded:int, failed:int, status:string, message:?string}
 	 */
 	public function pushAll(): array {
-		$processed = 0;
-		$succeeded = 0;
-		$failed = 0;
+		// Summed by key, same as pullAll — a counter that is not summed is worse
+		// than a counter that does not exist.
+		$total = self::ZERO_PUSH;
 		$errors = [];
 		foreach ($this->mappings->list() as $mapping) {
 			$res = $this->pushOne($mapping);
-			$processed += $res['processed'];
-			$succeeded += $res['succeeded'];
-			$failed += $res['failed'];
+			foreach (array_keys($total) as $key) {
+				$total[$key] += $res[$key];
+			}
 			if (is_string($res['message'] ?? null) && $res['message'] !== '') {
 				$errors[] = $res['message'];
 			}
 		}
-		return [
-			'processed' => $processed,
-			'succeeded' => $succeeded,
-			'failed' => $failed,
-			'status' => $failed === 0 ? 'ok' : 'error',
+		return $total + [
+			'status' => $total['failed'] === 0 ? 'ok' : 'error',
 			'message' => $errors === [] ? null : implode('; ', $errors),
 		];
 	}
@@ -376,15 +370,12 @@ final class SyncService {
 	 * @return array{processed:int, succeeded:int, failed:int, message:?string}
 	 */
 	public function pushOne(Mapping $mapping): array {
-		if ($mapping->mode !== Mapping::MODE_SYNC) {
-			return ['processed' => 0, 'succeeded' => 0, 'failed' => 0, 'message' => null];
-		}
-		if (!$this->storage->isAvailable($mapping)) {
-			return ['processed' => 0, 'succeeded' => 0, 'failed' => 0, 'message' => null];
-		}
-		$folder = $this->storage->findFolder($mapping);
-		if ($folder === null) {
-			return ['processed' => 0, 'succeeded' => 0, 'failed' => 0, 'message' => null];
+		// Nothing to push: a link mapping is a pointer, an unavailable backend has
+		// no folder, and a missing folder has no files.
+		if ($mapping->mode !== Mapping::MODE_SYNC
+			|| !$this->storage->isAvailable($mapping)
+			|| ($folder = $this->storage->findFolder($mapping)) === null) {
+			return self::ZERO_PUSH + ['message' => null];
 		}
 		$processed = 0;
 		$succeeded = 0;
@@ -410,7 +401,7 @@ final class SyncService {
 					// The body already pushed + stamped; a tag hiccup must not report
 					// the file as failed (it would mislead the admin and can't retry
 					// the body anyway — its hash now matches). Logged, retried next run.
-					$this->reconcileTagsOnPush($node->getId(), $managed, $mapping);
+					$this->reconcileTagsOnPush($node->getId(), $managed);
 					$succeeded++;
 				}
 			} catch (\Throwable $e) {
@@ -440,7 +431,7 @@ final class SyncService {
 	 * filters by each file's own `n8n_mapping`: a file explicitly owned by a
 	 * *different* mapping (overlapping/nested subtree) is skipped; a legacy file
 	 * with no `n8n_mapping` yet is treated as belonging here and backfilled on
-	 * write. Stale files survive — pull never deletes.
+	 * write.
 	 *
 	 * @return array<string,\OCP\Files\Node>
 	 */
@@ -558,28 +549,22 @@ final class SyncService {
 				$existing->putContent($body);
 			}
 			$this->metadata->stampSynced($fileId, $id, $effectiveMode, $versionId, $body, $mapping->id);
-			$this->reconcileTagsOnPull($fileId, $workflow, $mapping);
+			$this->reconcileTagsOnPull($fileId, $workflow);
 			$this->applySourceTimes($existing, $workflow, $wrote);
 			return $wrote;
 		}
 
 		$basename = $displayName === '' ? $id : $displayName;
-		$collision = $nameCounts[$basename] ?? 0;
-		while (true) {
-			$candidate = FilenameCodec::format($displayName, $id, false, $collision);
-			if (!$folder->nodeExists($candidate)) {
-				break;
-			}
-			$collision++;
-			if ($collision > 1000) {
-				throw new \RuntimeException('Could not find a unique filename for ' . $basename);
-			}
+		$collision = $this->firstFreeCollision($folder, $displayName, $id, $nameCounts[$basename] ?? 0, null);
+		if ($collision === null) {
+			throw new \RuntimeException('Could not find a unique filename for ' . $basename);
 		}
+		$candidate = FilenameCodec::format($displayName, $id, false, $collision);
 		$nameCounts[$basename] = $collision + 1;
 
 		$file = $folder->newFile($candidate, $body);
 		$this->metadata->stampSynced($file->getId(), $id, $effectiveMode, $versionId, $body, $mapping->id);
-		$this->reconcileTagsOnPull($file->getId(), $workflow, $mapping);
+		$this->reconcileTagsOnPull($file->getId(), $workflow);
 		$this->applySourceTimes($file, $workflow, true);
 		return true;
 	}
@@ -619,12 +604,25 @@ final class SyncService {
 	 * misnamed, and a pull that aborts over cosmetics would strand the whole folder.
 	 */
 	private function desiredMirrorName(\OCP\Files\File $existing, string $displayName, string $id): ?string {
-		$parent = $existing->getParent();
-		$current = $existing->getName();
-		for ($collision = 0; $collision <= 1000; $collision++) {
+		$collision = $this->firstFreeCollision($existing->getParent(), $displayName, $id, 0, $existing->getName());
+		return $collision === null ? null : FilenameCodec::format($displayName, $id, false, $collision);
+	}
+
+	/**
+	 * The first collision counter (from $from, capped at 1000) whose formatted
+	 * name is free in $parent. A candidate equal to $treatAsFree counts as free —
+	 * that is how a rename scan lets a file keep its own current name. Null when
+	 * every counter is taken; the two callers disagree on what that means (throw
+	 * vs leave-alone), so the decision stays with them.
+	 */
+	private function firstFreeCollision(Folder $parent, string $displayName, string $id, int $from, ?string $treatAsFree): ?int {
+		// The cap never cuts off the starting counter itself: the pre-refactor loop
+		// would still try a start value above 1000 and only give up moving PAST it.
+		$cap = max($from, 1000);
+		for ($collision = $from; $collision <= $cap; $collision++) {
 			$candidate = FilenameCodec::format($displayName, $id, false, $collision);
-			if ($candidate === $current || !$parent->nodeExists($candidate)) {
-				return $candidate;
+			if ($candidate === $treatAsFree || !$parent->nodeExists($candidate)) {
+				return $collision;
 			}
 		}
 		return null;
@@ -667,7 +665,7 @@ final class SyncService {
 	 *
 	 * @param array<string,mixed> $workflow
 	 */
-	private function reconcileTagsOnPull(int $fileId, array $workflow, Mapping $mapping): void {
+	private function reconcileTagsOnPull(int $fileId, array $workflow): void {
 		$managed = $this->metadata->read($fileId);
 		if ($managed === null) {
 			return;
@@ -689,7 +687,7 @@ final class SyncService {
 	 * swallowed — never promoted to a failed push (that would mislead the admin and
 	 * the body can't re-push anyway, its hash now matches). Sync files only.
 	 */
-	private function reconcileTagsOnPush(int $fileId, ManagedFile $managed, Mapping $mapping): void {
+	private function reconcileTagsOnPush(int $fileId, ManagedFile $managed): void {
 		try {
 			$this->tagSync->reconcilePush($fileId, $managed);
 		} catch (\Throwable $e) {
@@ -723,7 +721,7 @@ final class SyncService {
 			if ($managed?->isManaged()) {
 				// SyncGuard suppresses DeleteToN8nListener (§17.7). This cleans
 				// up the local mirror because the mapping is gone — n8n itself
-				// is untouched by definition, regardless of mode/writeback.
+				// is untouched by definition, regardless of mode.
 				$this->guard->run(function () use ($node): void {
 					$node->delete();
 				});

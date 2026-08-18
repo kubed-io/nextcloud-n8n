@@ -18,7 +18,7 @@ use PHPUnit\Framework\TestCase;
 
 /**
  * Unit tests for {@see MappingService::resolveForPath} — the folder-membership
- * resolver (saga §14.9 / `mapping-membership.feature`).
+ * resolver (saga §14.9; `mapping-membership.feature` is retired — its rule lives on here).
  *
  * Mappings are metadata on a folder, so membership is "where does the file live",
  * and folders **nest**: a mapping can sit inside another mapping's folder and the

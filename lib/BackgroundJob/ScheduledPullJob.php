@@ -10,11 +10,11 @@ declare(strict_types=1);
 namespace OCA\N8nSync\BackgroundJob;
 
 use OCA\N8nSync\AppInfo\Application;
+use OCA\N8nSync\Service\AppConfigReader;
 use OCA\N8nSync\Service\SyncService;
 use OCA\N8nSync\Service\SyncStatusService;
 use OCP\AppFramework\Utility\ITimeFactory;
 use OCP\BackgroundJob\TimedJob;
-use OCP\IAppConfig;
 use Psr\Log\LoggerInterface;
 
 /**
@@ -32,7 +32,7 @@ use Psr\Log\LoggerInterface;
 final class ScheduledPullJob extends TimedJob {
 	public function __construct(
 		ITimeFactory $time,
-		private IAppConfig $appConfig,
+		private AppConfigReader $config,
 		private SyncService $sync,
 		private SyncStatusService $status,
 		private LoggerInterface $logger,
@@ -63,19 +63,12 @@ final class ScheduledPullJob extends TimedJob {
 	}
 
 	/**
-	 * Declarative INTERNAL storage records the checkbox as a bool-typed value but
-	 * the select as a string-typed one, so the matching typed getter throws an
-	 * AppConfigTypeConflict for the "wrong" one. Read each defensively: try the
-	 * natural getter, then fall back to a string parse. Robust whether a value
-	 * was written by the form or (e.g. in tests) via a different setter.
+	 * Both reads go through {@see AppConfigReader}: a value written before the
+	 * form moved to EXTERNAL storage may carry the wrong stored type, and the
+	 * reader's string-parse rescue keeps the schedule running through that.
 	 */
 	private function isEnabled(): bool {
-		try {
-			return $this->appConfig->getValueBool(Application::APP_ID, 'schedule_enabled', false);
-		} catch (\Throwable) {
-			$raw = $this->safeString('schedule_enabled', '');
-			return in_array(strtolower($raw), ['1', 'true', 'yes', 'on'], true);
-		}
+		return $this->config->bool('schedule_enabled');
 	}
 
 	/**
@@ -84,7 +77,7 @@ final class ScheduledPullJob extends TimedJob {
 	 * Clamped to a 60s floor (the cron tick granularity).
 	 */
 	private function intervalSeconds(): int {
-		$raw = strtolower(trim($this->safeString('schedule_interval', '1h')));
+		$raw = strtolower(trim($this->config->string('schedule_interval', '1h')));
 		if ($raw === '') {
 			return 3600;
 		}
@@ -93,13 +86,5 @@ final class ScheduledPullJob extends TimedJob {
 			return max(60, (int)$m[1] * $mult);
 		}
 		return 3600;
-	}
-
-	private function safeString(string $key, string $default): string {
-		try {
-			return $this->appConfig->getValueString(Application::APP_ID, $key, $default);
-		} catch (\Throwable) {
-			return $default;
-		}
 	}
 }

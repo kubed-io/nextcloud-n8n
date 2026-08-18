@@ -9,8 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\N8nSync\Settings;
 
-use OCA\N8nSync\AppInfo\Application;
-use OCP\IAppConfig;
+use OCA\N8nSync\Service\AppConfigReader;
 use OCP\Settings\DeclarativeSettingsTypes;
 use OCP\Settings\IDeclarativeSettingsForm;
 
@@ -46,13 +45,13 @@ use OCP\Settings\IDeclarativeSettingsForm;
  */
 final class InstanceSettings implements IDeclarativeSettingsForm {
 	public function __construct(
-		private readonly IAppConfig $config,
+		private readonly AppConfigReader $config,
 	) {
 	}
 
 	#[\Override]
 	public function getSchema(): array {
-		$hasKey = $this->config->getValueString(Application::APP_ID, 'api_key', '') !== '';
+		$hasKey = $this->config->string('api_key', '') !== '';
 
 		$keyDescription = $hasKey
 			? '✓ A key is stored (encrypted). Paste a new one to replace it, or use Test connection to check it still works.'

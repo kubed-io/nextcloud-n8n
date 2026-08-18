@@ -30,19 +30,17 @@ use Psr\Log\LoggerInterface;
  *    of the platform), and
  *  - normalising error shapes so callers get a small set of typed exceptions.
  *
- * Method surface intentionally small \u2014 only what Phase 3/4 will need:
+ * The surface is the workflow lifecycle and its tags, and nothing else:
  *
- *   ping()                       \u2014 cheapest call to verify URL+key (used by the
- *                                  Test connection button and as a self-check).
- *   listWorkflows($limit, $cursor) \u2014 paginated workflow listing for the bulk
- *                                  pull reconciler.
- *   getWorkflow($id)             \u2014 single workflow read for fetching the
- *                                  current JSON before write or for diffing.
- *   updateWorkflow($id, $body)   \u2014 PUT used by writeback (Fork B-1 / Phase 4).
+ *   ping()                          — cheapest call to verify URL+key (the Test
+ *                                     connection button, and a self-check).
+ *   listWorkflows() / eachWorkflow() — paginated listing for the pull reconciler.
+ *   getWorkflow() / updateWorkflow() / createWorkflow() / deleteWorkflow()
+ *   archiveWorkflow() / unarchiveWorkflow() — the delete/restore mirror.
+ *   listTags() / ensureTag(s)() / setWorkflowTags() — the tag half of a mapping.
  *
- * Anything richer (executions, credentials, tags) belongs in a separate
- * service or a later expansion of this one \u2014 we explicitly want this class
- * to stay small while the contract solidifies.
+ * Anything richer (executions, credentials) belongs in a separate service —
+ * we explicitly want this class to stay one screen of verbs.
  */
 final class N8nClient {
 	/** Hard page cap so one paginated read is bounded (n8n maxes at 250/page; 250×20 ≫ realistic). */
@@ -57,7 +55,7 @@ final class N8nClient {
 	}
 
 	/**
-	 * Cheapest reachable call \u2014 lists at most one workflow.
+	 * Cheapest reachable call — lists at most one workflow.
 	 *
 	 * Returns a friendly summary the Test connection button can render
 	 * verbatim. Throws on auth/network failure so the caller decides how to
@@ -124,9 +122,9 @@ final class N8nClient {
 	 *                                workflows that carry **all** of them
 	 *                                (verified live against `?tags=a,b`).
 	 *                                Tag names are passed verbatim, so they
-	 *                                must not themselves contain commas \u2014
+	 *                                must not themselves contain commas —
 	 *                                Mapping::fromArray enforces that.
-	 * @return array<string,mixed> raw decoded body \u2014 typically `{data: [\u2026], nextCursor: \u2026}`
+	 * @return array<string,mixed> raw decoded body — typically `{data: […], nextCursor: …}`
 	 */
 	public function listWorkflows(?int $limit = null, ?string $cursor = null, ?array $tags = null): array {
 		$query = [];
@@ -284,12 +282,7 @@ final class N8nClient {
 	 * accepts.
 	 */
 	public function ensureTag(string $name): string {
-		foreach ($this->listTags() as $tag) {
-			if ($tag['name'] === $name) {
-				return $tag['id'];
-			}
-		}
-		return $this->createTagIdempotently($name);
+		return $this->ensureTags([$name])[0];
 	}
 
 	/**
@@ -313,20 +306,28 @@ final class N8nClient {
 			}
 		} catch (\Throwable $e) {
 			// Fall through to the re-read: somebody else may have just created it.
-			foreach ($this->listTags() as $tag) {
-				if ($tag['name'] === $name) {
-					return $tag['id'];
-				}
+			$id = $this->findTagId($name);
+			if ($id !== null) {
+				return $id;
 			}
 			throw $e;
 		}
 		// A 2xx with no id: re-read before giving up, for the same reason.
+		$id = $this->findTagId($name);
+		if ($id !== null) {
+			return $id;
+		}
+		throw new \RuntimeException('n8n create-tag did not return an id for "' . $name . '"');
+	}
+
+	/** One paginated scan of the tag list for an exact (case-sensitive) name. */
+	private function findTagId(string $name): ?string {
 		foreach ($this->listTags() as $tag) {
 			if ($tag['name'] === $name) {
 				return $tag['id'];
 			}
 		}
-		throw new \RuntimeException('n8n create-tag did not return an id for "' . $name . '"');
+		return null;
 	}
 
 	/**
@@ -346,7 +347,9 @@ final class N8nClient {
 		}
 		$byName = [];
 		foreach ($this->listTags() as $tag) {
-			$byName[$tag['name']] = $tag['id'];
+			// First match wins — the same answer ensureTag() always gave and the
+			// same answer findTagId() gives, should n8n ever hold a duplicate name.
+			$byName[$tag['name']] ??= $tag['id'];
 		}
 		$ids = [];
 		foreach ($names as $name) {
@@ -402,7 +405,7 @@ final class N8nClient {
 		try {
 			$key = $this->crypto->decrypt($enc);
 		} catch (\Throwable) {
-			throw new \RuntimeException('Stored key could not be decrypted \u2014 re-enter it.');
+			throw new \RuntimeException('Stored key could not be decrypted — re-enter it.');
 		}
 
 		$url = $base . $path;

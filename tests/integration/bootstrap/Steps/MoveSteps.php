@@ -32,18 +32,6 @@ trait MoveSteps {
 	private string $idArrivedWith = '';
 
 	/**
-	 * A managed sync/link file in one of the Background's mapped folders, addressed
-	 * by its TAG. Kept for copy/purge/reserved-tags, which still declare their
-	 * mappings tag-first and derive the folder name from it.
-	 *
-	 * @Given a managed :mode workflow file in the :tag folder
-	 */
-	public function aManagedWorkflowFileInTheFolder(string $mode, string $tag): void {
-		$this->currentTag = $tag;
-		$this->arrangeManagedFileIn($this->folderNameForTag($tag), $mode);
-	}
-
-	/**
 	 * The same arrange, addressed by the NEXTCLOUD FOLDER — the form `move.feature`
 	 * uses, where the Background names each mapping's folder explicitly.
 	 *
@@ -52,7 +40,8 @@ trait MoveSteps {
 	 * to be derived from the tag, and that coincidence is what let a scenario be
 	 * written asserting a folder was "no longer a tag in n8n".
 	 *
-	 * @Given a managed :mode workflow file in :folder
+	 * No Gherkin phrasing any more — every scenario arranges through a more
+	 * specific sentence; this survives as the PHP arrange those steps call.
 	 */
 	public function aManagedWorkflowFileInFolder(string $mode, string $folder): void {
 		$this->currentTag = $this->tagForFolder($folder);
@@ -72,7 +61,6 @@ trait MoveSteps {
 		$this->currentFolder = $folder;
 		$name = 'Mover-' . bin2hex(random_bytes(3));
 		$this->putManagedFile($this->currentFolder . '/' . $name . '.n8n', $name);
-		$this->lastVersionId = $this->davReadMetadata($this->currentFilePath, self::META_VERSION_ID);
 		$this->expectedArchived = false; // sync/link create leaves the workflow live
 	}
 
@@ -99,23 +87,6 @@ trait MoveSteps {
 		);
 	}
 
-	/** @When I rename the file within the :tag folder */
-	public function iMoveRenameTheFileWithinTheFolder(string $tag): void {
-		$this->iRenameTheFileWithin($this->folderNameForTag($tag));
-	}
-
-	/** @When I rename the file within :folder */
-	public function iRenameTheFileWithin(string $folder): void {
-		$dest = $folder . '/Mover-renamed.n8n';
-		$this->davMove($this->currentFilePath, $dest);
-		$this->currentFilePath = $dest;
-	}
-
-	/** @When I move the file into a subfolder of the :tag folder */
-	public function iMoveTheFileIntoASubfolder(string $tag): void {
-		$this->iMoveTheFileIntoASubfolderOf($this->folderNameForTag($tag));
-	}
-
 	/** @When I move the file into a subfolder of :folder */
 	public function iMoveTheFileIntoASubfolderOf(string $folder): void {
 		$sub = $folder . '/sub';
@@ -125,7 +96,7 @@ trait MoveSteps {
 		$this->currentFilePath = $dest;
 	}
 
-	/** @When I move the file to a folder that is not mapped */
+	/** Called from other steps' PHP (no live Gherkin phrasing of its own). */
 	public function iMoveTheFileToAnUnmappedFolder(): void {
 		$folder = 'unmapped-' . bin2hex(random_bytes(3));
 		$this->davMkdir($folder);
@@ -133,21 +104,6 @@ trait MoveSteps {
 		$this->davMove($this->currentFilePath, $dest);
 		$this->currentFilePath = $dest;
 		$this->expectedArchived = true; // sync move-out archives the workflow
-	}
-
-	/** @When I move the file to another folder that is not mapped */
-	public function iMoveTheFileToAnotherUnmappedFolder(): void {
-		$folder = 'unmapped2-' . bin2hex(random_bytes(3));
-		$this->davMkdir($folder);
-		$dest = $folder . '/' . basename($this->currentFilePath);
-		$this->davMove($this->currentFilePath, $dest);
-		$this->currentFilePath = $dest;
-		// relocation between unmapped locations — archived state is unchanged.
-	}
-
-	/** @When I move the file into the :tag folder */
-	public function iMoveTheFileIntoTheFolder(string $tag): void {
-		$this->iMoveTheFileInto($this->folderNameForTag($tag));
 	}
 
 	/** @When I move the file into :folder */
@@ -179,47 +135,18 @@ trait MoveSteps {
 	}
 
 	/**
-	 * A plain `.n8n` that was never tracked (no n8n id) sitting outside any
-	 * mapping — delegates to the untracked-file arrange (DeleteSteps, composed here).
-	 *
-	 * @Given a :ext file that was never tracked in n8n
-	 */
-	public function aFileThatWasNeverTrackedInN8n(string $ext): void {
-		$this->anUntrackedFile($ext);
-	}
-
-	/**
 	 * Hard-delete the workflow under test in n8n so the next unarchive 404s and the
-	 * move-in falls back to create. Remembers the deleted id for the "is new" check.
+	 * move-in falls back to create.
 	 *
 	 * @Given that workflow no longer exists in n8n
 	 */
 	public function thatWorkflowNoLongerExistsInN8n(): void {
 		Assert::assertNotNull($this->lastWorkflowId, 'no workflow id to delete');
-		$this->deletedWorkflowId = $this->lastWorkflowId;
 		$this->n8nDeleteWorkflow($this->lastWorkflowId);
 		Assert::assertNull(
 			$this->n8nGetWorkflow($this->lastWorkflowId),
 			'precondition: the workflow still exists in n8n after the delete',
 		);
-	}
-
-	/**
-	 * After a create-fallback move-in, the file carries a FRESH id (not the deleted
-	 * one) and that workflow exists live in n8n.
-	 *
-	 * @Then a new workflow is created in n8n from the file
-	 */
-	public function aNewWorkflowIsCreatedFromTheFile(): void {
-		$newId = $this->davReadMetadataId($this->currentFilePath);
-		Assert::assertNotNull($newId, 'the file has no n8n_id after the move-in');
-		Assert::assertNotSame('', $newId, 'the file has an empty n8n_id after the move-in');
-		Assert::assertNotSame(
-			$this->deletedWorkflowId,
-			$newId,
-			'a new workflow was NOT created — the file still carries the old (deleted) id',
-		);
-		Assert::assertIsArray($this->n8nGetWorkflow($newId), "the new workflow $newId does not exist in n8n");
 	}
 
 	/**
@@ -358,18 +285,9 @@ trait MoveSteps {
 	 */
 	public function thatFilesNodesDifferFromTheWorkflows(): void {
 		$path = $this->collisionIncomingPath !== '' ? $this->collisionIncomingPath : $this->currentFilePath;
-		// Object decode: an assoc round-trip flattens the empty `connections` and
-		// `settings` objects to `[]`, which n8n rejects when this body is minted.
-		$wf = json_decode($this->davGet($path), false, 512, JSON_THROW_ON_ERROR);
-		Assert::assertInstanceOf(\stdClass::class, $wf, "the incoming file at $path is not a JSON object");
+		$wf = $this->davGetObject($path);
 		$this->arrivedNodeName = 'Arrived-' . bin2hex(random_bytes(3));
-		$wf->nodes = [(object)[
-			'name' => $this->arrivedNodeName,
-			'type' => 'n8n-nodes-base.noOp',
-			'typeVersion' => 1,
-			'position' => [0, 0],
-			'parameters' => new \stdClass(),
-		]];
+		$wf->nodes = [self::noOpNode($this->arrivedNodeName)];
 		// THE BODY'S NAME AGREES WITH THE FILENAME, which is what any real file at this
 		// path looks like — a name is one value living in three places (`rename.feature`).
 		// The `a different n8n_id` arrange builds this file under another name and walks
@@ -616,7 +534,7 @@ trait MoveSteps {
 			// looked at the file breaks the Files app, which stats the path IT chose).
 			// The Gherkin states the end state and never how long it took to arrive, so
 			// the waiting belongs here.
-			$this->drainJobs('OCA\\N8nSync\\BackgroundJob\\ReconcileNameJob');
+			$this->drainJobs(self::JOB_RECONCILE_NAME);
 			$wf = $this->n8nGetWorkflow($id) ?? $wf;
 			Assert::assertSame($wantName, (string)($wf['name'] ?? ''), "the workflow behind $path has the wrong name");
 		}
@@ -677,14 +595,6 @@ trait MoveSteps {
 		self::assertTagSet($tags, $this->n8nWorkflowTagNames($id), "$path: the workflow's n8n tags");
 	}
 
-	/** @When I try to move the file to a folder that is not mapped */
-	public function iTryToMoveTheFileToAnUnmappedFolder(): void {
-		$folder = 'unmapped-' . bin2hex(random_bytes(3));
-		$this->davMkdir($folder);
-		$dest = $folder . '/' . basename($this->currentFilePath);
-		$this->lastMoveStatus = $this->davMoveStatus($this->currentFilePath, $dest);
-	}
-
 	/**
 	 * A move into ANOTHER mapping. MoveGuardListener aborts it on the
 	 * BeforeNodeRenamedEvent, so nothing on the n8n side is ever reached — which is
@@ -698,69 +608,6 @@ trait MoveSteps {
 		$this->lastMoveStatus = $this->davMoveStatus($this->currentFilePath, $dest);
 	}
 
-	/** @Then the file stays in :mode mode in the :tag mapping */
-	public function theFileStaysInModeInTheMapping(string $mode, string $tag): void {
-		$this->theFileStaysInModeIn($mode, $this->folderNameForTag($tag));
-	}
-
-	/**
-	 * @Then the file stays in :mode mode in :folder
-	 *
-	 * Compares against the WIRE mode. This used `modeToModel()`, which returns
-	 * `link` — but DAV reports link as `reference`, so the assertion could only ever
-	 * have passed for `sync`. Latent rather than caught, because no scenario had yet
-	 * asked a link file to stay put.
-	 */
-	public function theFileStaysInModeIn(string $mode, string $folder): void {
-		$expected = $mode === 'link' ? 'reference' : $this->modeToModel($mode);
-		Assert::assertSame($expected, $this->davReadMetadata($this->currentFilePath, self::META_MODE), "file is not in $mode mode");
-		Assert::assertStringStartsWith($folder . '/', $this->currentFilePath, "file is not under $folder");
-		$mappingId = $this->davReadMetadata($this->currentFilePath, self::META_MAPPING);
-		Assert::assertNotNull($mappingId, 'file lost its n8n_mapping');
-		Assert::assertNotSame('', $mappingId, 'file lost its n8n_mapping');
-	}
-
-	/** @Then the file's mode becomes :mode */
-	public function theFilesModeBecomes(string $mode): void {
-		// n8n_mode is exposed over DAV in its WIRE form — link is stored as
-		// "reference" (the literal "link" crashes core PROPFIND). sync/unmapped
-		// are identical in both forms, so only link needs translating.
-		$wire = $mode === 'link' ? 'reference' : $mode;
-		Assert::assertSame($wire, $this->davReadMetadata($this->currentFilePath, self::META_MODE), "file mode did not become $mode");
-	}
-
-	/** @Then the file's mode becomes :mode in the :tag mapping */
-	public function theFilesModeBecomesInTheMapping(string $mode, string $tag): void {
-		$this->theFileStaysInModeInTheMapping($mode, $tag);
-	}
-
-	/** @Then the file's mode becomes :mode in :folder */
-	public function theFilesModeBecomesIn(string $mode, string $folder): void {
-		$this->theFileStaysInModeIn($mode, $folder);
-	}
-
-	/** @Then the file keeps its :key1 and :key2 */
-	public function theFileKeepsItsIdAndVersionId(string $key1, string $key2): void {
-		Assert::assertSame($this->lastWorkflowId, $this->davReadMetadata($this->currentFilePath, $key1), "$key1 was lost");
-		Assert::assertSame($this->lastVersionId, $this->davReadMetadata($this->currentFilePath, $key2), "$key2 was lost");
-	}
-
-	/** @Then its :key1 and :key2 are unchanged */
-	public function itsIdAndVersionIdAreUnchanged(string $key1, string $key2): void {
-		$this->theFileKeepsItsIdAndVersionId($key1, $key2);
-	}
-
-	/** @Then the file's :key is cleared */
-	public function theFilesMetadataIsCleared(string $key): void {
-		$value = $this->davReadMetadata($this->currentFilePath, $key);
-		Assert::assertTrue($value === null || $value === '', "metadata-$key was not cleared (='$value')");
-	}
-
-	/** @Then the :key is unchanged */
-	public function theIdIsUnchanged(string $key): void {
-		Assert::assertSame($this->lastWorkflowId, $this->davReadMetadata($this->currentFilePath, $key), "$key changed across the move");
-	}
-
 	/** @Then the full workflow JSON is still in the Nextcloud file */
 	public function theFullWorkflowJsonIsStillInTheFile(): void {
 		$body = (string)$this->davGet($this->currentFilePath);
@@ -771,7 +618,6 @@ trait MoveSteps {
 
 	/**
 	 * @Then nothing changes in n8n
-	 * @Then nothing changes in n8n except the name
 	 */
 	public function nothingChangesInN8n(): void {
 		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
@@ -1042,51 +888,9 @@ trait MoveSteps {
 		$this->dav = null;
 	}
 
-	/**
-	 * THE REBIND, IN ONE ASSERTION: the workflow now wears the tag of the mapping it
-	 * landed in, and no longer wears the one it came from.
-	 *
-	 * A mapping owns a workflow by its tag alone, so the tag IS the membership — a move
-	 * between mappings that only re-stamped the file would leave n8n believing the
-	 * workflow still belongs to the old mapping, and the next pull of THAT mapping would
-	 * write the file back into the folder it just left.
-	 *
-	 * Stated as "this one, and no other mapping's" rather than as an exact set, so it
-	 * fails for exactly one reason and leaves the file's own tags to their own step.
-	 * The mapping is inferred from the folder the file is in now — that is the point of
-	 * the Background spelling the mappings out.
-	 *
-	 * @Then the workflow carries the mapping's tag, and no other mapping's
-	 */
-	public function theWorkflowCarriesTheMappingTagAndNoOther(): void {
-		$id = (string)($this->lastWorkflowId ?? '');
-		Assert::assertNotSame('', $id, 'no workflow under test');
-
-		$want = $this->mappingTagForFolder($this->currentFolder);
-		$on = $this->n8nWorkflowTagNames($id);
-		Assert::assertContains($want, $on, "the workflow does not carry '$want', the tag binding it to {$this->currentFolder}");
-
-		foreach ($this->listMappings() as $m) {
-			$other = (string)($m['n8n_tag'] ?? '');
-			if ($other === '' || $other === $want) {
-				continue;
-			}
-			Assert::assertNotContains(
-				$other,
-				$on,
-				"the workflow still carries '$other' — it would be claimed by two mappings and mirrored into both",
-			);
-		}
-	}
-
 	/** @Then the move is refused with a message */
 	public function theMoveIsRefusedWithAMessage(): void {
 		Assert::assertNotContains($this->lastMoveStatus, [201, 204], "the move was allowed (HTTP {$this->lastMoveStatus}) but should have been refused");
-	}
-
-	/** @Then the file stays in the :tag folder */
-	public function theFileStaysInTheFolder(string $tag): void {
-		$this->theFileStaysIn($this->folderNameForTag($tag));
 	}
 
 	/** @Then the file stays in :folder */
@@ -1095,40 +899,4 @@ trait MoveSteps {
 		Assert::assertStringStartsWith($folder . '/', $this->currentFilePath, "file is not under $folder");
 	}
 
-	// ── mapping → mapping (@unbuilt: MoveGuardListener refuses this today) ────────
-
-	/**
-	 * @Then the file no longer has the :tag tag in n8n nor Nextcloud
-	 *
-	 * Both sides, in one sentence, because a half-moved tag is the failure this is
-	 * watching for: the workflow re-tagged in n8n while Nextcloud still shows the
-	 * old mapping's tag would look fine from either side alone.
-	 */
-	public function theFileNoLongerHasTheTag(string $tag): void {
-		throw new \RuntimeException(
-			'mapping→mapping moves are refused by MoveGuardListener — '
-			. 'saga §14.2 case (a) needs re-tag vs eject+reattach decided before this can be built'
-		);
-	}
-
-	/** @Then the file now has the :tag tag in n8n and Nextcloud */
-	public function theFileNowHasTheTag(string $tag): void {
-		throw new \RuntimeException('mapping→mapping moves are refused by MoveGuardListener — scenario is @unbuilt');
-	}
-
-	/** @Then the file's mapping id is updated to the :folder mapping */
-	public function theFilesMappingIdIsUpdatedTo(string $folder): void {
-		throw new \RuntimeException('mapping→mapping moves are refused by MoveGuardListener — scenario is @unbuilt');
-	}
-
-	/** @Then the file's mode is :mode */
-	public function theFilesModeIs(string $mode): void {
-		$wire = $mode === 'link' ? 'reference' : $mode;
-		Assert::assertSame($wire, $this->davReadMetadata($this->currentFilePath, self::META_MODE), "file mode is not $mode");
-	}
-
-	/** @Then the file stays :state */
-	public function theFileStaysState(string $state): void {
-		Assert::assertSame($state, $this->davReadMetadata($this->currentFilePath, self::META_MODE), "file is not in '$state' mode");
-	}
 }

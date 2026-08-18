@@ -17,9 +17,7 @@ use OCA\N8nSync\Tests\Integration\Steps\AppLifecycleSteps;
 use OCA\N8nSync\Tests\Integration\Steps\CopySteps;
 use OCA\N8nSync\Tests\Integration\Steps\CreateSteps;
 use OCA\N8nSync\Tests\Integration\Steps\DeleteSteps;
-use OCA\N8nSync\Tests\Integration\Steps\MappingMembershipSteps;
 use OCA\N8nSync\Tests\Integration\Steps\MappingSteps;
-use OCA\N8nSync\Tests\Integration\Steps\ModeChangeSteps;
 use OCA\N8nSync\Tests\Integration\Steps\MoveSteps;
 use OCA\N8nSync\Tests\Integration\Steps\OpenWithSteps;
 use OCA\N8nSync\Tests\Integration\Steps\RenameSteps;
@@ -30,6 +28,7 @@ use OCA\N8nSync\Tests\Integration\Steps\ViewWorkflowSteps;
 use OCA\N8nSync\Tests\Integration\Support\N8nApiTrait;
 use OCA\N8nSync\Tests\Integration\Support\OccTrait;
 use OCA\N8nSync\Tests\Integration\Support\SetupTrait;
+use OCA\N8nSync\Tests\Integration\Support\SystemTagsTrait;
 use OCA\N8nSync\Tests\Integration\Support\WebDavTrait;
 
 /**
@@ -77,12 +76,11 @@ final class FeatureContext implements Context {
 	use MoveSteps;
 	use OpenWithSteps;
 	use CopySteps;
-	use ModeChangeSteps;
+	use SystemTagsTrait;
 	use SyncSteps;
 	use ReservedTagsSteps;
 	use TagSyncSteps;
 	use ViewWorkflowSteps;
-	use MappingMembershipSteps;
 
 	private const APP_ID = 'n8n_sync';
 
@@ -157,12 +155,9 @@ final class FeatureContext implements Context {
 	private int $lastDeleteStatus = 0;
 	/** The `<s:message>` from the last refused DAV delete — what the user is actually told. */
 	private string $lastDeleteMessage = '';
-	private ?string $lastVersionId = null;
 	private int $lastMoveStatus = 0;
 	/** Whether the workflow under test is expected to be archived in n8n right now. */
 	private bool $expectedArchived = false;
-	/** A workflow id deliberately hard-deleted mid-scenario (for the create-fallback move-in). */
-	private string $deletedWorkflowId = '';
 	/** Merge-on-collision (§14.19): the shared workflow id, the existing synced copy, and the incoming copy. */
 	private string $collisionWorkflowId = '';
 	private string $collisionSyncedPath = '';

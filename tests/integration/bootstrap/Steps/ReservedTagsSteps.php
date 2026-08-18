@@ -28,21 +28,6 @@ use PHPUnit\Framework\Assert;
 trait ReservedTagsSteps {
 	// ── helpers ────────────────────────────────────────────────────────────────
 
-	/** n8n_mode in its DAV WIRE form (link is stored as `reference`; others are identity). */
-	private function wireMode(string $mode): string {
-		return $mode === 'link' ? 'reference' : $mode;
-	}
-
-	/** The files-root-relative path of the pulled file carrying $id, or null if absent. */
-	private function pulledFilePathForId(string $folder, string $id): ?string {
-		foreach ($this->propfindWorkflowIds($folder) as $href => $wid) {
-			if ($wid === $id) {
-				return $this->hrefToFilesPath((string)$href);
-			}
-		}
-		return null;
-	}
-
 	/** Strip the `…/dav/files/<user>/` prefix off a DAV href → a files-root-relative path. */
 	private function hrefToFilesPath(string $href): string {
 		$href = rawurldecode($href);

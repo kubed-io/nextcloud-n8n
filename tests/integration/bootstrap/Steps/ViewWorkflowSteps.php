@@ -12,14 +12,14 @@ namespace OCA\N8nSync\Tests\Integration\Steps;
 use PHPUnit\Framework\Assert;
 
 /**
- * View-workflow steps (`view-workflow.feature`): the custom
- * mimetype + icon, the four `nc:metadata-*` props exposed (and read-only) over
+ * View-workflow steps (`workflows/view.feature`): the custom
+ * mimetype + icon, the `nc:metadata-*` props exposed (and read-only) over
  * WebDAV, and the per-mode descriptive `n8n_mode` value.
  *
  * Unlike open-with (which is front-end and can't be clicked from Behat), this is
  * pure WebDAV behaviour — PROPFIND / PROPPATCH are exactly what a desktop client
  * issues — so these are real assertions, not proxies. The metadata is registered
- * by {@see \OCA\N8nSync\Service\WorkflowMetadata} (all four keys EDIT_FORBIDDEN;
+ * by {@see \OCA\N8nSync\Service\WorkflowMetadata} (every key EDIT_FORBIDDEN;
  * n8n_mode + n8n_mapping indexed) and the mimetype by the RegisterMimetype
  * migration. Reuses {@see OpenWithSteps::arrangeManagedFile} for the fixtures.
  * Composed into {@see \OCA\N8nSync\Tests\Integration\FeatureContext}.
@@ -40,14 +40,6 @@ trait ViewWorkflowSteps {
 	private array $viewedFiles = [];
 
 	// ── Given ─────────────────────────────────────────────────────────────────
-
-	/** @Given a managed workflow file */
-	public function aManagedWorkflowFileForType(): void {
-		// Any managed file is enough for the type/PROPFIND/PROPPATCH scenarios; a
-		// plain sync file is the simplest. (The mode-specific rows use the
-		// "in :mode mode" step owned by OpenWithSteps.)
-		$this->arrangeManagedFile('sync');
-	}
 
 	// ── the CLI view: what n8n holds, read without the mirror ──────────────────
 
@@ -149,13 +141,16 @@ trait ViewWorkflowSteps {
 	/**
 	 * The app-managed properties a mirror carries, as ONE SENTENCE.
 	 *
-	 * It replaced a table of four property names spelled out in the feature file,
+	 * It replaced a table of property names spelled out in the feature file,
 	 * which made the metadata look like a thing under test rather than the end
-	 * state it is. Which four properties the app writes is the app's business, not
-	 * the reader's — and every behaviour that produces a mirror wants to say "and
-	 * it carries its metadata" without restating the list.
+	 * state it is. What the app writes is the app's business, not the reader's —
+	 * and every behaviour that produces a mirror wants to say "and it carries its
+	 * metadata" without restating the list.
 	 *
-	 * @Then the file carries its n8n metadata
+	 * The four keys checked here are the identity subset (id, mode, versionId,
+	 * mapping) — NOT the full {@see \OCA\N8nSync\Service\WorkflowMetadata::KEYS}
+	 * set: syncedHash/syncedTags are bookkeeping a scenario should not pin.
+	 *
 	 * @Then each file carries its n8n metadata
 	 */
 	public function theFileCarriesItsN8nMetadata(): void {

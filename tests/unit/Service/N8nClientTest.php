@@ -11,6 +11,7 @@ namespace OCA\N8nSync\Tests\Unit\Service;
 
 use OCA\N8nSync\Exception\N8nApiException;
 use OCA\N8nSync\Service\N8nClient;
+use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -21,6 +22,7 @@ use PHPUnit\Framework\TestCase;
  * RuntimeException subclass, so a naive `catch (RuntimeException)` would show n8n's
  * raw text instead of a clear "rejected".
  */
+#[CoversClass(N8nClient::class)]
 final class N8nClientTest extends TestCase {
 	public function testDescribesAMissingKeyAsSetupNotRejection(): void {
 		$msg = N8nClient::describeConnectionError(

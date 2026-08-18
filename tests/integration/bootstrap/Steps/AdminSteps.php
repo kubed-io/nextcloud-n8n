@@ -9,7 +9,6 @@ declare(strict_types=1);
 
 namespace OCA\N8nSync\Tests\Integration\Steps;
 
-use Behat\Gherkin\Node\PyStringNode;
 use PHPUnit\Framework\Assert;
 
 /**
@@ -20,39 +19,6 @@ use PHPUnit\Framework\Assert;
  */
 trait AdminSteps {
 	// ── admin-setup steps ─────────────────────────────────────────────────────
-
-	/** @When I set app config :key to :value */
-	public function iSetAppConfig(string $key, string $value): void {
-		$res = $this->occ('config:app:set ' . self::APP_ID . ' ' . escapeshellarg($key) . ' --value=' . escapeshellarg($value));
-		Assert::assertSame(0, $res['exit'], "config:app:set $key failed:\n{$res['output']}");
-	}
-
-	/**
-	 * Multi-line (PyString) form, e.g. for the mappings JSON.
-	 *
-	 * @When I set app config :key to:
-	 */
-	public function iSetAppConfigMultiline(string $key, PyStringNode $value): void {
-		$this->iSetAppConfig($key, $value->getRaw());
-	}
-
-	/** @When I set sensitive app config :key to :value */
-	public function iSetSensitiveAppConfig(string $key, string $value): void {
-		$res = $this->occ('config:app:set ' . self::APP_ID . ' ' . escapeshellarg($key) . ' --value=' . escapeshellarg($value) . ' --sensitive');
-		Assert::assertSame(0, $res['exit'], "config:app:set $key (sensitive) failed:\n{$res['output']}");
-	}
-
-	/** @Then app config :key is :expected */
-	public function appConfigIs(string $key, string $expected): void {
-		$res = $this->occ('config:app:get ' . self::APP_ID . ' ' . escapeshellarg($key));
-		Assert::assertSame($expected, trim($res['output']), "config $key mismatch");
-	}
-
-	/** @Then app config :key contains :needle */
-	public function appConfigContains(string $key, string $needle): void {
-		$res = $this->occ('config:app:get ' . self::APP_ID . ' ' . escapeshellarg($key));
-		Assert::assertStringContainsString($needle, $res['output'], "config $key did not contain '$needle'");
-	}
 
 	// ── connection steps (the "admin makes connection" use case) ──────────────
 
@@ -85,7 +51,6 @@ trait AdminSteps {
 	 * is the same fact as pre-state — which is what the key-failure outline needs
 	 * so its two rows differ only in a table cell.
 	 *
-	 * @When the admin provides an invalid API key
 	 * @Given an invalid API key is set
 	 */
 	public function theAdminProvidesAnInvalidApiKey(): void {
@@ -102,7 +67,7 @@ trait AdminSteps {
 	 * One-line connection setup for feature Backgrounds: app enabled + base URL +
 	 * REST API on + the CI-provided API key. This is the canonical "ready to talk
 	 * to n8n" precondition — Backgrounds say this single line instead of repeating
-	 * the four admin steps (which {@see admin-connection.feature} still spells out
+	 * the four admin steps (which {@see connection/connection.feature} still spells out
 	 * because *that* feature is what tests the connection flow itself).
 	 *
 	 * @Given the app is connected to n8n

@@ -75,7 +75,7 @@ final class MappingSettings implements IDelegatedSettings {
 	/**
 	 * Below Sync Settings (33) and above Sync Actions (45). Mappings are a
 	 * repeating list (longest section), so they sit last before the buttons:
-	 * channels → how to sync → the mappings → the action buttons.
+	 * the instance → how to sync → the mappings → the action buttons.
 	 */
 	#[\Override]
 	public function getPriority(): int {

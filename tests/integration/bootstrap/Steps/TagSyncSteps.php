@@ -43,12 +43,11 @@ use PHPUnit\Framework\Assert;
  *
  * TIMING IS NOT IN THE SPEC EITHER, for the same reason. Whether the writeback
  * runs during the request or on the worker's next tick is our plumbing; the
- * behaviour is that the change arrives. The arrange pins it so one scenario does
- * not inherit whatever the previous one left behind.
+ * behaviour is that the change arrives — the Then-steps drain the job either way.
  *
  * Leans on the composed helpers: SyncSteps (`ensureN8nTag`, `createN8nWorkflow`,
  * `setN8nWorkflowTags`, `propfindWorkflowIds`, `runMappingSync`), ReservedTagsSteps
- * (`n8nWorkflowTagNames`, `hrefToFilesPath`), ModeChangeSteps (`assignSystemTag`,
+ * (`n8nWorkflowTagNames`, `hrefToFilesPath`), SystemTagsTrait (`assignSystemTag`,
  * `ensureSystemTag`, `fileId`, `fileSystemTags`, `tagDavClient`), SetupTrait
  * (`putManagedFile`, `folderNameForTag`) and WebDavTrait. Composed into {@see
  * \OCA\N8nSync\Tests\Integration\FeatureContext}.
@@ -181,16 +180,12 @@ trait TagSyncSteps {
 			array_unshift($names, $this->tagMappingTag);
 		}
 		$path = $this->tagLocateFile();
-		// Object decode: an assoc round-trip flattens the empty `connections` and
-		// `settings` objects to `[]`, which n8n rejects on the next push — the same
-		// object-vs-array pitfall `PushService::pushViaApi` is documented against.
-		$wf = json_decode($this->davGet($path), false, 512, JSON_THROW_ON_ERROR);
-		Assert::assertInstanceOf(\stdClass::class, $wf, "managed file at $path is not a JSON object");
+		$wf = $this->davGetObject($path);
 		$wf->tags = array_map(static fn (string $n): object => (object)['name' => $n], array_values(array_unique($names)));
 		$this->davPut($path, json_encode($wf, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT));
 		// The save fires NodeWrittenEvent → PushWorkflowJob (async default). Under
 		// sync timing the push already ran inline, so this is a harmless no-op.
-		$this->drainJobs('OCA\\N8nSync\\BackgroundJob\\PushWorkflowJob');
+		$this->drainJobs(self::JOB_PUSH_WORKFLOW);
 	}
 
 	/**
@@ -207,22 +202,6 @@ trait TagSyncSteps {
 		if ($this->tagMappingTag !== '') {
 			array_unshift($names, $this->tagMappingTag);
 		}
-		$this->tagNoteBody();
-		$this->tagSetN8n($names);
-		$this->tagSettle();
-	}
-
-	/**
-	 * Add ONE tag in n8n, leaving the rest alone — the delta form, for scenarios
-	 * where the point is that a change made in n8n meets a change already made in
-	 * Nextcloud. Restating the whole set there would quietly overwrite the other
-	 * side's edit inside the arrange and prove nothing.
-	 *
-	 * @When the tag :tag is added to the workflow in n8n
-	 */
-	public function theTagIsAddedInN8n(string $tag): void {
-		$names = $this->n8nWorkflowTagNames($this->tagWfId);
-		$names[] = $tag;
 		$this->tagNoteBody();
 		$this->tagSetN8n($names);
 		$this->tagSettle();
@@ -360,26 +339,6 @@ trait TagSyncSteps {
 		);
 	}
 
-	/** @Then the file has no content tag :tag */
-	public function theFileHasNoContentTag(string $tag): void {
-		$pills = $this->tagContentPills($this->tagLocateFile());
-		Assert::assertNotContains($tag, $pills, "the file unexpectedly carries the '$tag' content pill");
-	}
-
-	/** @Then the file still carries the :tag mapping tag */
-	public function theFileStillCarriesTheMappingTag(string $tag): void {
-		Assert::assertContains(
-			$tag,
-			$this->tagContentPills($this->tagLocateFile()),
-			"the mapping tag '$tag' was removed from the file",
-		);
-	}
-
-	/** @Then the workflow in n8n still carries the :tag tag */
-	public function theWorkflowStillCarries(string $tag): void {
-		Assert::assertContains($tag, $this->n8nWorkflowTagNames($this->tagWfId), "the workflow in n8n lost the '$tag' tag");
-	}
-
 	/**
 	 * The mirror is gone. Resolved by workflow id across the folder rather than by
 	 * the cached path, because "pruned" is exactly the case where the cached path
@@ -442,21 +401,6 @@ trait TagSyncSteps {
 			}
 		}
 		throw new \RuntimeException("the file's tags array has no row for '$tag'");
-	}
-
-	/** @Then every tag in the file body carries an n8n id */
-	public function everyBodyTagCarriesAnId(): void {
-		$path = $this->tagLocateFile();
-		$wf = json_decode($this->davGet($path), true);
-		Assert::assertIsArray($wf, "managed file at $path is not JSON");
-		$tags = (array)($wf['tags'] ?? []);
-		Assert::assertNotEmpty($tags, 'the body has no tags array to check for ids');
-		foreach ($tags as $tag) {
-			Assert::assertIsArray($tag, 'a body tag entry is not an object');
-			$name = (string)($tag['name'] ?? '?');
-			Assert::assertArrayHasKey('id', $tag, "the body tag '$name' has no n8n id");
-			Assert::assertNotSame('', (string)$tag['id'], "the body tag '$name' has an empty n8n id");
-		}
 	}
 
 	/** @Then the file can be found by a Nextcloud tag search for :tag */
@@ -563,7 +507,7 @@ trait TagSyncSteps {
 	 * mirrored because the unbind was sitting in a queue nobody had emptied.
 	 */
 	private function settlePillChange(): void {
-		$this->drainJobs('OCA\\N8nSync\\BackgroundJob\\ReconcileTagsJob');
+		$this->drainJobs(self::JOB_RECONCILE_TAGS);
 	}
 
 	/** Let a change made in n8n reach Nextcloud — the pull, folded into the gesture. */

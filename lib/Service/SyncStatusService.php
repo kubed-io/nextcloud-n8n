@@ -115,8 +115,13 @@ final class SyncStatusService {
 		return 'sync_status_' . $direction;
 	}
 
+	/** The one place that knows what a valid direction is. */
+	public static function isDirection(string $direction): bool {
+		return $direction === self::DIR_PULL || $direction === self::DIR_PUSH;
+	}
+
 	private function assertDirection(string $direction): void {
-		if ($direction !== self::DIR_PULL && $direction !== self::DIR_PUSH) {
+		if (!self::isDirection($direction)) {
 			throw new \InvalidArgumentException('direction must be "pull" or "push"');
 		}
 	}

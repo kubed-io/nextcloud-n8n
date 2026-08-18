@@ -58,7 +58,7 @@ leg:
 | `trash` | the verbs that change a workflow's STATE: delete, restore, purge |
 | `motion` | `move.feature` — the gestures that cross a mapping boundary |
 | `tags` | the tag vocabulary and the three-way sync — n8n's only grouping construct |
-| `core` | identity, file type, the first sync, and the app lifecycle |
+| `core` | viewing, opening, and the app lifecycle |
 
 `trash` and `motion` were one suite called `lifecycle` until it drifted past ten
 minutes while `core` finished in two — at which point the axis had stopped dividing
@@ -265,7 +265,7 @@ A scenario is only real if a step definition matches every one of its lines.
 
 | What | Where |
 |---|---|
-| The scenarios | `features/*.feature` (repo root — they are docs) |
+| The scenarios | `features/**/*.feature` (repo root — they are docs) |
 | The step definitions | `tests/integration/bootstrap/Steps/*.php` |
 | The context that composes them | `tests/integration/bootstrap/FeatureContext.php` |
 | Transports (occ, WebDAV, the n8n API) | `tests/integration/bootstrap/Support/` |

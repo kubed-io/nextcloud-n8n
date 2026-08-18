@@ -190,8 +190,8 @@ trait CopySteps {
 	 * a half-finished one; the deferral itself is `rename.feature`'s subject.
 	 */
 	private function settleCopy(): void {
-		$this->drainJobs('OCA\\N8nSync\\BackgroundJob\\ReconcileNameJob');
-		$this->drainJobs('OCA\\N8nSync\\BackgroundJob\\PushWorkflowJob');
+		$this->drainJobs(self::JOB_RECONCILE_NAME);
+		$this->drainJobs(self::JOB_PUSH_WORKFLOW);
 	}
 
 	/**
@@ -398,11 +398,6 @@ trait CopySteps {
 	/** @Then no workflow is created in n8n for the copy */
 	public function noWorkflowIsCreatedForTheCopy(): void {
 		Assert::assertTrue($this->copyWorkflowId === null || $this->copyWorkflowId === '', 'a workflow was created in n8n for an unmapped copy');
-	}
-
-	/** A unique copy basename so a COPY never collides with its source (Overwrite: F). */
-	private function copyBasename(): string {
-		return 'Copy-' . bin2hex(random_bytes(3)) . '.n8n';
 	}
 
 	/** Record the just-made copy and the workflow id (if any) create-on-copy stamped. */

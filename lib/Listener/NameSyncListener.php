@@ -11,6 +11,7 @@ namespace OCA\N8nSync\Listener;
 
 use OCA\N8nSync\BackgroundJob\ReconcileNameJob;
 use OCA\N8nSync\Service\FilenameCodec;
+use OCA\N8nSync\Service\ResolvesActingUser;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\BackgroundJob\IJobList;
@@ -18,7 +19,6 @@ use OCP\EventDispatcher\Event;
 use OCP\EventDispatcher\IEventListener;
 use OCP\Files\Events\Node\NodeRenamedEvent;
 use OCP\Files\Events\Node\NodeWrittenEvent;
-use OCP\Files\Node;
 use OCP\IUserSession;
 
 /**
@@ -38,12 +38,14 @@ use OCP\IUserSession;
  *   - {@see NodeWrittenEvent}  → content changed  → `filename_from_name`.
  *
  * Gate mirrors the writeback listener (metadata-only, survives moves): `n8n_id`
- * + `sync` + `two-way`. Backup/reference stay n8n-driven (pull renames them).
- * Bails under {@see SyncGuard::active()} so pull/create writes don't reshuffle.
+ * + mode `sync`. A `link` stays n8n-driven (the pull renames it). Bails under
+ * {@see SyncGuard::active()} so pull/create writes don't reshuffle.
  *
  * @implements IEventListener<NodeWrittenEvent|NodeRenamedEvent>
  */
 final class NameSyncListener implements IEventListener {
+	use ResolvesActingUser;
+
 	public function __construct(
 		private WorkflowMetadata $metadata,
 		private SyncGuard $guard,
@@ -57,7 +59,7 @@ final class NameSyncListener implements IEventListener {
 		if ($this->guard->active()) {
 			return;
 		}
-		$node = $this->resolveNode($event);
+		$node = EventNode::of($event);
 		if (!FilenameCodec::isWorkflowFile($node)) {
 			return;
 		}
@@ -94,7 +96,7 @@ final class NameSyncListener implements IEventListener {
 
 		// The acting user resolves the file in the job (team-folder files are
 		// mounted per-user) — same approach as the writeback's PushWorkflowJob.
-		$uid = $this->userSession->getUser()?->getUID() ?? $node->getOwner()?->getUID() ?? '';
+		$uid = $this->actingUserUid($node);
 		if ($uid === '') {
 			return;
 		}
@@ -128,13 +130,4 @@ final class NameSyncListener implements IEventListener {
 		]);
 	}
 
-	private function resolveNode(Event $event): ?Node {
-		if ($event instanceof NodeWrittenEvent) {
-			return $event->getNode();
-		}
-		if ($event instanceof NodeRenamedEvent) {
-			return $event->getTarget();
-		}
-		return null;
-	}
 }

@@ -84,10 +84,12 @@ ignore you.
 
 - The file↔workflow link is the **`n8n_id`** stored in Files-Metadata, **not the
   filename**. Renames and moves must preserve it.
-- The metadata mode key is **`n8n_mode = reference|sync`** (`link` is a synonym for
-  `reference`).
-- Auth for the REST channel is the **`X-N8N-API-KEY`** header; the webhook channel
-  is a separate optional Bearer token. Two channels — don't collapse them.
+- The metadata mode key is **`n8n_mode = reference|sync|unmapped`** (`link` is the
+  canonical name for the stored `reference` wire value).
+- Auth is the **`X-N8N-API-KEY`** header — the REST API is the app's only channel
+  to n8n. (A second webhook channel existed and was removed in #84; don't suggest
+  reintroducing it, and don't flag its leftovers — the removal migration is meant
+  to be there.)
 - Loop prevention is the **`SyncGuard`** request-scoped counter — a pull must never
   trigger a push. Don't remove or bypass it.
 - The managed-file extension is a **single segment, `.n8n`**, backed by the custom
@@ -111,7 +113,7 @@ ignore you.
 - **The frontend targets Nextcloud's supported (evergreen) browsers.** ES2019+ syntax —
   optional `catch {}`, `?.`, `??` — is fully supported. Don't raise old-JS-engine
   compatibility.
-- The single-segment `.n8n` extension + `application/n8n+json` mimetype, the
-  deliberate `allow_local_address` egress, and the two-channel (REST + webhook)
-  design are all intentional and documented — don't suggest "fixing" them.
+- The single-segment `.n8n` extension + `application/n8n+json` mimetype and the
+  deliberate `allow_local_address` egress are intentional and documented — don't
+  suggest "fixing" them.
 - Don't ask for an `appinfo/info.xml` `<version>` bump — the release flow owns versions.

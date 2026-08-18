@@ -9,8 +9,10 @@ declare(strict_types=1);
 
 namespace OCA\N8nSync\Tests\Unit\Settings;
 
+use OCA\N8nSync\Service\AppConfigReader;
 use OCA\N8nSync\Settings\InstanceSettings;
 use OCP\IAppConfig;
+use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -25,12 +27,13 @@ use PHPUnit\Framework\TestCase;
  * the behaviour it happened to host — the invariant is about a sensitive field, not
  * about which card it sits on.
  */
+#[CoversClass(InstanceSettings::class)]
 final class InstanceSettingsTest extends TestCase {
 	/** @return array<string,mixed> the api_key field's schema */
 	private function keyField(bool $hasKey): array {
 		$config = $this->createMock(IAppConfig::class);
 		$config->method('getValueString')->willReturn($hasKey ? 'encrypted-blob' : '');
-		$schema = (new InstanceSettings($config))->getSchema();
+		$schema = (new InstanceSettings(new AppConfigReader($config)))->getSchema();
 		foreach ($schema['fields'] as $field) {
 			if (($field['id'] ?? null) === 'api_key') {
 				return $field;
@@ -66,7 +69,7 @@ final class InstanceSettingsTest extends TestCase {
 	public function testHoldsBothHalvesOfTheConnection(): void {
 		$config = $this->createMock(IAppConfig::class);
 		$config->method('getValueString')->willReturn('');
-		$schema = (new InstanceSettings($config))->getSchema();
+		$schema = (new InstanceSettings(new AppConfigReader($config)))->getSchema();
 
 		$ids = array_map(static fn (array $f): string => (string)($f['id'] ?? ''), $schema['fields']);
 		self::assertSame(['n8n_url', 'api_key'], $ids);

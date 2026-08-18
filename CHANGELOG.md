@@ -43,6 +43,7 @@ The first release since `0.1.5`, and the one where the mirror became properly tw
 
 ### Changed
 
+- A release-readiness refactor pass: dead code from retired features removed across the app and its test suite, duplicated logic merged, and every stale docblock corrected — no behaviour changed.
 - **BREAKING:** workflow files are named `.n8n`, not `.n8n.json` — see **Upgrading**.
 - **BREAKING:** requires Nextcloud **32** (was 30) and supports up to **34**.
 - **BREAKING:** deleting a link file is refused with a message instead of quietly stripping the workflow's mapping tag in n8n. Deleting one file for yourself should not un-map a workflow for everybody.

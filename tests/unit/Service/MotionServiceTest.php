@@ -223,7 +223,7 @@ final class MotionServiceTest extends TestCase {
 	 */
 	public function testRebindSwapsTheMappingPill(): void {
 		$this->tagSync->expects(self::once())->method('swapMappingPill')
-			->with(11, 'team:src', 'team:dst')->willReturn(['team:dst']);
+			->with(11, 'team:src', 'team:dst');
 
 		$this->service->rebind($this->file(11), 'wf1', $this->mapping('map-src', 'team:src'), $this->mapping('map-dst', 'team:dst'));
 	}
@@ -409,11 +409,12 @@ final class MotionServiceTest extends TestCase {
 	 * stale, so the next save or bulk push retries on its own.
 	 */
 	public function testMoveInSurvivesAFailedPush(): void {
+		$this->expectNotToPerformAssertions();
 		$node = $this->arrivingFile(9, '{"nodes":[]}', new ManagedFile('wf1', 'sync', '', 'a-stale-hash', 'map-beta'));
 		$this->n8n->method('unarchiveWorkflow');
 		$this->push->method('push')->willThrowException(new N8nApiException('boom', 500));
 
+		// Reaching here IS the assertion: moveIn swallowed the push failure.
 		$this->service->moveIn($node, 'wf1', $this->mapping('map-beta'));
-		self::assertTrue(true, 'moveIn swallowed the push failure');
 	}
 }

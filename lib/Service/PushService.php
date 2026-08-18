@@ -37,9 +37,10 @@ use Psr\Log\LoggerInterface;
  * async job, or bulk push) can surface it as a user notification or an HTTP error.
  * On success we stamp the file's `n8n_syncedHash` (loop guard) and the `versionId`.
  *
- * Scope: **updates** of workflows we already track (have an `n8n_id`). Creating
- * a brand-new workflow from a hand-made file (UC-6) is a follow-up — such files
- * are skipped here with a log line.
+ * Scope: **updates** of workflows we already track (have an `n8n_id`). A file
+ * with no id is not one of ours to update — creating a workflow from a
+ * fresh file is {@see CreateService}'s job, fired by its own listener — so it
+ * is skipped here with a log line.
  */
 final class PushService {
 	public function __construct(
@@ -60,9 +61,9 @@ final class PushService {
 		}
 		$managed = $this->metadata->read($node->getId());
 		if (!$managed?->isManaged()) {
-			// No n8n id yet → a brand-new hand-made file. Creating it in n8n is
-			// a future step (UC-6); skip for now.
-			$this->logger->info('n8n_sync writeback: file has no n8n_id; new-workflow create not implemented', [
+			// No n8n id yet → not ours to update. Creating it in n8n is
+			// CreateService's job, on its own event.
+			$this->logger->info('n8n_sync writeback: file has no n8n_id; skipping (create is not the writeback\'s job)', [
 				'app' => Application::APP_ID,
 				'path' => $node->getPath(),
 			]);
@@ -85,9 +86,9 @@ final class PushService {
 			// A LOCAL failure instead — an unparseable file, a JSON encode error.
 			// Callers catch one type, so normalise to it, but keep the original as
 			// `previous` rather than reducing it to a string.
+			// Either way the synced hash is not stamped, so the next save retries.
 			throw new N8nApiException($e->getMessage(), 0, $e);
 		}
-		// Either way the synced hash is not stamped, so the next save retries.
 
 		// Stamp the synced hash so this exact content won't re-trigger a push,
 		// plus the new versionId.

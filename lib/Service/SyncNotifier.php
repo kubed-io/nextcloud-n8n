@@ -38,26 +38,11 @@ final class SyncNotifier {
 	 * because of $reason (n8n's own message).
 	 */
 	public function failed(string $userId, int $fileId, string $fileName, string $reason): void {
-		if ($userId === '') {
-			return;
-		}
-		try {
-			$notification = $this->manager->createNotification();
-			$notification->setApp(Application::APP_ID)
-				->setUser($userId)
-				->setDateTime($this->timeFactory->getDateTime())
-				->setObject('workflow', (string)$fileId)
-				->setSubject('push_failed', ['file' => $fileName])
-				// Cap the stored reason: notification storage isn't a log.
-				->setMessage('push_failed', ['reason' => mb_substr($reason, 0, 320)]);
-			$this->manager->notify($notification);
-		} catch (\Throwable $e) {
-			// Notifications are a courtesy; never let them mask the real failure.
-			$this->logger->warning('n8n_sync: could not raise push-failure notification', [
-				'app' => Application::APP_ID,
-				'exception' => $e,
-			]);
-		}
+		// Never let a courtesy notification mask the real failure.
+		$this->raise($userId, $fileId, 'push_failed', ['file' => $fileName],
+			// Cap the stored reason: notification storage isn't a log.
+			['reason' => mb_substr($reason, 0, 320)],
+			'n8n_sync: could not raise push-failure notification');
 	}
 
 	/**
@@ -67,6 +52,21 @@ final class SyncNotifier {
 	 * blocked saves (a desktop client retrying) collapse onto one bell entry.
 	 */
 	public function linkEditBlocked(string $userId, int $fileId, string $fileName): void {
+		// The 403 is the real, load-bearing signal; the bell is a courtesy.
+		$this->raise($userId, $fileId, 'link_edit_blocked', ['file' => $fileName], null,
+			'n8n_sync: could not raise link-edit-blocked notification');
+	}
+
+	/**
+	 * Build, address and send one notification, swallowing (but logging) any
+	 * failure — notifications are a courtesy and must never take down the
+	 * operation they report on. No-ops on an empty user id: with nobody to
+	 * address there is nothing to raise.
+	 *
+	 * @param array<string,string> $subjectParams
+	 * @param array<string,string>|null $messageParams
+	 */
+	private function raise(string $userId, int $fileId, string $subject, array $subjectParams, ?array $messageParams, string $failureLog): void {
 		if ($userId === '') {
 			return;
 		}
@@ -76,11 +76,13 @@ final class SyncNotifier {
 				->setUser($userId)
 				->setDateTime($this->timeFactory->getDateTime())
 				->setObject('workflow', (string)$fileId)
-				->setSubject('link_edit_blocked', ['file' => $fileName]);
+				->setSubject($subject, $subjectParams);
+			if ($messageParams !== null) {
+				$notification->setMessage($subject, $messageParams);
+			}
 			$this->manager->notify($notification);
 		} catch (\Throwable $e) {
-			// Notifications are a courtesy; the 403 is the real, load-bearing signal.
-			$this->logger->warning('n8n_sync: could not raise link-edit-blocked notification', [
+			$this->logger->warning($failureLog, [
 				'app' => Application::APP_ID,
 				'exception' => $e,
 			]);
