@@ -188,7 +188,7 @@ There's a third state you don't configure: **unmapped**. That's what a sync file
 
 **1. Point it at n8n.** Base URL and an API key, stored encrypted and never echoed back. That is the whole connection.
 
-![The n8n Sync admin settings showing the Instance and Sync Settings sections](screenshots/connection-settings.png)
+![The n8n Sync admin settings showing the Instance and Sync Settings sections](screenshots/connection.png)
 
 **2. Map a tag to a folder.** Pick the n8n tag, the mode, and which groups get to see it. Backed by a Team Folder or an admin-owned shared folder, your call.
 

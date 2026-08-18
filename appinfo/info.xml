@@ -114,7 +114,7 @@ This is a community integration and is not affiliated with, endorsed by, or spon
   <screenshot small-thumbnail="https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/thumbnails/popular-files.png">https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/popular-files.png</screenshot>
   <screenshot small-thumbnail="https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/thumbnails/trash-and-restore.png">https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/trash-and-restore.png</screenshot>
   <screenshot small-thumbnail="https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/thumbnails/tag2folder-mapping.png">https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/tag2folder-mapping.png</screenshot>
-  <screenshot small-thumbnail="https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/thumbnails/connection-settings.png">https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/connection-settings.png</screenshot>
+  <screenshot small-thumbnail="https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/thumbnails/connection.png">https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/connection.png</screenshot>
   <screenshot small-thumbnail="https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/thumbnails/admin-actions.png">https://raw.githubusercontent.com/kubed-io/nextcloud-n8n/main/screenshots/admin-actions.png</screenshot>
   <dependencies>
     <!-- Not 30 or 31. AutoSyncSettings implements IDeclarativeSettingsFormWithHandlers
