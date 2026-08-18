@@ -179,7 +179,18 @@ final class Application extends App implements IBootstrap {
 		// reached n8n never. groupfolders' backend emits nothing; the one thing it cannot
 		// skip is dropping the file's cache entry. See {@see TeamFolderPurgeListener} for
 		// why that event, and for the three filters keeping it to actual purges.
-		$context->registerEventListener(CacheEntryRemovedEvent::class, TeamFolderPurgeListener::class);
+		//
+		// PRIORITY 100, AND IT IS LOAD-BEARING ON NEXTCLOUD 32/33. Core registers its
+		// own `FilesMetadata\Listener\MetadataDelete` on THIS SAME EVENT there
+		// (`FilesMetadataManager::304`), at the default priority and during boot — so
+		// it ran first and deleted the `n8n_id` stamp before this listener could read
+		// it. The purge then found an unmanaged file and correctly did nothing, and a
+		// Team Folder purge left its workflow archived in n8n forever. Nextcloud 34
+		// moved core's cleanup to the PLURAL `CacheEntriesRemovedEvent`, which is why
+		// this only ever failed on 32/33 and why the bug survived a CI matrix that
+		// runs one version per PR. Higher priority = earlier (see
+		// IRegistrationContext::registerEventListener), so we read the stamp first.
+		$context->registerEventListener(CacheEntryRemovedEvent::class, TeamFolderPurgeListener::class, 100);
 
 		// §5.6.2 reactive tag sync (surface 3): a CONTENT pill add/remove on a managed
 		// sync file reconciles that tag to n8n on its own — the tag-side sibling of the
