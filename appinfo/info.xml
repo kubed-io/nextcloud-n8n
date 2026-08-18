@@ -59,7 +59,7 @@ A sync folder holds every one of its workflows in full, so it is also a complete
 
 This is a community integration and is not affiliated with, endorsed by, or sponsored by n8n GmbH. "n8n" and the n8n logo are trademarks of n8n GmbH, used here only to identify the service this app integrates with.
   ]]></description>
-  <version>0.1.5</version>
+  <version>1.0.0</version>
   <!-- SPDX identifier, not the `agpl` shorthand. The store's XSD still accepts the
        shorthand but marks it deprecated, and its docs scope it to apps targeting
        Nextcloud 30 or lower. This app requires 32. -->
