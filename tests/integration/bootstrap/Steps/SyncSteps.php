@@ -537,15 +537,44 @@ trait SyncSteps {
 	// ── the push direction: Nextcloud declared the source of truth ────────────
 
 	/**
+	 * Put this instance where most Nextclouds actually are: `backgroundjobs_mode=ajax`,
+	 * which runs a single queued job per page visit and therefore may never run one at
+	 * all. It is the INSTALL DEFAULT, and Nextcloud's own admin manual calls it "the
+	 * least reliable".
+	 *
+	 * Stated as a Given about the instance rather than about our plumbing: a person
+	 * setting up Nextcloud on shared hosting has exactly this, has never heard of a job
+	 * queue, and still expects their edit to reach n8n. That is the promise, and
+	 * {@see \OCA\N8nSync\Service\WritebackStrategy} is only how it is kept.
+	 *
+	 * The teardown puts it back — leaving it would silently switch every scenario
+	 * after this one onto the inline path.
+	 *
+	 * @Given background jobs on this instance only run when someone visits a page
+	 */
+	public function backgroundJobsOnlyRunOnPageVisits(): void {
+		$res = $this->occ('config:app:set core backgroundjobs_mode --value=ajax');
+		if ($res['exit'] !== 0) {
+			throw new \RuntimeException("could not set backgroundjobs_mode=ajax:\n{$res['output']}");
+		}
+		$this->backgroundJobsMode = 'ajax';
+	}
+
+	/**
 	 * The pre-state for "make n8n match Nextcloud": mirrors that have been edited
 	 * locally, whose edits are still sitting in Nextcloud.
 	 *
-	 * NOTHING IS DRAINED HERE, AND THAT IS THE WHOLE ARRANGE. `timing` defaults to
-	 * `async`, so a PUT enqueues {@see PushWorkflowJob} and a pill enqueues
-	 * {@see ReconcileTagsJob}, neither of which runs until something forces it. That
-	 * is exactly the state a real instance is in between a save and the next worker
-	 * tick — so the divergence is produced by NOT doing something, rather than by
-	 * reaching around the app to fake it.
+	 * NOTHING IS DRAINED HERE, AND THAT IS THE WHOLE ARRANGE. A PUT enqueues
+	 * {@see PushWorkflowJob} and a pill enqueues {@see ReconcileTagsJob}, neither of
+	 * which runs until something forces it. That is exactly the state a real instance
+	 * is in between a save and the next worker tick — so the divergence is produced by
+	 * NOT doing something, rather than by reaching around the app to fake it.
+	 *
+	 * IT DEPENDS ON CI RUNNING `backgroundjobs_mode=cron`, set at install. The app
+	 * derives inline-vs-queued from that ({@see WritebackStrategy}), so on an `ajax`
+	 * instance these writes would land in n8n immediately and there would be no
+	 * divergence left to push. The guard below is what says so out loud instead of
+	 * grading nothing.
 	 *
 	 * BOTH SURFACES, because "its files' tags" means the pills: `reconcilePush`
 	 * reads {@see TagSyncService::readNcContentTags}, not the body's `tags` array.

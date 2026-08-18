@@ -187,6 +187,19 @@ jobs:
         # that host:port must be trusted too.
         ./occ config:system:set trusted_domains 2 --value=localhost:8080
         ./occ config:system:set loglevel --type=integer --value=0
+        # BACKGROUND JOBS: `cron`, because that is what a properly-run instance is.
+        #
+        # A fresh install defaults to `ajax` (one job per page visit), and the app now
+        # READS this: WritebackStrategy runs a writeback inline whenever nothing
+        # reliably drains the queue. Left at `ajax` every scenario here would exercise
+        # the inline fallback and the queued path — the one a real deployment uses —
+        # would never run at all, with every leg still green.
+        #
+        # Nothing actually executes cron in CI, which is the point: jobs are QUEUED and
+        # sit there until a step drains them on purpose. That is what makes
+        # `drainJobs()` meaningful and what lets the push scenario arrange a real
+        # divergence by simply not draining.
+        ./occ config:app:set core backgroundjobs_mode --value=cron
 
     # TEAM FOLDERS ARE OPT-IN, AND THE SUITE HAS TO BE ABLE TO OPT IN.
     #

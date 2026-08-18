@@ -179,6 +179,15 @@ final class FeatureContext implements Context {
 	private string $arrivedNodeName = '';
 	/** The file a `Then` named, so the sentence after it can say "its workflow". */
 	private string $namedFileUnderTest = '';
+	/**
+	 * This instance's `backgroundjobs_mode`, memoised per scenario (null = not read yet).
+	 *
+	 * CI installs with `cron`, so the app queues its writebacks and they sit until a
+	 * step drains them. A scenario that sets `ajax` is stating there is no worker at
+	 * all, and {@see drainJobs} then refuses to act as one.
+	 */
+	private ?string $backgroundJobsMode = null;
+
 	/** The node a `Then` said should have survived, so n8n is held to the SAME body. */
 	private string $expectedNodeName = '';
 	/**
@@ -263,8 +272,10 @@ final class FeatureContext implements Context {
 		}
 		// Reset the mapping list so the next scenario starts from zero mappings.
 		$this->occ('config:app:delete ' . self::APP_ID . ' mappings');
-		// Reset the writeback timing knob (some tag scenarios set it) back to default.
-		$this->occ('config:app:delete ' . self::APP_ID . ' timing');
+		// Put the job mode back. A scenario that ran on `ajax` would otherwise switch
+		// every scenario after it onto the inline path, silently.
+		$this->occ('config:app:set core backgroundjobs_mode --value=cron');
+		$this->backgroundJobsMode = null;
 		$this->createdWorkflowIds = [];
 		$this->createdFolders = [];
 		$this->currentFolder = '';

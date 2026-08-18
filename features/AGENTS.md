@@ -1561,6 +1561,33 @@ scenarios state the full table for that reason. An outline over the mode would
 have hidden the difference that matters while pretending the rest was the
 question.
 
+### An edit reaches n8n even where background jobs never run
+
+**THE INSTANCE IN THIS SCENARIO IS THE DEFAULT ONE, which is what makes it worth a
+scenario at all.** A fresh Nextcloud installs with `backgroundjobs_mode=ajax`: a single
+queued job runs per page visit, and only when somebody visits. Nextcloud's own admin
+manual calls it *"the least reliable"*. Somebody on shared hosting has exactly this, has
+never heard of a job queue, and still expects their save to reach n8n.
+
+So the `Given` is written about the INSTANCE, not about us — *background jobs only run
+when someone visits a page*. It says nothing about inline or queued, because which one
+the app picks is plumbing; the promise is that the edit arrives.
+
+**The harness must not quietly supply the worker.** `drainJobs()` returns immediately on
+an `ajax` instance, and that is load-bearing rather than an optimisation: draining would
+simulate exactly the thing this scenario says is absent, and the assertion would then
+pass whether or not the fallback works. It is the difference between grading the app and
+grading the test.
+
+**CI installs `backgroundjobs_mode=cron` on purpose** (integration.yml), so every OTHER
+scenario exercises the queued path — the one a properly-run deployment uses — and jobs
+sit in the queue until a step drains them deliberately. Left at the install default, the
+whole suite would have quietly moved onto the inline fallback with every leg still green,
+which is the same class of silent-coverage-loss the suite partition exists to prevent.
+
+The teardown puts the mode back. A scenario that leaked `ajax` would switch everything
+after it onto the inline path without saying so.
+
 ### A file outside every mapping is never pushed
 
 An edit to a file the app does not manage reaches nothing, because no listener is

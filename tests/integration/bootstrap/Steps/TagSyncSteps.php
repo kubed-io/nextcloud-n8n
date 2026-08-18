@@ -84,13 +84,12 @@ trait TagSyncSteps {
 	 * @Given a managed :mode workflow file in :folder whose normal tags are :tags
 	 */
 	public function aManagedFileWhoseNormalTagsAre(string $mode, string $folder, string $tags): void {
-		// TIMING IS NOT IN THE SPEC, AND IS PINNED HERE INSTEAD. Whether the change
-		// reaches n8n during the request or on the worker's next tick is an
-		// implementation detail of this app — the behaviour is that it arrives, and
-		// a scenario that said "async" would be describing our plumbing rather than
-		// anything a person does. The harness still has to pin it, or every scenario
-		// inherits whatever the one before it left behind.
-		$this->setPushTiming('sync');
+		// TIMING IS NOT IN THE SPEC, AND IT IS NOT PINNED ANY MORE EITHER. This used to
+		// force `timing=sync` so the reconcile happened inline and the assertions could
+		// read it straight back. That knob is gone (saga Ch5) — inline-vs-queued is now
+		// derived from the environment — so the arrange stops asserting HOW the change
+		// travels and the Then-steps drain the job instead. Same behaviour graded, one
+		// less thing the harness has to hold still.
 		$normal = self::tagList($tags);
 		$mapping = $this->tagForFolder($folder);
 		$this->tagMappingTag = $mapping;
@@ -128,12 +127,6 @@ trait TagSyncSteps {
 		$this->currentFilePath = $to;
 	}
 
-	/** Pin how the writeback runs. A harness concern; see the arrange above. */
-	private function setPushTiming(string $timing): void {
-		$res = $this->occ('config:app:set ' . self::APP_ID . ' timing --value=' . escapeshellarg($timing));
-		Assert::assertSame(0, $res['exit'], "setting timing=$timing failed:\n{$res['output']}");
-	}
-
 	// ── When: the tags are changed, on one surface ─────────────────────────────
 
 	/**
@@ -153,6 +146,12 @@ trait TagSyncSteps {
 	 */
 	public function iChangeTheNextcloudTagsTo(string $tags): void {
 		$this->applyNextcloudTags(self::tagList($tags));
+		// A PILL CHANGE MAY NOW BE QUEUED. `ContentTagListener` used to be forced
+		// inline by the `timing` pin this arrange set; with that gone it enqueues
+		// whenever the environment can drain a queue. Draining here keeps the step
+		// meaning the same thing under either — the same shape
+		// `iEditTheFilesNodesAndSave` has always had, and a no-op when it ran inline.
+		$this->drainJobs('OCA\\N8nSync\\BackgroundJob\\ReconcileTagsJob');
 	}
 
 	/**

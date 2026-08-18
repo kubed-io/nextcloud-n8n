@@ -34,6 +34,18 @@ Feature: Editing a workflow
       | n8n_versionId  | n8n's current one  |
       | n8n_syncedHash | the file's hash    |
 
+  # notes: ../AGENTS.md#an-edit-reaches-n8n-even-where-background-jobs-never-run
+  @user @in-nextcloud @gesture @ui
+  Scenario: Editing a workflow file reaches n8n where background jobs never run
+    Given background jobs on this instance only run when someone visits a page
+    And a workflow file in "Automations"
+    When I edit the file's nodes and save
+    Then the workflow in n8n holds the file's nodes
+    And the file holds this DAV metadata:
+      | n8n_id         | the workflow's id  |
+      | n8n_versionId  | n8n's current one  |
+      | n8n_syncedHash | the file's hash    |
+
   # notes: ../AGENTS.md#a-file-outside-every-mapping-is-never-pushed
   @user @in-nextcloud @gesture @ui
   Scenario: Editing a file outside every mapping reaches nothing

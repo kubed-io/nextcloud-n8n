@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\N8nSync\Tests\Unit\Settings;
 
+use OCA\N8nSync\Service\WritebackStrategy;
 use OCA\N8nSync\Settings\AutoSyncSettings;
 use OCP\IAppConfig;
 use OCP\IUser;
@@ -76,13 +77,32 @@ final class AutoSyncSettingsTest extends TestCase {
 		}
 	}
 
-	/** The radio is pinned to its two known values — never write a timing nothing reads. */
-	public function testTimingIsPinnedToItsKnownValues(): void {
-		foreach (['sync' => 'sync', 'SYNC' => 'sync', ' sync ' => 'sync', 'async' => 'async', 'nonsense' => 'async', '' => 'async'] as $wire => $stored) {
-			$config = $this->createMock(IAppConfig::class);
-			$config->expects(self::once())->method('setValueString')->with('n8n_sync', 'timing', $stored);
-			$this->form($config)->setValue('timing', $wire, $this->user());
-		}
+	/**
+	 * THE FORM NO LONGER ASKS ABOUT WRITEBACK TIMING, and this is what says so.
+	 *
+	 * A `timing` radio used to live here, pinned to `sync`/`async`. It is gone (saga
+	 * Ch5): inline-vs-queued is derived per request by {@see WritebackStrategy} from
+	 * whether a job could run at all, which is not a question an admin can answer.
+	 *
+	 * Asserted as the WHOLE field list rather than "timing is absent", because the
+	 * failure worth catching is the form quietly regrowing a knob — and because a
+	 * settings form that lost `schedule_interval` would satisfy any negative check.
+	 */
+	public function testTheFormAsksOnlyAboutTheSchedule(): void {
+		$config = $this->createMock(IAppConfig::class);
+		$ids = array_map(
+			static fn (array $f): string => (string)($f['id'] ?? ''),
+			$this->form($config)->getSchema()['fields'],
+		);
+		self::assertSame(['schedule_enabled', 'schedule_interval'], $ids);
+	}
+
+	/** A field the form does not own must not be written just because it was POSTed. */
+	public function testARetiredFieldIsIgnoredRatherThanStored(): void {
+		$config = $this->createMock(IAppConfig::class);
+		$config->expects(self::never())->method('setValueString');
+		$config->expects(self::never())->method('setValueBool');
+		$this->form($config)->setValue('timing', 'sync', $this->user());
 	}
 
 	/** An emptied interval box means "the default", not "every zero seconds". */

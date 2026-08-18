@@ -115,6 +115,14 @@ trait SetupTrait {
 	 * names are already in sync, so running a stale id is harmless.
 	 */
 	private function drainJobs(string $jobClass): void {
+		// NOTHING DRAINS THE QUEUE ON AN `ajax` INSTANCE, and pretending otherwise
+		// would grade a worker that instance does not have. A scenario that puts the
+		// instance in that mode is asserting the app copes WITHOUT a worker, so the
+		// harness must not quietly supply one — this is the difference between the
+		// inline fallback working and the test faking it.
+		if ($this->backgroundJobsMode() === 'ajax') {
+			return;
+		}
 		$res = $this->occ('background-job:list --class=' . escapeshellarg($jobClass) . ' --output=json');
 		$jobs = json_decode($res['output'], true);
 		if (!is_array($jobs)) {
@@ -126,6 +134,21 @@ trait SetupTrait {
 				$this->occ('background-job:execute ' . escapeshellarg((string)$id) . ' --force-execute');
 			}
 		}
+	}
+
+	/**
+	 * How this instance runs background jobs, read once per scenario.
+	 *
+	 * Cached because {@see drainJobs} consults it on every call and an `occ` round trip
+	 * is not free; reset in the teardown alongside the mode itself, so a scenario that
+	 * changes it does not leak the answer into the next one.
+	 */
+	private function backgroundJobsMode(): string {
+		if ($this->backgroundJobsMode === null) {
+			$res = $this->occ('config:app:get core backgroundjobs_mode');
+			$this->backgroundJobsMode = trim((string)$res['output']) ?: 'ajax';
+		}
+		return $this->backgroundJobsMode;
 	}
 
 	/** A stable, filesystem-safe folder name derived from an n8n tag. */

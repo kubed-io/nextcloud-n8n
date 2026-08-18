@@ -415,6 +415,19 @@ final class N8nClient {
 				'X-N8N-API-KEY' => $key,
 				'Accept' => 'application/json',
 			],
+			// TWO BUDGETS, BECAUSE THEY BOUND DIFFERENT FAILURES. `timeout` is the whole
+			// exchange and 10s is right for a bulk push of a large workflow.
+			// `connect_timeout` bounds only "is anything listening?", and that is the
+			// case that reaches a user: since the writeback strategy now falls back to
+			// an INLINE push whenever a job could not run, an unreachable n8n would
+			// otherwise hold somebody's save for the full ten seconds. Three seconds is
+			// long for a TCP handshake and short for a spinner.
+			//
+			// Honest about what this does NOT fix: an n8n that accepts the connection
+			// and then hangs still costs the full `timeout`. Bounding that properly
+			// needs a per-call budget threaded through every method here, which is a
+			// bigger change than it is worth until somebody actually hits it.
+			'connect_timeout' => 3,
 			'timeout' => 10,
 			'nextcloud' => ['allow_local_address' => true],
 		];

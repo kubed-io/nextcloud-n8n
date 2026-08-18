@@ -60,6 +60,7 @@ The first release since `0.1.5`, and the one where the mirror became properly tw
 
 ### Removed
 
+- **The "when you save a workflow file" timing option is gone.** Nextcloud → n8n writeback now runs in the background where that works and during the save where it does not, decided per instance. Nothing to configure, and no setting to get wrong.
 - **BREAKING:** the `n8n:sync` / `n8n:link` / `n8n:unmapped` pills are gone. The mapping decides a file's mode and the file still shows you what it is, so the pills were a second copy nobody could edit. They are deleted on upgrade and disappear from the tag picker.
 - **BREAKING:** the `n8n:ignore` tag is gone. Move a file out of its mapped folder to keep it in Nextcloud only, or drop the mapping tag to keep it in n8n only. Files currently marked ignored become ordinary workflow files again on the next sync.
 - **BREAKING:** the admin "Purge Nextcloud files" button is gone, along with `occ n8n_sync:purge`. It deleted every mirrored file in one click on the promise that a sync would bring them back — which was only true for files that were faithful mirrors, and the ones that were not are exactly the ones you would miss. Removing a mapping still cleans up its own files.
@@ -81,6 +82,7 @@ The first release since `0.1.5`, and the one where the mirror became properly tw
 - The mapping Mode help no longer offers a "Backup" mode — there has not been one since 0.1.3.
 - The Sync Actions panel no longer prints an internal note next to a run that succeeded, where a stale one could sit for months.
 - The admin "Test connection" button is CSRF-protected.
+- Saving a workflow file now reaches n8n on instances where background jobs only run when someone visits a page — the Nextcloud default. The push was queued and could sit unrun indefinitely.
 - Answering "keep the new version" when a workflow file replaces one already in a mapped folder no longer archives the workflow you kept, and no longer leaves a second workflow behind in n8n — the file that lands keeps the workflow that was already there and simply gives it new contents.
 - Moving a workflow file back into a mapped folder now sends up any changes made to it while it was outside; edits made outside a mapping were quietly overwritten by the next scheduled sync.
 
