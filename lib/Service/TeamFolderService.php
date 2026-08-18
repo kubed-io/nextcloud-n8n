@@ -17,7 +17,6 @@ use OCP\IAppConfig;
 use OCP\IDBConnection;
 use OCP\IGroupManager;
 use Psr\Container\ContainerInterface;
-use Psr\Log\LoggerInterface;
 
 /**
  * All Team Folder (groupfolders) interaction lives here, so the rest of the
@@ -52,7 +51,6 @@ final class TeamFolderService {
 		private IGroupManager $groupManager,
 		private IRootFolder $rootFolder,
 		private IAppConfig $config,
-		private LoggerInterface $logger,
 	) {
 	}
 
@@ -70,10 +68,11 @@ final class TeamFolderService {
 	 * that); it only stopped the user from using their own files: no subfolder of
 	 * their own, no drag between folders, no rename.
 	 *
-	 * Identical to {@see StorageService::CONTENT_PERMISSIONS} so both backends
-	 * grant the same surface, and identical to both sibling apps.
+	 * The one definition — {@see StorageService} aliases it so both backends
+	 * grant the same surface by construction rather than by a comment asking
+	 * them to. Identical to both sibling apps.
 	 */
-	private const CONTENT_PERMISSIONS = Constants::PERMISSION_READ
+	public const CONTENT_PERMISSIONS = Constants::PERMISSION_READ
 		| Constants::PERMISSION_UPDATE
 		| Constants::PERMISSION_CREATE
 		| Constants::PERMISSION_DELETE;

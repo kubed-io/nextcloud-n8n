@@ -51,20 +51,29 @@ final class MappingService {
 		if (!is_array($decoded)) {
 			return $this->cache = [];
 		}
+		return $this->cache = $this->parseRows($decoded);
+	}
+
+	/**
+	 * Decode stored rows into Mappings. fromArray reads both current and legacy
+	 * shapes; a malformed row is skipped rather than breaking the admin page.
+	 *
+	 * @param array<array-key, mixed> $decoded
+	 * @return list<Mapping>
+	 */
+	private function parseRows(array $decoded): array {
 		$result = [];
 		foreach ($decoded as $entry) {
 			if (!is_array($entry)) {
 				continue;
 			}
 			try {
-				// fromArray reads both current and legacy shapes; a malformed row is
-				// skipped rather than breaking the admin page.
 				$result[] = Mapping::fromArray($entry);
 			} catch (\InvalidArgumentException) {
 				continue;
 			}
 		}
-		return $this->cache = $result;
+		return $result;
 	}
 
 	/**
@@ -81,21 +90,14 @@ final class MappingService {
 		if (!is_array($decoded)) {
 			return false;
 		}
-		$result = [];
 		$legacySeen = false;
 		foreach ($decoded as $entry) {
-			if (!is_array($entry)) {
-				continue;
-			}
-			if (self::isLegacyRow($entry)) {
+			if (is_array($entry) && self::isLegacyRow($entry)) {
 				$legacySeen = true;
-			}
-			try {
-				$result[] = Mapping::fromArray($entry);
-			} catch (\InvalidArgumentException) {
-				continue;
+				break;
 			}
 		}
+		$result = $this->parseRows($decoded);
 		if (!$legacySeen || $result === []) {
 			return false;
 		}
@@ -138,7 +140,7 @@ final class MappingService {
 	 */
 	public function add(Mapping $mapping, array|string $groups = []): Mapping {
 		$all = $this->list();
-		$this->assertTagUnique($all, $mapping->n8nTag, null);
+		$this->assertTagUnique($all, $mapping->n8nTag);
 		$this->storage->ensureFolder($mapping, $groups);
 		$all[] = $mapping;
 		$this->persist($all);
@@ -164,7 +166,7 @@ final class MappingService {
 
 		$this->storage->ensureFolder($mapping, $ncGroups);
 
-		return $this->storage->groupsOf($mapping);
+		return $this->groupsOf($mapping);
 	}
 
 	/**
@@ -245,9 +247,9 @@ final class MappingService {
 	 *
 	 * @param list<Mapping> $all
 	 */
-	private function assertTagUnique(array $all, string $tag, ?string $exceptId): void {
+	private function assertTagUnique(array $all, string $tag): void {
 		foreach ($all as $m) {
-			if ($m->id !== $exceptId && $m->n8nTag === $tag) {
+			if ($m->n8nTag === $tag) {
 				throw new \InvalidArgumentException(
 					'Another mapping already uses the n8n tag "' . $tag . '". Each tag may map to only one folder.',
 				);

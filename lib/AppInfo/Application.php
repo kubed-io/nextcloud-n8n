@@ -49,8 +49,10 @@ use OCP\SystemTag\TagAssignedEvent;
 use OCP\SystemTag\TagUnassignedEvent;
 
 /**
- * App bootstrap. Phase 0 is an intentionally empty skeleton: it must install,
- * enable, and disable cleanly before any behaviour is wired in.
+ * App bootstrap: wires every listener, form, job and DAV plugin the app has.
+ * register() connects the event listeners and declarative forms; boot()
+ * registers the metadata keys, the scheduled pull job, and the two legacy
+ * trash hooks that have no OCP event.
  */
 final class Application extends App implements IBootstrap {
 	public const APP_ID = 'n8n_sync';
@@ -81,7 +83,7 @@ final class Application extends App implements IBootstrap {
 		//
 		// Section layout, by the priorities the classes actually return:
 		//   Instance — URL + API key (5, declarative)
-		//   Test connection          (22, classic panel — AdminTest)
+		//   (22 — AdminTest: registered nowhere, auth target only; renders nothing)
 		//   Sync Settings            (33, declarative — AutoSyncSettings)
 		//   Folder mappings          (36, classic panel — MappingSettings)
 		//   Sync Actions             (45, classic panel — SyncSettings)
@@ -130,13 +132,15 @@ final class Application extends App implements IBootstrap {
 
 		// §14.2 motion guard: a managed workflow may rename / move within its
 		// mapping; moving a *sync* file out to an unmapped folder is allowed (it
-		// becomes `unmapped` + archived — see MotionListener); moving a *link* out,
-		// or any file directly into a different mapping, is blocked.
+		// becomes `unmapped` + archived — see MotionListener); moving it into a
+		// different mapping is allowed too and rebinds it there. Only a *link*
+		// is pinned (a pointer is not the workflow), and a link mapping accepts
+		// no arrivals — see MoveGuardListener for the full decision table.
 		$context->registerEventListener(BeforeNodeRenamedEvent::class, MoveGuardListener::class);
 
 		// §14.2 motion consequence: after an allowed move, archive+unmap (sync
-		// move-out) or unarchive/restore (unmapped move-in) the same workflow in
-		// n8n. Untracked move-in (create-on-land) stays with CreateInN8nListener.
+		// move-out), unarchive/restore (unmapped move-in), or rebind (mapping →
+		// mapping). Untracked move-in (create-on-land) stays with CreateInN8nListener.
 		$context->registerEventListener(NodeRenamedEvent::class, MotionListener::class);
 
 		// §14.2 copy is the opposite of move: a copy is ALWAYS a brand-new instance.
@@ -157,12 +161,14 @@ final class Application extends App implements IBootstrap {
 		$context->registerEventListener(NodeWrittenEvent::class, NameSyncListener::class);
 		$context->registerEventListener(NodeRenamedEvent::class, NameSyncListener::class);
 
-		// §17.7 delete mirror: NC's right-click "Delete file" fires
+		// §17.7 delete mirror, SOFT STEP ONLY: NC's right-click "Delete file" fires
 		// BeforeNodeDeletedEvent **before** storage->unlink and supports
-		// AbortedEventException, so a single listener cleanly covers
-		//   - the move-to-trash leg  (path = `/<uid>/files/…`)  → archive or untag
-		//   - the trash-purge leg    (path = `/<uid>/files_trashbin/files/…`) → DELETE
-		// in n8n, aborting the NC delete if n8n rejects the call. Restore from
+		// AbortedEventException, so DeleteToN8nListener covers the move-to-trash
+		// leg (archive or untag, aborting the NC delete if n8n rejects it) — and
+		// nothing else. The purge legs never reach this event (see the listener's
+		// own docblock for the retraction): home-trash purges go through the legacy
+		// `preDelete` hook (TrashPurgeHook, wired in boot()) and team-folder purges
+		// through CacheEntryRemovedEvent (TeamFolderPurgeListener). Restore from
 		// trash is a separate event with separate (non-aborting) semantics.
 		$context->registerEventListener(BeforeNodeDeletedEvent::class, DeleteToN8nListener::class);
 		$context->registerEventListener(NodeRestoredEvent::class, RestoreFromTrashListener::class);

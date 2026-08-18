@@ -22,17 +22,18 @@ use Psr\Log\LoggerInterface;
 /**
  * Manual bulk-sync endpoints.
  *
- * Pull (Phase 3) is fully wired through {@see SyncService::pullAll}: each
- * mapping's tag is queried against n8n, files are reconciled into the
- * configured owner user's NC home, and Files-Metadata stamps follow.
+ * Pull runs through {@see SyncService::pullAll}: each mapping's tag is
+ * queried against n8n, files are reconciled into the configured owner user's
+ * NC home, and Files-Metadata stamps follow.
  *
- * Push (Phase 4) is still a stub \u2014 the manual button records a no-op run
- * so the admin UI continues to render the "last: \u2026" line.
+ * Push runs through {@see SyncService::pushAll}: every synced mapping's
+ * files are written back wholesale — the admin declaring Nextcloud the
+ * source of truth and n8n made to match.
  *
  * Routes:
- *   POST /apps/n8n_sync/sync/pull    \u2192 n8n \u2192 NC (bulk populate)
- *   POST /apps/n8n_sync/sync/push    \u2192 NC \u2192 n8n (bulk export, stub)
- *   GET  /apps/n8n_sync/sync/status  \u2192 both records
+ *   POST /apps/n8n_sync/sync/pull    → n8n → NC (bulk populate)
+ *   POST /apps/n8n_sync/sync/push    → NC → n8n (bulk export)
+ *   GET  /apps/n8n_sync/sync/status  → both records
  */
 final class SyncController extends Controller {
 	public function __construct(

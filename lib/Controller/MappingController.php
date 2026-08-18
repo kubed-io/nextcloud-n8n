@@ -124,8 +124,6 @@ final class MappingController extends Controller {
 
 	/**
 	 * Pull just this mapping from n8n (granular alternative to the bulk button).
-	 * Synchronous for now — matches the bulk pull; an async job is the §16.1
-	 * follow-up.
 	 */
 	#[AuthorizedAdminSetting(settings: MappingSettings::class)]
 	public function sync(string $id): JSONResponse {
@@ -147,11 +145,9 @@ final class MappingController extends Controller {
 		$purged = 0;
 		try {
 			if ($purge) {
-				foreach ($this->service->list() as $m) {
-					if ($m->id === $id) {
-						$purged = $this->sync->purgeManagedFiles($m);
-						break;
-					}
+				$m = $this->service->getById($id);
+				if ($m !== null) {
+					$purged = $this->sync->purgeManagedFiles($m);
 				}
 			}
 			$this->service->delete($id);

@@ -19,10 +19,10 @@ use PHPUnit\Framework\Assert;
  * Behat can't drive the Files app's JavaScript, so these steps verify the
  * *server-observable backing state* the front-end keys off — they are deliberately
  * NOT an attempt to simulate a click (that would be an illusion):
- *  - the DAV-exposed `n8n_mode` (sync / reference=link / unmapped / ignored), the
+ *  - the DAV-exposed `n8n_mode` (sync / reference=link / unmapped), the
  *    exact signal `canOpenInN8n(mode)` / `defaultOpener(mode)` read in
  *    src/files-helpers.js;
- *  - whether the workflow is LIVE (sync/link) or ARCHIVED (unmapped/ignored) in
+ *  - whether the workflow is LIVE (sync/link) or ARCHIVED (unmapped) in
  *    n8n — "is there anything to open"; and
  *  - that the raw JSON is readable over WebDAV (what the text editor loads).
  *
@@ -45,16 +45,6 @@ trait OpenWithSteps {
 	 */
 	public function aManagedWorkflowFileInMode(string $mode): void {
 		$this->arrangeManagedFile($mode);
-	}
-
-	/** @Given a managed workflow file in :mode mode with a live workflow in n8n */
-	public function aManagedWorkflowFileInModeWithLiveWorkflow(string $mode): void {
-		$this->arrangeManagedFile($mode);
-		$id = $this->davReadMetadata($this->currentFilePath, self::META_ID);
-		Assert::assertNotNull($id, 'precondition: file has no n8n_id');
-		$wf = $this->n8nGetWorkflow($id);
-		Assert::assertIsArray($wf, "precondition: workflow $id is not in n8n");
-		Assert::assertFalse((bool)($wf['isArchived'] ?? false), 'precondition: workflow is archived, not live');
 	}
 
 	// ── When ──────────────────────────────────────────────────────────────────
@@ -82,7 +72,7 @@ trait OpenWithSteps {
 
 	// ── Then ──────────────────────────────────────────────────────────────────
 
-	/** @Then /^n8n opens at that workflow \(not a download, not the text editor\)$/ */
+	/** Called from theActionIsOfferedOrHidden (no live Gherkin phrasing of its own). */
 	public function n8nOpensAtThatWorkflow(): void {
 		// "Open in n8n" jumps to <n8nUrl>/workflow/<n8n_id>; the real backing is a
 		// LIVE workflow (mode sync/link) with an id to deep-link to.
@@ -113,14 +103,14 @@ trait OpenWithSteps {
 		$this->theActionIsHiddenFromContextMenu($action);
 	}
 
-	/** @Then :action is hidden from its context menu */
+	/** Called from theActionIsOfferedOrHidden (no live Gherkin phrasing of its own). */
 	public function theActionIsHiddenFromContextMenu(string $action): void {
 		Assert::assertSame('Open in n8n', $action, 'this step only models hiding the "Open in n8n" action');
 		// The front-end hides it exactly when canOpenInN8n(mode) is false → the
-		// backing mode is unmapped/ignored. Assert that, plus that no live workflow
+		// backing mode is unmapped. Assert that, plus that no live workflow
 		// remains behind it.
 		$mode = $this->davReadMetadata($this->currentFilePath, self::META_MODE);
-		Assert::assertContains($mode, ['unmapped', 'ignored'], "\"Open in n8n\" would NOT be hidden for mode '$mode'");
+		Assert::assertContains($mode, ['unmapped'], "\"Open in n8n\" would NOT be hidden for mode '$mode'");
 		$id = $this->davReadMetadata($this->currentFilePath, self::META_ID);
 		if ($id !== null && $id !== '') {
 			$wf = $this->n8nGetWorkflow($id);
@@ -142,8 +132,8 @@ trait OpenWithSteps {
 	/** @Then it opens with :opener by default */
 	public function itOpensWithOpenerByDefault(string $opener): void {
 		$mode = $this->davReadMetadata($this->currentFilePath, self::META_MODE);
-		// Front-end rule (defaultOpener): sync/link → n8n; unmapped/ignored → text.
-		$expected = in_array($mode, ['unmapped', 'ignored'], true) ? 'text editor' : 'n8n';
+		// Front-end rule (defaultOpener): sync/link → n8n; unmapped → text.
+		$expected = $mode === 'unmapped' ? 'text editor' : 'n8n';
 		Assert::assertSame($expected, $opener, "the default opener for mode '$mode' should be '$expected'");
 	}
 
@@ -156,8 +146,6 @@ trait OpenWithSteps {
 	 * - sync: a file in a sync mapping (live workflow, mode=sync).
 	 * - link: a file in a link mapping (mode=reference).
 	 * - unmapped: a sync file moved OUT of its mapping (archived, mode=unmapped).
-	 * - ignored: arrives with Copilot's reserved-tags slice (§14.8 B) — the
-	 *   ignored scenarios stay @todo until it lands, so this branch is not yet hit.
 	 */
 	private function arrangeManagedFile(string $mode): void {
 		switch ($mode) {

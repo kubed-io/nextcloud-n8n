@@ -13,8 +13,8 @@ use Behat\Gherkin\Node\TableNode;
 use PHPUnit\Framework\Assert;
 
 /**
- * Sync steps — the first sync (sync-now.feature), the push behind an edit
- * (edit-workflow.feature), and the mechanism by which an n8n-side change reaches
+ * Sync steps — the first sync (connection/ and mapping/ sync-now.feature), the push behind an edit
+ * (workflows/edit.feature), and the mechanism by which an n8n-side change reaches
  * Nextcloud for the behaviours that own it. There is no reconcile.feature: the
  * reconciler is a MECHANISM, and a mechanism does not get a feature file. The admin's
  * two buttons, each scoped to ONE mapping —
@@ -34,9 +34,6 @@ trait SyncSteps {
 	/** The node name written by the last file edit, for the writeback assertions. */
 	private string $editedNodeName = '';
 
-	/** The workflow whose mapping tag was stripped, for the prune assertion. */
-	private string $untaggedWorkflowId = '';
-
 	/**
 	 * Workflow ids this scenario seeded directly in n8n (tagged for the mapping),
 	 * keyed by name so a Then can find "the workflow that lost its tag".
@@ -44,13 +41,6 @@ trait SyncSteps {
 	 * @var array<string,string>
 	 */
 	private array $seededWorkflows = [];
-
-	/** The unmapped file we planted outside every mapping, and its on-disk body. */
-	private string $reconcileUnmappedPath = '';
-	private string $reconcileUnmappedBody = '';
-
-	/** The mapping folder + sync files (path ⇒ n8n id) a push scenario set up. */
-	private array $reconcileSyncFiles = [];
 
 	/** The decoded JSON the last `occ n8n_sync:sync` run printed — what the run reports. */
 	private array $lastSyncResult = [];
@@ -75,9 +65,6 @@ trait SyncSteps {
 	/** The mirror whose workflow was changed in n8n after the file was written, and by what. */
 	private string $pushChangedInN8nPath = '';
 	private string $pushChangedInN8nNode = '';
-
-	/** Mirror etags (files-root path ⇒ etag) as of the last "has already been pulled". */
-	private array $reconcileEtagsBefore = [];
 
 	// ── Given ─────────────────────────────────────────────────────────────────
 
@@ -139,20 +126,6 @@ trait SyncSteps {
 		}
 	}
 
-	/** @Given an unmapped workflow file exists outside every mapping */
-	public function anUnmappedWorkflowFileExists(): void {
-		$folder = 'unmapped-' . bin2hex(random_bytes(3));
-		$this->davMkdir($folder);
-		$this->reconcileUnmappedBody = json_encode([
-			'name' => 'Unmapped Bystander',
-			'nodes' => [],
-			'connections' => new \stdClass(),
-			'settings' => new \stdClass(),
-		], JSON_THROW_ON_ERROR);
-		$this->reconcileUnmappedPath = $folder . '/Bystander.n8n';
-		$this->davPut($this->reconcileUnmappedPath, $this->reconcileUnmappedBody);
-	}
-
 	// ── When ──────────────────────────────────────────────────────────────────
 
 	/**
@@ -167,20 +140,11 @@ trait SyncSteps {
 	 */
 	public function iEditTheFilesNodesAndSave(): void {
 		$path = $this->currentFilePath;
-		// Object decode: an assoc round-trip flattens the empty `connections` and
-		// `settings` objects to `[]`, which n8n rejects on the next push.
-		$wf = json_decode($this->davGet($path), false, 512, JSON_THROW_ON_ERROR);
-		Assert::assertInstanceOf(\stdClass::class, $wf, "managed file at $path is not a JSON object");
+		$wf = $this->davGetObject($path);
 		$this->editedNodeName = 'Edited-' . bin2hex(random_bytes(3));
-		$wf->nodes = [(object)[
-			'name' => $this->editedNodeName,
-			'type' => 'n8n-nodes-base.noOp',
-			'typeVersion' => 1,
-			'position' => [0, 0],
-			'parameters' => new \stdClass(),
-		]];
+		$wf->nodes = [self::noOpNode($this->editedNodeName)];
 		$this->davPut($path, json_encode($wf, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT));
-		$this->drainJobs('OCA\\N8nSync\\BackgroundJob\\PushWorkflowJob');
+		$this->drainJobs(self::JOB_PUSH_WORKFLOW);
 	}
 
 	/**
@@ -198,37 +162,11 @@ trait SyncSteps {
 		$this->editedNodeName = 'EditedInN8n-' . bin2hex(random_bytes(3));
 		$this->n8nUpdateWorkflow($id, [
 			'name' => (string)($wf['name'] ?? 'Edited'),
-			'nodes' => [(object)[
-				'name' => $this->editedNodeName,
-				'type' => 'n8n-nodes-base.noOp',
-				'typeVersion' => 1,
-				'position' => [0, 0],
-				'parameters' => new \stdClass(),
-			]],
+			'nodes' => [self::noOpNode($this->editedNodeName)],
 			'connections' => new \stdClass(),
 			'settings' => new \stdClass(),
 		]);
 		$this->runMappingSync('pull', $this->currentTag);
-	}
-
-	/**
-	 * THE MIRROR WEARS ITS WORKFLOW'S CLOCK, not the sync's. A mirrored folder whose
-	 * files all say "modified a few seconds ago" after every scheduled run is a
-	 * folder where a real edit is invisible, which is the bug this pins.
-	 *
-	 * @Then the file's "Modified" is when the workflow last changed in n8n
-	 */
-	public function theFilesModifiedIsTheWorkflowsUpdatedAt(): void {
-		$id = (string)$this->davReadMetadataId($this->currentFilePath);
-		$wf = $this->n8nGetWorkflow($id);
-		Assert::assertIsArray($wf, "workflow $id is gone from n8n");
-		$updatedAt = strtotime((string)($wf['updatedAt'] ?? ''));
-		Assert::assertIsInt($updatedAt, 'n8n did not report an updatedAt to compare against');
-		Assert::assertSame(
-			$updatedAt,
-			$this->davReadTime($this->currentFilePath, 'getlastmodified'),
-			"the mirror's Modified is not the workflow's updatedAt",
-		);
 	}
 
 	/** @Then the file holds the workflow's nodes as n8n has them */
@@ -339,20 +277,6 @@ trait SyncSteps {
 	}
 
 	/**
-	 * @When the :tag mapping is synced
-	 * @Given the :tag mapping has been synced
-	 *
-	 * The same run, in the two tenses a spec needs it. A feature ABOUT syncing puts
-	 * it in the When; a feature about looking at what a sync left behind needs the
-	 * mirror to exist as pre-state, and past tense is what keeps the reader's eye on
-	 * that feature's own behaviour instead of on this one.
-	 */
-	public function theMappingIsSynced(string $tag): void {
-		$this->currentTag = $tag;
-		$this->runMappingSync('pull', $tag);
-	}
-
-	/**
 	 * Make the scheduled pull actually run, rather than asserting that it would.
 	 *
 	 * TWO SAFETY FLOORS STAND BETWEEN A TEST AND A TIMED JOB, and neither can be
@@ -380,29 +304,6 @@ trait SyncSteps {
 		Assert::assertSame(0, $res['exit'], "running the scheduled pull failed:\n{$res['output']}");
 	}
 
-	/**
-	 * @When the :tag tag is removed from the workflow in n8n
-	 *
-	 * TAKES THE WORKFLOW FROM WHICHEVER ARRANGE RAN. It only read
-	 * `$seededWorkflows`, which is filled by `n8n has workflows tagged` — the Given
-	 * this step was written beside, in the file that became sync-now.feature. Its
-	 * scenario now lives in tag-sync.feature and opens with a managed-file arrange
-	 * instead, which records `lastWorkflowId` and seeds nothing; the step then
-	 * untagged `''` and failed with "no seeded workflow to untag".
-	 *
-	 * Moving a scenario moves its assumptions with it, and this one's were in the
-	 * step rather than the feature.
-	 */
-	public function theTagIsRemovedFromTheWorkflowInN8n(string $tag): void {
-		$id = (string)($this->lastWorkflowId ?? '');
-		if ($id === '') {
-			$id = (string)reset($this->seededWorkflows);
-		}
-		Assert::assertNotSame('', $id, 'no workflow to untag — the arrange recorded neither a managed file nor a seeded workflow');
-		$this->untaggedWorkflowId = $id;
-		$this->setN8nWorkflowTags($id, []);
-	}
-
 	// ── Then (pull) ───────────────────────────────────────────────────────────
 
 	/** @Then each :tag workflow appears as a file in the mapped folder */
@@ -423,7 +324,6 @@ trait SyncSteps {
 	 * behaviour that produces a mirror can assert it in a line.
 	 *
 	 * @Then each file carries its n8n dates
-	 * @Then each file's creation time is when its workflow was created in n8n
 	 */
 	public function eachFileCreationTimeIsTheWorkflowCreatedAt(): void {
 		Assert::assertNotEmpty($this->seededWorkflows, 'no seeded workflows to check');
@@ -442,97 +342,7 @@ trait SyncSteps {
 		}
 	}
 
-	/** @Then existing files are updated in place — matched by workflow id, never duplicated */
-	public function existingFilesAreUpdatedInPlaceNeverDuplicated(): void {
-		$folder = $this->folderNameForTag($this->currentTag);
-		// A second pull must be idempotent: same workflow id → still exactly one file.
-		$this->runMappingSync('pull', $this->currentTag);
-		$counts = $this->mappedFileCountsByWorkflowId($folder);
-		foreach ($this->seededWorkflows as $name => $id) {
-			Assert::assertSame(1, $counts[$id] ?? 0, "workflow '$name' ($id) is duplicated or missing — expected exactly one file");
-		}
-	}
-
-	/**
-	 * @Then the file is pruned from the folder
-	 *
-	 * ASSERTS ONLY. Its predecessor stripped the tag AND re-ran the sync inside the
-	 * Then, so the scenario's only visible step was "the button was pressed" and
-	 * the actual behaviour — a workflow losing its mapping tag — happened invisibly
-	 * inside an assertion. The untagging is a `When` now, and this looks.
-	 */
-	public function theFileIsPrunedFromTheFolder(): void {
-		$id = $this->untaggedWorkflowId;
-		Assert::assertNotSame('', $id, 'no workflow was untagged');
-		$byId = $this->mappedFilesByWorkflowId($this->folderNameForTag($this->currentTag));
-		Assert::assertArrayNotHasKey($id, $byId, "workflow $id lost its tag but its file was not pruned");
-	}
-
-	/** @Then /^the unmapped file is left untouched \(it is outside the mapping's scope\)$/ */
-	public function theUnmappedFileIsLeftUntouched(): void {
-		Assert::assertNotSame('', $this->reconcileUnmappedPath, 'no unmapped file was planted');
-		Assert::assertTrue($this->davExists($this->reconcileUnmappedPath), 'the unmapped file was removed by a mapping-scoped sync');
-		Assert::assertSame($this->reconcileUnmappedBody, $this->davGet($this->reconcileUnmappedPath), 'the unmapped file was rewritten by a mapping-scoped sync');
-	}
-
 	// ── Given/Then: the run writes (and reports) only what changed ────────────
-
-	/**
-	 * Bring the folder fully in step with n8n, then pin every mirror's etag. The pull
-	 * under test therefore starts from a folder where there is genuinely nothing to do.
-	 *
-	 * @Given the :tag mapping has already been pulled
-	 */
-	public function theMappingHasAlreadyBeenPulled(string $tag): void {
-		$this->currentTag = $tag;
-		$this->currentFolder = $this->folderNameForTag($tag);
-		$this->runMappingSync('pull', $tag);
-		$this->reconcileEtagsBefore = $this->mirrorEtags($this->currentFolder);
-		Assert::assertNotEmpty($this->reconcileEtagsBefore, 'the first pull mirrored no files, so a second one proves nothing');
-	}
-
-	/**
-	 * Every file the run succeeded on was one it did NOT have to rewrite. `unchanged`
-	 * is a subset of `succeeded`, so equality is the strongest available statement of
-	 * "this run wrote nothing" — and it is a number, which is what an admin reads.
-	 *
-	 * @Then the run reports every file as unchanged
-	 */
-	public function theRunReportsEveryFileAsUnchanged(): void {
-		Assert::assertArrayHasKey('unchanged', $this->lastSyncResult, 'the run reported no `unchanged` count: ' . json_encode($this->lastSyncResult));
-		Assert::assertSame(
-			(int)($this->lastSyncResult['succeeded'] ?? -1),
-			(int)$this->lastSyncResult['unchanged'],
-			'the run rewrote files even though nothing changed in n8n',
-		);
-	}
-
-	/** @Then no file in the mapped folder was rewritten */
-	public function noFileInTheMappedFolderWasRewritten(): void {
-		Assert::assertNotEmpty($this->reconcileEtagsBefore, 'no mirror etags were pinned before the run');
-		Assert::assertSame(
-			$this->reconcileEtagsBefore,
-			$this->mirrorEtags($this->folderNameForTag($this->currentTag)),
-			'a pull rewrote mirrors whose bodies already matched n8n',
-		);
-	}
-
-	/**
-	 * Every managed mirror under $folder as `path ⇒ etag`, sorted by path so two
-	 * snapshots compare as whole maps. Nextcloud mints a fresh etag on every write, so
-	 * an identical map means nothing under the folder was written.
-	 *
-	 * @return array<string,string>
-	 */
-	private function mirrorEtags(string $folder): array {
-		$etags = [];
-		foreach ($this->propfindWorkflowIds($folder) as $href => $_id) {
-			$path = $this->hrefToFilesPath((string)$href);
-			$etags[$path] = $this->davReadEtag($path);
-		}
-		ksort($etags);
-		return $etags;
-	}
 
 	// ── the push direction: Nextcloud declared the source of truth ────────────
 
@@ -600,18 +410,9 @@ trait SyncSteps {
 			// whatever the push happened to leave behind.
 			$this->pushWorkflowIds[$path] = (string)$workflowId;
 
-			// Object decode: an assoc round-trip flattens the empty `connections` and
-			// `settings` objects to `[]`, which n8n rejects on the push.
-			$wf = json_decode($this->davGet($path), false, 512, JSON_THROW_ON_ERROR);
-			Assert::assertInstanceOf(\stdClass::class, $wf, "the mirror at $path is not a JSON object");
+			$wf = $this->davGetObject($path);
 			$node = 'PushedFromNc-' . bin2hex(random_bytes(3));
-			$wf->nodes = [(object)[
-				'name' => $node,
-				'type' => 'n8n-nodes-base.noOp',
-				'typeVersion' => 1,
-				'position' => [0, 0],
-				'parameters' => new \stdClass(),
-			]];
+			$wf->nodes = [self::noOpNode($node)];
 			// CONNECTIONS GO WITH THE NODES THEY CONNECT. n8n validates that every
 			// connection references a node that exists, so replacing the node list while
 			// leaving the old wiring behind produces a workflow it rejects outright —
@@ -658,13 +459,7 @@ trait SyncSteps {
 		$this->pushChangedInN8nNode = 'ChangedInN8n-' . bin2hex(random_bytes(3));
 		$this->n8nUpdateWorkflow($id, [
 			'name' => (string)($wf['name'] ?? 'Changed'),
-			'nodes' => [(object)[
-				'name' => $this->pushChangedInN8nNode,
-				'type' => 'n8n-nodes-base.noOp',
-				'typeVersion' => 1,
-				'position' => [0, 0],
-				'parameters' => new \stdClass(),
-			]],
+			'nodes' => [self::noOpNode($this->pushChangedInN8nNode)],
 			'connections' => new \stdClass(),
 			'settings' => new \stdClass(),
 		]);
@@ -905,20 +700,6 @@ trait SyncSteps {
 			$map[$id] = $href;
 		}
 		return $map;
-	}
-
-	/**
-	 * Like {@see mappedFilesByWorkflowId} but counts files per id, so a duplicate
-	 * (same id, two files) is visible.
-	 *
-	 * @return array<string,int>
-	 */
-	private function mappedFileCountsByWorkflowId(string $folder): array {
-		$counts = [];
-		foreach ($this->propfindWorkflowIds($folder) as $id) {
-			$counts[$id] = ($counts[$id] ?? 0) + 1;
-		}
-		return $counts;
 	}
 
 	/**

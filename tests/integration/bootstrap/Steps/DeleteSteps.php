@@ -19,57 +19,17 @@ use PHPUnit\Framework\Assert;
  * {@see \OCA\N8nSync\Tests\Integration\FeatureContext}.
  */
 trait DeleteSteps {
-	/** @Given a trashed :mode workflow file */
-	public function aTrashedWorkflowFile(string $mode): void {
-		$this->aManagedWorkflowFile($mode);
-		$this->davDelete($this->currentFilePath); // → trashbin (soft step)
-	}
-
 	/**
-	 * A trashed *unmapped* file: arrange the unmapped move-out (MoveSteps, composed
-	 * here) so the workflow is archived + the file carries its id, then trash it.
+	 * The DAV delete, recorded rather than asserted: the status lands in
+	 * `$lastDeleteStatus` and the verdict belongs to the Thens, which is what
+	 * lets one method carry both the plain phrasing and the refusal's "try to"
+	 * — the two sentences differ in what the SCENARIO expects, not in what the
+	 * gesture does.
 	 *
-	 * @Given a trashed unmapped workflow file that still carries its :key
-	 */
-	public function aTrashedUnmappedWorkflowFile(string $key): void {
-		$this->anUnmappedWorkflowFileCarryingItsId($key);
-		$this->davDelete($this->currentFilePath); // → trashbin (soft step)
-	}
-
-	/**
-	 * A plain .n8n with no n8n metadata — "untracked", distinct from the
-	 * "unmapped" mode (saga Chapter 3 §14) which keeps its id + an archived workflow.
-	 *
-	 * @Given an untracked :ext file
-	 */
-	public function anUntrackedFile(string $ext): void {
-		$folder = 'untracked-' . bin2hex(random_bytes(3));
-		$this->davMkdir($folder);
-		$this->currentFolder = $folder;
-		$path = $folder . '/plain-' . bin2hex(random_bytes(3)) . $ext;
-		$this->davPut($path, json_encode(['name' => 'Plain', 'nodes' => [], 'connections' => new \stdClass()], JSON_THROW_ON_ERROR));
-		$this->currentFilePath = $path;
-		$this->lastWorkflowId = null;
-	}
-
-	/**
 	 * @When I move it to the trash
-	 * @When I delete it
+	 * @When I try to move it to the trash
 	 */
 	public function iMoveItToTheTrash(): void {
-		$this->lastDeleteStatus = $this->davDeleteStatus($this->currentFilePath);
-	}
-
-	/**
-	 * THE SAME DAV DELETE, asked as a question rather than an instruction. `I move it to
-	 * the trash` claims the delete succeeded and would fail the scenario on the status
-	 * code alone; `I try to` records what happened and leaves the verdict to the Thens,
-	 * which is what a refusal scenario needs.
-	 *
-	 * @When I try to move it to the trash
-	 * @When I try to delete it
-	 */
-	public function iTryToMoveItToTheTrash(): void {
 		$this->lastDeleteStatus = $this->davDeleteStatus($this->currentFilePath);
 	}
 
@@ -385,47 +345,4 @@ trait DeleteSteps {
 		Assert::assertFalse((bool)($wf['isArchived'] ?? false), 'workflow is still archived in n8n');
 	}
 
-	/** @Then the trash move succeeds */
-	public function theTrashMoveSucceeds(): void {
-		Assert::assertContains($this->lastDeleteStatus, [204, 200], 'the trash move did not succeed');
-	}
-
-	/**
-	 * An unmapped op (trash / restore of a moved-out file) must not touch n8n:
-	 * the workflow stays present and stays archived. Reuses lastWorkflowId set by
-	 * the unmapped arrange.
-	 *
-	 * @Then the archived workflow in n8n is left as-is
-	 */
-	public function theArchivedWorkflowIsLeftAsIs(): void {
-		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
-		Assert::assertIsArray($wf, "workflow {$this->lastWorkflowId} is gone — an unmapped no-op must leave it present");
-		Assert::assertTrue((bool)($wf['isArchived'] ?? false), 'the archived workflow changed — an unmapped op must leave it as-is');
-	}
-
-	/** @Then the mapping tag is stripped from the workflow in n8n */
-	public function theMappingTagIsStripped(): void {
-		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
-		Assert::assertIsArray($wf, "workflow {$this->lastWorkflowId} is gone");
-		$names = array_map(
-			static fn (array $t): string => (string)($t['name'] ?? ''),
-			array_values(array_filter((array)($wf['tags'] ?? []), 'is_array')),
-		);
-		Assert::assertNotContains($this->currentTag, $names, "tag '{$this->currentTag}' was not stripped (has: " . implode(',', $names) . ')');
-	}
-
-	/** @Then the workflow itself is not archived or deleted */
-	public function theWorkflowIsNotArchivedOrDeleted(): void {
-		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
-		Assert::assertIsArray($wf, "workflow {$this->lastWorkflowId} was deleted — link must leave it alone");
-		Assert::assertFalse((bool)($wf['isArchived'] ?? false), 'workflow was archived — link must leave it alone');
-	}
-
-	/** @Then n8n is not contacted */
-	public function n8nIsNotContacted(): void {
-		// Operative meaning: the unmapped file had no n8n id, so nothing could be
-		// contacted, and the NC delete succeeded normally.
-		Assert::assertNull($this->lastWorkflowId, 'an unmapped file unexpectedly had an n8n id');
-		Assert::assertContains($this->lastDeleteStatus, [204, 200], 'the unmapped delete did not succeed');
-	}
 }

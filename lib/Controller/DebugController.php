@@ -31,7 +31,7 @@ use OCP\IRequest;
  *       fetch(OC.generateUrl('/apps/n8n_sync/debug/workflows?limit=5'),
  *             {headers:{requesttoken:OC.requestToken}})
  *         .then(r => r.json()).then(console.log);
- *  2. The `occ n8n_sync:list-workflows` command (Service\Command\ListWorkflows)
+ *  2. The `occ n8n_sync:list-workflows` command ({@see \OCA\N8nSync\Command\ListWorkflows})
  *     — server-side only, bypasses the browser surface entirely.
  *
  * Routes (see appinfo/routes.php):
@@ -49,35 +49,30 @@ final class DebugController extends Controller {
 
 	#[AuthorizedAdminSetting(settings: AdminTest::class)]
 	public function listWorkflows(): JSONResponse {
-		$limit = (int)$this->request->getParam('limit', 5);
-		if ($limit < 1) {
-			$limit = 1;
-		}
-		if ($limit > 50) {
-			$limit = 50;
-		}
+		// Same 1..50 clamp the occ command uses — a debug surface never pages.
+		$limit = max(1, min(50, (int)$this->request->getParam('limit', 5)));
 		$cursor = (string)$this->request->getParam('cursor', '');
 		try {
-			$data = $this->client->listWorkflows($limit, $cursor !== '' ? $cursor : null);
-			return new JSONResponse($data);
+			return new JSONResponse($this->client->listWorkflows($limit, $cursor !== '' ? $cursor : null));
 		} catch (\Throwable $e) {
-			return new JSONResponse(
-				['status' => 'error', 'message' => $e->getMessage()],
-				Http::STATUS_BAD_GATEWAY,
-			);
+			return $this->badGateway($e);
 		}
 	}
 
 	#[AuthorizedAdminSetting(settings: AdminTest::class)]
 	public function getWorkflow(string $id): JSONResponse {
 		try {
-			$data = $this->client->getWorkflow($id);
-			return new JSONResponse($data);
+			return new JSONResponse($this->client->getWorkflow($id));
 		} catch (\Throwable $e) {
-			return new JSONResponse(
-				['status' => 'error', 'message' => $e->getMessage()],
-				Http::STATUS_BAD_GATEWAY,
-			);
+			return $this->badGateway($e);
 		}
+	}
+
+	/** Any client failure surfaces as 502 — the upstream n8n is the broken half. */
+	private function badGateway(\Throwable $e): JSONResponse {
+		return new JSONResponse(
+			['status' => 'error', 'message' => $e->getMessage()],
+			Http::STATUS_BAD_GATEWAY,
+		);
 	}
 }

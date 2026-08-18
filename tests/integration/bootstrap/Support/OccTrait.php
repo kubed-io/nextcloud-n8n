@@ -26,13 +26,7 @@ trait OccTrait {
 	 * @return array{exit:int, output:string}
 	 */
 	private function occ(string $args): array {
-		$cmd = $this->occ . ' ' . $args . ' 2>&1';
-		$output = [];
-		$exit = 0;
-		exec($cmd, $output, $exit);
-		$this->lastExit = $exit;
-		$this->lastOutput = implode("\n", $output);
-		return ['exit' => $exit, 'output' => $this->lastOutput];
+		return $this->occEnv($args, []);
 	}
 
 	/**

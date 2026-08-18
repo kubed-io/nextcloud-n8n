@@ -136,15 +136,7 @@ final class LinkWriteGuardPlugin extends ServerPlugin {
 		} catch (\Throwable) {
 			return;
 		}
-		if (!$node instanceof DavFile || !FilenameCodec::isWorkflowName($node->getName())) {
-			return;
-		}
-		try {
-			$managed = $this->metadata->read($node->getId());
-		} catch (\Throwable) {
-			return;
-		}
-		if (!$managed?->isLink()) {
+		if (!$this->isLinkFile($node)) {
 			return;
 		}
 
@@ -212,16 +204,7 @@ final class LinkWriteGuardPlugin extends ServerPlugin {
 		} catch (\Throwable) {
 			return true; // gone already, or not ours to judge — never block on doubt
 		}
-		if (!$node instanceof DavFile || !FilenameCodec::isWorkflowName($node->getName())) {
-			return true;
-		}
-
-		try {
-			$managed = $this->metadata->read($node->getId());
-		} catch (\Throwable) {
-			return true;
-		}
-		if (!$managed?->isLink()) {
+		if (!$this->isLinkFile($node)) {
 			return true; // sync/unmapped files are the user's to delete
 		}
 
@@ -244,25 +227,11 @@ final class LinkWriteGuardPlugin extends ServerPlugin {
 	 * @param bool|null $modified
 	 */
 	public function beforeWriteContent(string $path, INode $node, &$data, &$modified): bool {
-		if (!$node instanceof DavFile) {
-			return true; // not a file node we care about
+		if (!$this->isLinkFile($node)) {
+			return true; // not a link — sync/unmapped files hold full JSON and may be edited
 		}
 		$name = $node->getName();
-		if (!FilenameCodec::isWorkflowName($name)) {
-			return true; // only our workflow files are constrained
-		}
-
-		// Classify the file from its own metadata. Anything we can't read is NOT a
-		// link, so we must never block it — fail open on any doubt.
-		try {
-			$fileId = $node->getId();
-			$managed = $this->metadata->read($fileId);
-		} catch (\Throwable) {
-			return true;
-		}
-		if (!$managed?->isLink()) {
-			return true; // not a link — sync/unmapped/ignored all hold full JSON and may be edited
-		}
+		$fileId = $node->getId();
 
 		$this->logger->warning('n8n_sync: refused a WebDAV edit to a link-mode workflow file', [
 			'app' => Application::APP_ID,
@@ -278,5 +247,27 @@ final class LinkWriteGuardPlugin extends ServerPlugin {
 			. 'so its file can’t be edited here. Switch it to sync mode to edit the JSON locally, '
 			. 'or open it in n8n to make changes.',
 		);
+	}
+
+	/**
+	 * Is this DAV node one of our link-mode workflow files? Classified from the
+	 * file's own metadata, and ANY doubt — wrong node type, foreign name, an
+	 * unreadable stamp — answers no: everything this plugin does is a refusal,
+	 * so failing open is what keeps a metadata hiccup from blocking a user.
+	 *
+	 * `@psalm-assert-if-true` narrows $node for the caller's true branch, which
+	 * is what lets the refusal sites call getId()/getName() without re-checking.
+	 *
+	 * @psalm-assert-if-true DavFile $node
+	 */
+	private function isLinkFile(?INode $node): bool {
+		if (!$node instanceof DavFile || !FilenameCodec::isWorkflowName($node->getName())) {
+			return false;
+		}
+		try {
+			return $this->metadata->read($node->getId())?->isLink() ?? false;
+		} catch (\Throwable) {
+			return false;
+		}
 	}
 }

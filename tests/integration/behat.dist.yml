@@ -53,8 +53,15 @@ default:
   #             content: delete, restore, purge. Every one is a round trip through
   #             n8n's archive, and each needs BOTH Nextcloud trashes exercised.
   #   motion    move.feature alone — the gestures that cross a mapping boundary.
+  #   tags      the tag is n8n's only grouping construct — it is what a mapping
+  #             binds to and what decides a workflow's membership. Everything
+  #             about the tag vocabulary and the three-way sync lives here, and it
+  #             is the largest single body of scenarios in the repo.
+  #   core      what is not a verb on a file and not about tags: viewing, opening,
+  #             and the app lifecycle. (The first sync lives in `admin` with the
+  #             two sync-now features; purge lives in `trash`.)
   #
-  # THE LAST TWO WERE ONE SUITE CALLED `lifecycle`, AND IT GREW PAST TEN MINUTES.
+  # TRASH AND MOTION WERE ONE SUITE CALLED `lifecycle`, AND IT GREW PAST TEN MINUTES.
   # `move.feature` is why: every scenario in it is a real WebDAV move plus an n8n
   # round trip, several are Outlines over both storage kinds, and the conflict
   # scenarios each arrange TWO files and a workflow before the gesture. It is now
@@ -66,12 +73,6 @@ default:
   # can answer without timing anything. `motion` is the app's own word for it
   # (`MotionService`, `MotionListener`), so the suite is named after the thing it
   # tests rather than after how long it takes.
-  #   tags      the tag is n8n's only grouping construct — it is what a mapping
-  #             binds to and what decides a workflow's membership. Everything
-  #             about the tag vocabulary and the three-way sync lives here, and it
-  #             is the largest single body of scenarios in the repo.
-  #   core      what is not a verb on a file and not about tags: identity, file
-  #             type, the FIRST sync, purge, and the app lifecycle.
   suites:
     admin:
       paths:

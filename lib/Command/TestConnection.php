@@ -19,8 +19,8 @@ use Symfony\Component\Console\Output\OutputInterface;
  *
  * Headless equivalent of the admin "Test connection" button — runs the exact
  * same {@see N8nClient::ping()} (GET /api/v1/workflows with the stored, decrypted
- * API key) so an operator can verify the base URL + API key + api-enabled are
- * all valid without a browser. Same code path the Settings panel exercises;
+ * API key) so an operator can verify the base URL and API key are both valid
+ * without a browser. Same code path the Settings panel exercises;
  * complements the existing `list-workflows` / `get-workflow` smoke commands.
  *
  * Exit 0 on a reachable, authenticated instance; 1 otherwise (with the same

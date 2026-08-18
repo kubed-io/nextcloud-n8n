@@ -69,6 +69,8 @@ use Psr\Log\LoggerInterface;
  * expired the mirror on its own schedule — exactly the case nobody is watching.
  */
 final class TrashPurgeHook {
+	use ResolvesHookActor;
+
 	public function __construct(
 		private DeleteService $deleteService,
 		private WorkflowMetadata $metadata,
@@ -203,16 +205,4 @@ final class TrashPurgeHook {
 		}
 	}
 
-	/**
-	 * The session user, else the user the filesystem is currently set up for —
-	 * which is how the retention job identifies whose trash it is expiring.
-	 */
-	private function resolveUid(): string {
-		$uid = $this->userSession->getUser()?->getUID() ?? '';
-		if ($uid !== '') {
-			return $uid;
-		}
-		$fsUser = \OC_User::getUser();
-		return $fsUser === false ? '' : $fsUser;
-	}
 }

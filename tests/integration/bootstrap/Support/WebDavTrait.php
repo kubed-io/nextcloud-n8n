@@ -276,33 +276,32 @@ trait WebDavTrait {
 		return null;
 	}
 
+	/**
+	 * GET a managed file and decode it as an OBJECT — object, not assoc, because
+	 * an assoc round-trip flattens the empty `connections`/`settings` objects to
+	 * `[]`, which n8n rejects on the next push (the same object-vs-array pitfall
+	 * `PushService::pushViaApi` is documented against). Asserts the body is a
+	 * JSON object; steps that tolerate a non-object body decode for themselves.
+	 */
+	private function davGetObject(string $path): \stdClass {
+		$wf = json_decode($this->davGet($path), false, 512, JSON_THROW_ON_ERROR);
+		Assert::assertInstanceOf(\stdClass::class, $wf, "file at $path is not a JSON object");
+		return $wf;
+	}
+
 	/** Convenience: read just the n8n_id (used right after a create to capture it). */
 	private function davReadMetadataId(string $path): ?string {
 		return $this->davReadMetadata($path, self::META_ID);
 	}
 
 	/**
-	 * The file's DAV etag — the sharpest "was this written?" observable a client has.
-	 * Nextcloud mints a fresh etag on **every** write, even one that stores identical
-	 * bytes, so an unchanged etag proves no write happened. Preferred over
-	 * `getlastmodified` for exactly that reason: mtime has one-second resolution, so
-	 * two writes inside the same second are invisible to it.
-	 */
-	private function davReadEtag(string $path): string {
-		$res = $this->davClient()->request('PROPFIND', $this->davEncode($path), [
-			'headers' => ['Depth' => '0', 'Content-Type' => 'application/xml'],
-			'body' => '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getetag/></d:prop></d:propfind>',
-		]);
-		Assert::assertSame(207, $res->getStatusCode(), "PROPFIND etag $path failed: " . (string)$res->getBody());
-		$doc = new \SimpleXMLElement((string)$res->getBody());
-		$doc->registerXPathNamespace('d', 'DAV:');
-		$node = $doc->xpath('//d:prop/d:getetag');
-		Assert::assertNotEmpty($node, "no etag returned for $path");
-		return trim((string)$node[0], " \t\n\r\0\x0B\"");
-	}
-
-	/**
-	 * A DAV timestamp property on a file, as a Unix second. `getlastmodified` is
+	 * A DAV timestamp property on a file, as a Unix second.
+	 *
+	 * (If a step ever needs a sharper "was this written?" observable than mtime,
+	 * read `d:getetag` instead: Nextcloud mints a fresh etag on EVERY write, even
+	 * one storing identical bytes, while mtime's one-second resolution hides two
+	 * writes inside the same second. A `davReadEtag` helper used to live here for
+	 * an idempotent-second-pull scenario that was retired.) `getlastmodified` is
 	 * RFC-1123; `{nc:}creation_time` is a Unix second already. Returns null when the
 	 * property is absent (an unset creation time reads as 0 or is simply missing).
 	 *

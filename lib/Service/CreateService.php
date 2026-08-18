@@ -34,9 +34,9 @@ use Psr\Log\LoggerInterface;
  * tag in n8n, then PUT the workflow's tag list **as merge** (existing tags +
  * ours). We never strip tags we don't own — n8n's tag namespace is the user's.
  *
- * The post-create stamp (Files-Metadata + ownership system tag + mimetype
- * re-stamp) is wrapped in {@see SyncGuard} so the implicit re-write doesn't
- * echo into {@see \OCA\N8nSync\Listener\NodeWrittenListener} as a writeback.
+ * The post-create stamp (the five Files-Metadata sync keys) is wrapped in
+ * {@see SyncGuard} so the implicit re-write doesn't echo into
+ * {@see \OCA\N8nSync\Listener\NodeWrittenListener} as a writeback.
  */
 final class CreateService {
 	public function __construct(
@@ -95,9 +95,7 @@ final class CreateService {
 		// this thing's tags — there are no pills yet on a freshly-landed file, no baseline,
 		// and the workflow did not exist a moment ago. So the body seeds n8n. This is also
 		// where tags added while the file sat OUTSIDE any mapping finally reach n8n.
-		$this->applyMappingTagAdditive($id, $created, $mapping->n8nTag, $this->tagSync->contentTagsFromWorkflow(
-			is_array($decoded = json_decode($content, true)) ? $decoded : [],
-		));
+		$this->applyMappingTagAdditive($id, $created, $mapping->n8nTag, $this->tagSync->contentTagsFromBody($content));
 
 		// THE BODY DOES NOT LEARN ITS TAGS HERE, AND IT CANNOT. n8n's schema forbids
 		// `tags` on create, so they go up in a SECOND call — and that call knows exactly
@@ -141,24 +139,18 @@ final class CreateService {
 	 * Ensure $tagName exists in n8n and PUT it onto the workflow, **merging** with
 	 * any tags the create response returned.
 	 *
-	 * KNOWN GAP — THE MERGE IS CURRENTLY ALWAYS AGAINST AN EMPTY SET (saga §5.6.3).
-	 * This used to claim "POST /workflows preserves tags the body declared". It does
-	 * not, twice over: {@see N8nWorkflowBody::toCreateBody}'s writable whitelist omits
-	 * `tags`, so we never declare them — and n8n's own schema (`workflowCreate.yml`,
-	 * `additionalProperties: false`) marks `tags` **readOnly**, so declaring them would
-	 * be rejected anyway. `PUT /workflows/{id}/tags` is the only writer that exists.
+	 * The body's own tag names are ensured in n8n and unioned in alongside the
+	 * mapping tag, so a file that arrives already tagged keeps its tags — the
+	 * adoption moment is the one time the body is the sole record of them (saga
+	 * §5.6.3; `features/tag-sync.feature`'s ADOPTION section is the spec). They
+	 * cannot ride the create itself: {@see N8nWorkflowBody::toCreateBody}'s
+	 * writable whitelist omits `tags`, and n8n's own schema (`workflowCreate.yml`,
+	 * `additionalProperties: false`) marks `tags` **readOnly** — `PUT
+	 * /workflows/{id}/tags` is the only writer that exists.
 	 *
-	 * The consequence is a real defect: a `.n8n` carrying tags in its body is
-	 * adopted into n8n with the mapping tag ONLY, and every tag it arrived with is
-	 * silently discarded. That is the one moment the body is the sole record of those
-	 * tags (a copy or a round trip out of Nextcloud loses the pills, which are bound
-	 * to a file id). FIXED: the body's own tag names are now ensured in n8n and unioned
-	 * in, so a file that arrives already tagged keeps its tags. `features/tag-sync.feature`'s
-	 * ADOPTION section is the spec.
-	 *
-	 * `$created['tags']` is still read and merged, even though n8n's schema means it is
-	 * always empty today — it costs nothing and stops this from silently discarding tags
-	 * if n8n ever does start echoing them back on create.
+	 * `$created['tags']` is read and merged even though n8n's schema means it is
+	 * always empty today — it costs nothing and stops this from silently discarding
+	 * tags if n8n ever does start echoing them back on create.
 	 *
 	 * Failure here is logged and swallowed — see createForFile() rationale.
 	 *
@@ -190,11 +182,9 @@ final class CreateService {
 	}
 
 	/**
-	 * Stamp Files-Metadata (id + mode + writeback + versionId + syncedHash +
-	 * mapping), apply the ownership system tag, and re-stamp the custom
-	 * mimetype on the row so the icon shows immediately. All wrapped in the
-	 * SyncGuard so the implicit re-writes don't echo into the writeback
-	 * listener.
+	 * Stamp the five Files-Metadata sync keys (id + mode + versionId +
+	 * syncedHash + mapping), wrapped in the SyncGuard so the implicit re-write
+	 * doesn't echo into the writeback listener.
 	 */
 	private function stampFile(File $node, Mapping $mapping, string $id, string $versionId, string $content): void {
 		$this->guard->run(function () use ($node, $mapping, $id, $versionId, $content): void {

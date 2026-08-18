@@ -76,25 +76,23 @@ final class TagSyncService {
 		//
 		// A **link** keeps no local adds: it has no push channel, so a pill added on a
 		// link could never reach n8n and would linger as a phantom. Links are a
-		// read-only projection — the pull mirrors n8n's content tags exactly (plus the
-		// force-kept mapping tag), and a stray local pill is wiped on the next pull.
+		// read-only projection — the pull mirrors n8n's content tags exactly, and a
+		// stray local pill is wiped on the next pull.
 		$localAdds = $managed->isSync() ? array_values(array_diff($nc, $baseline)) : [];
 		$desired = array_values(array_unique(array_merge($source, $localAdds)));
 
 		// Reuse the `$nc` we just read — nothing has touched the pills since.
 		$this->writeNcContentTags($fileId, $desired, $nc);
-		// Baseline = the source's content tags
-		// tags — but NOT the NC-local additions. A local add is not agreed until a push
-		// lands it in n8n, so it stays out of the baseline and the next push reads it as
-		// `nc − baseline` and propagates it. (Protected tags are in the baseline so a
-		// later genuine remove of one is still measured against a set that contained it.)
+		// Baseline = the source's content tags — but NOT the NC-local additions. A
+		// local add is not agreed until a push lands it in n8n, so it stays out of the
+		// baseline and the next push reads it as `nc − baseline` and propagates it.
 		$this->metadata->stampTags($fileId, $source);
 	}
 
 	/**
 	 * Push: reconcile the Nextcloud **pills** onto the n8n workflow and re-stamp the
 	 * baseline. Fetches the live workflow so the deterministic {@see TagMerge} sees
-	 * n8n's current tags and any reserved markers are preserved. Sync files only.
+	 * n8n's current tags. Sync files only.
 	 * Returns n8n's canonical tag rows after the set, so callers can write the real
 	 * `{id,name}` objects back into the file body.
 	 *
@@ -111,7 +109,7 @@ final class TagSyncService {
 	 * statement). The pills are then converged to the merged result too, so the two
 	 * NC surfaces never disagree. Returns n8n's canonical tag rows after the set.
 	 *
-	 * @param list<string> $bodyContentTags reserved-free content tags read from the body
+	 * @param list<string> $bodyContentTags content tag names read from the body
 	 * @return list<array<string,mixed>> n8n's canonical tag rows after the set
 	 */
 	public function reconcilePushFromBody(int $fileId, ManagedFile $managed, array $bodyContentTags): array {
@@ -121,9 +119,8 @@ final class TagSyncService {
 	/**
 	 * Shared push reconcile: merge `$ncContent` (pills or body tags) with n8n against
 	 * the baseline, converge the pills and the n8n workflow on the result, re-stamp
-	 * the baseline. Preserves n8n's reserved markers ({@see pushSourceTags}). Returns
-	 * n8n's canonical tag rows so the caller can mirror the real `{id,name}` objects
-	 * into the file body.
+	 * the baseline. Returns n8n's canonical tag rows so the caller can mirror the
+	 * real `{id,name}` objects into the file body.
 	 *
 	 * @param list<string> $ncContent the NC-side content set to treat as truth
 	 * @return list<array<string,mixed>> n8n's canonical tag rows after the set
@@ -136,7 +133,7 @@ final class TagSyncService {
 		$merged = TagMerge::merge($baseline, $ncContent, $source);
 
 		// Converge both NC surfaces (pills read fresh — $ncContent may be body tags,
-		// not pills) and n8n on the merged set, preserving n8n's reserved markers.
+		// not pills) and n8n on the merged set.
 		$this->writeNcContentTags($fileId, $merged);
 		$rows = $this->pushSourceTags($managed->workflowId, $merged);
 		$this->metadata->stampTags($fileId, $merged);
@@ -144,7 +141,7 @@ final class TagSyncService {
 	}
 
 	/**
-	 * The reserved-free content tag names carried in an n8n workflow row / file body
+	 * The content tag names carried in an n8n workflow row / file body
 	 * (`tags: [{name}, …]`). Shared shape for the row and the on-disk sync body.
 	 *
 	 * @param array<string,mixed> $workflow
@@ -155,8 +152,21 @@ final class TagSyncService {
 	}
 
 	/**
-	 * The content-tag names on a Nextcloud file: every system tag minus the reserved
-	 * namespace (which is where the ownership pills live).
+	 * {@see contentTagsFromWorkflow} straight off a raw JSON body — the decode and
+	 * the not-actually-JSON guard included, so the callers stop repeating them.
+	 * Anything undecodable simply has no tags.
+	 *
+	 * @return list<string>
+	 */
+	public function contentTagsFromBody(string $json): array {
+		$decoded = json_decode($json, true);
+		return $this->contentTagsFromWorkflow(is_array($decoded) ? $decoded : []);
+	}
+
+	/**
+	 * The content-tag names on a Nextcloud file — every system tag on it. (There
+	 * used to be a reserved `n8n:*` namespace carved out here; the pills are gone
+	 * and nothing is excluded any more.)
 	 *
 	 * @return list<string>
 	 */
@@ -176,18 +186,15 @@ final class TagSyncService {
 
 	/**
 	 * Reconcile the Nextcloud content pills on a file to exactly `$desired`: assign
-	 * the missing ones (creating tags as needed), unassign the stale ones. Reserved
-	 * ownership pills are invisible to this method, so they are never touched.
+	 * the missing ones (creating tags as needed), unassign the stale ones.
 	 *
-	 * @param list<string> $desired reserved-free content tag names
+	 * @param list<string> $desired content tag names
 	 * @param list<string>|null $current the file's already-read content tags; pass to skip the re-read when the caller just read them (the reconcile paths do)
 	 */
 	public function writeNcContentTags(int $fileId, array $desired, ?array $current = null): void {
 		$objId = (string)$fileId;
-		// Defensively strip the reserved namespace from both sides: the docblock
-		// promises this method never touches ownership pills, so enforce it here
-		// rather than trusting every caller to pre-filter (a raw system-tag read
-		// would otherwise let us create/assign/unassign control tags).
+		// Drop blanks and dupes rather than trusting every caller to pre-filter —
+		// an empty name would otherwise mint an unusable system tag.
 		$desired = array_values(array_unique(array_filter($desired, static fn (string $n): bool => $n !== '')));
 		$current = $current ?? $this->readNcContentTags($fileId);
 
@@ -288,30 +295,24 @@ final class TagSyncService {
 	 * A SET OPERATION, NOT A REWRITE. The pills are the user's tags too, and a rebind
 	 * is not a statement about `prod` or `billing`; only the mapping tag moves. Passing
 	 * the freshly-read `$current` through means the reconcile does one read, not two.
-	 *
-	 * Returns the resulting pill set so the caller can carry it onward without a
-	 * re-read (the file body is converged from the same set).
-	 *
-	 * @return list<string> the file's content tags after the swap
 	 */
-	public function swapMappingPill(int $fileId, string $from, string $to): array {
+	public function swapMappingPill(int $fileId, string $from, string $to): void {
 		$current = $this->readNcContentTags($fileId);
 		$desired = array_values(array_unique(array_merge(
 			array_values(array_filter($current, static fn (string $n): bool => $n !== $from)),
 			[$to],
 		)));
 		$this->writeNcContentTags($fileId, $desired, $current);
-		return $desired;
 	}
 
 	/**
 	 * Remove ONE tag from a workflow in n8n, leaving every other tag on it.
 	 *
 	 * The unbind's only write ({@see TagReconcileService::unbindIfMappingTagDropped}),
-	 * and the other half of a rebind beside {@see addMappingTag}. Reserved `n8n:*`
-	 * markers are preserved along with the rest, because
-	 * {@see N8nClient::setWorkflowTags} is a full replace and this is a subtraction of
-	 * exactly one name, not a re-statement of what the workflow should carry.
+	 * and the other half of a rebind beside {@see addMappingTag}. Every other tag is
+	 * preserved, because {@see N8nClient::setWorkflowTags} is a full replace and this
+	 * is a subtraction of exactly one name, not a re-statement of what the workflow
+	 * should carry.
 	 */
 	public function dropSourceTag(string $workflowId, string $tag): void {
 		$workflow = $this->n8n->getWorkflow($workflowId);

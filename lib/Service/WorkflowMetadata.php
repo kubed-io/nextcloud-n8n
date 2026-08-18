@@ -12,7 +12,6 @@ namespace OCA\N8nSync\Service;
 use OCP\FilesMetadata\Exceptions\FilesMetadataNotFoundException;
 use OCP\FilesMetadata\IFilesMetadataManager;
 use OCP\FilesMetadata\Model\IMetadataValueWrapper;
-use Psr\Log\LoggerInterface;
 
 /**
  * Wraps Nextcloud's Files Metadata API for n8n workflow files.
@@ -20,7 +19,7 @@ use Psr\Log\LoggerInterface;
  * Keys tracked (saga Ch3 §14):
  *
  *   n8n_id          — the workflow id from n8n. Stable across renames/moves.
- *   n8n_mode        — the file's mode: sync | link | unmapped | ignored. INDEXED.
+ *   n8n_mode        — the file's mode: sync | link | unmapped. INDEXED.
  *   n8n_versionId   — the n8n versionId we last reconciled (conflict detection).
  *   n8n_syncedHash  — sha1 of the file body at the last pull/push (loop guard).
  *   n8n_mapping     — id of the originating mapping. INDEXED.
@@ -42,11 +41,24 @@ use Psr\Log\LoggerInterface;
  * them as callbacks if `is_callable($value)` is true. The string `link` matches
  * PHP's builtin `link()`, so storing it explodes every PROPFIND. So **link mode is
  * stored as the value `reference`** and translated back on read — everywhere else
- * in the codebase the mode is `link`. `sync` / `unmapped` / `ignored` are not
+ * in the codebase the mode is `link`. `sync` / `unmapped` are not
  * callable, so they store as-is. Any future mode value MUST clear `is_callable()`.
  *
  * All keys are EDIT_FORBIDDEN: clients cannot mutate them via PROPPATCH. Only the
  * plugin itself writes them, from the pull/push reconcilers.
+ *
+ * `ManagedValues` is the one declaration of the partial key/value shape that
+ * {@see readRaw}/{@see write} exchange (and {@see MoveIdentityStore} carries
+ * across a move) — it used to be five hand-copies that had to agree.
+ *
+ * @psalm-type ManagedValues = array{
+ *     n8n_id?:string,
+ *     n8n_mode?:string,
+ *     n8n_versionId?:string,
+ *     n8n_syncedHash?:string,
+ *     n8n_mapping?:string,
+ *     n8n_syncedTags?:string
+ * }
  */
 final class WorkflowMetadata {
 	public const KEY_ID = 'n8n_id';
@@ -89,7 +101,6 @@ final class WorkflowMetadata {
 
 	public function __construct(
 		private IFilesMetadataManager $manager,
-		private LoggerInterface $logger,
 	) {
 	}
 
@@ -98,8 +109,8 @@ final class WorkflowMetadata {
 	 *
 	 * Called once from {@see Application::boot()}. After this runs, the keys are
 	 * surfaced over DAV as `{nc:}metadata-<key>`, and the INDEXED_KEYS (mode +
-	 * mapping) are SEARCH/REPORT-queryable — so "find every sync / unmapped /
-	 * ignored file" is a fast indexed query, not a folder walk.
+	 * mapping) are SEARCH/REPORT-queryable — so "find every sync / unmapped
+	 * file" is a fast indexed query, not a folder walk.
 	 */
 	public function register(): void {
 		foreach (self::KEYS as $key) {
@@ -124,14 +135,7 @@ final class WorkflowMetadata {
 	 * Exists for {@see MoveIdentityStore} — a move across storages destroys the row,
 	 * and the only chance to read it is before the move happens.
 	 *
-	 * @return array{
-	 *     n8n_id?:string,
-	 *     n8n_mode?:string,
-	 *     n8n_versionId?:string,
-	 *     n8n_syncedHash?:string,
-	 *     n8n_mapping?:string,
-	 *     n8n_syncedTags?:string
-	 * }
+	 * @return ManagedValues
 	 */
 	public function readRaw(int $fileId): array {
 		try {
@@ -155,17 +159,10 @@ final class WorkflowMetadata {
 	/**
 	 * Upsert the managed keys for a file. Any key omitted from `$values` is left
 	 * as-is; pass an explicit empty string to overwrite. The mode is given in the
-	 * canonical vocabulary (`sync`/`link`/`unmapped`/`ignored`); `link` is stored
+	 * canonical vocabulary (`sync`/`link`/`unmapped`); `link` is stored
 	 * as `reference` on the wire (see class docblock).
 	 *
-	 * @param array{
-	 *     n8n_id?:string,
-	 *     n8n_mode?:string,
-	 *     n8n_versionId?:string,
-	 *     n8n_syncedHash?:string,
-	 *     n8n_mapping?:string,
-	 *     n8n_syncedTags?:string
-	 * } $values
+	 * @param ManagedValues $values
 	 */
 	public function write(int $fileId, array $values): void {
 		if ($values === []) {

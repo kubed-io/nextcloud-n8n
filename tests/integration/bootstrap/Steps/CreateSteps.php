@@ -216,7 +216,7 @@ trait CreateSteps {
 		$this->fail("mapping '$id' vanished between lookups");
 	}
 
-	/** @Then the workflow carries the :tag tag */
+	/** Called from theWorkflowCarriesTheMappingsTag (no live Gherkin phrasing of its own). */
 	public function theWorkflowCarriesTheTag(string $tag): void {
 		Assert::assertNotNull($this->lastWorkflowId, 'no workflow id captured');
 		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
@@ -582,32 +582,9 @@ trait CreateSteps {
 		return $best['id'];
 	}
 
-	/** @Then the file is stamped with the workflow's :key */
-	public function theFileIsStampedWith(string $key): void {
-		$value = $this->davReadMetadata($this->currentFilePath, $key);
-		Assert::assertNotNull($value, "file has no metadata-$key");
-		Assert::assertNotSame('', $value, "metadata-$key is empty");
-		if ($key === self::META_ID) {
-			Assert::assertSame($this->lastWorkflowId, $value, 'stamped id disagrees with the n8n workflow id');
-		}
-	}
-
 	/** @Then no workflow is created in n8n */
 	public function noWorkflowIsCreatedInN8n(): void {
 		Assert::assertNull($this->lastWorkflowId, "a workflow ({$this->lastWorkflowId}) was unexpectedly created in n8n");
 	}
 
-	/** @Then the file has no :key metadata */
-	public function theFileHasNoMetadata(string $key): void {
-		$value = $this->davReadMetadata($this->currentFilePath, $key);
-		Assert::assertTrue($value === null || $value === '', "file unexpectedly has metadata-$key='$value'");
-	}
-
-	/** @Then /^the file is treated as a plain document \(unmapped state\)$/ */
-	public function theFileIsTreatedAsPlain(): void {
-		// "Plain" = no n8n metadata id; the create listener bailed (outside any
-		// mapping). The id check above is the operative assertion; this step is a
-		// readable restatement so the scenario reads as a sentence.
-		$this->theFileHasNoMetadata(self::META_ID);
-	}
 }

@@ -23,19 +23,20 @@ use Psr\Log\LoggerInterface;
  * It does three things the raw {@see TagSyncService::reconcilePush} can't do on its
  * own, and nothing else:
  *
- *  1. **Gates.** Only a managed **sync** file reaches n8n. An `unmapped`/`ignored`/
+ *  1. **Gates.** Only a managed **sync** file reaches n8n. An `unmapped`/
  *     untracked file still keeps its own two Nextcloud surfaces in step, because that
  *     pair needs no remote system (§5.10) — that is what lets a tag survive until the
  *     file is moved into a mapping. A `link` is the one full exclusion: its body is a
  *     POINTER, not the workflow, and its pills are a read-only projection of n8n.
- *  2. **Resolves the protected set.** n8n binds a workflow to its folder BY TAG, so the
- *     mapping's own tag is force-kept on both sides; we look it up from the file's
- *     recorded `n8n_mapping`. A file whose mapping has vanished protects nothing.
+ *  2. **Detects the unbind.** n8n binds a workflow to its folder BY TAG, so the
+ *     mapping's own tag going missing from the pills is a request to leave, answered
+ *     before any merge ({@see unbindIfMappingTagDropped}); we look the tag up from
+ *     the file's recorded `n8n_mapping`. A file whose mapping has vanished has no
+ *     tag to watch.
  *  3. **Guards + swallows.** The reconcile writes pills (which re-fire tag events) and
  *     talks to n8n, so it runs inside {@see SyncGuard} (no re-entrancy — the pills it
- *     writes, including a force-kept mapping-tag pop-back, don't re-trigger the
- *     listener) and best-effort logs a failure instead of surfacing it (a tag hiccup
- *     must never break the user's Files action).
+ *     writes don't re-trigger the listener) and best-effort logs a failure instead of
+ *     surfacing it (a tag hiccup must never break the user's Files action).
  *
  * Two reactive surfaces, both LIVE (saga §5.9):
  *
@@ -130,10 +131,7 @@ final class TagReconcileService {
 				// the ambiguity the whole design exists to prevent, and it must not be
 				// reachable through an outage either. The pills are what the user just
 				// changed, so the body follows them; ids fill in on the next pull.
-				$this->syncBodyTags($node, array_map(
-					static fn (string $name): array => ['name' => $name],
-					$this->tagSync->readNcContentTags($fileId),
-				));
+				$this->syncBodyTags($node, self::nameRows($this->tagSync->readNcContentTags($fileId)));
 			}
 		});
 		return true;
@@ -224,12 +222,22 @@ final class TagReconcileService {
 	 *
 	 * Returns true when a reconcile was attempted.
 	 */
+	/**
+	 * Bare pill names → the `{name: …}` rows {@see syncBodyTags} writes; ids fill
+	 * in on the next pull.
+	 *
+	 * @param list<string> $names
+	 * @return list<array{name:string}>
+	 */
+	private static function nameRows(array $names): array {
+		return array_map(static fn (string $name): array => ['name' => $name], $names);
+	}
+
 	private function syncBodyFromPills(File $node): bool {
 		if (!FilenameCodec::isWorkflowFile($node)) {
 			return false;
 		}
-		$pills = $this->tagSync->readNcContentTags($node->getId());
-		$rows = array_map(static fn (string $name): array => ['name' => $name], $pills);
+		$rows = self::nameRows($this->tagSync->readNcContentTags($node->getId()));
 		$this->guard->run(fn () => $this->syncBodyTags($node, $rows));
 		return true;
 	}
@@ -270,19 +278,11 @@ final class TagReconcileService {
 			if (!$wf instanceof \stdClass) {
 				return; // a link pointer or a hand-mangled file — nothing to keep in step
 			}
-			// STRIP THE RESERVED NAMESPACE BEFORE IT REACHES THE FILE. reconcilePush()
-			// returns n8n's canonical rows for the FINAL set, and that set deliberately
-			// re-sends any `n8n:*` marker the workflow already carried (setWorkflowTags is
-			// a full replace, so preserving them is the only way not to drop them).
-			// Correct for n8n; wrong for the body. The body is CONTENT, and it is also
-			// the one PORTABLE surface — a reserved marker written here would travel with
-			// the file and seed itself as a content tag on adoption somewhere else.
-			//
-			// Every current caller already
+			// Rows without a usable name are dropped. Every current caller already
 			// guarantees non-empty (pushSourceTags filters them, readNcContentTags cannot
 			// produce one), so this is defence in depth — but the alternative is a
 			// nameless `{}` or a bare `{"id":…}` written into a user's file, and this
-			// method should not depend on all three of its callers staying careful.
+			// method should not depend on all of its callers staying careful.
 			$rows = array_values(array_filter($rows, static function (array $r): bool {
 				$name = (string)($r['name'] ?? '');
 				return $name !== '';

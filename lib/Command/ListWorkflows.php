@@ -18,7 +18,7 @@ use Symfony\Component\Console\Output\OutputInterface;
 /**
  * `occ n8n_sync:list-workflows [--limit=5] [--cursor=...]`
  *
- * Server-side smoke test for the n8n REST client \u2014 same code path as the
+ * Server-side smoke test for the n8n REST client — same code path as the
  * "Test connection" button and the eventual Phase 3 reconciler, but reachable
  * without a browser surface and therefore without any CSRF/auth concerns
  * beyond shell access (which is, by definition, already privileged).

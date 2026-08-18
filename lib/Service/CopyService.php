@@ -22,7 +22,7 @@ use Psr\Log\LoggerInterface;
  * ALWAYS a brand-new instance — it never inherits the original's n8n identity.
  *
  * Copy is therefore the single safest point to strip metadata: whatever the source
- * was (sync, link, unmapped), the copy starts clean. Two things happen here,
+ * was (sync, link, unmapped), the copy starts clean. Four things happen here,
  * driven by {@see \OCA\N8nSync\Listener\CopyListener} on {@see
  * \OCP\Files\Events\Node\NodeCopiedEvent}:
  *
@@ -31,11 +31,13 @@ use Psr\Log\LoggerInterface;
  *      system tags across a copy today, so this is normally a no-op — but doing it
  *      explicitly makes "a copy starts clean" a guarantee, not an accident of core
  *      internals.
- *   2. **Register if mapped.** If the copy landed inside a mapped folder, create it
+ *   2. **Adopt the body's tags** as the copy's own pills ({@see adoptBodyTags}) —
+ *      the source's pills are bound to its file id and do not travel.
+ *   3. **Register if mapped.** If the copy landed inside a mapped folder, create it
  *      as a NEW workflow in n8n ({@see CreateService::createForFile}, which mints a
  *      fresh id — it never reads any id out of the JSON body). A copy that landed
  *      outside any mapping is left as a plain, untracked document.
- *   3. **Settle its name**, which is the part that was missing.
+ *   4. **Settle its name**, which is the part that was missing.
  *
  * ## THE NAME NEXTCLOUD PICKED IS THE COPY'S REAL NAME
  *
@@ -66,6 +68,8 @@ use Psr\Log\LoggerInterface;
  * failed to register is just an untracked `.n8n` the user can re-save to retry.
  */
 final class CopyService {
+	use ResolvesActingUser;
+
 	public function __construct(
 		private CreateService $createService,
 		private MappingService $mappings,
@@ -126,7 +130,7 @@ final class CopyService {
 	private function settleName(File $node): void {
 		// The job resolves the file per-user, because team-folder files are mounted that
 		// way — same reason the async push job takes one.
-		$uid = $this->userSession->getUser()?->getUID() ?? $node->getOwner()?->getUID() ?? '';
+		$uid = $this->actingUserUid($node);
 		if ($uid === '') {
 			return;
 		}
@@ -172,8 +176,7 @@ final class CopyService {
 	 */
 	private function adoptBodyTags(File $node): void {
 		try {
-			$decoded = json_decode($node->getContent(), true);
-			$tags = $this->tagSync->contentTagsFromWorkflow(is_array($decoded) ? $decoded : []);
+			$tags = $this->tagSync->contentTagsFromBody($node->getContent());
 			if ($tags === []) {
 				return;
 			}

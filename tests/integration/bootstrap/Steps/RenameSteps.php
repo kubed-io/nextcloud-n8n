@@ -32,12 +32,8 @@ trait RenameSteps {
 	 *
 	 * @Given a workflow file named :filename in :folder
 	 * @Given a workflow file named :filename in :folder whose tags are :tags
-	 * @Given a workflow file named :filename in a subfolder of :folder
 	 */
 	public function aWorkflowFileNamedIn(string $filename, string $folder, string $tags = ''): void {
-		if (str_contains((string)func_get_arg(1), 'subfolder')) {
-			$folder .= '/Nested';
-		}
 		$this->davMkdir($folder);
 		$this->currentFolder = $folder;
 		$stem = preg_replace('/\.n8n$/', '', $filename) ?? $filename;
@@ -121,36 +117,16 @@ trait RenameSteps {
 		return false;
 	}
 
-	/**
-	 * A managed file with a generated name, in a mapping of its own.
-	 *
-	 * KEPT FOR THE FILES THAT HAVE NOT BEEN CONVERTED YET — `delete.feature` and
-	 * friends still say "a managed sync workflow file" without naming a folder,
-	 * which works because this arrange makes one for them. Files brought up to the
-	 * standard say where their file is instead, and use the folder-named arrange
-	 * above.
-	 *
-	 * @Given a managed :mode workflow file
-	 * @Given a managed :mode workflow file with a known :key
-	 */
-	public function aManagedWorkflowFile(string $mode, ?string $key = null): void {
-		$tag = 'nextcloud:rename-' . bin2hex(random_bytes(3));
-		$this->setupSyncMappingAndFolder($mode, $tag);
-		$name = 'Old Name';
-		$this->putManagedFile($this->currentFolder . '/' . $name . '.n8n', $name);
-	}
-
 	/** @When I rename the file to :filename */
 	public function iRenameTheFileTo(string $filename): void {
 		$dest = $this->currentFolder . '/' . $filename;
 		$this->davMove($this->currentFilePath, $dest);
 		$this->currentFilePath = $dest;
-		$this->drainJobs('OCA\\N8nSync\\BackgroundJob\\ReconcileNameJob');
+		$this->drainJobs(self::JOB_RECONCILE_NAME);
 	}
 
 	/**
 	 * @When I change the JSON :field field to :value
-	 * @When I edit the file and change the JSON :field field to :value
 	 */
 	public function iEditTheJsonField(string $field, string $value): void {
 		$body = (string)$this->davGet($this->currentFilePath);
@@ -166,21 +142,13 @@ trait RenameSteps {
 		$this->davPut($this->currentFilePath, json_encode($wf, JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT));
 		// The save's writeback push (async) and the filename reconcile both run as
 		// jobs; drain push first so n8n has the new name, then the rename job.
-		$this->drainJobs('OCA\\N8nSync\\BackgroundJob\\PushWorkflowJob');
-		$this->drainJobs('OCA\\N8nSync\\BackgroundJob\\ReconcileNameJob');
+		$this->drainJobs(self::JOB_PUSH_WORKFLOW);
+		$this->drainJobs(self::JOB_RECONCILE_NAME);
 		// After a filename_from_name reconcile the file moved; track its new path.
 		$expected = $this->currentFolder . '/' . $value . '.n8n';
 		if ($this->davExists($expected)) {
 			$this->currentFilePath = $expected;
 		}
-	}
-
-	/** @Then the JSON :field field inside the file becomes :value */
-	public function theJsonFieldBecomes(string $field, string $value): void {
-		$body = (string)$this->davGet($this->currentFilePath);
-		$wf = json_decode($body, true);
-		Assert::assertIsArray($wf, "file is not JSON:\n$body");
-		Assert::assertSame($value, (string)($wf[$field] ?? ''), "JSON $field did not become '$value'");
 	}
 
 	/** @Then the workflow is renamed to :name in n8n */
@@ -189,13 +157,6 @@ trait RenameSteps {
 		$wf = $this->n8nGetWorkflow($this->lastWorkflowId);
 		Assert::assertIsArray($wf, "n8n has no workflow {$this->lastWorkflowId}");
 		Assert::assertSame($name, (string)($wf['name'] ?? ''), "n8n workflow name is not '$name'");
-	}
-
-	/** @Then the file is renamed to :filename */
-	public function theFileIsRenamedTo(string $filename): void {
-		$expected = $this->currentFolder . '/' . $filename;
-		Assert::assertTrue($this->davExists($expected), "expected the file at $expected, but it isn't there");
-		$this->currentFilePath = $expected;
 	}
 
 	/**
@@ -235,13 +196,4 @@ trait RenameSteps {
 		);
 	}
 
-	/** @Then the :key metadata is unchanged */
-	public function theMetadataIsUnchanged(string $key): void {
-		$value = $this->davReadMetadata($this->currentFilePath, $key);
-		if ($key === self::META_ID) {
-			Assert::assertSame($this->lastWorkflowId, $value, 'the n8n_id changed across the rename — the link broke');
-		} else {
-			Assert::assertNotNull($value, "metadata-$key is missing after rename");
-		}
-	}
 }

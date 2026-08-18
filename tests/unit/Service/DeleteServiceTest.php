@@ -13,7 +13,9 @@ use OCA\N8nSync\Exception\N8nApiException;
 use OCA\N8nSync\Service\CreateService;
 use OCA\N8nSync\Service\DeleteService;
 use OCA\N8nSync\Service\Mapping;
+use OCA\N8nSync\Service\MappingService;
 use OCA\N8nSync\Service\N8nClient;
+use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\Files\File;
 use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
@@ -36,7 +38,7 @@ final class DeleteServiceTest extends TestCase {
 	protected function setUp(): void {
 		$this->n8n = $this->createMock(N8nClient::class);
 		$this->create = $this->createMock(CreateService::class);
-		$this->service = new DeleteService($this->n8n, $this->create, new NullLogger());
+		$this->service = new DeleteService($this->n8n, $this->create, $this->createMock(WorkflowMetadata::class), $this->createMock(MappingService::class), new NullLogger());
 	}
 
 	private function linkMapping(string $tag = 'team:links'): Mapping {

@@ -2068,6 +2068,70 @@ bug whichever setting produced it.
 > **Dr K, looking at the two-item menu:** *"You don't ask the diner how hot the pass runs.
 > You ask the kitchen, and the kitchen already knows."*
 
+## 2026-08-18 · **THE DEEP CLEAN BEFORE SERVICE**
+
+The last thing a kitchen does before an inspection is not cook — it takes every pan off
+the shelf and asks why it owns it. With the release in sight, the whole codebase got that
+pass: four parallel sweeps (the sync services, the listeners and DAV plugins, the
+framework edges, and the test suite itself), every finding verified against callers
+before anything moved. Pure refactor — nothing gained, nothing lost, a lot thrown out.
+
+**The tests were hoarding the most.** 101 of 270 step definitions matched no sentence in
+any feature file — dead steps for retired features (`mapping-membership`, the `n8n:*`
+re-mode toggle, the `ignored` mode, the timing knob) that outlived the behaviour they
+graded. Two whole traits went: `MappingMembershipSteps` deleted outright, and
+`ModeChangeSteps` reduced to the system-tag transport every live tag step leans on and
+renamed `Support/SystemTagsTrait`, which is what it had already become. Three step stubs
+threw a `RuntimeException` claiming mapping→mapping moves were "not yet decided" — a
+decision that shipped in `MotionService::rebind` and runs green in `move.feature`. The
+`check-step-definitions.sh` gate earned its keep twice over: it proved each deletion safe,
+and it caught the one method that carried a live phrasing alongside a dead one before the
+mistake could land.
+
+**The production code mostly lied in its comments.** `SyncController` still called push
+"a stub … records a no-op run" two releases after `pushAll` shipped. `Application.php`
+claimed one listener covered the trash-purge leg — the exact false claim the listener's
+own docblock loudly retracts, and the one that has already propagated a bug to a sibling
+app. Docblocks advertised a reserved `n8n:*` namespace that nothing strips, a force-kept
+mapping tag that is now the unbind signal, a fourth `ignored` mode, and a "Phase 3/4"
+roadmap that concluded months ago. And four files carried literal `\u2014` sequences —
+a paste accident that in one place reached production copy: the "Stored key could not be
+decrypted" error would have shown the user the escape code instead of a dash.
+
+**The dead weight was real code too.** Two constructor dependencies injected and never
+read (`ContentTagListener`'s tag manager, `TeamFolderService`'s logger, plus
+`WorkflowMetadata`'s). The unregistered `AdminTest` panel's template and its orphaned CSS,
+shipped in every build and reachable by nothing. A `$exceptId` parameter whose only call
+site passed null. Two private methods whose `@Given`s nothing said. And `features/
+AGENTS.md` was carrying a 750-line stale duplicate of its own tail — seven sections
+pasted twice, the second copy frozen pre-#85.
+
+**The merges were small and boring, which is the point.** The AppConfigTypeConflict
+rescue that two classes maintained by matching prose now lives once in
+`AppConfigReader`. The direction guard written three times is
+`SyncStatusService::isDirection()`. The two trash hooks share `ResolvesHookActor`; four
+"who is acting" one-liners share `ResolvesActingUser`; both restore entry points now call
+one `DeleteService::restoreNode`, which also moves the both-paths-read-metadata-fresh
+invariant into the one method that depends on it. `CONTENT_PERMISSIONS` stopped being two
+constants kept identical by a comment asking nicely. The six-key metadata shape that five
+docblocks hand-copied is one `@psalm-type ManagedValues`.
+
+**What was deliberately left alone**, so nobody rediscovers it: the three `Remove*`
+migrations stay separate classes (repair steps are keyed by class name — merging them
+would skip registrations on upgraded instances); `DeleteService`'s tag helpers do not
+fold into `TagSyncService` (they differ on a 404 swallow and a no-op fast path, both
+load-bearing); the three "gone in n8n → create fresh" branches stay in their three
+control flows; `reconcilePush`/`reconcilePushFromBody` stay two methods (§5.6.2.3 already
+recorded what merging them regressed); and the test suite's `mappingTagForFolder` vs
+`tagForFolder` are two answers on purpose — nearest-enclosing versus exact — flagged in
+place rather than flattened.
+
+Net: about seventeen hundred lines gone, 296 unit tests still green, three local gates
+still green, and no diff in what the app does.
+
+> **Dr K, folding the last towel:** *"A clean station isn't for the inspector. It's so
+> that the next cook can tell at a glance what's mise en place and what's mold."*
+
 ---
 
 Sources / cross-links:

@@ -46,8 +46,39 @@ final class DeleteService {
 	public function __construct(
 		private N8nClient $n8n,
 		private CreateService $createService,
+		private WorkflowMetadata $metadata,
+		private MappingService $mappings,
 		private LoggerInterface $logger,
 	) {
+	}
+
+	/**
+	 * The whole restore tail, shared by both trash entry points
+	 * ({@see \OCA\N8nSync\Listener\RestoreFromTrashListener} and
+	 * {@see \OCA\N8nSync\Listener\TrashRestoreHook}): read the stamp fresh,
+	 * resolve the mapping, and run {@see restore}, logging + swallowing failure —
+	 * the file is already back, and stranding the user's restore because n8n is
+	 * down would be worse than a workflow one manual sync away from correct.
+	 *
+	 * Reading the metadata HERE is what keeps the deliberate double call safe
+	 * (both entry points fire for a home-storage restore): whichever runs second
+	 * sees the id the first one stamped, so the create-fallback cannot mint twice.
+	 */
+	public function restoreNode(File $node): void {
+		$managed = $this->metadata->read($node->getId());
+		if (!$managed?->isManaged()) {
+			return; // detached file — nothing in n8n to bring back
+		}
+		try {
+			$this->restore($node, $managed->workflowId, $managed->mode, $this->mappings->getById($managed->mappingId));
+		} catch (\Throwable $e) {
+			$this->logger->warning('n8n_sync restore: n8n-side restore failed; NC file already back', [
+				'app' => Application::APP_ID,
+				'fileId' => $node->getId(),
+				'workflowId' => $managed->workflowId,
+				'exception' => $e,
+			]);
+		}
 	}
 
 	/**
@@ -198,17 +229,11 @@ final class DeleteService {
 			throw $e;
 		}
 		$existing = $this->extractTagIds($workflow);
-		$desired = [];
-		foreach (($workflow['tags'] ?? []) as $t) {
-			if (!is_array($t)) {
-				continue;
-			}
-			$name = is_string($t['name'] ?? null) ? $t['name'] : '';
-			$tid = is_string($t['id'] ?? null) ? $t['id'] : '';
-			if ($tid !== '' && $name !== $tagName) {
-				$desired[] = $tid;
-			}
-		}
+		$keep = array_values(array_filter(
+			(array)($workflow['tags'] ?? []),
+			static fn ($t): bool => is_array($t) && ($t['name'] ?? null) !== $tagName,
+		));
+		$desired = $this->extractTagIds(['tags' => $keep]);
 		if ($desired === $existing) {
 			return; // tag wasn't on the workflow → idempotent noop
 		}

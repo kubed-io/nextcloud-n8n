@@ -15,6 +15,7 @@ use OCA\N8nSync\Service\FilenameCodec;
 use OCA\N8nSync\Service\MappingService;
 use OCA\N8nSync\Service\MotionService;
 use OCA\N8nSync\Service\ReplacedByMoveStore;
+use OCA\N8nSync\Service\ResolvesActingUser;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\SyncNotifier;
 use OCA\N8nSync\Service\WorkflowMetadata;
@@ -63,6 +64,8 @@ use Psr\Log\LoggerInterface;
  * @implements IEventListener<NodeWrittenEvent|NodeRenamedEvent>
  */
 final class CreateInN8nListener implements IEventListener {
+	use ResolvesActingUser;
+
 	public function __construct(
 		private CreateService $createService,
 		private MappingService $mappings,
@@ -82,7 +85,7 @@ final class CreateInN8nListener implements IEventListener {
 			return;
 		}
 
-		$node = $this->resolveNode($event);
+		$node = EventNode::of($event);
 		if (!FilenameCodec::isWorkflowFile($node)) {
 			return;
 		}
@@ -107,7 +110,8 @@ final class CreateInN8nListener implements IEventListener {
 		// The rule is the same whatever the arrival carried: the destination's identity
 		// survives and the arrival contributes only its body. `moveIn` already knows how
 		// to adopt, so this hands over rather than repeating it.
-		$adopted = $node instanceof File ? $this->replaced->adoptedWorkflowId($node->getId()) : null;
+		// $node is already a File here — isWorkflowFile() narrowed it at the top.
+		$adopted = $this->replaced->adoptedWorkflowId($node->getId());
 		if ($adopted !== null) {
 			$this->logger->info('n8n_sync create-on-land: an overwrite inherits the workflow it replaced', [
 				'app' => Application::APP_ID,
@@ -136,7 +140,7 @@ final class CreateInN8nListener implements IEventListener {
 				'path' => $node->getPath(),
 				'exception' => $e,
 			]);
-			$uid = $this->userSession->getUser()?->getUID() ?? $node->getOwner()?->getUID() ?? '';
+			$uid = $this->actingUserUid($node);
 			if ($uid !== '') {
 				// Reuse the push_failed subject — same notification surface, same
 				// "Couldn't sync X to n8n" copy applies cleanly to create errors.
@@ -145,17 +149,4 @@ final class CreateInN8nListener implements IEventListener {
 		}
 	}
 
-	/**
-	 * Pull the post-event file node out of either supported event. Returns null
-	 * for any unexpected event type.
-	 */
-	private function resolveNode(Event $event): ?\OCP\Files\Node {
-		if ($event instanceof NodeWrittenEvent) {
-			return $event->getNode();
-		}
-		if ($event instanceof NodeRenamedEvent) {
-			return $event->getTarget();
-		}
-		return null;
-	}
 }

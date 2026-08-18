@@ -72,12 +72,10 @@ final class MotionService {
 			]);
 		}
 
-		$this->guard->run(function () use ($node): void {
-			$this->metadata->write($node->getId(), [
-				WorkflowMetadata::KEY_MODE => WorkflowMetadata::MODE_UNMAPPED,
-				WorkflowMetadata::KEY_MAPPING => '', // ejected — no longer in a mapping
-			]);
-		});
+		$this->restamp($node, [
+			WorkflowMetadata::KEY_MODE => WorkflowMetadata::MODE_UNMAPPED,
+			WorkflowMetadata::KEY_MAPPING => '', // ejected — no longer in a mapping
+		]);
 	}
 
 	/**
@@ -136,12 +134,10 @@ final class MotionService {
 			return;
 		}
 
-		$this->guard->run(function () use ($node, $tgtMapping): void {
-			$this->metadata->write($node->getId(), [
-				WorkflowMetadata::KEY_MODE => $tgtMapping->mode,
-				WorkflowMetadata::KEY_MAPPING => $tgtMapping->id,
-			]);
-		});
+		$this->restamp($node, [
+			WorkflowMetadata::KEY_MODE => $tgtMapping->mode,
+			WorkflowMetadata::KEY_MAPPING => $tgtMapping->id,
+		]);
 
 		// Best-effort against the n8n write that has already landed: a failure here
 		// leaves a stale pill that the next pull corrects, and throwing would tell
@@ -184,7 +180,7 @@ final class MotionService {
 		// by a move — so the sibling this scan looks for has been TRASHED by the time we
 		// run, no duplicate is found, and the unarchive path below is what answers.
 		// Whether that is right is undecided (features/workflows/move.feature, `@todo`).
-		if ($this->findSyncedSibling($node, $id) !== null) {
+		if ($this->hasSyncedSibling($node, $id)) {
 			$this->logger->info('n8n_sync motion: move-in duplicate of an already-synced workflow; minting a new instance', [
 				'app' => Application::APP_ID,
 				'workflowId' => $id,
@@ -241,13 +237,11 @@ final class MotionService {
 
 		// THE ID IS WRITTEN TOO, because an overwrite may have changed it. For every
 		// other move-in it is the value already there and the write is a no-op.
-		$this->guard->run(function () use ($node, $tgtMapping, $id): void {
-			$this->metadata->write($node->getId(), [
-				WorkflowMetadata::KEY_ID => $id,
-				WorkflowMetadata::KEY_MODE => Mapping::MODE_SYNC,
-				WorkflowMetadata::KEY_MAPPING => $tgtMapping->id,
-			]);
-		});
+		$this->restamp($node, [
+			WorkflowMetadata::KEY_ID => $id,
+			WorkflowMetadata::KEY_MODE => Mapping::MODE_SYNC,
+			WorkflowMetadata::KEY_MAPPING => $tgtMapping->id,
+		]);
 
 		$this->pushIfTheFileIsAhead($node);
 	}
@@ -342,29 +336,30 @@ final class MotionService {
 	}
 
 	/**
-	 * Look in the landing folder for a *different* managed workflow file that already
-	 * carries the same `n8n_id` as the incoming one — i.e. the workflow is already
-	 * synced here. Pull writes workflow files flat into the mapping root, so a
+	 * Is there a *different* managed workflow file in the landing folder already
+	 * carrying the same `n8n_id` as the incoming one — i.e. is the workflow already
+	 * synced here? Pull writes workflow files flat into the mapping root, so a
 	 * duplicate (if any) sits beside the incoming file; a sibling scan is enough.
-	 * Returns the existing synced file, or null when there is no duplicate.
 	 */
-	private function findSyncedSibling(File $node, string $id): ?File {
+	private function hasSyncedSibling(File $node, string $id): bool {
 		$parent = $node->getParent();
 		if (!$parent instanceof Folder) {
-			return null;
+			return false;
 		}
 		foreach ($parent->getDirectoryListing() as $sibling) {
-			if (!$sibling instanceof File || $sibling->getId() === $node->getId()) {
-				continue; // skip non-files and the incoming file itself
-			}
-			if (!FilenameCodec::isWorkflowName($sibling->getName())) {
-				continue; // only managed workflow files can be a duplicate
+			if ($sibling->getId() === $node->getId() || !FilenameCodec::isWorkflowFile($sibling)) {
+				continue; // skip the incoming file itself and anything not a workflow file
 			}
 			$managed = $this->metadata->read($sibling->getId());
 			if ($managed !== null && $managed->workflowId === $id) {
-				return $sibling;
+				return true;
 			}
 		}
-		return null;
+		return false;
+	}
+
+	/** Stamp metadata inside the SyncGuard so the write does not echo as a writeback. */
+	private function restamp(File $node, array $values): void {
+		$this->guard->run(fn () => $this->metadata->write($node->getId(), $values));
 	}
 }

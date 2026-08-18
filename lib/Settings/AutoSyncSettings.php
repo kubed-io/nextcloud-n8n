@@ -10,14 +10,14 @@ declare(strict_types=1);
 namespace OCA\N8nSync\Settings;
 
 use OCA\N8nSync\AppInfo\Application;
+use OCA\N8nSync\Service\AppConfigReader;
 use OCP\IAppConfig;
 use OCP\IUser;
 use OCP\Settings\DeclarativeSettingsTypes;
 use OCP\Settings\IDeclarativeSettingsFormWithHandlers;
 
 /**
- * "Sync Settings" — the automatic-sync strategy for both directions: the NC→n8n
- * the n8n→NC scheduled pull. (User-facing title "Sync Settings";
+ * "Sync Settings" — the n8n→NC scheduled pull. (User-facing title "Sync Settings";
  * persistence is keyed by the form id `data_sync`, not the class name.) The
  * always-available bulk buttons live in their own dedicated panel
  * ({@see SyncSettings}); this form is config only.
@@ -77,6 +77,7 @@ final class AutoSyncSettings implements IDeclarativeSettingsFormWithHandlers {
 
 	public function __construct(
 		private IAppConfig $config,
+		private AppConfigReader $reader,
 	) {
 	}
 
@@ -117,13 +118,15 @@ final class AutoSyncSettings implements IDeclarativeSettingsFormWithHandlers {
 
 	/**
 	 * Read one field for the settings UI, in the type that field means — a real
-	 * `bool` for the checkbox, a `string` for the radio and the text box.
+	 * `bool` for the checkbox, a `string` for the text box. Reads go through
+	 * {@see AppConfigReader} because a value stored by the old INTERNAL path is
+	 * string-typed and the typed getter would throw until the admin saves once.
 	 */
 	#[\Override]
 	public function getValue(string $fieldId, IUser $user): mixed {
 		return match ($fieldId) {
-			self::FIELD_SCHEDULE_ENABLED => $this->readBool(self::FIELD_SCHEDULE_ENABLED),
-			self::FIELD_SCHEDULE_INTERVAL => $this->readString(self::FIELD_SCHEDULE_INTERVAL, self::DEFAULT_INTERVAL),
+			self::FIELD_SCHEDULE_ENABLED => $this->reader->bool(self::FIELD_SCHEDULE_ENABLED),
+			self::FIELD_SCHEDULE_INTERVAL => $this->reader->string(self::FIELD_SCHEDULE_INTERVAL, self::DEFAULT_INTERVAL),
 			default => null,
 		};
 	}
@@ -141,7 +144,7 @@ final class AutoSyncSettings implements IDeclarativeSettingsFormWithHandlers {
 				// setValueBool (not a '1'/'0' string) so the job's primary
 				// getValueBool() read succeeds instead of falling through its
 				// AppConfigTypeConflict rescue path.
-				$this->config->setValueBool(Application::APP_ID, self::FIELD_SCHEDULE_ENABLED, $this->toBool($value));
+				$this->config->setValueBool(Application::APP_ID, self::FIELD_SCHEDULE_ENABLED, AppConfigReader::coerceBool($value));
 				break;
 			case self::FIELD_SCHEDULE_INTERVAL:
 				$raw = is_string($value) ? trim($value) : '';
@@ -152,38 +155,5 @@ final class AutoSyncSettings implements IDeclarativeSettingsFormWithHandlers {
 				);
 				break;
 		}
-	}
-
-	/**
-	 * The checkbox, tolerant of how it was last written. A value stored by the
-	 * old INTERNAL path is string-typed, so `getValueBool` raises an
-	 * AppConfigTypeConflict until the admin saves once — fall back to parsing the
-	 * string rather than reporting the schedule as off. Mirrors the same rescue in
-	 * {@see \OCA\N8nSync\BackgroundJob\ScheduledPullJob}.
-	 */
-	private function readBool(string $key): bool {
-		try {
-			return $this->config->getValueBool(Application::APP_ID, $key, false);
-		} catch (\Throwable) {
-			return $this->toBool($this->readString($key, ''));
-		}
-	}
-
-	private function readString(string $key, string $default): string {
-		try {
-			return $this->config->getValueString(Application::APP_ID, $key, $default);
-		} catch (\Throwable) {
-			return $default;
-		}
-	}
-
-	private function toBool(mixed $value): bool {
-		if (is_bool($value)) {
-			return $value;
-		}
-		if (is_int($value)) {
-			return $value !== 0;
-		}
-		return is_string($value) && in_array(strtolower(trim($value)), ['1', 'true', 'yes', 'on'], true);
 	}
 }

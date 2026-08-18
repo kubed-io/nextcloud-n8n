@@ -12,9 +12,7 @@ namespace OCA\N8nSync\Listener;
 use OCA\N8nSync\AppInfo\Application;
 use OCA\N8nSync\Service\DeleteService;
 use OCA\N8nSync\Service\FilenameCodec;
-use OCA\N8nSync\Service\MappingService;
 use OCA\N8nSync\Service\SyncGuard;
-use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\Files\File;
 use OCP\Files\IRootFolder;
 use OCP\IUserSession;
@@ -66,12 +64,12 @@ use Psr\Log\LoggerInterface;
  * that is one manual sync away from correct.
  */
 final class TrashRestoreHook {
+	use ResolvesHookActor;
+
 	public function __construct(
 		private IRootFolder $rootFolder,
 		private IUserSession $userSession,
 		private DeleteService $deleteService,
-		private MappingService $mappings,
-		private WorkflowMetadata $metadata,
 		private SyncGuard $guard,
 		private LoggerInterface $logger,
 	) {
@@ -128,38 +126,9 @@ final class TrashRestoreHook {
 			return;
 		}
 
-		$managed = $this->metadata->read($node->getId());
-		if (!$managed?->isManaged()) {
-			return; // detached file — nothing in n8n to bring back
-		}
-		$mapping = $managed->mappingId !== ''
-			? $this->mappings->getById($managed->mappingId)
-			: null;
-
-		try {
-			$this->deleteService->restore($node, $managed->workflowId, $managed->mode, $mapping);
-		} catch (\Throwable $e) {
-			$this->logger->warning('n8n_sync restore: n8n-side restore failed; NC file already back', [
-				'app' => Application::APP_ID,
-				'fileId' => $node->getId(),
-				'workflowId' => $managed->workflowId,
-				'exception' => $e,
-			]);
-		}
+		// The stamp read, the mapping lookup, and the log-and-swallow error policy
+		// all live in restoreNode — shared with the typed listener, on purpose.
+		$this->deleteService->restoreNode($node);
 	}
 
-	/**
-	 * Whose restore this is. An interactive restore has a session user; a restore
-	 * driven from occ sets up the filesystem for the user it is processing instead, so
-	 * `\OC_User::getUser()` names them. Same resolution the purge hook uses, and for
-	 * the same reason.
-	 */
-	private function resolveUid(): string {
-		$uid = $this->userSession->getUser()?->getUID();
-		if ($uid !== null && $uid !== '') {
-			return $uid;
-		}
-		$fsUser = \OC_User::getUser();
-		return $fsUser === false ? '' : $fsUser;
-	}
 }

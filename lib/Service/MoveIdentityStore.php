@@ -44,33 +44,21 @@ namespace OCA\N8nSync\Service;
  *
  * Scoped to the request (the service is a per-request singleton) and consumed on read,
  * so a stash can never leak into an unrelated move.
+ *
+ * @psalm-import-type ManagedValues from WorkflowMetadata
  */
 final class MoveIdentityStore {
 	/**
 	 * Stashed metadata values, keyed by the source path of the move.
 	 *
-	 * @var array<string, array{
-	 *     n8n_id?:string,
-	 *     n8n_mode?:string,
-	 *     n8n_versionId?:string,
-	 *     n8n_syncedHash?:string,
-	 *     n8n_mapping?:string,
-	 *     n8n_syncedTags?:string
-	 * }>
+	 * @var array<string, ManagedValues>
 	 */
 	private array $stash = [];
 
 	/**
 	 * Remember what the file at `$sourcePath` was, for the length of this request.
 	 *
-	 * @param array{
-	 *     n8n_id?:string,
-	 *     n8n_mode?:string,
-	 *     n8n_versionId?:string,
-	 *     n8n_syncedHash?:string,
-	 *     n8n_mapping?:string,
-	 *     n8n_syncedTags?:string
-	 * } $values the metadata key/value set to restore
+	 * @param ManagedValues $values the metadata key/value set to restore
 	 */
 	public function keep(string $sourcePath, array $values): void {
 		if ($values === []) {
@@ -83,14 +71,7 @@ final class MoveIdentityStore {
 	 * Take back what was stashed for `$sourcePath`, or null when nothing was.
 	 * Consuming: a stash is good for exactly one move.
 	 *
-	 * @return array{
-	 *     n8n_id?:string,
-	 *     n8n_mode?:string,
-	 *     n8n_versionId?:string,
-	 *     n8n_syncedHash?:string,
-	 *     n8n_mapping?:string,
-	 *     n8n_syncedTags?:string
-	 * }|null
+	 * @return ManagedValues|null
 	 */
 	public function take(string $sourcePath): ?array {
 		$values = $this->stash[$sourcePath] ?? null;

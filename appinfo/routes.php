@@ -23,12 +23,10 @@ return [
 		['name' => 'sync#status', 'url' => '/sync/status', 'verb' => 'GET'],
 		['name' => 'sync#pull',   'url' => '/sync/pull',   'verb' => 'POST'],
 		['name' => 'sync#push',   'url' => '/sync/push',   'verb' => 'POST'],
-		// Admin-only: delete the restorable (sync/link) files this app created.
 
-		// Admin-only smoke tests for the n8n REST client (Phase 1).
-		// Same admin gate as Test connection. Useful while Phase 3/4 stubs
-		// are still in place — exercises the full config → decrypt → HTTP
-		// path against the live n8n.
+		// Admin-only smoke tests for the n8n REST client. Same admin gate as
+		// Test connection — exercises the full config → decrypt → HTTP path
+		// against the live n8n.
 		['name' => 'debug#listWorkflows', 'url' => '/debug/workflows',      'verb' => 'GET'],
 		['name' => 'debug#getWorkflow',   'url' => '/debug/workflows/{id}', 'verb' => 'GET'],
 	],

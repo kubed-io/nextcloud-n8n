@@ -10,7 +10,6 @@ declare(strict_types=1);
 namespace OCA\N8nSync\Service;
 
 use OCA\N8nSync\AppInfo\Application;
-use OCP\Constants;
 use OCP\Files\Folder;
 use OCP\Files\IRootFolder;
 use OCP\Share\IManager as IShareManager;
@@ -38,13 +37,10 @@ final class StorageService {
 	 * NO LONGER VARIES BY MODE. A `link` mapping used to grant READ only, which
 	 * expressed nothing useful: it stopped no write to n8n — the listeners and the
 	 * absence of a content push do that — and only stopped the user from using
-	 * their own files. Kept identical to {@see TeamFolderService}'s so both
-	 * backends grant the same surface.
+	 * their own files. Aliased from {@see TeamFolderService} so both backends
+	 * grant the same surface by construction.
 	 */
-	private const CONTENT_PERMISSIONS = Constants::PERMISSION_READ
-		| Constants::PERMISSION_UPDATE
-		| Constants::PERMISSION_CREATE
-		| Constants::PERMISSION_DELETE;
+	private const CONTENT_PERMISSIONS = TeamFolderService::CONTENT_PERMISSIONS;
 
 	public function __construct(
 		private TeamFolderService $teamFolders,
@@ -235,12 +231,7 @@ final class StorageService {
 	 * @param list<string> $wanted
 	 */
 	private function syncGroupShares(Folder $folder, string $ownerUid, array $wanted): void {
-		$existing = [];
-		foreach ($this->shareManager->getSharesBy($ownerUid, IShare::TYPE_GROUP, $folder, false, -1, 0) as $share) {
-			$existing[] = $share;
-		}
-
-		foreach ($existing as $share) {
+		foreach ($this->groupShares($folder, $ownerUid) as $share) {
 			$gid = $share->getSharedWith();
 			if (in_array($gid, $wanted, true)) {
 				continue;
@@ -312,7 +303,7 @@ final class StorageService {
 	 */
 	private function sharedGroups(Folder $folder, string $ownerUid): array {
 		$out = [];
-		foreach ($this->shareManager->getSharesBy($ownerUid, IShare::TYPE_GROUP, $folder, false, -1, 0) as $share) {
+		foreach ($this->groupShares($folder, $ownerUid) as $share) {
 			$gid = $share->getSharedWith();
 			if ($gid !== '' && !in_array($gid, $out, true)) {
 				$out[] = $gid;
@@ -320,5 +311,20 @@ final class StorageService {
 		}
 
 		return $out;
+	}
+
+	/**
+	 * The folder's group shares, as the share objects (each is asked for its own
+	 * `getSharedWith()` — see {@see syncGroupShares} for why ids are never used
+	 * as array keys here).
+	 *
+	 * @return list<IShare>
+	 */
+	private function groupShares(Folder $folder, string $ownerUid): array {
+		$shares = [];
+		foreach ($this->shareManager->getSharesBy($ownerUid, IShare::TYPE_GROUP, $folder, false, -1, 0) as $share) {
+			$shares[] = $share;
+		}
+		return $shares;
 	}
 }

@@ -9,11 +9,13 @@ declare(strict_types=1);
 
 namespace OCA\N8nSync\Tests\Unit\Settings;
 
+use OCA\N8nSync\Service\AppConfigReader;
 use OCA\N8nSync\Service\WritebackStrategy;
 use OCA\N8nSync\Settings\AutoSyncSettings;
 use OCP\IAppConfig;
 use OCP\IUser;
 use OCP\Settings\DeclarativeSettingsTypes;
+use PHPUnit\Framework\Attributes\CoversClass;
 use PHPUnit\Framework\TestCase;
 
 /**
@@ -22,9 +24,10 @@ use PHPUnit\Framework\TestCase;
  * bool going out AND on the bool default coming back. So the coercion below is the
  * whole feature, and these pin it.
  */
+#[CoversClass(AutoSyncSettings::class)]
 final class AutoSyncSettingsTest extends TestCase {
 	private function form(IAppConfig $config): AutoSyncSettings {
-		return new AutoSyncSettings($config);
+		return new AutoSyncSettings($config, new AppConfigReader($config));
 	}
 
 	private function user(): IUser {
