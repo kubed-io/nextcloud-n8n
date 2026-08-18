@@ -84,7 +84,7 @@ final class AutoSyncSettings implements IDeclarativeSettingsFormWithHandlers {
 	public function getSchema(): array {
 		return [
 			'id' => 'data_sync',
-			'priority' => 33, // just below Folder mappings (30); the Manual sync buttons (40) follow
+			'priority' => 33, // above Folder mappings (36); Sync Actions (45) comes last
 			'section_type' => DeclarativeSettingsTypes::SECTION_TYPE_ADMIN,
 			'section_id' => 'n8n_sync',
 			// EXTERNAL so getValue()/setValue() below own the coercion — see the

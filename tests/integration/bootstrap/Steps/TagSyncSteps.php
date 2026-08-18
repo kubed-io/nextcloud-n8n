@@ -146,12 +146,7 @@ trait TagSyncSteps {
 	 */
 	public function iChangeTheNextcloudTagsTo(string $tags): void {
 		$this->applyNextcloudTags(self::tagList($tags));
-		// A PILL CHANGE MAY NOW BE QUEUED. `ContentTagListener` used to be forced
-		// inline by the `timing` pin this arrange set; with that gone it enqueues
-		// whenever the environment can drain a queue. Draining here keeps the step
-		// meaning the same thing under either — the same shape
-		// `iEditTheFilesNodesAndSave` has always had, and a no-op when it ran inline.
-		$this->drainJobs('OCA\\N8nSync\\BackgroundJob\\ReconcileTagsJob');
+		$this->settlePillChange();
 	}
 
 	/**
@@ -167,6 +162,7 @@ trait TagSyncSteps {
 	public function iRemoveTheMappingTag(string $tag): void {
 		$path = $this->tagLocateFile();
 		$this->tagRemoveSystemTag($path, $tag);
+		$this->settlePillChange();
 		// The mirror is expected to be gone now, so the cached path must not be reused
 		// as though it still resolved.
 		$this->tagFilePath = '';
@@ -549,6 +545,25 @@ trait TagSyncSteps {
 		Assert::assertNotSame('', $this->tagWfId, 'no workflow under test to tag');
 		$ids = array_map(fn (string $n): string => $this->ensureN8nTag($n), array_values(array_unique($names)));
 		$this->setN8nWorkflowTags($this->tagWfId, $ids);
+	}
+
+	/**
+	 * Let a PILL change reach n8n — the reconcile, folded into the gesture.
+	 *
+	 * EVERY `When` THAT TOUCHES A PILL NEEDS THIS, which is why it is a helper rather
+	 * than a line in one step. This file's arrange used to pin `timing=sync` so
+	 * `ContentTagListener` ran inline and the assertions could read the result back
+	 * immediately; that knob is gone (saga Ch5) and the listener now enqueues
+	 * {@see ReconcileTagsJob} wherever a worker will drain it. Draining here keeps each
+	 * step meaning the same thing under either outcome — and is a no-op when the
+	 * reconcile already ran inline.
+	 *
+	 * It was added to the tag-SET gesture first and not to the mapping-tag removal,
+	 * which is a different `When` on the same surface. CI found it: the file was still
+	 * mirrored because the unbind was sitting in a queue nobody had emptied.
+	 */
+	private function settlePillChange(): void {
+		$this->drainJobs('OCA\\N8nSync\\BackgroundJob\\ReconcileTagsJob');
 	}
 
 	/** Let a change made in n8n reach Nextcloud — the pull, folded into the gesture. */

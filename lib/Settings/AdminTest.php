@@ -48,8 +48,8 @@ final class AdminTest implements IDelegatedSettings {
 
 	/**
 	 * Priority 22 — rendered below the Instance card (5), so the button sits after
-	 * the URL and key it tests. Sync Settings (33), Mappings (30), Manual sync
-	 * (35) follow.
+	 * the URL and key it tests. Sync Settings (33), Folder mappings (36) and Sync
+	 * Actions (45) follow.
 	 */
 	#[\Override]
 	public function getPriority(): int {

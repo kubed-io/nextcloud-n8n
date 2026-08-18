@@ -79,9 +79,14 @@ final class Application extends App implements IBootstrap {
 		// those markers inside a mapped folder is fair game for sync; anything
 		// without them is left alone. No setting needed.
 		//
-		// Section layout (by priority): Instance — URL + API key (5) → Test
-		// connection (15, classic panel via info.xml) → Sync Settings (33) →
-		// Mappings/Manual sync (30+).
+		// Section layout, by the priorities the classes actually return:
+		//   Instance — URL + API key (5, declarative)
+		//   Test connection          (22, classic panel — AdminTest)
+		//   Sync Settings            (33, declarative — AutoSyncSettings)
+		//   Folder mappings          (36, classic panel — MappingSettings)
+		//   Sync Actions             (45, classic panel — SyncSettings)
+		// Read off the sources rather than remembered: this list carried 15/30/35/40
+		// for long enough that three separate comments repeated them.
 		//
 		// It used to read "Instance URL (5) → REST API (10) → Test connection (15)
 		// → Webhook (20) → …, API and Webhook are independent, composable writeback
