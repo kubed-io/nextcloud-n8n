@@ -33,8 +33,9 @@ use Psr\Log\LoggerInterface;
  * reconciled to n8n **on its own** — no "Sync to n8n" click.
  *
  * It is the tag-side sibling of {@see NodeWrittenListener} (which pushes a saved body):
- * both watch a user edit, both honour the same `timing` knob — `sync` reconciles inline
- * during the request, `async` enqueues {@see ReconcileTagsJob} for the cron worker.
+ * both watch a user edit, and both take the same inline-vs-queued decision from
+ * {@see \OCA\N8nSync\Service\WritebackStrategy}: queued as {@see ReconcileTagsJob}
+ * where a worker will actually drain it, reconciled inline where none will.
  *
  * It owns CONTENT tags — the actual workflow labels — and splits from the app's own
  * markers by namespace: a change whose tags are ALL reserved (`n8n:*`) is ignored here

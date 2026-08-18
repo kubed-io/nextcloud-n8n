@@ -48,7 +48,7 @@ final class AdminTest implements IDelegatedSettings {
 
 	/**
 	 * Priority 22 — rendered below the Instance card (5), so the button sits after
-	 * the URL and key it tests. Writeback timing (25), Mappings (30), Manual sync
+	 * the URL and key it tests. Sync Settings (33), Mappings (30), Manual sync
 	 * (35) follow.
 	 */
 	#[\Override]

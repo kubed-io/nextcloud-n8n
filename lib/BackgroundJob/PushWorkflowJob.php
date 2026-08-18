@@ -18,7 +18,9 @@ use OCP\Files\IRootFolder;
 use Psr\Log\LoggerInterface;
 
 /**
- * Async writeback path. Enqueued by NodeWrittenListener when `timing=async`.
+ * Async writeback path. Enqueued by NodeWrittenListener when
+ * {@see \OCA\N8nSync\Service\WritebackStrategy} says the queue will actually be
+ * drained; otherwise that listener pushes inline and this job is never created.
  *
  * Phase 1 skeleton: looks up the node by file id (passed in $argument) and
  * delegates to PushService. The job is intentionally tiny — no retry policy,

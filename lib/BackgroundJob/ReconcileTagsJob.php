@@ -19,7 +19,8 @@ use Psr\Log\LoggerInterface;
 
 /**
  * Async reactive tag reconcile (saga Ch5 §5.6.2, Slice A). Enqueued by
- * {@see \OCA\N8nSync\Listener\ContentTagListener} when `timing=async`: a content-tag
+ * {@see \OCA\N8nSync\Listener\ContentTagListener} when the queue will actually be
+ * drained ({@see \OCA\N8nSync\Service\WritebackStrategy}): a content-tag
  * pill was edited on a managed `sync` file and its tags are carried to n8n on the next
  * cron tick instead of inline during the request.
  *
