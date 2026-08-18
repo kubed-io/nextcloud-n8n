@@ -91,12 +91,12 @@ final class AutoSyncSettings implements IDeclarativeSettingsFormWithHandlers {
 			// class docblock for why INTERNAL cannot carry the checkbox.
 			'storage_type' => DeclarativeSettingsTypes::STORAGE_TYPE_EXTERNAL,
 			'title' => 'Sync Settings',
-			'description' => 'How Nextcloud and n8n stay in sync automatically. Sync Actions below runs either direction on demand.',
+			'description' => 'Saving a workflow file always writes it back to n8n — there is nothing to configure for that direction. These settings are the other one: how often Nextcloud pulls from n8n. Sync Actions below runs either direction on demand.',
 			'fields' => [
 				[
 					'id' => self::FIELD_SCHEDULE_ENABLED,
 					'title' => 'n8n → Nextcloud: scheduled sync',
-					'description' => 'Nextcloud periodically pulls from n8n; nothing in n8n changes. When off, use Sync from n8n below. For near-real-time, have an n8n workflow push to Nextcloud instead.',
+					'description' => 'Nextcloud periodically pulls from n8n; nothing in n8n changes. A change made in n8n appears here within the interval below. When off, use Sync from n8n in Sync Actions.',
 					'type' => DeclarativeSettingsTypes::CHECKBOX,
 					// A real bool: this is what the frontend round-trips. It is safe
 					// here only because EXTERNAL storage never feeds it to
