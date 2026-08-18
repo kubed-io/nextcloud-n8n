@@ -65,6 +65,21 @@ trait SetupTrait {
 	}
 
 	/**
+	 * One no-op node, named — what every "replace the nodes" gesture writes.
+	 * ONE definition for the same reason as {@see starterWorkflow}: a fixture
+	 * node cannot be realistic in one feature and a stub in another.
+	 */
+	private static function noOpNode(string $name): object {
+		return (object)[
+			'name' => $name,
+			'type' => 'n8n-nodes-base.noOp',
+			'typeVersion' => 1,
+			'position' => [0, 0],
+			'parameters' => new \stdClass(),
+		];
+	}
+
+	/**
 	 * The body every arrange writes for a workflow file — ONE definition, so a
 	 * fixture cannot be realistic in one feature and a stub in another.
 	 *
@@ -84,21 +99,6 @@ trait SetupTrait {
 	 * @param list<string> $tagNames
 	 * @return array<string,mixed>
 	 */
-	/**
-	 * One no-op node, named — what every "replace the nodes" gesture writes.
-	 * ONE definition for the same reason as {@see starterWorkflow}: a fixture
-	 * node cannot be realistic in one feature and a stub in another.
-	 */
-	private static function noOpNode(string $name): object {
-		return (object)[
-			'name' => $name,
-			'type' => 'n8n-nodes-base.noOp',
-			'typeVersion' => 1,
-			'position' => [0, 0],
-			'parameters' => new \stdClass(),
-		];
-	}
-
 	private static function starterWorkflow(string $name, array $tagNames = []): array {
 		$body = [
 			'name' => $name,

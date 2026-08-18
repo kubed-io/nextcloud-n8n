@@ -83,7 +83,9 @@ final class SyncService {
 		if ($async) {
 			$this->status->markQueued($direction);
 			$this->jobList->add(ManualSyncJob::class, ['direction' => $direction, 'mappingId' => $mappingId]);
-			return ['status' => 'queued', 'direction' => $direction];
+			// `async` is read by nothing in-repo, but it is part of the endpoint's
+			// live JSON payload — payload shape is behaviour, so it stays.
+			return ['status' => 'queued', 'direction' => $direction, 'async' => true];
 		}
 		return $this->runInline($direction, $mappingId);
 	}
@@ -614,7 +616,10 @@ final class SyncService {
 	 * vs leave-alone), so the decision stays with them.
 	 */
 	private function firstFreeCollision(Folder $parent, string $displayName, string $id, int $from, ?string $treatAsFree): ?int {
-		for ($collision = $from; $collision <= 1000; $collision++) {
+		// The cap never cuts off the starting counter itself: the pre-refactor loop
+		// would still try a start value above 1000 and only give up moving PAST it.
+		$cap = max($from, 1000);
+		for ($collision = $from; $collision <= $cap; $collision++) {
 			$candidate = FilenameCodec::format($displayName, $id, false, $collision);
 			if ($candidate === $treatAsFree || !$parent->nodeExists($candidate)) {
 				return $collision;

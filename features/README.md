@@ -265,7 +265,7 @@ A scenario is only real if a step definition matches every one of its lines.
 
 | What | Where |
 |---|---|
-| The scenarios | `features/*.feature` (repo root — they are docs) |
+| The scenarios | `features/**/*.feature` (repo root — they are docs) |
 | The step definitions | `tests/integration/bootstrap/Steps/*.php` |
 | The context that composes them | `tests/integration/bootstrap/FeatureContext.php` |
 | Transports (occ, WebDAV, the n8n API) | `tests/integration/bootstrap/Support/` |

@@ -347,7 +347,9 @@ final class N8nClient {
 		}
 		$byName = [];
 		foreach ($this->listTags() as $tag) {
-			$byName[$tag['name']] = $tag['id'];
+			// First match wins — the same answer ensureTag() always gave and the
+			// same answer findTagId() gives, should n8n ever hold a duplicate name.
+			$byName[$tag['name']] ??= $tag['id'];
 		}
 		$ids = [];
 		foreach ($names as $name) {
