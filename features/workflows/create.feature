@@ -42,8 +42,16 @@ Feature: Creating a workflow, from either side
     Examples: the folder is the whole input — the Background said what each one is
       | folder   |
       | Demo     |
-      | Pointers |
       | Shared   |
+
+  # notes: ../AGENTS.md#a-link-mapping-authors-nothing
+  @user @in-nextcloud @gesture @ui @unbuilt
+  Scenario: Creating a workflow in a link-mapped folder is refused
+    When I try to create a new ".n8n" file in "Pointers" via the Files "New" menu
+    Then the creation is refused with a message
+
+    # A link folder is filled from its tag in n8n, so authoring into one could never
+    # produce the workflow it looks like — the rule copy and move already enforce.
 
   @user @in-nextcloud @gesture @ui
   Scenario: A workflow file created outside any mapped folder stays unmanaged

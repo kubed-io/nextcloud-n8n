@@ -19,6 +19,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+
+- Creating a workflow file inside a **link** mapping's folder will be refused rather than minting a workflow. A link folder mirrors its n8n tag and is not a place to author; copying and moving into one were already refused, and creating was the one door left open. Specified now, enforced in a follow-up.
+
 ## [1.0.0] - 2026-08-18
 
 **The first stable release.** The version number is the point: the mirror is properly two-way now, and the parts that were half-built are either finished or gone rather than left to be discovered. Tags are a single set shared across n8n, the file, and Nextcloud's own searchable pills — change them wherever you happen to be. Workflow files carry n8n's real timestamps, so Recent and Popular files finally tell the truth about your automation. The trash means the same thing on both sides, in a Team Folder as much as at home. This release also removes more than any before it, and renames every workflow file on disk — read **Upgrading** first.

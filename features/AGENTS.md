@@ -486,6 +486,36 @@ workflow appears in n8n. The n8n origin: a workflow made in n8n and given the
 mapping's tag appears as a file on the next pull. The n8n side is asserted over its
 REST API; the NC stamp over DAV PROPFIND of nc:metadata-n8n_id.
 
+### A link mapping authors nothing
+
+**CREATING INTO A LINK FOLDER USED TO BE A PASSING ROW, AND THAT WAS THE BUG.**
+`New file in a mapped folder becomes a real workflow` ran its Outline over `Demo`,
+`Pointers` and `Shared` — and `Pointers` is a **link** mapping. So the spec said,
+and the suite proved, that authoring a file into a link folder mints a workflow.
+
+A link mapping is filled from its tag in n8n and from nowhere else. Its folder is a
+projection, not a place to write: the app already refuses to COPY into one
+({@see CopyGuardListener} — *"a link mapping is not a destination"*) and to MOVE
+into one, and refuses DAV writes to the link files inside it. Authoring was the one
+door left open, for no reason anybody chose — it was never argued for, it was just
+never asked about.
+
+What that row actually asserted is worth stating plainly, because it read as
+coverage: a user makes a file in a folder whose whole contract is *"this mirrors
+n8n"*, and gets a workflow that the mapping's own tag does not select. The next pull
+then has an opinion about a file the user just created.
+
+**The refusal is `@unbuilt`, not `@todo`, and the distinction matters here.** There
+is no guard in `CreateInN8nListener` today — the code still creates. This is a
+scenario waiting on behaviour, not on a step definition, and it should go green in
+the same PR that adds the guard. Until then the app and the spec disagree, on
+purpose and in writing, rather than the spec quietly blessing what the code happens
+to do.
+
+The Grafana sibling states the same rule (`features/dashboards/create.feature`), and
+reached it from the opposite direction: it had the refusal scenario first and no
+passing row to contradict it.
+
 ### A tagged workflow in n8n IS a file
 
 **The app's central promise had no scenario.** Put the mapping's tag on a workflow
