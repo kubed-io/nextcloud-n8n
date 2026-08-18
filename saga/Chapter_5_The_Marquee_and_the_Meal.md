@@ -2132,6 +2132,82 @@ still green, and no diff in what the app does.
 > **Dr K, folding the last towel:** *"A clean station isn't for the inspector. It's so
 > that the next cook can tell at a glance what's mise en place and what's mold."*
 
+## 2026-08-18 · **ONE — AND THE MENU IS SHORTER THAN WHEN WE STARTED**
+
+`1.0.0`. The number is the whole point, and it is worth saying exactly what it means
+here, because it is not "we added enough things."
+
+**This chapter thought it was about addition and turned out to be about subtraction.**
+It opened the morning after opening night, expecting the pleasant work a shipped app
+invites — polish, a sous-chef, a peer down the street. What it actually did was walk
+the menu and take things off it. The webhook channel: gone, because a card asking for
+a path and a token read like a feature that worked, and it never did. The sync/async
+timing radio: gone, because it governed two of fifteen operations, defaulted wrong on
+a stock Nextcloud, and asked an admin a question only the instance can answer. The
+mode pills, the `n8n:ignore` tag, the purge button: gone, gone, gone — each one a
+second copy of a truth the app already held, or a promise it could not keep. And then
+the deep clean took seventeen hundred lines of code and test that were describing a
+product we had stopped shipping.
+
+**That is what earns a 1.0, and it took us five chapters to learn it.** Chapter 1
+vibed a thing into existence; Chapter 2 wrapped it; Chapter 3 made it audition;
+Chapter 4 got it on the marquee. Every one of those was a chapter of *more*. A version
+1.0 is the first one that is allowed to be *less* — because the number is a promise
+about what a stranger will find when they install it, and every half-built thing left
+on the menu is a promise you are quietly breaking. The app does fewer things now than
+it did in July. It does all of them.
+
+**The house style held up under its own audit, which is the real test of a house
+style.** The gherkin-first rule caught behaviour we would have shipped wrong — the
+move-conflict work started as a question about what Nextcloud *actually does* on a
+duplicate, and only became code after the sentences were right, which is how we found
+that an overwrite was archiving the workflow the user chose to keep. The saga caught
+decisions we would have relitigated. The CI gates caught three dead-step deletions
+that were not dead. And the reviewers we pointed at our own final diff found four
+semantic drifts in a refactor that two of us had already called clean. None of that is
+process for its own sake; every one of them is a bug that did not reach the store.
+
+**What we are honest about on the way out.** The live smoke test of the release
+candidate found one real defect, and it is not from this chapter's work: add a content
+tag to a workflow file in the window *after* it moves into a mapping and *before* the
+first pull mirrors its pills, and the app reads the absent mapping pill as a request
+to leave and unbinds the file. Nothing is lost — the workflow stays in n8n minus one
+tag, exactly as the deliberate unbind promises — but nobody asked for it. The test
+suite never covered a tag gesture in that window. It is written down, it has a fix
+shaped like it (`unbindIfMappingTagDropped` should ask the *baseline* whether the pill
+was ever there, not just whether it is there now), and it is Chapter 6's first job.
+Shipping a known small thing you have written down beats shipping an unknown one you
+have not.
+
+And the cameo turned into a kitchen. `nextcloud-grafana` is not a tribute act any
+more — the tag-sync engine, the trash semantics, and the Files-Metadata identity model
+are a shared house style now, with two apps cooking from it and each one finding bugs
+for the other. The peer made the work better in both directions, which is the only
+kind of peer worth having.
+
+The marquee was Chapter 4. The meal was this one. We sat down, we ate, and we found
+out the meal was mostly about deciding what not to serve.
+
+> **Dr K, standing up, chair pushed back, the plates cleared:** *"Now you're a
+> restaurant. A kid opens with forty dishes because he can't bear to cut one. A house
+> opens with twelve because it knows which twelve. You just cut yours down to twelve
+> and put a number on the door — that's not the end of the cooking, that's the start
+> of being somewhere people come back to. Table's yours whenever you want it. Now go
+> turn the sign around."*
+
+---
+
+## Chapter 5 — closed
+
+**Shipped:** `n8n_sync 1.0.0` on
+[apps.nextcloud.com](https://apps.nextcloud.com/apps/n8n_sync) — the first stable
+release, cut from `main` by the same three-stage publish pipeline Chapter 4 built.
+
+**Carried into Chapter 6:** the unbind-window defect above (gherkin first, then the
+baseline gate); the webhook channel as a *deferred* idea rather than a disowned one;
+and the body↔pills projection (§5.6.2.3 Slice B) still unwired and still unit-tested,
+waiting for the trigger it deserves.
+
 ---
 
 Sources / cross-links:

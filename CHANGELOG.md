@@ -19,7 +19,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-The first release since `0.1.5`, and the one where the mirror became properly two-way. Tags are now a single set shared across n8n, the file, and Nextcloud's own searchable pills — change them wherever you happen to be. Workflow files carry n8n's real timestamps, so Recent and Popular files finally tell the truth about your automation. The trash means the same thing on both sides, in a Team Folder as much as at home. And three things you may have been using are gone — read **Upgrading** first.
+**The first stable release.** The version number is the point: the mirror is properly two-way now, and the parts that were half-built are either finished or gone rather than left to be discovered. Tags are a single set shared across n8n, the file, and Nextcloud's own searchable pills — change them wherever you happen to be. Workflow files carry n8n's real timestamps, so Recent and Popular files finally tell the truth about your automation. The trash means the same thing on both sides, in a Team Folder as much as at home. This release also removes more than any before it, and renames every workflow file on disk — read **Upgrading** first.
 
 ### ⚠️ Upgrading
 
@@ -55,7 +55,7 @@ The first release since `0.1.5`, and the one where the mirror became properly tw
 - A mapped folder appears as soon as you save the mapping, and one that cannot be provisioned is not saved at all.
 - The groups a mapped folder is shared with are read from the folder, so sharing it anywhere shows up here.
 - A `link` mapping's folder is no longer read-only.
-- The REST API card shows whether an API key is already stored, and Test connection tells a missing key apart from a rejected one.
+- The Instance card shows whether an API key is already stored, and Test connection tells a missing key apart from a rejected one.
 - Syncing a workflow's tags is faster.
 - The admin settings say the same things in about a quarter fewer words.
 
