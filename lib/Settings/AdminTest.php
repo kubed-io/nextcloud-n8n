@@ -26,12 +26,28 @@ use OCP\Settings\IDelegatedSettings;
  * template, not just adding the info.xml entry.
  */
 final class AdminTest implements IDelegatedSettings {
+	/**
+	 * UNREACHABLE, AND IT SAYS SO RATHER THAN PRETENDING.
+	 *
+	 * Verified against core (`stable34`) both ways it could be called:
+	 *   - the authorization path compares CLASS NAMES only — `SecurityMiddleware`
+	 *     does `in_array($settingClass, $authorizedClasses, true)` and never
+	 *     instantiates the class, so the attribute cannot reach this method;
+	 *   - the renderer (`CommonSettingsTrait`) only iterates classes that
+	 *     `Settings\Manager::registerSetting()` was given, which come from
+	 *     `info.xml`'s `<settings>` block — and this class is not in it.
+	 *
+	 * So there is no template to return, and returning a `TemplateResponse` for
+	 * a file that does not exist would leave a "template not found" fatal waiting
+	 * for whoever re-registers the panel. This throws instead, naming both halves
+	 * of the job they would have to do.
+	 */
 	#[\Override]
 	public function getForm(): TemplateResponse {
-		// Unreachable — the panel is not registered (see the class docblock).
-		// The interface demands a TemplateResponse; the named template no
-		// longer exists, which is fine for a method nothing calls.
-		return new TemplateResponse(Application::APP_ID, 'admin_test', [], 'blank');
+		throw new \LogicException(
+			'AdminTest is an authorization target only and renders nothing. To bring the panel back, '
+			. 'create templates/admin_test.php and register this class in appinfo/info.xml.',
+		);
 	}
 
 	#[\Override]

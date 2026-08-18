@@ -231,7 +231,12 @@ final class StorageService {
 	 * @param list<string> $wanted
 	 */
 	private function syncGroupShares(Folder $folder, string $ownerUid, array $wanted): void {
-		foreach ($this->groupShares($folder, $ownerUid) as $share) {
+		// Read ONCE and pass over it twice: the first loop prunes, the second
+		// reuses the same objects to update or create. Re-fetching between them
+		// would ask the share manager for a list we already hold.
+		$existing = $this->groupShares($folder, $ownerUid);
+
+		foreach ($existing as $share) {
 			$gid = $share->getSharedWith();
 			if (in_array($gid, $wanted, true)) {
 				continue;

@@ -222,6 +222,15 @@ final class TagReconcileService {
 	 *
 	 * Returns true when a reconcile was attempted.
 	 */
+	private function syncBodyFromPills(File $node): bool {
+		if (!FilenameCodec::isWorkflowFile($node)) {
+			return false;
+		}
+		$rows = self::nameRows($this->tagSync->readNcContentTags($node->getId()));
+		$this->guard->run(fn () => $this->syncBodyTags($node, $rows));
+		return true;
+	}
+
 	/**
 	 * Bare pill names → the `{name: …}` rows {@see syncBodyTags} writes; ids fill
 	 * in on the next pull.
@@ -231,15 +240,6 @@ final class TagReconcileService {
 	 */
 	private static function nameRows(array $names): array {
 		return array_map(static fn (string $name): array => ['name' => $name], $names);
-	}
-
-	private function syncBodyFromPills(File $node): bool {
-		if (!FilenameCodec::isWorkflowFile($node)) {
-			return false;
-		}
-		$rows = self::nameRows($this->tagSync->readNcContentTags($node->getId()));
-		$this->guard->run(fn () => $this->syncBodyTags($node, $rows));
-		return true;
 	}
 
 	/**

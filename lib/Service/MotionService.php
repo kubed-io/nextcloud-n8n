@@ -38,6 +38,8 @@ use Psr\Log\LoggerInterface;
  * success (the workflow is already gone); a 404 from unarchive triggers the
  * create-fallback; anything else bubbles as {@see N8nApiException} for the caller
  * to log.
+ *
+ * @psalm-import-type ManagedValues from WorkflowMetadata
  */
 final class MotionService {
 	public function __construct(
@@ -358,7 +360,11 @@ final class MotionService {
 		return false;
 	}
 
-	/** Stamp metadata inside the SyncGuard so the write does not echo as a writeback. */
+	/**
+	 * Stamp metadata inside the SyncGuard so the write does not echo as a writeback.
+	 *
+	 * @param ManagedValues $values
+	 */
 	private function restamp(File $node, array $values): void {
 		$this->guard->run(fn () => $this->metadata->write($node->getId(), $values));
 	}
