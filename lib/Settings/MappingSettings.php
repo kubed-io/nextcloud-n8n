@@ -38,6 +38,9 @@ final class MappingSettings implements IDelegatedSettings {
 
 	#[\Override]
 	public function getForm(): TemplateResponse {
+		// BEFORE the panel script, which calls into it. `dialogs` defines
+		// window.N8nSync.confirmDestructive; addScript order is load order.
+		Util::addScript(Application::APP_ID, 'dialogs');
 		Util::addScript(Application::APP_ID, 'mapping-settings');
 		Util::addStyle(Application::APP_ID, 'mapping-settings');
 

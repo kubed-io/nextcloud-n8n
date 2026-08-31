@@ -132,21 +132,34 @@ to escape the default. Grafana had the identical inversion.
 OMITTED flag rather than an explicit `false` — the whole defect lived in what
 happens when nobody says anything.
 
-### A mapping the app cannot honour is refused, and says why
+### RETIRED — A mapping the app cannot honour is refused, and says why
 
-One scenario, not five, because the behaviour is identical every time: refused,
-nothing stored, and the message names the field at fault. The rules are the
-Examples, which is where a difference belongs when the sentences would otherwise
-be word-for-word identical.
+**It was five field rules mashed into one scenario, and it is gone.** The Outline
+ran over an empty tag, a tag containing commas, a missing folder and a bogus mode,
+asserting `the mapping is rejected` + `the refusal explains "…"` + `there are
+exactly 0 configured mappings` for each.
 
-Each row is reachable by a human — typing into the form, or into the `occ` JSON
-argument. **A refusal earns a row only when someone can provoke it**; a validator
-that no input can reach is not a behaviour.
+Three things were wrong with it, and the third is why it went rather than got
+fixed:
 
-`the refusal explains "<fragment>"` matches a FRAGMENT, not the whole message.
-The scenario's job is to prove the refusal names the field so an admin knows what
-to change; pinning the exact sentence would make every wording improvement a test
-failure.
+  - **`there are exactly 0 configured mappings` is a violation.** It says a
+    refusal is only observable on an empty store, which is nonsense — an admin
+    with ten mappings can be refused an eleventh. The delta is what matters, and
+    the refusal step asserts it.
+  - **`Given no n8n tags are mapped` is the same violation as a precondition**,
+    and it reads as *you may not create a mapping while one exists*.
+  - **It was a list of validator branches, not a behaviour.** The Grafana sibling
+    carried the identical scenario and retired it for exactly this reason: it
+    holds nothing a reader learns from, and it grows a row every time a field
+    gains a rule.
+
+The rules themselves have not gone anywhere — `Mapping::fromArray()` still throws
+on each, and `MappingServiceTest` covers them. What is gone is the pretence that
+enumerating a validator is a specification.
+
+**The parity set is the sibling's**: create, link-over-existing-files, tag
+uniqueness, folder uniqueness, and no-API-key. Each is a rule with a reason, not a
+field with a regex.
 
 ### An n8n tag may only be mapped once
 
@@ -154,6 +167,71 @@ A tag is what a mapping IS — it decides which workflows the mapping owns — s
 mapping it twice would make two mappings mean the same thing, and every workflow
 carrying that tag would belong to both. Enforced by
 `MappingService::assertTagUnique()`.
+
+### A link mapping may not be made over workflows that already exist
+
+**A CONTRADICTION THE APP HAS NO ANSWER FOR, designed out at the only moment it
+can be created.** A `link` mirror is a pointer at a workflow n8n owns. A `.n8n`
+file that is nobody's mirror, sitting inside a link mapping, is a state every
+downstream rule has to guess about: `mapping/delete.feature` says a link mapping's
+files all go, and the motion rules say an unmapped file keeps its identity and is
+nobody's business. Both are right about a tree that should not exist.
+
+It is not hypothetical. The Grafana sibling reached it on a live instance in three
+steps: map a folder `sync`, remove the mapping (leaving real files behind,
+unmapped), re-map `link` over them. CI could not have caught it, because every
+scenario builds a clean tree.
+
+**THE EXTRA `And` IN THE `When` IS THE FEATURE, not ceremony.** The refusal comes
+first and carries a count; the admin then confirms, and only then is anything
+destroyed. `allows the existing unmapped workflows to be purged` is the second
+half of one gesture, which is why it is an `And` on the `When` rather than a
+scenario of its own.
+
+**PURGED, NOT TRASHED**, and the scenario says so out loud with `left no trash
+entry`. A trashed file offers a restore, and restoring INTO a link mapping is
+already refused — a link folder authors nothing
+({@see CreateGuardListener}) — so the bytes would have nowhere to go. Inventing an
+answer for a restore that cannot work would be worse than not offering it.
+
+Which is why the count and the deletion come from the SAME walk
+(`ExistingWorkflows::under()` then `purge()`): a number from one walk and a
+deletion from another are answers to two different questions, and the admin only
+agreed to one of them.
+
+The purge runs LAST, after the mapping is persisted. An admin who acknowledges the
+files and then hits a different refusal keeps both the files and the absence of
+the mapping.
+
+### A Nextcloud folder may only be mapped once
+
+The twin of tag uniqueness, and it exists for the mirror-image reason. A tag mapped
+twice would make two mappings mean the same thing; a FOLDER mapped twice makes one
+tree answer to two tags — every file in it belongs to both, and `resolveForPath()`
+has to pick one silently, differently depending on which mapping was stored first.
+
+Compared case-insensitively and without surrounding slashes, because Nextcloud will
+not create `Automations` beside `automations`: two mappings differing only in case
+would provision the SAME folder while each believed it had one to itself.
+
+**It was `@unbuilt` and the gap was real** — `MappingService` asserted the tag and
+said nothing whatsoever about the folder, so the second mapping was accepted.
+`assertFolderUnique()` closes it.
+
+### Without an API key, nothing can be mapped
+
+**REFUSED AT CREATION RATHER THAN DISCOVERED AT THE FIRST PULL.** The folder is
+provisioned and shared the moment a mapping is stored, so a mapping made with no
+key leaves a real folder in people's Files that will never fill — and nothing tells
+the admin why until they go looking in the log.
+
+The URL is deliberately NOT checked. It has a usable default, and a bad one is a
+connection problem the Test button exists to report. A missing key is the one thing
+that makes the mapping meaningless on its own terms, which is what earns it a
+refusal rather than a warning.
+
+Ported from the Penpot sibling, which states the same rule about its
+service-account token.
 
 ### There is no way to change a mapping except its groups
 
@@ -219,7 +297,21 @@ assumed — core has `sharing:cleanup-remote-storages`, `delete-orphan-shares`,
 draft called `occ sharing:share`, which does not exist and would have failed in
 CI.
 
-### A folder inside another mapping's folder may not be mapped
+### RETIRED — A folder inside another mapping's folder may not be mapped
+
+**Retired as a scenario, and the disagreement it exposed is recorded rather than
+settled.** It was `@unbuilt` — no code ever refused nesting — and neither sibling
+has the rule. Grafana's `MappingService::resolveForPath()` documents the OPPOSITE
+in prose: *"Mappings are metadata on a folder, so they nest: a folder can be
+mapped inside an already-mapped folder… the nearest enclosing one wins."*
+
+So two apps of the same family hold contradictory positions on the same question,
+one in an unbuilt scenario and one in a shipped resolver. That is worth a decision
+rather than a quiet port in either direction, and this file is not the place to
+take it — see the argument that follows, which is still the best statement of the
+case FOR refusing.
+
+The original reasoning, kept:
 
 NESTING IS REFUSED RATHER THAN RESOLVED, and this replaces a scenario that tried
 to resolve it. `workflows/create.feature` used to say a file created in a nested

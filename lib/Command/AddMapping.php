@@ -54,7 +54,13 @@ final class AddMapping extends Command {
 		try {
 			// nc_groups travels ALONGSIDE the mapping, not inside it: they are
 			// applied to the provisioned folder and read back from it, never stored.
-			$saved = $this->service->add(Mapping::fromArray($data), $data['nc_groups'] ?? []);
+			//
+			// `purge_workflows` likewise — it is the admin's answer to a question the
+			// panel asks, not a field a mapping stores. A CLI has nowhere to ask, so it
+			// is spelled in the JSON, and it defaults to false: the destructive path
+			// cannot be reached by a caller that does not know about it.
+			$purge = filter_var($data['purge_workflows'] ?? false, FILTER_VALIDATE_BOOLEAN);
+			$saved = $this->service->add(Mapping::fromArray($data), $data['nc_groups'] ?? [], $purge);
 		} catch (\InvalidArgumentException $e) {
 			$output->writeln('<error>' . $e->getMessage() . '</error>');
 			return 1;
