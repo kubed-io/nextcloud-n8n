@@ -356,9 +356,20 @@ trait MappingSteps {
 	 * removes it again for the one scenario that is about its absence.
 	 */
 	public function theAdminHasConfiguredTheApiKey(): void {
-		if ($this->n8nApiKey !== '') {
-			$this->occStdin($this->occ . ' n8n_sync:set-api-key', $this->n8nApiKey);
+		// FAILS LOUDLY WITH NO KEY, unlike the tolerant `setupSyncMappingAndFolder()`
+		// this was modelled on. That tolerance made sense while a missing key only
+		// meant "the sync will not reach n8n"; it does not now, because creating a
+		// mapping HARD-REFUSES without one. A silent no-op here would turn a missing
+		// N8N_API_KEY into five confusing refusals further down the file — or, worse,
+		// into a pass on whatever key an earlier scenario happened to leave behind.
+		// Raised by Copilot on #89.
+		if ($this->n8nApiKey === '') {
+			$this->fail(
+				'no N8N_API_KEY is available, and every scenario in this file needs one: '
+				. 'mapping creation is refused without a configured key.',
+			);
 		}
+		$this->occStdin($this->occ . ' n8n_sync:set-api-key', $this->n8nApiKey);
 	}
 
 	/**

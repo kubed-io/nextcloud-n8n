@@ -290,11 +290,36 @@
 			opts.body = JSON.stringify(body);
 		}
 		return fetch(url, opts).then(function (res) {
-			return res.json().then(function (data) {
-				if (!res.ok) {
-					return Promise.reject(new Error(data && data.message ? data.message : 'HTTP ' + res.status));
+			// Parse the body as text first, then JSON-decode only if it actually is
+			// JSON — a proxy/HTML error page or an empty body must surface as the real
+			// HTTP failure, not a "JSON parse error" from an unconditional res.json().
+			return res.text().then(function (text) {
+				var data = null;
+				if (text) {
+					try { data = JSON.parse(text); } catch { data = null; }
 				}
-				return data;
+				if (!res.ok) {
+					var msg = (data && data.message) ? data.message : ('HTTP ' + res.status);
+					var err = new Error(msg);
+					// THE REST OF THE BODY TRAVELS WITH IT. A 422 over existing workflow
+					// files carries a count and a folder name, and the caller turns those
+					// into a confirmation — reading them back out of the sentence would
+					// break the first time the sentence is reworded.
+					//
+					// WITHOUT THIS THE CONFIRMATION IS DEAD CODE, which is exactly how it
+					// shipped for one round: `confirmPurge()` tests `typeof err.workflows
+					// === 'number'`, and an Error carrying only a message can never
+					// satisfy it. The integration scenario did not catch it because it
+					// drives `occ`, which never touches this function. Raised by Copilot
+					// on #89.
+					err.status = res.status;
+					if (data && typeof data.workflows === 'number') {
+						err.workflows = data.workflows;
+						err.folder = data.folder || '';
+					}
+					return Promise.reject(err);
+				}
+				return data || {};
 			});
 		});
 	}

@@ -1,15 +1,23 @@
 /**
- * SPDX-FileCopyrightText: 2026 kubed-io
+ * SPDX-FileCopyrightText: 2026 Kelly Ferrone
  * SPDX-License-Identifier: AGPL-3.0-or-later
  *
  * THE ONE CONFIRMATION EVERY ADMIN SURFACE IN THIS APP USES.
  *
- * Loaded before `mapping-settings.js` and `sync-settings.js` on their settings
- * sections, so a modal added to either is the same modal — same shape, same
- * button order, same destructive styling. It exists because the panel had two
- * answers to "are you sure": a browser `window.confirm` for deleting a mapping
- * and nothing at all for the dashboard purge, which is the same question asked
- * twice in two voices.
+ * Loaded before `mapping-settings.js` on the Folder mappings section — and ONLY
+ * there today, which is worth saying plainly rather than describing an intent.
+ * `sync-settings.js` asks nothing destructive yet; when it does, it registers this
+ * the same way and gets the same modal — same shape, same button order, same
+ * destructive styling.
+ *
+ * It exists because the panel had two answers to "are you sure": a browser
+ * `window.confirm` for deleting a mapping and nothing at all for the workflow
+ * purge, which is the same question asked twice in two voices.
+ *
+ * THE MAPPING DELETE IS STILL ON `window.confirm`. That is `mapping/delete.feature`'s
+ * territory rather than this file's, and converting it without a scenario driving
+ * the change would be exactly the untested UI edit this app keeps finding. The
+ * dialog it needs now exists.
  *
  * Vanilla, unbundled, and a `window` global on purpose: `js/` is served verbatim
  * with no build step, so the two page scripts cannot import from each other.
