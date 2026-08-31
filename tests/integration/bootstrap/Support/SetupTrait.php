@@ -53,6 +53,65 @@ trait SetupTrait {
 		$this->currentTag = $tag;
 	}
 
+	/**
+	 * Put a managed workflow file in $folder, whichever side the mapping allows.
+	 *
+	 * ## SEEDED IN n8n FOR A LINK MAPPING, BECAUSE A LINK MAPPING REFUSES AUTHORING
+	 *
+	 * Every arrange in this suite used to write its file locally with a DAV PUT, which
+	 * worked in a sync mapping and worked in a link one only because **nothing stopped
+	 * it**. Once `CreateGuardListener` and the `method:PUT` hook landed, those arranges
+	 * started failing across four scenarios in three suites — correctly. The app now
+	 * refuses a gesture the harness was relying on.
+	 *
+	 * The fix is not to exempt the harness. A link folder is filled from its tag in n8n
+	 * and from nowhere else, so **that is how a link file has to be arranged**: create
+	 * the workflow in n8n, give it the mapping's tag, and pull. The file that appears is
+	 * the one a user would really have.
+	 *
+	 * This also makes the arranges honest in a way they were not before. A scenario like
+	 * `Deleting a link is refused` was setting up its link by doing the very thing the
+	 * app forbids, so the state it tested against was one no user could reach.
+	 *
+	 * The sync path is unchanged: authoring into a sync mapping IS the gesture, so a
+	 * local PUT is the right arrange there.
+	 *
+	 * @return string the file's path, re-resolved because create-on-land and the pull
+	 *                both name the file after the workflow
+	 */
+	private function seedManagedFileIn(string $folder, string $name): string {
+		$this->davMkdir($folder);
+
+		if ($this->modeForFolder($folder) !== 'link') {
+			$path = $folder . '/' . $name . '.n8n';
+			$this->putManagedFile($path, $name);
+			return $this->currentFilePath;
+		}
+
+		// THE FAR SIDE. The tag is the whole membership gesture in n8n, and the pull is
+		// the delivery mechanism — n8n has no way to tell Nextcloud a tag was added.
+		$before = $this->davListWorkflowFiles($folder);
+		$tag = $this->tagForFolder($folder);
+		$id = $this->createN8nWorkflow($name, [$this->ensureN8nTag($tag)]);
+		$pull = $this->occ('n8n_sync:sync pull');
+		Assert::assertSame(0, $pull['exit'], "the pull seeding a link file failed:\n{$pull['output']}");
+
+		// RESOLVED BY LISTING, NOT BY GUESSING THE NAME. The pull names the file after
+		// the WORKFLOW, and a second workflow sharing a name gets a numbered suffix — so
+		// a path built from $name is a guess that is usually right, which is the worst
+		// kind. The Grafana sibling's arrange resolves it the same way.
+		$appeared = array_values(array_diff($this->davListWorkflowFiles($folder), $before));
+		Assert::assertNotSame(
+			[],
+			$appeared,
+			"the pull brought nothing new into '$folder' — a link file cannot be arranged any other way",
+		);
+		$this->currentFolder = $folder;
+		$this->currentFilePath = $folder . '/' . $appeared[0];
+		$this->lastWorkflowId = $id;
+		return $this->currentFilePath;
+	}
+
 	/** PUT a starter workflow body and capture the n8n id the app stamped. */
 	/** @param list<string> $tagNames */
 	private function putManagedFile(string $path, string $name, array $tagNames = []): void {

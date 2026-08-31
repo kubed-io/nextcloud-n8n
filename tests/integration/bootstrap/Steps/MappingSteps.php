@@ -149,6 +149,24 @@ trait MappingSteps {
 		$this->fail("no mapping owns the folder '$folder' — check the Background");
 	}
 
+	/**
+	 * The stored mode of the mapping owning a folder, read back from the store for the
+	 * same reason {@see tagForFolder()} is: every arrange makes its mappings a different
+	 * way and they all land in one place.
+	 *
+	 * Exists so an arrange can ask "may I write into this folder?" rather than assume.
+	 * A LINK mapping refuses authoring from Nextcloud, so seeding one by DAV PUT is a
+	 * gesture the app is right to reject — see {@see seedManagedFileIn()}.
+	 */
+	private function modeForFolder(string $folder): string {
+		foreach ($this->listMappings() as $m) {
+			if (($m['team_folder'] ?? '') === $folder) {
+				return (string)($m['mode'] ?? '');
+			}
+		}
+		$this->fail("no mapping owns the folder '$folder' — check the Background");
+	}
+
 	/** The folder of the first `sync` mapping in the store, for backend-agnostic arranges. */
 	private function firstSyncFolder(): string {
 		foreach ($this->listMappings() as $m) {
