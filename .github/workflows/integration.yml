@@ -231,7 +231,6 @@ jobs:
     # is no network at all; on a miss the install is retried before giving up, which
     # is what turns a rate-limit blip from a red build into a slow step.
     - name: Cache Team Folders (groupfolders)
-      id: groupfolders-cache
       uses: actions/cache@v4
       with:
         path: apps/groupfolders

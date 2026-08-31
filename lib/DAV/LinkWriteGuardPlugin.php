@@ -88,6 +88,18 @@ final class LinkWriteGuardPlugin extends ServerPlugin {
 		// — an untyped public property psalm will not resolve. The priority runs it ahead
 		// of Sabre's own `httpCopy` (100).
 		$server->on('method:COPY', [$this, 'onCopy'], 10);
+		// AND `method:PUT`, WHICH IS THE ONLY PLACE A 403 ACTUALLY REACHES THE CLIENT.
+		// {@see \OCA\N8nSync\Listener\CreateGuardListener} refuses the same write on
+		// every route there is, and it is not enough on this one: it DID fire on a live
+		// PUT through the Files "New" menu and it DID abort — and Sabre still answered
+		// 201, because the storage layer swallows `AbortedEventException`. Measured in
+		// CI, with the listener's own "refused a write…" line in the log of the request
+		// that came back 201.
+		//
+		// `beforeCreateFile` is the hook that ought to catch it and is never emitted on
+		// this route — the Grafana sibling measured that three times before giving up on
+		// it. The method handler runs before any of that and its throw is the response.
+		$server->on('method:PUT', [$this, 'onPut'], 10);
 	}
 
 	/**
@@ -154,6 +166,30 @@ final class LinkWriteGuardPlugin extends ServerPlugin {
 	}
 
 	/**
+	 * Refuse a PUT of a workflow file into a link-mapped folder, with a message.
+	 *
+	 * WORKFLOW FILES ONLY, unlike the COPY end of this plugin, which refuses anything
+	 * bound into a link mapping. A link mapping's one concession is that other file
+	 * types may live alongside the mirrored workflows, and a PUT is how they get there —
+	 * every upload, every editor save, every desktop-client sync of an unrelated file
+	 * passes through here. Refusing on the folder alone would turn a link mapping into a
+	 * read-only folder, which is not the rule.
+	 *
+	 * Covers editing an existing link file too, which {@see beforeWriteContent} already
+	 * refuses from the file's own metadata. Both answers are the same refusal, so the
+	 * overlap costs nothing and the folder rule holds even for a file whose stamp cannot
+	 * be read.
+	 */
+	public function onPut(RequestInterface $request, ResponseInterface $response): bool {
+		$path = $request->getPath();
+		if (!FilenameCodec::isWorkflowName(basename($path))) {
+			return true;
+		}
+		$this->refuseIfDestinationIsALinkMapping($path);
+		return true;
+	}
+
+	/**
 	 * The destination the copy is binding to. The node does not exist yet, so the
 	 * mapping is resolved from the PATH — built the way the rest of the app spells an
 	 * internal path (`/<uid>/files/<relative>`), which is what
@@ -177,7 +213,10 @@ final class LinkWriteGuardPlugin extends ServerPlugin {
 			return;
 		}
 
-		$this->logger->warning('n8n_sync: refused a WebDAV copy into a link mapping', [
+		// "WRITE", NOT "COPY": this helper serves both `method:COPY` and `method:PUT`
+		// now, and a log line naming the wrong gesture is how a diagnosis starts in the
+		// wrong place.
+		$this->logger->warning('n8n_sync: refused a WebDAV write into a link mapping', [
 			'app' => Application::APP_ID,
 			'path' => $relative,
 			'mapping' => $mapping->id,
