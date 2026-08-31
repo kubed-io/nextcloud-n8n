@@ -76,7 +76,7 @@ trait RenameSteps {
 			Assert::assertSame(
 				$filename,
 				basename($this->currentFilePath),
-				"the pull named the link file differently, so the scenario cannot spell it",
+				'the pull named the link file differently, so the scenario cannot spell it',
 			);
 		} elseif ($this->isMappedFolder($folder)) {
 			$this->putManagedFile($path, $stem, $names);

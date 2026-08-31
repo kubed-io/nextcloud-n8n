@@ -157,6 +157,13 @@ trait MappingSteps {
 	 * Exists so an arrange can ask "may I write into this folder?" rather than assume.
 	 * A LINK mapping refuses authoring from Nextcloud, so seeding one by DAV PUT is a
 	 * gesture the app is right to reject — see {@see seedManagedFileIn()}.
+	 *
+	 * AN UNMAPPED FOLDER ANSWERS `''` RATHER THAN FAILING, unlike {@see tagForFolder()},
+	 * and the difference is real: a tag is something every mapping must have, so asking
+	 * for one of a folder with no mapping is a broken Background. A MODE is not — "no
+	 * mode" is the correct and useful answer for `Scratch`, which several arranges name
+	 * on purpose. Failing here instead took three suites down, because the callers ask
+	 * before they know whether the folder is mapped at all.
 	 */
 	private function modeForFolder(string $folder): string {
 		foreach ($this->listMappings() as $m) {
@@ -164,7 +171,7 @@ trait MappingSteps {
 				return (string)($m['mode'] ?? '');
 			}
 		}
-		$this->fail("no mapping owns the folder '$folder' — check the Background");
+		return '';
 	}
 
 	/** The folder of the first `sync` mapping in the store, for backend-agnostic arranges. */
