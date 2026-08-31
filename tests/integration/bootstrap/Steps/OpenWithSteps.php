@@ -156,7 +156,10 @@ trait OpenWithSteps {
 				break;
 			case 'link':
 				$this->setupSyncMappingAndFolder('link', 'nextcloud:openwith-link');
-				$this->putManagedFile($this->currentFolder . '/Opener.n8n', 'Opener');
+				// SEEDED THROUGH n8n, because a link mapping refuses authoring from
+				// Nextcloud — see seedManagedFileIn(). A local PUT here used to work
+				// only because nothing stopped it.
+				$this->seedManagedFileIn($this->currentFolder, 'Opener');
 				$this->expectedArchived = false;
 				break;
 			case 'unmapped':

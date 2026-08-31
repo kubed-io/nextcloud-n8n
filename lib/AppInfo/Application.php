@@ -17,6 +17,7 @@ use OCA\N8nSync\Listener\BodyTagListener;
 use OCA\N8nSync\Listener\ContentTagListener;
 use OCA\N8nSync\Listener\CopyGuardListener;
 use OCA\N8nSync\Listener\CopyListener;
+use OCA\N8nSync\Listener\CreateGuardListener;
 use OCA\N8nSync\Listener\CreateInN8nListener;
 use OCA\N8nSync\Listener\DeleteToN8nListener;
 use OCA\N8nSync\Listener\LoadFilesScriptListener;
@@ -42,6 +43,7 @@ use OCP\Files\Cache\CacheEntryRemovedEvent;
 use OCP\Files\Events\Node\BeforeNodeCopiedEvent;
 use OCP\Files\Events\Node\BeforeNodeDeletedEvent;
 use OCP\Files\Events\Node\BeforeNodeRenamedEvent;
+use OCP\Files\Events\Node\BeforeNodeWrittenEvent;
 use OCP\Files\Events\Node\NodeCopiedEvent;
 use OCP\Files\Events\Node\NodeRenamedEvent;
 use OCP\Files\Events\Node\NodeWrittenEvent;
@@ -129,6 +131,13 @@ final class Application extends App implements IBootstrap {
 		// is handled by SyncGuard inside CreateService::stampFile().
 		$context->registerEventListener(NodeWrittenEvent::class, CreateInN8nListener::class);
 		$context->registerEventListener(NodeRenamedEvent::class, CreateInN8nListener::class);
+
+		// …and the door create-on-land left open: a LINK mapping is filled from its tag
+		// in n8n and from nowhere else, so authoring into one is refused. BEFORE the
+		// write, so nothing is minted and then tidied up. LinkWriteGuardPlugin cannot
+		// carry this — it classifies from the FILE's metadata and a new file has none,
+		// so the constraint belongs to the folder rather than the file.
+		$context->registerEventListener(BeforeNodeWrittenEvent::class, CreateGuardListener::class);
 
 		// §14.2 motion guard: a managed workflow may rename / move within its
 		// mapping; moving a *sync* file out to an unmapped folder is allowed (it

@@ -486,6 +486,56 @@ workflow appears in n8n. The n8n origin: a workflow made in n8n and given the
 mapping's tag appears as a file on the next pull. The n8n side is asserted over its
 REST API; the NC stamp over DAV PROPFIND of nc:metadata-n8n_id.
 
+### A link mapping authors nothing
+
+**CREATING INTO A LINK FOLDER USED TO BE A PASSING ROW, AND THAT WAS THE BUG.**
+`New file in a mapped folder becomes a real workflow` ran its Outline over `Demo`,
+`Pointers` and `Shared` — and `Pointers` is a **link** mapping. So the spec said,
+and the suite proved, that authoring a file into a link folder mints a workflow.
+
+A link mapping is filled from its tag in n8n and from nowhere else. Its folder is a
+projection, not a place to write: the app already refuses to COPY into one
+({@see CopyGuardListener} — *"a link mapping is not a destination"*) and to MOVE
+into one, and refuses DAV writes to the link files inside it. Authoring was the one
+door left open, for no reason anybody chose — it was never argued for, it was just
+never asked about.
+
+What that row actually asserted is worth stating plainly, because it read as
+coverage: a user makes a file in a folder whose whole contract is *"this mirrors
+n8n"*, and gets a workflow that the mapping's own tag does not select. The next pull
+then has an opinion about a file the user just created.
+
+**IT WAS `@unbuilt`, AND THAT IS THE HISTORY RATHER THAN THE STATE.** The scenario
+was written before its guard existed and tagged `@unbuilt` rather than `@todo` — it
+was waiting on behaviour, not on a step definition — so that the app and the spec
+disagreed on purpose and in writing rather than the spec quietly blessing what the
+code happened to do. It went green in the same PR that added the guard, which is
+what that tag was a promise to do.
+
+**The guard is TWO pieces, and one of them is not optional.** `CreateGuardListener`
+on `BeforeNodeWrittenEvent` is the seam that covers every route — `occ`, another
+app, the Files API — none of which touch Sabre. It is not enough on its own: it
+fired and aborted on a live PUT through the Files "New" menu and Sabre still
+answered **201**, because the storage layer swallows `AbortedEventException`.
+Measured in CI, with the listener's own *"refused a write…"* line in the log of the
+request that came back 201. `LinkWriteGuardPlugin`'s `method:PUT` hook is the one
+place a 403 actually reaches the client.
+
+`beforeCreateFile` looks like the right hook and is never emitted on that route.
+The Grafana sibling measured that three times before giving up on it; its comment
+is why this app spent one CI run on it rather than three.
+
+**The harness had to change with it.** Every arrange seeded its file with a local
+DAV PUT — which worked in a link mapping only because nothing stopped it. Four
+scenarios across three suites went red on the guard, correctly, and the fix was to
+seed a link file the way a user would get one: create the workflow in n8n, tag it,
+pull (`SetupTrait::seedManagedFileIn`). `Deleting a link is refused` had been
+arranging its link by doing the very thing the app forbids.
+
+The Grafana sibling states the same rule (`features/dashboards/create.feature`), and
+reached it from the opposite direction: it had the refusal scenario first and no
+passing row to contradict it.
+
 ### A tagged workflow in n8n IS a file
 
 **The app's central promise had no scenario.** Put the mapping's tag on a workflow

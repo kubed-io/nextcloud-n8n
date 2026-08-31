@@ -43,6 +43,18 @@ trait CopySteps {
 	public function aWorkflowFileIn(string $folder, string $tags = ''): void {
 		$this->davMkdir($folder);
 		$name = 'Source-' . bin2hex(random_bytes(3));
+
+		// A LINK MAPPING REFUSES AUTHORING FROM NEXTCLOUD, so a link file has to be
+		// seeded through n8n and pulled — see seedManagedFileIn(). Writing it locally
+		// worked here only because nothing stopped it, and this arrange was setting up
+		// `Deleting a link is refused` by doing the very thing the app forbids.
+		if ($this->modeForFolder($folder) === 'link') {
+			$this->seedManagedFileIn($folder, $name);
+			$this->originalPath = $this->currentFilePath;
+			$this->copyOriginalBefore = $this->readManagedMetadata($this->originalPath);
+			return;
+		}
+
 		$path = $folder . '/' . $name . '.n8n';
 		$this->davPut($path, json_encode(
 			self::starterWorkflow($name, self::tagList($tags)),

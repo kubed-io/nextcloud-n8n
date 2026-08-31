@@ -67,7 +67,18 @@ trait RenameSteps {
 		// arrange rather than a failure. Asserted arrangements fail in the least
 		// informative place there is: the Given, before the behaviour under test has run.
 		$names = self::tagList($tags);
-		if ($this->isMappedFolder($folder)) {
+		if ($this->isMappedFolder($folder) && $this->modeForFolder($folder) === 'link') {
+			// A LINK MAPPING REFUSES AUTHORING FROM NEXTCLOUD, so the file has to arrive
+			// from n8n — see seedManagedFileIn(). The scenario spells the filename it
+			// expects, and a link file is named after its WORKFLOW, so the workflow is
+			// created under the stem and the pull produces the name asked for.
+			$this->seedManagedFileIn($folder, $stem);
+			Assert::assertSame(
+				$filename,
+				basename($this->currentFilePath),
+				'the pull named the link file differently, so the scenario cannot spell it',
+			);
+		} elseif ($this->isMappedFolder($folder)) {
 			$this->putManagedFile($path, $stem, $names);
 		} else {
 			$this->davPut($path, json_encode(self::starterWorkflow($stem, $names), JSON_THROW_ON_ERROR));
