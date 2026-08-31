@@ -186,6 +186,134 @@ filled.
 
 ---
 
+## §6.3 — What the guard round actually cost, in four lessons
+
+`#88` looked like a one-commit job: the spec said `@unbuilt`, so add the guard. It
+took six rounds of CI, and each red was a different thing being learned. They are
+written down because every one of them is the kind that repeats.
+
+### The listener aborted, and Sabre answered 201 anyway
+
+`CreateGuardListener` fired. The log for the failing request contains its own
+*"refused a write to a workflow file in a link-mapped folder"* line. The HTTP
+response was **201** and the file was created.
+
+**The storage layer swallows `AbortedEventException`.** `BeforeNodeWrittenEvent` is
+the right event and the wrong seam for a refusal a *user* has to see. Only a Sabre
+`method:*` handler's throw becomes the response.
+
+So the rule needs both halves, and neither is redundant:
+
+| piece | covers | gives the user |
+|---|---|---|
+| `CreateGuardListener` | every route — `occ`, another app, the Files API | nothing visible |
+| `LinkWriteGuardPlugin::onPut` (`method:PUT`) | WebDAV only | the 403 and the sentence |
+
+`beforeCreateFile` looks like the right hook and is **never emitted on this route**.
+The Grafana sibling measured that three times before giving up on it; its comment
+is why this app spent one CI round there instead of three. That is the doctrine at
+the top of this chapter paying for itself the same evening it was written.
+
+### The harness was arranging a state no user could reach
+
+Four scenarios across three suites went red on the guard, **correctly**. Every
+arrange in the suite seeded its file with a local DAV PUT, including into
+`Pointers` — a link mapping. That worked only because nothing had ever stopped it.
+
+`Deleting a link is refused` had been setting up its link by doing the very thing
+the app forbids. The scenario was green against a state that could not exist.
+
+The fix is never to exempt the harness. A link folder is filled from its tag in n8n
+and nowhere else, so that is how a link file gets arranged:
+`SetupTrait::seedManagedFileIn()` creates the workflow in n8n, tags it, and pulls.
+
+**Worth asking of any other arrange**: does this set up its state by a gesture the
+app would refuse? A `@Given` that can only run because a guard is missing is a test
+of nothing.
+
+### Not every "which mapping owns this folder?" question may fail
+
+`modeForFolder()` was written by copying `tagForFolder()`, including its
+`$this->fail()` on no match. That took **three suites** down on `Scratch`, the
+deliberately unmapped folder several arranges name on purpose.
+
+The two are not the same question:
+
+- a **tag** is something every mapping must have, so asking for one of an unmapped
+  folder is a broken Background and failing loudly is right;
+- a **mode** is not. *"No mode"* is the correct answer for `Scratch`, and it makes
+  the `=== 'link'` branch naturally false, which is exactly what the callers want.
+
+The callers ask *before* they know whether the folder is mapped at all. Copying a
+helper's shape without its reasoning is how a lookup becomes an assertion.
+
+### "Green, and testing two different things"
+
+The link arrange resolved its file three ways before it was right, and the middle
+one is the instructive failure:
+
+1. `"$folder/$name.n8n"` — the pull names the file after the **workflow**, and a
+   second workflow sharing a name gets a numbered suffix.
+2. diffing the folder listing — better, still wrong. One pull can bring down more
+   than one file (a tag that already had workflows, a mirror the previous pull
+   never finished) and `array_diff` has no meaningful order, so `currentFilePath`
+   and `lastWorkflowId` could point at **different files**.
+3. `mappedFilesByWorkflowId()[$id]` — the id is the only deterministic handle, and
+   asking *by* id also asserts the thing worth asserting: that the mirror was
+   stamped at all.
+
+Version 2 would have passed for a long time and then failed somewhere unrelated.
+Raised by Copilot after the PR was already 17/17 green, which is the second time in
+one evening the review bot found something no run had tripped.
+
+---
+
+## Carried OUT — cross-app work this chapter found and did not do
+
+Recorded per the doctrine above: a note the same day, whether or not anyone has
+time to port it. Each is written so it can be picked up cold.
+
+### 1. `nextcloud-penpot` probably needs the `method:PUT` hook
+
+**Check, do not assume.** Penpot refuses authoring into a link mapping through a
+listener, which is the shape this app had — and which was measured returning
+**201** here. If penpot's `LinkWriteGuardPlugin` registers no `method:PUT`, its
+refusal likely has the same hole.
+
+The test is cheap: PUT a `.penpot` into a link-mapped folder over WebDAV and read
+the status. A 201 with a refusal in the log is the signature.
+
+Penpot's design differs in one way that may matter and should be checked rather
+than reasoned about: a `.penpot` is an opaque archive with no text editor, so the
+routes a file can arrive by are not identical.
+
+### 2. `nextcloud-grafana`'s link arrange has the desync described above
+
+`LifecycleSteps::aManagedDashboardFile()` seeds a link file through Grafana and
+then takes `$files[0]` from the folder listing — the exact version 2 that Copilot
+caught here.
+
+It has not bitten, and it is the same shape: one pull bringing down two files makes
+`currentFilePath` and `lastUid` disagree, green. Grafana has
+`davReadMetadata($path, META_UID)` already, so resolving by uid is the same
+one-line change.
+
+**Grafana is the app this arrange was ported FROM**, which is the doctrine again:
+the fix travelled one way and the defect stayed behind.
+
+### 3. The three apps' `StorageService::syncGroupShares()` have now diverged
+
+Penpot fixed the pending-share bug first, Grafana second, this app third — each
+port slightly different. Worth one pass reading all three side by side, because the
+next divergence will be found the way this one was: by a folder disappearing on
+somebody's live instance.
+
+Specifically, confirm all three carry: this-group-only, stop-at-first-match, leave
+REJECTED alone, and the call on the **existing-share** branch (the recovery path —
+without it, anyone already stuck stays stuck).
+
+---
+
 ## Carried in from Chapter 5
 
 - the **unbind-window defect** (gherkin first, then the baseline gate)
