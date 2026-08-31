@@ -92,7 +92,7 @@
 		};
 	}
 
-	function saveCard(card) {
+	function saveCard(card, purge) {
 		var data = readCard(card);
 		var isNew = !data.id;
 		// AN EXISTING CARD SENDS ONLY ITS GROUPS. Everything else about a mapping is
@@ -100,6 +100,13 @@
 		// a payload the server is right to ignore, which is exactly how a UI comes to
 		// offer an edit that silently does nothing.
 		var payload = isNew ? data : { nc_groups: data.nc_groups };
+		if (purge) {
+			// A COPY, so a retry cannot leave the flag on the card's own state and
+			// quietly arm the next save. Passed on the RETRY only, never on the first
+			// attempt, so the panel cannot destroy anything the admin has not just been
+			// shown a number for.
+			payload = Object.assign({}, payload, { purge_workflows: true });
+		}
 		var url = OC.generateUrl(APP_URL_BASE + (isNew ? '' : '/' + encodeURIComponent(data.id)));
 		api(isNew ? 'POST' : 'PUT', url, payload)
 			.then(function (res) {
@@ -112,8 +119,52 @@
 				cardStatus(card, 'success', t('n8n_sync', 'Saved.'));
 			})
 			.catch(function (err) {
+				// A link mapping over a folder that already holds workflow files comes
+				// back 422 with a count. Everything else is a dead end and lands in the
+				// card's status line; this one becomes a question, because the admin can
+				// answer it — and answering it destroys files that do NOT go to the trash.
+				if (typeof err.workflows === 'number' && !purge) {
+					confirmPurge(card, err.workflows, err.folder || data.team_folder);
+					return;
+				}
 				cardStatus(card, 'error', err.message || t('n8n_sync', 'Save failed.'));
 			});
+	}
+
+	/**
+	 * Ask before destroying workflow files, and say how many and that they will not
+	 * come back.
+	 *
+	 * THE COUNT AND THE WORD "PERMANENTLY" ARE THE POINT. This is the only gesture in
+	 * the app that destroys something outright — a link mirror is a pointer, so a
+	 * workflow file already in the folder cannot survive there, and it may not go to
+	 * the trash either: restoring one into a link mapping cannot work, so offering the
+	 * restore would be a worse lie than refusing it.
+	 *
+	 * Cancelling needs no cleanup, and that is a property of the rule rather than an
+	 * omission. The admin goes and moves the files, and when they come back the folder
+	 * holds none — so the mapping is created with no warning at all.
+	 */
+	function confirmPurge(card, count, folder) {
+		var msg = n(
+			'n8n_sync',
+			'"{folder}" already holds {count} workflow file. Mapping it in link mode will permanently delete it — it will not go to the trash and cannot be recovered. Move it elsewhere first if you want to keep it.',
+			'"{folder}" already holds {count} workflow files. Mapping it in link mode will permanently delete them — they will not go to the trash and cannot be recovered. Move them elsewhere first if you want to keep them.',
+			count,
+			{ folder: folder, count: count }
+		);
+
+		window.N8nSync.confirmDestructive({
+			title: t('n8n_sync', 'Delete these workflow files?'),
+			text: msg,
+			confirm: n('n8n_sync', 'Delete {count} file', 'Delete {count} files', count, { count: count }),
+			onConfirm: function () {
+				saveCard(card, true);
+			},
+			onCancel: function () {
+				cardStatus(card, 'error', t('n8n_sync', 'Not saved — the folder still holds workflow files.'));
+			}
+		});
 	}
 
 	function syncCard(card) {
@@ -239,11 +290,36 @@
 			opts.body = JSON.stringify(body);
 		}
 		return fetch(url, opts).then(function (res) {
-			return res.json().then(function (data) {
-				if (!res.ok) {
-					return Promise.reject(new Error(data && data.message ? data.message : 'HTTP ' + res.status));
+			// Parse the body as text first, then JSON-decode only if it actually is
+			// JSON — a proxy/HTML error page or an empty body must surface as the real
+			// HTTP failure, not a "JSON parse error" from an unconditional res.json().
+			return res.text().then(function (text) {
+				var data = null;
+				if (text) {
+					try { data = JSON.parse(text); } catch { data = null; }
 				}
-				return data;
+				if (!res.ok) {
+					var msg = (data && data.message) ? data.message : ('HTTP ' + res.status);
+					var err = new Error(msg);
+					// THE REST OF THE BODY TRAVELS WITH IT. A 422 over existing workflow
+					// files carries a count and a folder name, and the caller turns those
+					// into a confirmation — reading them back out of the sentence would
+					// break the first time the sentence is reworded.
+					//
+					// WITHOUT THIS THE CONFIRMATION IS DEAD CODE, which is exactly how it
+					// shipped for one round: `confirmPurge()` tests `typeof err.workflows
+					// === 'number'`, and an Error carrying only a message can never
+					// satisfy it. The integration scenario did not catch it because it
+					// drives `occ`, which never touches this function. Raised by Copilot
+					// on #89.
+					err.status = res.status;
+					if (data && typeof data.workflows === 'number') {
+						err.workflows = data.workflows;
+						err.folder = data.folder || '';
+					}
+					return Promise.reject(err);
+				}
+				return data || {};
 			});
 		});
 	}

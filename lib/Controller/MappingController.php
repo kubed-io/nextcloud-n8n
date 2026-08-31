@@ -9,6 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\N8nSync\Controller;
 
+use OCA\N8nSync\Exception\ExistingWorkflowsException;
 use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\MappingService;
 use OCA\N8nSync\Service\SyncService;
@@ -71,8 +72,28 @@ final class MappingController extends Controller {
 		try {
 			$params = $this->request->getParams();
 			$mapping = Mapping::fromArray($params);
-			$saved = $this->service->add($mapping, $params['nc_groups'] ?? []);
+			// `purge_workflows` IS NOT PART OF THE MAPPING, so it is read off the request
+			// rather than through `Mapping::fromArray()` — it is the admin's answer to a
+			// question, not a field a mapping stores. It defaults to false, which is the
+			// safety: the destructive path cannot be reached by a caller that does not
+			// know about it.
+			$purge = filter_var($params['purge_workflows'] ?? false, FILTER_VALIDATE_BOOLEAN);
+			$saved = $this->service->add($mapping, $params['nc_groups'] ?? [], $purge);
 			return new JSONResponse(['mapping' => $this->service->describe($saved)], Http::STATUS_CREATED);
+		} catch (ExistingWorkflowsException $e) {
+			// THE COUNT TRAVELS AS A NUMBER. The panel turns this refusal into a
+			// confirmation and re-submits with `purge_workflows`, so it needs the figure
+			// to put in the warning — parsing it back out of a sentence would break the
+			// first time that sentence is reworded. Caught before the
+			// `InvalidArgumentException` arm below, which it extends.
+			//
+			// 422, NOT 400: the request is well-formed and the mapping is valid. What is
+			// unprocessable is the folder's current contents, and the admin can change
+			// that answer — which is exactly what the panel offers next.
+			return new JSONResponse(
+				['message' => $e->getMessage(), 'workflows' => $e->workflows, 'folder' => $e->folder],
+				Http::STATUS_UNPROCESSABLE_ENTITY,
+			);
 		} catch (\InvalidArgumentException $e) {
 			return new JSONResponse(['message' => $e->getMessage()], Http::STATUS_BAD_REQUEST);
 		} catch (\RuntimeException $e) {

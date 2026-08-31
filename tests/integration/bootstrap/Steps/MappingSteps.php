@@ -230,6 +230,7 @@ trait MappingSteps {
 
 	/**
 	 * @Given the Nextcloud groups :groups exist
+	 * @Given the Nextcloud groups :groups exists
 	 *
 	 * THE GROUPS HAVE TO REALLY EXIST. Nextcloud cannot share a folder with a group
 	 * that is not there, so a scenario that just names one and asserts it comes
@@ -329,6 +330,198 @@ trait MappingSteps {
 		}
 	}
 
+	// ── mapping/create: the parity set ─────────────────────────────────────────
+
+	/** @var array<string,string> the form the scenario last submitted, for the retry */
+	private array $lastSubmittedMapping = [];
+
+	/** @var int|null how many mappings existed before the last submit */
+	private ?int $mappingsBeforeCreate = null;
+
+	/**
+	 * @Given the n8n base URL points at the test instance
+	 *
+	 * Idempotent, and separate from the key on purpose: the two halves of the
+	 * connection fail differently, and only one of them stops a mapping being made.
+	 */
+	public function theN8nBaseUrlPointsAtTheTestInstance(): void {
+		$this->occ('config:app:set ' . self::APP_ID . ' n8n_url --value=' . escapeshellarg($this->n8nUrl));
+	}
+
+	/**
+	 * @Given the admin has configured the API key
+	 *
+	 * THE PRECONDITION FOR EVERY OTHER SCENARIO IN THE FILE, which is why it is in the
+	 * Background rather than repeated. `Without an API key, nothing can be mapped`
+	 * removes it again for the one scenario that is about its absence.
+	 */
+	public function theAdminHasConfiguredTheApiKey(): void {
+		// FAILS LOUDLY WITH NO KEY, unlike the tolerant `setupSyncMappingAndFolder()`
+		// this was modelled on. That tolerance made sense while a missing key only
+		// meant "the sync will not reach n8n"; it does not now, because creating a
+		// mapping HARD-REFUSES without one. A silent no-op here would turn a missing
+		// N8N_API_KEY into five confusing refusals further down the file — or, worse,
+		// into a pass on whatever key an earlier scenario happened to leave behind.
+		// Raised by Copilot on #89.
+		if ($this->n8nApiKey === '') {
+			$this->fail(
+				'no N8N_API_KEY is available, and every scenario in this file needs one: '
+				. 'mapping creation is refused without a configured key.',
+			);
+		}
+		$this->occStdin($this->occ . ' n8n_sync:set-api-key', $this->n8nApiKey);
+	}
+
+	/**
+	 * @Given no API key is configured
+	 *
+	 * Clears what the Background set. The stored value is encrypted, so this empties
+	 * the config key directly rather than trying to write an empty one through the
+	 * command, which rejects it.
+	 */
+	public function noApiKeyIsConfigured(): void {
+		$this->occ('config:app:delete ' . self::APP_ID . ' api_key');
+	}
+
+	/** @Given a folder :folder already exists */
+	public function aFolderAlreadyExists(string $folder): void {
+		$this->davMkdir(trim($folder, '/'));
+	}
+
+	/**
+	 * @Given an unmapped workflow file at :path
+	 *
+	 * A `.n8n` THIS APP DID NOT WRITE — no metadata, no id, no mapping. It is the state
+	 * a removed sync mapping leaves behind, and the one a link mapping cannot hold.
+	 * Written straight over WebDAV with its parents made first, because nothing is
+	 * mapped here yet and there is no mirror to seed it through.
+	 */
+	public function anUnmappedWorkflowFileAt(string $path): void {
+		$path = ltrim($path, '/');
+		$parent = trim(dirname($path), '/.');
+		if ($parent !== '') {
+			$this->davMkdir($parent);
+		}
+		$this->davPut($path, json_encode(
+			self::starterWorkflow(basename($path, '.n8n')),
+			JSON_THROW_ON_ERROR | JSON_PRETTY_PRINT,
+		) . "\n");
+	}
+
+	/**
+	 * @When the admin submits this mapping:
+	 *
+	 * THE TAG IS A ROW LIKE EVERY OTHER FIELD, matching the siblings. The older
+	 * `the admin maps the tag :tag with:` named it in the step text, which made the
+	 * mapping's own key the one thing that could not be written the way the rest of the
+	 * form is. Both are kept — the pre-state arrange still uses the other one.
+	 */
+	public function theAdminSubmitsThisMapping(TableNode $table): void {
+		$form = $this->formValues($table);
+		$this->lastSubmittedMapping = $form;
+		$tag = (string)($form['tag'] ?? '');
+		unset($form['tag']);
+		$this->lastMappingForm = ['tag' => $tag] + $form;
+		// COUNTED BEFORE THE ATTEMPT, so the refusal step can check the store is
+		// unchanged RELATIVE to whatever was already configured — see
+		// `the mapping is rejected, explaining` for why an absolute count is wrong.
+		$this->mappingsBeforeCreate = count($this->listMappings());
+		$this->addMappingFromForm($tag, $form);
+	}
+
+	/**
+	 * @When allows the existing unmapped workflows to be purged
+	 *
+	 * THE SECOND BEAT, NOT A FORM FIELD. It is not a setting a mapping stores, and as
+	 * an `And` after the `When` it reads the way the interaction actually goes — the
+	 * admin submits, the app answers with a count, the admin accepts.
+	 *
+	 * IT ASSERTS THE REFUSAL HAPPENED FIRST. Re-submitting with the flag when the first
+	 * attempt already succeeded would prove nothing at all, quietly: the scenario would
+	 * pass whether or not the app ever warns anybody.
+	 */
+	public function allowsTheExistingUnmappedWorkflowsToBePurged(): void {
+		if ($this->lastExit === 0) {
+			$this->fail(
+				'the mapping was accepted without asking about the workflow files already there, '
+				. "so there was nothing to allow:\n{$this->lastOutput}",
+			);
+		}
+		$form = $this->lastSubmittedMapping;
+		$tag = (string)($form['tag'] ?? '');
+		unset($form['tag']);
+		$this->addMappingFromForm($tag, $form, true);
+	}
+
+	/**
+	 * @Then no ".n8n" workflows exist under :folder in Nextcloud
+	 *
+	 * AT EVERY DEPTH. The file the scenario seeds sits in a subfolder on purpose — a
+	 * purge that only swept the top level would leave the contradiction it exists to
+	 * prevent one folder down, and a top-level-only assertion could never say so.
+	 */
+	public function noWorkflowsExistUnderInNextcloud(string $folder): void {
+		$found = [];
+		foreach ($this->davTreeUnder(trim($folder, '/')) as $child) {
+			if (str_ends_with($child, '.n8n')) {
+				$found[] = ltrim($child, '/');
+			}
+		}
+		if ($found !== []) {
+			$this->fail("'$folder' still holds workflow files: " . implode(', ', $found));
+		}
+	}
+
+	/**
+	 * @Then :path left no trash entry
+	 *
+	 * PURGED, NOT TRASHED, and this is the line that says so. A trashed file offers a
+	 * restore, and restoring into a link mapping cannot work — a link folder refuses
+	 * authoring, so there is nowhere for the bytes to go. Offering the restore would be
+	 * a worse lie than refusing it, so the file never reaches the trash at all.
+	 */
+	public function leftNoTrashEntry(string $path): void {
+		$name = basename(trim($path, '/'));
+		if ($this->trashbinPathFor($name) !== null) {
+			$this->fail("'$path' went to the Nextcloud trash; a purged workflow file must not");
+		}
+	}
+
+	/**
+	 * @Then the mapping is rejected, explaining :fragment
+	 *
+	 * ONE SENTENCE FOR ONE FACT. A refusal that does not say why is not a behaviour
+	 * anybody wants, so "it was refused" and "it said why" were always asserted
+	 * together — two lines that could never sensibly appear apart.
+	 *
+	 * AND NOTHING WAS STORED — CHECKED HERE RATHER THAN ASKED FOR IN A SENTENCE. A
+	 * refusal that half-saved is not a refusal, so this is part of what the word MEANS.
+	 * It replaces `And there are exactly 0 configured mappings`, which was a violation:
+	 * it said a refusal is only observable on an empty store. The check is RELATIVE, so
+	 * it holds with mappings already configured.
+	 */
+	public function theMappingIsRejectedExplaining(string $fragment): void {
+		Assert::assertNotSame(0, $this->lastExit, "the mapping was unexpectedly accepted:\n{$this->lastOutput}");
+		Assert::assertStringContainsString(
+			$fragment,
+			$this->lastOutput,
+			"the refusal did not mention '$fragment':\n{$this->lastOutput}",
+		);
+
+		if ($this->mappingsBeforeCreate === null) {
+			return;
+		}
+		$now = count($this->listMappings());
+		if ($now !== $this->mappingsBeforeCreate) {
+			$this->fail(sprintf(
+				"the mapping was refused and stored anyway: %d configured before the attempt, %d after.\n%s",
+				$this->mappingsBeforeCreate,
+				$now,
+				$this->lastOutput,
+			));
+		}
+	}
+
 	/** @Then the mapping is rejected */
 	public function theMappingIsRejected(): void {
 		Assert::assertNotSame(0, $this->lastExit, "the mapping was unexpectedly accepted:\n{$this->lastOutput}");
@@ -417,8 +610,13 @@ trait MappingSteps {
 	 * @param array<string,string> $form
 	 * @return array{exit: int, output: string}
 	 */
-	private function addMappingFromForm(string $tag, array $form): array {
+	private function addMappingFromForm(string $tag, array $form, bool $purge = false): array {
 		$data = ['n8n_tag' => $tag];
+		if ($purge) {
+			// NOT A MAPPING FIELD — the admin's answer to the app's question, sent only
+			// on the retry. See `allows the existing unmapped workflows to be purged`.
+			$data['purge_workflows'] = true;
+		}
 		if (array_key_exists('folder', $form)) {
 			$data['team_folder'] = $form['folder'];
 		}
@@ -433,6 +631,79 @@ trait MappingSteps {
 		}
 
 		return $this->occ('n8n_sync:add-mapping ' . escapeshellarg(json_encode($data, JSON_THROW_ON_ERROR)));
+	}
+
+	/**
+	 * Every path under a folder, at any depth, as `/relative/paths`.
+	 *
+	 * A BREADTH-FIRST WALK RATHER THAN A DEEP PROPFIND, because `Depth: infinity` is
+	 * refused by default on most Nextcloud deployments — including the one CI stands
+	 * up. One request per folder is slower and always allowed.
+	 *
+	 * Ported from the Grafana sibling, where `no ".grafana" dashboards exist under …`
+	 * needed the same thing for the same reason: a purge that only swept the top level
+	 * would leave the very contradiction the rule exists to prevent one folder down.
+	 *
+	 * @return list<string>
+	 */
+	private function davTreeUnder(string $folder): array {
+		$folder = trim($folder, '/');
+		$out = [];
+		$queue = [$folder];
+		// An index cursor rather than array_shift(), which reindexes the whole queue on
+		// every pop and turns a deep tree quadratic.
+		for ($i = 0; $i < count($queue); $i++) {
+			foreach ($this->davChildren($queue[$i]) as $child => $isFolder) {
+				$out[] = '/' . $child;
+				if ($isFolder) {
+					$queue[] = $child;
+				}
+			}
+		}
+		return $out;
+	}
+
+	/**
+	 * One level of a Nextcloud folder: child path => whether it is a collection.
+	 *
+	 * @return array<string, bool>
+	 */
+	private function davChildren(string $folder): array {
+		$res = $this->davClient()->request('PROPFIND', $this->davEncode($folder), [
+			'headers' => ['Depth' => '1', 'Content-Type' => 'application/xml'],
+			'body' => '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:resourcetype/></d:prop></d:propfind>',
+			'http_errors' => false,
+		]);
+		if ($res->getStatusCode() === 404) {
+			return []; // a folder that was never created, which is not a failure here
+		}
+		Assert::assertSame(207, $res->getStatusCode(), "PROPFIND $folder failed: " . (string)$res->getBody());
+
+		$doc = new \SimpleXMLElement((string)$res->getBody());
+		$doc->registerXPathNamespace('d', 'DAV:');
+		$self = trim($folder, '/');
+
+		$out = [];
+		foreach ($doc->xpath('//d:response') ?: [] as $response) {
+			$response->registerXPathNamespace('d', 'DAV:');
+			$href = rawurldecode((string)(($response->xpath('d:href')[0]) ?? ''));
+			$isFolder = ($response->xpath('.//d:collection') ?: []) !== [];
+
+			// The href is server-absolute (`/remote.php/dav/files/<user>/…`); everything
+			// up to and including the folder itself is the prefix, and the remainder is
+			// the path this suite speaks in.
+			$pos = strpos($href, '/' . $self . '/');
+			if ($self !== '' && $pos === false) {
+				continue; // the collection's own entry
+			}
+			$rel = $self === '' ? $href : substr($href, $pos + 1);
+			$rel = trim($rel, '/');
+			if ($rel === '' || $rel === $self) {
+				continue;
+			}
+			$out[$rel] = $isFolder;
+		}
+		return $out;
 	}
 
 	/** @return list<array<string,mixed>> */
