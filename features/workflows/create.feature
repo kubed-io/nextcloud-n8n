@@ -45,7 +45,7 @@ Feature: Creating a workflow, from either side
       | Shared   |
 
   # notes: ../AGENTS.md#a-link-mapping-authors-nothing
-  @user @in-nextcloud @gesture @ui @unbuilt
+  @user @in-nextcloud @gesture @ui
   Scenario: Creating a workflow in a link-mapped folder is refused
     When I try to create a new ".n8n" file in "Pointers" via the Files "New" menu
     Then the creation is refused with a message

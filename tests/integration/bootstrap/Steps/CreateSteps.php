@@ -28,6 +28,11 @@ trait CreateSteps {
 	 */
 	private const MANAGED_KEYS = ['n8n_id', 'n8n_mode', 'n8n_mapping', 'n8n_versionId', 'n8n_syncedHash'];
 
+	/** What a refused create came back as, kept for the Then to judge. */
+	private int $createAttemptStatus = 0;
+	private string $createAttemptBody = '';
+	private string $attemptedCreatePath = '';
+
 	/**
 	 * Set up an admin-owned mapping + the backing folder so a WebDAV PUT into it
 	 * resolves to a mapping. `resolveForPath` only cares about the folder name, so
@@ -111,6 +116,72 @@ trait CreateSteps {
 			$this->createdWorkflowIds[] = $id;
 		} else {
 			$this->lastWorkflowId = null;
+		}
+	}
+
+	/**
+	 * The same gesture, asked of a folder that must refuse it.
+	 *
+	 * A SEPARATE STEP FROM THE SUCCESS ONE, because the success one goes through
+	 * `davPut()`, which asserts 201/204 and would fail the scenario on the very
+	 * refusal it is trying to observe. This keeps the status and the body instead
+	 * and lets the Then judge them.
+	 *
+	 * THE FOLDER IS CREATED FIRST, deliberately. A link mapping's Nextcloud folder
+	 * is written by the PULL, so before one has run there is nothing there — and a
+	 * PUT into a missing collection is a 409, which is Nextcloud declining rather
+	 * than this app refusing. Without this the scenario would pass its "nothing was
+	 * created" half for entirely the wrong reason.
+	 *
+	 * @When I try to create a new :ext file in :folder via the Files "New" menu
+	 * @When I try to create a :ext file in :folder
+	 */
+	public function iTryToCreateAWorkflowFile(string $ext, string $folder): void {
+		$this->davMkdir($folder);
+		$this->currentFolder = $folder;
+		$this->attemptedCreatePath = $folder . '/demo-' . bin2hex(random_bytes(3)) . $ext;
+		$body = json_encode([
+			'name' => 'Refused ' . bin2hex(random_bytes(3)),
+			'nodes' => [],
+			'connections' => new \stdClass(),
+			'settings' => new \stdClass(),
+		], JSON_THROW_ON_ERROR);
+
+		$res = $this->davClient()->request('PUT', $this->davEncode($this->attemptedCreatePath), [
+			'body' => $body,
+			'http_errors' => false,
+		]);
+		$this->createAttemptStatus = $res->getStatusCode();
+		$this->createAttemptBody = (string)$res->getBody();
+	}
+
+	/**
+	 * @Then the creation is refused with a message
+	 *
+	 * BOTH HALVES. A guard that answers 403 after the bytes have landed is the exact
+	 * failure this rule exists to prevent — a `.n8n` sitting in a link folder looking
+	 * managed and never being one — so "refused" has to mean the file is not there.
+	 *
+	 * And the MESSAGE is the half worth pinning, because it is the half the user
+	 * sees. A bare 403 tells them the app is broken; a sentence tells them the folder
+	 * is n8n's to fill and what to do instead.
+	 */
+	public function theCreationIsRefusedWithAMessage(): void {
+		if ($this->createAttemptStatus < 300) {
+			throw new \RuntimeException(
+				"the creation came back HTTP {$this->createAttemptStatus} — it was allowed, not refused",
+			);
+		}
+		if (trim(strip_tags($this->createAttemptBody)) === '') {
+			throw new \RuntimeException(
+				"the creation was refused with HTTP {$this->createAttemptStatus} and no message, "
+				. 'so the user is told nothing',
+			);
+		}
+		if ($this->davExists($this->attemptedCreatePath)) {
+			throw new \RuntimeException(
+				"a file arrived at {$this->attemptedCreatePath} despite the refusal",
+			);
 		}
 	}
 

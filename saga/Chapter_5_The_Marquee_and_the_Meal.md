@@ -2208,6 +2208,8 @@ baseline gate); the webhook channel as a *deferred* idea rather than a disowned 
 and the body↔pills projection (§5.6.2.3 Slice B) still unwired and still unit-tested,
 waiting for the trigger it deserves.
 
+**Continues in [Chapter 6 — The Long Run](Chapter_6_The_Long_Run.md).**
+
 ---
 
 Sources / cross-links:
