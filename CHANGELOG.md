@@ -28,7 +28,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - Two mappings can no longer point at the same Nextcloud folder. Only the n8n tag was checked, so a second mapping onto a folder already in use was accepted — and every file in it then belonged to both.
 - Mapping a tag with no API key configured is refused, with a message. It used to be accepted, provisioning and sharing a real folder that could never fill and saying so only in the log.
-
 - A mapped folder backed by an admin-owned folder is now visible to the groups you share it with. Nextcloud creates group shares as *pending* and silently declines to mount them, and a group share offers nobody anything to accept — so the folder was correct, shared, and invisible to everyone. Re-saving a mapping's groups also puts back a folder that was already stuck this way.
 - Creating a workflow file inside a **link**-mapped folder is refused, with a message. A link folder is filled from its tag in n8n, so a file authored into one became a workflow the mapping's own tag did not select.
 
