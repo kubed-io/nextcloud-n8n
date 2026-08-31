@@ -136,7 +136,7 @@ final class LinkWriteGuardPlugin extends ServerPlugin {
 			} catch (\Throwable) {
 				return true; // a destination Sabre cannot place is not ours to judge
 			}
-			$this->refuseIfDestinationIsALinkMapping($path);
+			$this->refuseIfDestinationIsALinkMapping($path, 'copy');
 		}
 		return true;
 	}
@@ -185,7 +185,7 @@ final class LinkWriteGuardPlugin extends ServerPlugin {
 		if (!FilenameCodec::isWorkflowName(basename($path))) {
 			return true;
 		}
-		$this->refuseIfDestinationIsALinkMapping($path);
+		$this->refuseIfDestinationIsALinkMapping($path, 'write');
 		return true;
 	}
 
@@ -195,7 +195,7 @@ final class LinkWriteGuardPlugin extends ServerPlugin {
 	 * internal path (`/<uid>/files/<relative>`), which is what
 	 * {@see MappingService::resolveForPath} is given everywhere else.
 	 */
-	private function refuseIfDestinationIsALinkMapping(string $path): void {
+	private function refuseIfDestinationIsALinkMapping(string $path, string $gesture): void {
 		$uid = $this->userSession->getUser()?->getUID() ?? '';
 		if ($uid === '') {
 			return;
@@ -213,10 +213,12 @@ final class LinkWriteGuardPlugin extends ServerPlugin {
 			return;
 		}
 
-		// "WRITE", NOT "COPY": this helper serves both `method:COPY` and `method:PUT`
-		// now, and a log line naming the wrong gesture is how a diagnosis starts in the
-		// wrong place.
-		$this->logger->warning('n8n_sync: refused a WebDAV write into a link mapping', [
+		// THE CALLER NAMES THE GESTURE. This helper serves both `method:COPY` and
+		// `method:PUT`, and a hard-coded verb is wrong for one of them whichever one it
+		// is — a log line naming the wrong gesture is how a diagnosis starts in the
+		// wrong place. Raised by Copilot after the first attempt swapped "copy" for
+		// "write" and simply moved the defect.
+		$this->logger->warning('n8n_sync: refused a WebDAV ' . $gesture . ' into a link mapping', [
 			'app' => Application::APP_ID,
 			'path' => $relative,
 			'mapping' => $mapping->id,

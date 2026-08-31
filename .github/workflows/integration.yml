@@ -227,9 +227,12 @@ jobs:
     # sibling simultaneously, on green branches, minutes after the same branches had
     # passed; re-running by hand eventually worked, which is the tell.
     #
-    # So the download happens ONCE per server version and is cached. On a hit there
-    # is no network at all; on a miss the install is retried before giving up, which
-    # is what turns a rate-limit blip from a red build into a slow step.
+    # So it is cached, keyed by server version — the six suite legs of one version
+    # share a key. BE PRECISE ABOUT WHAT THAT BUYS, because it is easy to overstate:
+    # the cache only saves at job END, so on a COLD key all six legs start together,
+    # all miss, and all install independently. The win is on every run after the
+    # first, where there is no network at all. On the cold run the retry below is
+    # what carries it, which is why both exist.
     - name: Cache Team Folders (groupfolders)
       uses: actions/cache@v4
       with:
