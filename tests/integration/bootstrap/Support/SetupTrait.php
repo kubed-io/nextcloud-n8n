@@ -90,24 +90,32 @@ trait SetupTrait {
 
 		// THE FAR SIDE. The tag is the whole membership gesture in n8n, and the pull is
 		// the delivery mechanism — n8n has no way to tell Nextcloud a tag was added.
-		$before = $this->davListWorkflowFiles($folder);
 		$tag = $this->tagForFolder($folder);
 		$id = $this->createN8nWorkflow($name, [$this->ensureN8nTag($tag)]);
 		$pull = $this->occ('n8n_sync:sync pull');
 		Assert::assertSame(0, $pull['exit'], "the pull seeding a link file failed:\n{$pull['output']}");
 
-		// RESOLVED BY LISTING, NOT BY GUESSING THE NAME. The pull names the file after
-		// the WORKFLOW, and a second workflow sharing a name gets a numbered suffix — so
-		// a path built from $name is a guess that is usually right, which is the worst
-		// kind. The Grafana sibling's arrange resolves it the same way.
-		$appeared = array_values(array_diff($this->davListWorkflowFiles($folder), $before));
-		Assert::assertNotSame(
-			[],
-			$appeared,
-			"the pull brought nothing new into '$folder' — a link file cannot be arranged any other way",
+		// RESOLVED BY THE ID, NOT BY THE NAME AND NOT BY WHAT APPEARED.
+		//
+		// Guessing `$folder/$name.n8n` is wrong because the pull names the file after the
+		// WORKFLOW and a second workflow sharing a name gets a numbered suffix. Diffing
+		// the folder listing is better and still wrong: one pull can bring down more than
+		// one file — a tag that already had workflows, or a mirror the previous pull
+		// never finished — and `array_diff` has no meaningful order, so the arrange would
+		// point `currentFilePath` at one file and `lastWorkflowId` at another. Green, and
+		// testing two different things.
+		//
+		// The id is the only deterministic handle, and asking for it by id also asserts
+		// the thing worth asserting: that the mirror was really stamped. Raised by
+		// Copilot on #88.
+		$byId = $this->mappedFilesByWorkflowId($folder);
+		Assert::assertArrayHasKey(
+			$id,
+			$byId,
+			"the pull did not bring workflow $id into '$folder' — a link file cannot be arranged any other way",
 		);
 		$this->currentFolder = $folder;
-		$this->currentFilePath = $folder . '/' . $appeared[0];
+		$this->currentFilePath = $this->hrefToFilesPath($byId[$id]);
 		$this->lastWorkflowId = $id;
 		return $this->currentFilePath;
 	}
