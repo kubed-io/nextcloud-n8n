@@ -79,11 +79,21 @@ trait SetupTrait {
 	 * @return string the file's path, re-resolved because create-on-land and the pull
 	 *                both name the file after the workflow
 	 */
-	private function seedManagedFileIn(string $folder, string $name): string {
+	private function seedManagedFileIn(string $folder, string $name, ?string $into = null): string {
+		// TWO FOLDERS, AND THEY ARE DIFFERENT QUESTIONS. `$folder` is the MAPPING — it
+		// decides the mode, and therefore which side the file has to be seeded from.
+		// `$into` is where the file should end up, which may be a subfolder of it.
+		//
+		// Passing the mapping root for both put every nested item at the top level, and
+		// the scenario then failed on a PROPFIND 404 several steps later.
+		$into ??= $folder;
 		$this->davMkdir($folder);
+		if ($into !== $folder) {
+			$this->davMkdir($into);
+		}
 
 		if ($this->modeForFolder($folder) !== 'link') {
-			$path = $folder . '/' . $name . '.n8n';
+			$path = $into . '/' . $name . '.n8n';
 			$this->putManagedFile($path, $name);
 			return $this->currentFilePath;
 		}
@@ -134,6 +144,17 @@ trait SetupTrait {
 		$this->currentFolder = $folder;
 		$this->currentFilePath = $matches[0];
 		$this->lastWorkflowId = $id;
+
+		// A LINK LANDS AT THE MAPPING ROOT AND IS THEN FILED, because n8n has no folders:
+		// the pull writes every workflow carrying the tag into the mapped folder itself.
+		// A nested link file is therefore a real state reached by a user MOVING one, and
+		// the pull leaves it there — it renames within the file's own folder rather than
+		// yanking it back (see SyncService). So the arrange does what the user would.
+		if ($into !== $folder) {
+			$target = $into . '/' . basename($this->currentFilePath);
+			$this->davMove($this->currentFilePath, $target);
+			$this->currentFilePath = $target;
+		}
 		return $this->currentFilePath;
 	}
 

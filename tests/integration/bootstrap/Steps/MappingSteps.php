@@ -763,13 +763,14 @@ trait MappingSteps {
 			if ($path === '') {
 				$this->fail('an items table row has no path');
 			}
-			$folder = trim(dirname($path), '/.');
+			$into = trim(dirname($path), '/.');
 			$stem = basename($path, '.n8n');
-			// The mapping owns the whole tree, so a nested item belongs to the mapping at
-			// the TOP of its path — not to a mapping named after the subfolder.
-			$root = explode('/', $folder)[0];
-			$this->davMkdir($folder);
-			$this->seedManagedFileIn($root, $stem);
+			// TWO DIFFERENT QUESTIONS, and conflating them put every nested item at the
+			// top level. The mapping owns the whole tree, so a nested item belongs to the
+			// mapping at the TOP of its path — that decides the MODE, and therefore which
+			// side the file is seeded from. Where it ends up is the path the table wrote.
+			$root = explode('/', $into)[0];
+			$this->seedManagedFileIn($root, $stem, $into);
 			$id = (string)($this->lastWorkflowId ?? '');
 			if ($id !== '') {
 				$this->seededWorkflowIds[] = $id;
