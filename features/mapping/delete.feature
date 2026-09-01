@@ -29,7 +29,7 @@ Feature: Removing a mapping tears down the connection without ever touching n8n
     And "Automations/Coast/Tides.n8n" holds:
       | n8n_id      | the workflow's id |
       | n8n_mapping | cleared           |
-      | n8n_mode    | "unmapped"        |
+      | n8n_mode    | unmapped          |
     And the workflows still carry the "alpha" tag in n8n
     And the "Automations" folder outlives the mapping
 
