@@ -108,14 +108,31 @@ trait SetupTrait {
 		// The id is the only deterministic handle, and asking for it by id also asserts
 		// the thing worth asserting: that the mirror was really stamped. Raised by
 		// Copilot on #88.
-		$byId = $this->mappedFilesByWorkflowId($folder);
-		Assert::assertArrayHasKey(
-			$id,
-			$byId,
-			"the pull did not bring workflow $id into '$folder' — a link file cannot be arranged any other way",
+		// EVERY MATCH, THEN EXACTLY ONE — which is why this counts from
+		// `propfindWorkflowIds()` rather than using `mappedFilesByWorkflowId()`. That
+		// helper builds a map KEYED BY ID, so two files sharing one id silently collapse
+		// and the last one wins: the arrange would pick a file and go green over the
+		// precise failure worth catching, a gesture that re-creates rather than updates
+		// and leaves the old mirror behind.
+		//
+		// Raised by Copilot against the Grafana sibling's twin of this arrange (#79), in
+		// the shape it takes there — a `break` on the first match. Carried across rather
+		// than left, because the map form hides it better.
+		$matches = [];
+		foreach ($this->propfindWorkflowIds($folder) as $href => $found) {
+			if ($found === $id) {
+				$matches[] = $this->hrefToFilesPath($href);
+			}
+		}
+		Assert::assertCount(
+			1,
+			$matches,
+			$matches === []
+				? "the pull did not bring workflow $id into '$folder' — a link file cannot be arranged any other way"
+				: 'the pull wrote ' . count($matches) . " mirrors all claiming workflow $id: " . implode(', ', $matches),
 		);
 		$this->currentFolder = $folder;
-		$this->currentFilePath = $this->hrefToFilesPath($byId[$id]);
+		$this->currentFilePath = $matches[0];
 		$this->lastWorkflowId = $id;
 		return $this->currentFilePath;
 	}
