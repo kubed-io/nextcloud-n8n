@@ -81,11 +81,17 @@ trait WebDavTrait {
 		// means the file is not where the scenario thinks it is, and THAT is the sentence
 		// worth printing; it cost three CI rounds to find out that was the message.
 		if ($res->getStatusCode() !== 207) {
+			// AND IT CARRIES THE BODY, like {@see assertStatus} does. A 404 explains
+			// itself; every other code does not, and Sabre puts the reason in an
+			// `<s:message>` in the body — which is exactly the sentence that identified a
+			// link file's move being refused by the delete guard. Dropping it left a bare
+			// number standing in for a diagnosis. Raised by Copilot on #90.
 			throw new \RuntimeException(sprintf(
-				'PROPFIND %s failed: HTTP %d (expected 207)%s',
+				'PROPFIND %s failed: HTTP %d (expected 207)%s%s',
 				$path,
 				$res->getStatusCode(),
 				$res->getStatusCode() === 404 ? ' — the file is not at that path' : '',
+				$res->getStatusCode() === 404 ? '' : "\n" . (string)$res->getBody(),
 			));
 		}
 		$doc = new \SimpleXMLElement((string)$res->getBody());

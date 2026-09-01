@@ -100,6 +100,11 @@ final class LinkWriteGuardPlugin extends ServerPlugin {
 		// this route — the Grafana sibling measured that three times before giving up on
 		// it. The method handler runs before any of that and its throw is the response.
 		$server->on('method:PUT', [$this, 'onPut'], 10);
+		// AND `method:MOVE`, WHICH IS HERE ONLY TO SAY WHERE THE MOVE IS GOING.
+		// Sabre's `httpMove` emits `beforeUnbind` on the source before rebinding it, so a
+		// MOVE reaches that hook looking exactly like a DELETE and cannot be told apart
+		// there. This runs ahead of `httpMove` (priority 100) and records the destination.
+		$server->on('method:MOVE', [$this, 'onMove'], 10);
 	}
 
 	/**
@@ -196,19 +201,7 @@ final class LinkWriteGuardPlugin extends ServerPlugin {
 	 * {@see MappingService::resolveForPath} is given everywhere else.
 	 */
 	private function refuseIfDestinationIsALinkMapping(string $path, string $gesture): void {
-		$uid = $this->userSession->getUser()?->getUID() ?? '';
-		if ($uid === '') {
-			return;
-		}
-		$relative = preg_replace('#^files/[^/]+/#', '', ltrim($path, '/'));
-		if (!is_string($relative) || $relative === '') {
-			return;
-		}
-		try {
-			$mapping = $this->mappings->resolveForPath('/' . $uid . '/files/' . $relative);
-		} catch (\Throwable) {
-			return;
-		}
+		$mapping = $this->mappingForDavPath($path);
 		if ($mapping === null || $mapping->mode !== Mapping::MODE_LINK) {
 			return;
 		}
@@ -230,6 +223,34 @@ final class LinkWriteGuardPlugin extends ServerPlugin {
 		);
 	}
 
+	/** Where the MOVE in flight is going, or null when this request is not a MOVE. */
+	private ?string $moveDestination = null;
+
+	/**
+	 * Record where a MOVE is headed, so {@see beforeUnbind} can tell one gesture from
+	 * the other.
+	 *
+	 * The destination is read from the request Sabre hands a `method:*` handler rather
+	 * than reached out of `Server::$httpRequest`, for the same reason {@see onCopy}
+	 * takes it as an argument: that public property is untyped and psalm will not
+	 * resolve it.
+	 *
+	 * @param ResponseInterface $response unused; part of Sabre's `method:*` signature
+	 */
+	public function onMove(RequestInterface $request, ResponseInterface $response): bool {
+		$this->moveDestination = null;
+		$destination = $request->getHeader('Destination');
+		if ($destination === null || $destination === '') {
+			return true; // malformed; Sabre answers it
+		}
+		try {
+			$this->moveDestination = $this->server?->calculateUri($destination);
+		} catch (\Throwable) {
+			$this->moveDestination = null; // off-server destination — not ours to judge
+		}
+		return true;
+	}
+
 	/**
 	 * Refuse DELETE on a link file, with a message.
 	 *
@@ -247,6 +268,47 @@ final class LinkWriteGuardPlugin extends ServerPlugin {
 		}
 		if (!$this->isLinkFile($node)) {
 			return true; // sync/unmapped files are the user's to delete
+		}
+
+		// ── A MOVE UNBINDS ITS SOURCE, SO THIS IS NOT ONLY ABOUT DELETING ─────────
+		//
+		// Refusing every unbind made the app contradict itself. {@see
+		// \OCA\N8nSync\Listener\MoveGuardListener} allows a move that stays inside one
+		// mapping — a rename, or filing a file into a subfolder — and this refused it,
+		// with a message about deleting for a gesture that deletes nothing. {@see
+		// \OCA\N8nSync\Service\SyncService} goes out of its way to keep such a file where
+		// the user put it, so a nested link is a state the app means to support; only the
+		// WebDAV door was shut. The same move through the Files API went through, which is
+		// the tell: a rule that depends on which door you came in by is not a rule.
+		//
+		// Only the intra-mapping case is let past, and every refusal the specs ask for is
+		// still made HERE rather than left to the listener — a listener's
+		// `AbortedEventException` reaches a DAV client as a bare 403 with no message,
+		// which is the reason this hook exists at all.
+		//
+		// The destination's OWN unbind (Sabre clears an occupied target first) arrives
+		// with `$path` equal to the destination; that one really is a delete, and falls
+		// through to the refusal below so a link cannot be clobbered by moving over it.
+		$destination = $this->moveDestination;
+		if ($destination !== null && trim($destination, '/') !== trim($path, '/')) {
+			$from = $this->mappingForDavPath($path);
+			$to = $this->mappingForDavPath($destination);
+			if ($from !== null && $to !== null && $from->id === $to->id) {
+				return true;
+			}
+
+			$moving = $node->getName();
+			$this->logger->warning('n8n_sync: refused a WebDAV move of a link-mode workflow file', [
+				'app' => Application::APP_ID,
+				'fileId' => $node->getId(),
+				'file' => $moving,
+			]);
+
+			throw new Forbidden(
+				'“' . $moving . '” is a linked n8n workflow — only a pointer to a workflow that lives '
+				. 'in n8n, so moving it out of this mapping would move nothing. Change what the mapping '
+				. 'tracks in n8n instead.',
+			);
 		}
 
 		$name = $node->getName();
@@ -288,6 +350,30 @@ final class LinkWriteGuardPlugin extends ServerPlugin {
 			. 'so its file can’t be edited here. Switch it to sync mode to edit the JSON locally, '
 			. 'or open it in n8n to make changes.',
 		);
+	}
+
+	/**
+	 * The mapping a DAV path falls in, or null.
+	 *
+	 * Spelled the way the rest of the app spells an internal path
+	 * (`/<uid>/files/<relative>`), which is what {@see MappingService::resolveForPath}
+	 * is given everywhere else. ONE definition, because the copy end, the write end and
+	 * the unbind end all have to agree on where a path lives.
+	 */
+	private function mappingForDavPath(string $path): ?Mapping {
+		$uid = $this->userSession->getUser()?->getUID() ?? '';
+		if ($uid === '') {
+			return null;
+		}
+		$relative = preg_replace('#^files/[^/]+/#', '', ltrim($path, '/'));
+		if (!is_string($relative) || $relative === '') {
+			return null;
+		}
+		try {
+			return $this->mappings->resolveForPath('/' . $uid . '/files/' . $relative);
+		} catch (\Throwable) {
+			return null;
+		}
 	}
 
 	/**

@@ -763,6 +763,18 @@ trait MappingSteps {
 			if ($path === '') {
 				$this->fail('an items table row has no path');
 			}
+			// SAID HERE, WHERE THE ROW IS STILL IN HAND. A path with no mapping folder
+			// leaves `$root` empty and the arrange goes on to MKCOL and PUT against '',
+			// which fails several steps later as a DAV error naming neither the row nor
+			// the reason. The two things this step needs of a path are that it names a
+			// mapping to belong to and that it is a workflow file at all. Raised by
+			// Copilot on #90.
+			if (!str_contains($path, '/')) {
+				$this->fail("the items row '$path' names no mapping folder — a path here reads '/<mapping>/<file>.n8n'");
+			}
+			if (!str_ends_with($path, '.n8n')) {
+				$this->fail("the items row '$path' is not a workflow file — a path here ends in '.n8n'");
+			}
 			$into = trim(dirname($path), '/.');
 			$stem = basename($path, '.n8n');
 			// TWO DIFFERENT QUESTIONS, and conflating them put every nested item at the
