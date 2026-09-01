@@ -11,6 +11,7 @@ namespace OCA\N8nSync\Controller;
 
 use OCA\N8nSync\Exception\ExistingWorkflowsException;
 use OCA\N8nSync\Service\Mapping;
+use OCA\N8nSync\Service\MappingTeardownService;
 use OCA\N8nSync\Service\MappingService;
 use OCA\N8nSync\Service\SyncService;
 use OCA\N8nSync\Service\SyncStatusService;
@@ -43,6 +44,7 @@ final class MappingController extends Controller {
 		IRequest $request,
 		private MappingService $service,
 		private SyncService $sync,
+		private MappingTeardownService $teardown,
 	) {
 		parent::__construct($appName, $request);
 	}
@@ -162,17 +164,19 @@ final class MappingController extends Controller {
 
 	#[AuthorizedAdminSetting(settings: MappingSettings::class)]
 	public function destroy(string $id): JSONResponse {
-		$purge = filter_var($this->request->getParam('purge', false), FILTER_VALIDATE_BOOLEAN);
-		$purged = 0;
 		try {
-			if ($purge) {
-				$m = $this->service->getById($id);
-				if ($m !== null) {
-					$purged = $this->sync->purgeManagedFiles($m);
-				}
-			}
-			$this->service->delete($id);
-			return new JSONResponse(['status' => 'ok', 'purged' => $purged]);
+			// Tear-down cascade: the binding goes, then each connected file is answered by
+			// its MODE — a link is removed, a sync file stays and becomes unmapped.
+			// Standalone files are left alone, the folder is not touched, and n8n is never
+			// contacted.
+			//
+			// NO `?purge` PARAMETER ANY MORE. It removed every managed file regardless of
+			// mode, behind a second `window.confirm`, and `mapping/delete.feature` has
+			// never described it in this app or either sibling. A sync file is an archive
+			// worth keeping and a link is a pointer worth nothing — a question that lets an
+			// admin delete the first or keep the second is offering them a way to be wrong.
+			$this->teardown->remove($id);
+			return new JSONResponse(['status' => 'ok']);
 		} catch (\OutOfBoundsException) {
 			return new JSONResponse(['message' => 'Mapping not found'], Http::STATUS_NOT_FOUND);
 		}

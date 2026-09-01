@@ -706,6 +706,242 @@ trait MappingSteps {
 		return $out;
 	}
 
+	// ── mapping/delete: the tear-down ──────────────────────────────────────────
+
+	/** @var array<string, list<string>> the tree under each mapped folder before the removal */
+	private array $filesBeforeTeardown = [];
+
+	/** @var array<string, list<string>> the tags each seeded workflow carried beforehand */
+	private array $tagsBeforeTeardown = [];
+
+	/**
+	 * @Given /^the following mappings were made:$/
+	 *
+	 * THE PLURAL FORM, and a Background declaring more than one mapping should use it —
+	 * a rule about not touching what you were not asked to touch needs the other mapping
+	 * simply THERE, as neighbourhood rather than as a second arrange.
+	 *
+	 * Columns: `tag`, `folder`, `mode`, `storage` — the same names the form uses, so the
+	 * Background and the action say a mapping the same way.
+	 */
+	public function theFollowingMappingsWereMade(TableNode $table): void {
+		foreach ($table->getHash() as $row) {
+			$tag = trim((string)($row['tag'] ?? ''));
+			if ($tag === '') {
+				$this->fail('a mappings table row has no tag');
+			}
+			$form = [];
+			foreach (['folder', 'mode', 'storage', 'groups'] as $key) {
+				if (array_key_exists($key, $row) && trim((string)$row[$key]) !== '') {
+					$form[$key] = trim((string)$row[$key]);
+				}
+			}
+			$res = $this->addMappingFromForm($tag, $form);
+			Assert::assertSame(0, $res['exit'], "declaring the '$tag' mapping failed:\n{$res['output']}");
+			if (isset($form['folder'])) {
+				$this->davMkdir($form['folder']);
+			}
+		}
+	}
+
+	/**
+	 * @Given /^the following items in the mappings:$/
+	 *
+	 * NEXTCLOUD PATHS ONLY, AND THAT IS THE POINT. An item inside a mapping is on BOTH
+	 * sides — that is what a mapping means — so spelling out the n8n half as well would
+	 * be saying the same thing twice and inviting the two to drift apart in the spec.
+	 *
+	 * ROUTED BY THE MAPPING'S MODE, because a link mapping refuses authoring from
+	 * Nextcloud: {@see seedManagedFileIn} writes locally for a sync mapping and seeds
+	 * through n8n for a link one. An arrange that always wrote locally would work in one
+	 * and be refused in the other, for reasons that have nothing to do with the scenario.
+	 */
+	public function theFollowingItemsInTheMappings(TableNode $table): void {
+		$this->seededWorkflowIds = [];
+		foreach ($table->getHash() as $row) {
+			$path = ltrim(trim((string)($row['path'] ?? '')), '/');
+			if ($path === '') {
+				$this->fail('an items table row has no path');
+			}
+			$folder = trim(dirname($path), '/.');
+			$stem = basename($path, '.n8n');
+			// The mapping owns the whole tree, so a nested item belongs to the mapping at
+			// the TOP of its path — not to a mapping named after the subfolder.
+			$root = explode('/', $folder)[0];
+			$this->davMkdir($folder);
+			$this->seedManagedFileIn($root, $stem);
+			$id = (string)($this->lastWorkflowId ?? '');
+			if ($id !== '') {
+				$this->seededWorkflowIds[] = $id;
+			}
+		}
+	}
+
+	/** @var list<string> the workflows the last items table seeded */
+	private array $seededWorkflowIds = [];
+
+	/**
+	 * @When the admin removes the :tag mapping
+	 *
+	 * NAMED BY ITS TAG, because that is what a mapping IS — the id is a server-minted
+	 * string no scenario should have to know.
+	 *
+	 * IT PINS THE TREE AND THE TAGS FIRST. `holds the same files it held before` and
+	 * `still carry the "X" tag in n8n` are both claims about what did NOT change, and
+	 * after the gesture there is nothing left to compare against.
+	 */
+	public function theAdminRemovesTheMapping(string $tag): void {
+		$mapping = null;
+		foreach ($this->listMappings() as $m) {
+			if ((string)($m['n8n_tag'] ?? '') === $tag) {
+				$mapping = $m;
+				break;
+			}
+		}
+		if ($mapping === null) {
+			$this->fail("no mapping uses the n8n tag '$tag'");
+		}
+		$folder = trim((string)($mapping['team_folder'] ?? ''), '/');
+		if ($folder !== '') {
+			$this->filesBeforeTeardown[$folder] = $this->davTreeUnder($folder);
+		}
+		$this->tagsBeforeTeardown = [];
+		foreach ($this->seededWorkflowIds as $id) {
+			$this->tagsBeforeTeardown[$id] = $this->n8nWorkflowTagNames($id);
+		}
+		$res = $this->occ('n8n_sync:remove-mapping ' . escapeshellarg((string)($mapping['id'] ?? '')));
+		Assert::assertSame(0, $res['exit'], "removing the '$tag' mapping failed:\n{$res['output']}");
+	}
+
+	/**
+	 * @Then the :tag mapping is no longer configured
+	 *
+	 * ASKED BY NAME, not by counting what is left. A total is a claim about the whole app
+	 * rather than about this removal — the defect `there is exactly 1 configured mapping`
+	 * had, which also asked the wrong question: that the OTHER mapping survived, which is
+	 * a fact about the Background.
+	 */
+	public function theMappingIsNoLongerConfigured(string $tag): void {
+		foreach ($this->listMappings() as $m) {
+			if ((string)($m['n8n_tag'] ?? '') === $tag) {
+				$this->fail("the '$tag' mapping is still configured after the admin removed it");
+			}
+		}
+	}
+
+	/**
+	 * @Then /^"([^"]*)" holds the same files it held before$/
+	 *
+	 * THE SYNC HALF OF THE TEAR-DOWN. A sync file holds the workflow JSON itself and may
+	 * be the last copy of it, so removing the mapping drops the connection and nothing
+	 * else — every file, at every depth, still exactly where it was.
+	 */
+	public function holdsTheSameFilesItHeldBefore(string $folder): void {
+		$folder = trim($folder, '/');
+		if (!array_key_exists($folder, $this->filesBeforeTeardown)) {
+			$this->fail("nothing pinned what '$folder' held, so there is nothing to compare against");
+		}
+		$before = $this->filesBeforeTeardown[$folder];
+		$after = $this->davTreeUnder($folder);
+		sort($before);
+		sort($after);
+		if ($before !== $after) {
+			$this->fail(sprintf(
+				"'%s' no longer holds what it held.\n  before: %s\n   after: %s",
+				$folder,
+				implode(', ', $before) ?: '(nothing)',
+				implode(', ', $after) ?: '(nothing)',
+			));
+		}
+	}
+
+	/**
+	 * @Then /^"([^"]*)" holds no workflow files$/
+	 *
+	 * AT EVERY DEPTH, which is why the arrange seeds a nested file. A link teardown that
+	 * only swept the top level would leave a dead pointer one folder down, and a
+	 * top-level-only assertion could never say so.
+	 */
+	public function holdsNoWorkflowFiles(string $folder): void {
+		$found = [];
+		foreach ($this->davTreeUnder(trim($folder, '/')) as $child) {
+			if (str_ends_with($child, '.n8n')) {
+				$found[] = ltrim($child, '/');
+			}
+		}
+		if ($found !== []) {
+			$this->fail("'$folder' still holds workflow files: " . implode(', ', $found));
+		}
+	}
+
+	/**
+	 * @Then the workflows still carry the :tag tag in n8n
+	 *
+	 * THE FAR SIDE, WHICH IS THE HALF AN ADMIN ACTUALLY FEARS. Removing a mapping is a
+	 * purely local act, and the tear-down runs under {@see SyncGuard} precisely so that
+	 * deleting a link file does not reach n8n — without it,
+	 * {@see \OCA\N8nSync\Listener\DeleteToN8nListener} would strip the mapping tag from
+	 * every one of them, or archive the workflow outright.
+	 *
+	 * Compared against what each workflow carried BEFORE, so this cannot pass by finding
+	 * a tag the arrange never applied.
+	 *
+	 * `n8nWorkflowTagNames()` is {@see ReservedTagsSteps}' — the traits compose into one
+	 * context, so a second copy here would be a fatal collision rather than a duplicate.
+	 */
+	public function theWorkflowsStillCarryTheTagInN8n(string $tag): void {
+		if ($this->seededWorkflowIds === []) {
+			$this->fail('nothing captured the workflows to look for');
+		}
+		if ($this->tagsBeforeTeardown === []) {
+			$this->fail('nothing pinned the tags, so "still" has nothing to mean');
+		}
+		$wrong = [];
+		foreach ($this->seededWorkflowIds as $id) {
+			$was = $this->tagsBeforeTeardown[$id] ?? [];
+			if (!in_array($tag, $was, true)) {
+				$this->fail("workflow $id never carried '$tag', so the arrange did not build the state");
+			}
+			if (!in_array($tag, $this->n8nWorkflowTagNames($id), true)) {
+				$wrong[] = $id;
+			}
+		}
+		if ($wrong !== []) {
+			$this->fail(
+				"the tear-down reached n8n: these workflows lost the '$tag' tag: " . implode(', ', $wrong),
+			);
+		}
+	}
+
+	/**
+	 * @Then /^"([^"]*)" holds:$/
+	 *
+	 * THE PATH-NAMED TWIN of `the file holds this DAV metadata:`, which follows the
+	 * cursor. Both earn their place: the cursor form keeps a scenario from restating a
+	 * path the app decided, and this one is for when the path IS the point — the
+	 * tear-down asserts the NESTED file, because a walk that only reached the top level
+	 * would leave the deeper one still claiming a mapping that no longer exists.
+	 *
+	 * Delegates to the shared vocabulary so `absent`, `set` and the quoted literals mean
+	 * the same thing wherever a table is written.
+	 */
+	public function thePathHolds(string $path, TableNode $table): void {
+		$this->assertManagedMetadata(ltrim($path, '/'), $table);
+	}
+
+	/**
+	 * @Then the :folder folder outlives the mapping
+	 *
+	 * NEITHER SIDE'S CONTAINER IS EVER REMOVED, which is what lets a later re-map land
+	 * straight back onto itself. Only the Nextcloud folder is named because n8n has no
+	 * container of its own — a mapping there is a tag, and the tag is asserted separately.
+	 */
+	public function theFolderOutlivesTheMapping(string $folder): void {
+		if (!$this->davExists(trim($folder, '/'))) {
+			$this->fail("'$folder' was removed with the mapping; the folder is never the app's to delete");
+		}
+	}
+
 	/** @return list<array<string,mixed>> */
 	private function listMappings(): array {
 		$res = $this->occ('n8n_sync:list-mappings');

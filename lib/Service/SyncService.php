@@ -698,36 +698,4 @@ final class SyncService {
 			]);
 		}
 	}
-
-	/**
-	 * Optional purge when a mapping is removed (spec UC-4): delete only the files
-	 * this integration created — those carrying `n8n_id` metadata — in the
-	 * mapping's Team Folder. The Team Folder itself, foreign files, and hand-made
-	 * `*.n8n` that were never synced (no `n8n_id`) are all left intact.
-	 *
-	 * @return int number of files deleted
-	 */
-	public function purgeManagedFiles(Mapping $mapping): int {
-		$folder = $this->storage->findFolder($mapping);
-		if ($folder === null) {
-			return 0;
-		}
-		$count = 0;
-		foreach ($folder->getDirectoryListing() as $node) {
-			if (!$node instanceof \OCP\Files\File) {
-				continue;
-			}
-			$managed = $this->metadata->read($node->getId());
-			if ($managed?->isManaged()) {
-				// SyncGuard suppresses DeleteToN8nListener (§17.7). This cleans
-				// up the local mirror because the mapping is gone — n8n itself
-				// is untouched by definition, regardless of mode.
-				$this->guard->run(function () use ($node): void {
-					$node->delete();
-				});
-				$count++;
-			}
-		}
-		return $count;
-	}
 }
