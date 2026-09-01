@@ -213,7 +213,7 @@ final class LinkWriteGuardPlugin extends ServerPlugin {
 		// "write" and simply moved the defect.
 		$this->logger->warning('n8n_sync: refused a WebDAV ' . $gesture . ' into a link mapping', [
 			'app' => Application::APP_ID,
-			'path' => $relative,
+			'path' => $path,
 			'mapping' => $mapping->id,
 		]);
 		throw new Forbidden(
