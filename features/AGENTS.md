@@ -373,7 +373,41 @@ question this app had never written down: an admin removes a mapping — what
 happens to the files? Both scenarios came across intact, because the rule they
 encode is not about dashboards or workflows but about what a mapping OWNS.
 
-### Removing a mapping removes only the mapping
+### Removing a mapping keeps what the mode made worth keeping
+
+The two scenarios are ONE RULE asked of the two modes, which is why they are shaped
+identically and differ only in what they assert at the end. The renaming is not
+cosmetic: `removes only the mapping` was true of a sync mapping and false of a link
+one, whose pointers all go.
+
+Each seeds TWO files, one of them in a subfolder. That is not decoration: the walk
+is recursive by nature and a top-level-only arrange never exercises it — the Grafana
+sibling's version caught a real hole in its own harness that way, where `holds no
+dashboard files` asked with `Depth: 1` and passed on a folder still holding a nested
+mirror.
+
+**The storage column is doing work too.** The sync mapping — the one carrying the
+metadata assertions — sits on a **team folder**, and the link one on an admin
+folder. Every Team-Folder-only defect this app has had was invisible to an
+admin-folder row beside it, so the richer scenario is the one that should run over
+the trickier storage.
+
+**`there is exactly 1 configured mapping` is gone from both**, replaced by `the "X"
+mapping is no longer configured`. It is the same correction `mapping/create.feature`
+took: a total is a claim about the whole app rather than about this removal, and
+here it was also asking the wrong question — that the OTHER mapping survived, which
+is a fact about the Background.
+
+**THE PURGE QUESTION IS GONE, AND IT WAS NEVER IN THIS FILE.** The panel used to ask
+a second `window.confirm` — *"Also delete the .n8n files this integration created?"*
+— wired to `?purge=1`, which removed every managed file regardless of mode. No
+version of this spec, here or in either sibling, has ever described it. It asks the
+opposite: the mode decides, and the admin is not asked, because there is nothing to
+decide. A sync file is an archive worth keeping and a link is a pointer worth
+nothing; a question that lets an admin delete the first or keep the second is
+offering them a way to be wrong. `SyncService::purgeManagedFiles()` went with it.
+
+### RETIRED — Removing a mapping removes only the mapping
 
 **A sync file survives its mapping.** It holds the whole workflow, so deleting the
 mapping cannot cost anything: the file stays where it is, keeps its `n8n_id`
@@ -397,6 +431,24 @@ stamped with the id of a mapping that no longer exists, and a link mapping has n
 case of its own. Porting the scenarios records the intended end state; wearing
 `@todo` would have claimed code that is not there. The status tag is the one thing
 a port must re-decide, because it describes THIS repo.
+
+### HOMELESS — Deleting the mapped folder is refused
+
+**The scenario is gone from `mapping/delete.feature` and has not landed anywhere
+else.** It was removed for being in the wrong file, and the argument below — that it
+is the same gesture by the wrong route — is the case for it having lived there,
+kept because it is the best statement of why the rule exists at all.
+
+The siblings put it in `features/folders/delete.feature`. **This app has no
+`features/folders/` directory**, because it maps tags rather than folders and has no
+folder verbs of its own, so there is no obvious file for it and inventing one for a
+single scenario is its own decision.
+
+The rule itself is not in doubt and the code that enforces it is untouched. What is
+open is where the scenario lives — `lifecycle.feature`, a new file, or retired
+outright on the grounds that the guard is unit-tested and the Gherkin adds nothing.
+
+The original argument, kept:
 
 ### Deleting the mapped folder is refused
 

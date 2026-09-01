@@ -189,27 +189,43 @@
 
 	function deleteCard(card) {
 		var id = card.dataset.id || '';
+		// An unsaved card has nothing to delete server-side.
 		if (!id) { card.remove(); return; }
 
-		if (!window.confirm(t('n8n_sync', 'Remove this mapping? The folder and its files are kept.'))) {
-			return;
-		}
-		var purge = window.confirm(t('n8n_sync',
-			'Also delete the .n8n files this integration created in the folder?\n\n'
-			+ 'OK = delete them. Cancel = keep them.\n'
-			+ 'Foreign files and the folder itself are always kept. This cannot be undone.'));
-		var url = OC.generateUrl(APP_URL_BASE + '/' + encodeURIComponent(id)) + (purge ? '?purge=1' : '');
-		api('DELETE', url)
-			.then(function (res) {
-				card.remove();
-				var msg = (res && typeof res.purged === 'number')
-					? t('n8n_sync', 'Removed; {n} file(s) purged.', { n: res.purged })
-					: t('n8n_sync', 'Removed.');
-				flash('success', msg);
-			})
-			.catch(function (err) {
-				cardStatus(card, 'error', err.message || t('n8n_sync', 'Delete failed.'));
-			});
+		var data = readCard(card);
+
+		// WHAT THE ADMIN LOSES, IN THE WORDS OF THE MODE THEY PICKED, which is the
+		// difference between a warning and a surprise. The old copy said "the folder and
+		// its files are kept" — true of a sync mapping and false of a link one, whose
+		// pointers all go.
+		//
+		// ONE STRING LITERAL PER MESSAGE, NOT A CONCATENATION. `t()` is what the l10n
+		// extractor reads, and it reads the SOURCE — a message assembled with `+` is not
+		// there to be found, so it would ship untranslatable while looking fine.
+		var msg = data.mode === 'link'
+			? t('n8n_sync', 'Remove the mapping from {tag} to {folder}? Its linked files will be removed from Nextcloud. The folder is kept, and n8n is left alone.', { tag: data.n8n_tag, folder: data.team_folder })
+			: t('n8n_sync', 'Remove the mapping from {tag} to {folder}? Its workflow files stay in Nextcloud and become unmapped. The folder is kept, and n8n is left alone.', { tag: data.n8n_tag, folder: data.team_folder });
+
+		// THE SAME MODAL THE PURGE USES. This was two `window.confirm` boxes — the
+		// browser's own, unthemed, and a different voice from every other question this
+		// panel asks. The second of them offered to delete every managed file regardless
+		// of mode, which `mapping/delete.feature` has never described: the mode decides,
+		// so there was nothing for the admin to answer.
+		window.N8nSync.confirmDestructive({
+			title: t('n8n_sync', 'Remove this mapping?'),
+			text: msg,
+			confirm: t('n8n_sync', 'Remove mapping'),
+			onConfirm: function () {
+				api('DELETE', OC.generateUrl(APP_URL_BASE + '/' + encodeURIComponent(id)))
+					.then(function () {
+						card.remove();
+						flash('success', t('n8n_sync', 'Removed.'));
+					})
+					.catch(function (err) {
+						cardStatus(card, 'error', err.message || t('n8n_sync', 'Delete failed.'));
+					});
+			}
+		});
 	}
 
 	// Per-mapping status, shown to the right of the card's buttons. Sticky —

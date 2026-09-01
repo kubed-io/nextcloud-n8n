@@ -74,7 +74,26 @@ trait WebDavTrait {
 			'headers' => ['Depth' => '0', 'Content-Type' => 'application/xml'],
 			'body' => '<?xml version="1.0"?><d:propfind xmlns:d="DAV:"><d:prop><d:getcontenttype/></d:prop></d:propfind>',
 		]);
-		Assert::assertSame(207, $res->getStatusCode(), "PROPFIND $path failed: " . (string)$res->getBody());
+		// THROWN, NOT `Assert::assertSame`. A failing PHPUnit assertion builds its message
+		// through `TextUI\Configuration\Registry`, which only exists when PHPUnit is the
+		// runner — under Behat it is null, so this line reported
+		// `Registry::get(): ... null returned` and threw the real reason away. A 404 here
+		// means the file is not where the scenario thinks it is, and THAT is the sentence
+		// worth printing; it cost three CI rounds to find out that was the message.
+		if ($res->getStatusCode() !== 207) {
+			// AND IT CARRIES THE BODY, like {@see assertStatus} does. A 404 explains
+			// itself; every other code does not, and Sabre puts the reason in an
+			// `<s:message>` in the body — which is exactly the sentence that identified a
+			// link file's move being refused by the delete guard. Dropping it left a bare
+			// number standing in for a diagnosis. Raised by Copilot on #90.
+			throw new \RuntimeException(sprintf(
+				'PROPFIND %s failed: HTTP %d (expected 207)%s%s',
+				$path,
+				$res->getStatusCode(),
+				$res->getStatusCode() === 404 ? ' — the file is not at that path' : '',
+				$res->getStatusCode() === 404 ? '' : "\n" . (string)$res->getBody(),
+			));
+		}
 		$doc = new \SimpleXMLElement((string)$res->getBody());
 		$doc->registerXPathNamespace('d', 'DAV:');
 		$ct = (string)($doc->xpath('//d:getcontenttype')[0] ?? '');

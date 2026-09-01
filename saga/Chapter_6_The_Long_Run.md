@@ -312,6 +312,56 @@ Specifically, confirm all three carry: this-group-only, stop-at-first-match, lea
 REJECTED alone, and the call on the **existing-share** branch (the recovery path —
 without it, anyone already stuck stays stuck).
 
+### 4. A link does not move, and this app currently lets one — OPEN, look deeper
+
+**The rule, from Dr K, stated plainly: links can't move, period.** A link is
+read-only in Nextcloud, so no gesture here relocates one. Where a mirror sits is
+decided on the far side and followed on this one.
+
+`MoveGuardListener` does not enforce that. Its same-mapping shortcut —
+
+```php
+if ($srcMapping !== null && $tgtMapping !== null && $tgtMapping->id === $srcMapping->id) {
+    return; // staying within the same mapping folder (rename / subfolder move)
+}
+```
+
+— returns BEFORE the "A LINK NEVER MOVES, WHEREVER IT IS GOING" check below it, so a
+link may be dragged into a subfolder of its own mapped folder. Grafana had the identical
+defect in `MoveRules` and it is fixed there (the link refusal is hoisted above the
+shortcut, as the link RENAME refusal in the same file always was). **This app is not
+fixed.** The gap is deliberate for now: n8n has nuances the sibling does not.
+
+**The nuance that makes it a real question rather than a port.** In Grafana the fix
+costs nothing, because Grafana has nested folders and mirrors them: to file a link into
+a subfolder you move the DASHBOARD into that subfolder in Grafana, and the mirror follows
+down. `FolderSteps::theFollowingItemsInTheMappings()` arranges nested links exactly that
+way — `grafanaFolderUidForNcPath(parentOf($path))`, then pull. No local move at all.
+
+n8n has no such route. A mapping is a TAG, and `SyncService` writes every mirror into
+`storage->ensureFolder($mapping)` — the mapping root. Nothing anywhere creates a
+subfolder. So under the rule as stated, **a nested link file in this app is reachable by
+no route at all**, and the questions to settle before porting are:
+
+- is a nested link simply not a thing here, or should tags map to n8n's own folders?
+- if it is not a thing, should a link mapping accept subfolders at all?
+
+**And the arrange is doing the forbidden gesture to get there.** `seedManagedFileIn()`
+pulls a link to the mapping root and then MOVES it into the subfolder, with a comment
+rationalising it as "a real state reached by a user MOVING one". It is not. This is the
+same defect as *§6.3 · The harness was arranging a state no user could reach*, found in
+this same chapter, committed again by the agent that wrote that section. The warning
+there was the right one and was not enough: **it must be asked of every arrange, every
+time, and an arrange that explains why the gesture is fine is the loudest possible tell.**
+
+`features/mapping/delete.feature` carries `/Pointers/Coast/Latency.n8n`, which depends
+on it. Fixing the rule turns that row red, so the gherkin question comes first — and
+gherkin is Dr K's.
+
+The one part already carried across: the DAV plugin answers a move in a move's words
+now, instead of telling the user a link "can't be deleted here" for a gesture that
+deletes nothing.
+
 ---
 
 ## Carried in from Chapter 5

@@ -9,7 +9,7 @@ declare(strict_types=1);
 
 namespace OCA\N8nSync\Command;
 
-use OCA\N8nSync\Service\MappingService;
+use OCA\N8nSync\Service\MappingTeardownService;
 use Symfony\Component\Console\Command\Command;
 use Symfony\Component\Console\Input\InputArgument;
 use Symfony\Component\Console\Input\InputInterface;
@@ -24,7 +24,7 @@ use Symfony\Component\Console\Output\OutputInterface;
  */
 final class RemoveMapping extends Command {
 	public function __construct(
-		private MappingService $service,
+		private MappingTeardownService $service,
 	) {
 		parent::__construct();
 	}
@@ -41,7 +41,11 @@ final class RemoveMapping extends Command {
 	protected function execute(InputInterface $input, OutputInterface $output): int {
 		$id = (string)$input->getArgument('id');
 		try {
-			$this->service->delete($id);
+			// THROUGH THE TEARDOWN, NOT `MappingService::delete()`. That drops the binding
+			// and stops, leaving every connected file still stamped with a mapping id that
+			// no longer resolves — links included, which are then undeletable from every
+			// route. The CLI and the panel have to answer a removal the same way.
+			$this->service->remove($id);
 		} catch (\OutOfBoundsException) {
 			$output->writeln('<error>No mapping with id "' . $id . '".</error>');
 			return 1;
