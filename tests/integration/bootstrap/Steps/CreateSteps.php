@@ -554,8 +554,24 @@ trait CreateSteps {
 				$key === self::META_MODE => $this->storedMode($expected),
 				default => $expected,
 			};
-			Assert::assertNotSame('', $want, "the scenario asked for '$expected' but the arrange never recorded one");
-			Assert::assertSame($want, $actual, "$key carried the wrong value");
+			// THROWN, NOT `Assert::assertSame`, AND THAT IS A DIAGNOSTIC FIX RATHER THAN A
+			// STYLE ONE. PHPUnit builds a failure's comparison diff through
+			// `TextUI\Configuration\Registry`, which only exists when PHPUnit is the
+			// runner — under Behat it is null, so every FAILING assertion here surfaced as
+			// `Registry::get(): Return value must be of type Configuration, null returned`
+			// and the actual reason was never printed. A whole scenario's diagnosis was
+			// the word "TypeError".
+			if ($want === '') {
+				throw new \RuntimeException(
+					"the scenario asked for '$expected' but the arrange never recorded one",
+				);
+			}
+			if ($want !== $actual) {
+				throw new \RuntimeException(
+					"$key: expected '$want', found " . ($actual === null ? '(nothing)' : "'$actual'")
+					. " — the table said '$expected'",
+				);
+			}
 		}
 	}
 

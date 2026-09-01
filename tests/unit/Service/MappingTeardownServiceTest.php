@@ -9,7 +9,6 @@ declare(strict_types=1);
 
 namespace OCA\N8nSync\Tests\Unit\Service;
 
-use OCA\N8nSync\Service\WorkflowMetadata;
 use OCA\N8nSync\Service\ManagedFile;
 use OCA\N8nSync\Service\Mapping;
 use OCA\N8nSync\Service\MappingService;
@@ -17,6 +16,7 @@ use OCA\N8nSync\Service\MappingTeardownService;
 use OCA\N8nSync\Service\StorageService;
 use OCA\N8nSync\Service\SyncGuard;
 use OCA\N8nSync\Service\TrashControl;
+use OCA\N8nSync\Service\WorkflowMetadata;
 use OCP\Files\File;
 use OCP\Files\Folder;
 use PHPUnit\Framework\Attributes\CoversClass;

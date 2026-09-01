@@ -135,11 +135,16 @@ final class MappingTeardownService {
 		$counts = ['removed' => 0, 'unmapped' => 0, 'failed' => 0];
 		// COLLECTED BEFORE ANYTHING IS TOUCHED, so the walk never reads a listing it is
 		// concurrently changing — half the link files in a folder used to survive it.
-		foreach ($this->connectedBelow($folder, $mappingId) as $node) {
-			$managed = $this->metadata->read($node->getId());
-			if ($managed === null) {
-				continue;
-			}
+		// THE PAIR, NOT A SECOND READ. `connectedBelow()` already reads each file's
+		// metadata — inside a try/catch, because a read can throw — and this loop used to
+		// throw that away and read the same id again UNGUARDED. A throw there would abort
+		// the whole walk after the mapping had already been deleted, which is the one
+		// thing this class promises not to do.
+		//
+		// Carrying the ManagedFile through removes the window rather than wrapping it: a
+		// second try/catch would have made the read defensive, where not reading twice
+		// makes it impossible. Raised by Copilot on #90.
+		foreach ($this->connectedBelow($folder, $mappingId) as [$node, $managed]) {
 			$ok = $managed->isLink() ? $this->removeLink($node) : $this->unmap($node);
 			if (!$ok) {
 				$counts['failed']++;
@@ -157,7 +162,9 @@ final class MappingTeardownService {
 	 * folder themselves carries no mapping id, and it is not this app's to remove or to
 	 * re-label — the whole point of a mapped folder is that it stays usable as a folder.
 	 *
-	 * @return list<File>
+	 * @return list<array{0: File, 1: ManagedFile}> each file with the stamp that
+	 *                                                identified it, so the caller never
+	 *                                                reads the same metadata twice
 	 */
 	private function connectedBelow(Folder $folder, string $mappingId): array {
 		$found = [];
@@ -188,7 +195,7 @@ final class MappingTeardownService {
 				continue; // a file this app cannot identify is never one it may act on
 			}
 			if ($managed?->isManaged() && $managed->mappingId === $mappingId) {
-				$found[] = $child;
+				$found[] = [$child, $managed];
 			}
 		}
 		return $found;

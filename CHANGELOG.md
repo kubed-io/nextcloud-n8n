@@ -26,6 +26,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Fixed
 
+- Removing a mapping now keeps what each file's mode made worth keeping: a sync file stays and becomes unmapped, a link file goes. It also no longer asks whether to delete the files — the mode already decides, and the question let you delete an archive or keep a pointer that means nothing.
+- Removing a mapping from the command line tore down the same as the admin panel now. `occ n8n_sync:remove-mapping` used to drop the mapping and stop, leaving every file stamped with a mapping that no longer existed — links among them, which then could not be deleted at all.
+- The admin panel asks its destructive questions in a proper Nextcloud dialog, themed like the rest of the instance, instead of the browser's grey alert box.
 - Two mappings can no longer point at the same Nextcloud folder. Only the n8n tag was checked, so a second mapping onto a folder already in use was accepted — and every file in it then belonged to both.
 - Mapping a tag with no API key configured is refused, with a message. It used to be accepted, provisioning and sharing a real folder that could never fill and saying so only in the log.
 - A mapped folder backed by an admin-owned folder is now visible to the groups you share it with. Nextcloud creates group shares as *pending* and silently declines to mount them, and a group share offers nobody anything to accept — so the folder was correct, shared, and invisible to everyone. Re-saving a mapping's groups also puts back a folder that was already stuck this way.

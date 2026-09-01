@@ -11,8 +11,8 @@ namespace OCA\N8nSync\Controller;
 
 use OCA\N8nSync\Exception\ExistingWorkflowsException;
 use OCA\N8nSync\Service\Mapping;
-use OCA\N8nSync\Service\MappingTeardownService;
 use OCA\N8nSync\Service\MappingService;
+use OCA\N8nSync\Service\MappingTeardownService;
 use OCA\N8nSync\Service\SyncService;
 use OCA\N8nSync\Service\SyncStatusService;
 use OCA\N8nSync\Settings\MappingSettings;
