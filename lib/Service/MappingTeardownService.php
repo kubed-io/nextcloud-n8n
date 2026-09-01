@@ -163,8 +163,8 @@ final class MappingTeardownService {
 	 * re-label — the whole point of a mapped folder is that it stays usable as a folder.
 	 *
 	 * @return list<array{0: File, 1: ManagedFile}> each file with the stamp that
-	 *                                                identified it, so the caller never
-	 *                                                reads the same metadata twice
+	 *                                              identified it, so the caller never
+	 *                                              reads the same metadata twice
 	 */
 	private function connectedBelow(Folder $folder, string $mappingId): array {
 		$found = [];

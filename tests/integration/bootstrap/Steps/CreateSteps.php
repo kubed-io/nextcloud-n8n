@@ -476,14 +476,21 @@ trait CreateSteps {
 			if ($key === 'Modified') {
 				$id = (string)$this->davReadMetadataId($path);
 				$wf = $this->n8nGetWorkflow($id);
-				Assert::assertIsArray($wf, "workflow $id is gone from n8n");
+				if (!is_array($wf)) {
+					throw new \RuntimeException("workflow $id is gone from n8n");
+				}
 				$updatedAt = strtotime((string)($wf['updatedAt'] ?? ''));
-				Assert::assertIsInt($updatedAt, 'n8n did not report an updatedAt to compare against');
-				Assert::assertSame(
-					$updatedAt,
-					$this->davReadTime($path, 'getlastmodified'),
-					"the mirror's Modified is not the workflow's updatedAt",
-				);
+				if (!is_int($updatedAt)) {
+					throw new \RuntimeException('n8n did not report an updatedAt to compare against');
+				}
+				$mtime = $this->davReadTime($path, 'getlastmodified');
+				if ($updatedAt !== $mtime) {
+					throw new \RuntimeException(sprintf(
+						"the mirror's Modified is %s; the workflow's updatedAt is %s",
+						$mtime === null ? '(nothing)' : gmdate('c', $mtime),
+						gmdate('c', $updatedAt),
+					));
+				}
 				continue;
 			}
 
@@ -495,12 +502,20 @@ trait CreateSteps {
 			if ($expected === "n8n's current one") {
 				$id = (string)$this->davReadMetadataId($path);
 				$wf = $this->n8nGetWorkflow($id);
-				Assert::assertIsArray($wf, "workflow $id is gone from n8n");
-				Assert::assertSame((string)($wf['versionId'] ?? ''), $actual, "$key is not n8n's current versionId");
+				if (!is_array($wf)) {
+					throw new \RuntimeException("workflow $id is gone from n8n");
+				}
+				$wantVersion = (string)($wf['versionId'] ?? '');
+				if ($wantVersion !== $actual) {
+					throw new \RuntimeException("$key is '$actual'; n8n's current versionId is '$wantVersion'");
+				}
 				continue;
 			}
 			if ($expected === "the file's hash") {
-				Assert::assertSame(sha1($this->davGet($path)), $actual, "$key is not the hash of the file's current bytes");
+				$wantHash = sha1($this->davGet($path));
+				if ($wantHash !== $actual) {
+					throw new \RuntimeException("$key is '$actual'; the file's current bytes hash to '$wantHash'");
+				}
 				continue;
 			}
 
@@ -508,15 +523,20 @@ trait CreateSteps {
 			// the presence check every other value shares. A file that left its mapping
 			// still has an id and a mode — what it no longer has is an owner.
 			if ($expected === 'cleared') {
-				Assert::assertTrue(
-					$actual === null || $actual === '',
-					"$key is still '$actual' on $path, but nothing should own it now",
-				);
+				if ($actual !== null && $actual !== '') {
+					throw new \RuntimeException(
+						"$key is still '$actual' on $path, but nothing should own it now",
+					);
+				}
 				continue;
 			}
 
-			Assert::assertNotNull($actual, "$key is not on $path at all");
-			Assert::assertNotSame('', $actual, "$key is empty on $path");
+			if ($actual === null) {
+				throw new \RuntimeException("$key is not on $path at all");
+			}
+			if ($actual === '') {
+				throw new \RuntimeException("$key is empty on $path");
+			}
 
 			if ($expected === 'set') {
 				continue;
