@@ -19,6 +19,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [1.1.0] - 2026-09-02
+
 ### Added
 
 - Mapping a folder in **link** mode when it already holds workflow files now warns you first, says how many, and offers to move them out instead. A link mapping holds pointers, so those files cannot survive there — before, the mapping was made anyway and left a folder the app had two contradictory answers about.
