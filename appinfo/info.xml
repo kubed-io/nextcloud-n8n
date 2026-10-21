@@ -124,7 +124,7 @@ This is a community integration and is not affiliated with, endorsed by, or spon
          reached end of life in 2025 anyway. The floor is 32 rather than 31 because 31
          was never once executed by the integration suite: supporting it was a claim,
          and 32 is the oldest version the suite actually proves. -->
-    <nextcloud min-version="32" max-version="34"/>
+    <nextcloud min-version="32" max-version="35"/>
   </dependencies>
   <repair-steps>
     <!--

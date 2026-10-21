@@ -76,9 +76,9 @@ jobs:
         EVENT: ${{ github.event_name }}
       run: |
         if [ "$EVENT" = "pull_request" ]; then
-          matrix='["stable34"]'
+          matrix='["stable35"]'
         else
-          matrix='["stable32", "stable33", "stable34"]'
+          matrix='["stable32", "stable33", "stable34", "stable35"]'
         fi
         echo "matrix=$matrix" >> "$GITHUB_OUTPUT"
         echo "Nextcloud versions for this $EVENT run: $matrix" >> "$GITHUB_STEP_SUMMARY"
