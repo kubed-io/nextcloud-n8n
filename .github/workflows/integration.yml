@@ -65,7 +65,7 @@ jobs:
   # conditioned in place — a job has to hand it over as JSON.
   versions:
     name: Which Nextclouds
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     outputs:
       matrix: ${{ steps.pick.outputs.matrix }}
     steps:
@@ -85,7 +85,7 @@ jobs:
 
   integration:
     name: Integration ${{ matrix.suite }} (${{ matrix.server-versions }})
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs: versions
 
     # ── THE SUITE AXIS DIVIDES THE SCENARIOS ─────────────────────────────────
@@ -402,7 +402,7 @@ jobs:
     name: Integration results
     needs: integration
     if: always()
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       checks: write
       pull-requests: write

@@ -31,7 +31,7 @@ jobs:
 
   php:
     name: PHP Quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       # Upload Psalm SARIF to Security → Code scanning (PHP's code-scanning path).
@@ -127,7 +127,7 @@ jobs:
 
   js:
     name: JS Quality
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
     steps:

@@ -41,7 +41,7 @@ jobs:
   # ---------------------------------------------------------------------------
   version:
     name: Version
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: write   # commit the bump + push the tag to main
     outputs:
@@ -133,7 +133,7 @@ jobs:
     - version
     - package
     if: inputs.push
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     # The nextcloud-store environment carries the app-store credentials:
     #   NEXTCLOUD_STORE_KEY    the app's PEM signing key
     #   NEXTCLOUD_STORE_TOKEN  the apps.nextcloud.com API token
